@@ -1,0 +1,362 @@
+% Copyright (c) 2010 by Javier Bezos.
+% All Rights Reserved.
+%
+% It may be distributed and/or modified under the
+% conditions of the LaTeX Project Public License, either version 1.3
+% of this license or (at your option) any later version.
+% The latest version of this license is in
+%   http://www.latex-project.org/lppl.txt
+% and version 1.3 or later is part of all distributions of LaTeX
+% version 2003/12/01 or later.
+% 
+% This work has the LPPL maintenance status "maintained".
+% 
+% The Current Maintainer of this work is Javier Bezos.
+%
+% TODO:
+% noshorthands -> shorthands=off, nocitations, nocrossrefs
+
+\ProvidesPackage{babeltools}[2010/10/14 v0.2 Tools for the babel system (beta)]
+
+\edef\bbtl@savedcatcodes{%
+ \catcode`\noexpand\~=\the\catcode`\~
+ \catcode`\noexpand\:=\the\catcode`\:
+ \catcode`\noexpand\"=\the\catcode`\"}
+\catcode`\~=\active
+\catcode`\"=12
+\catcode`\:=12
+
+\def\bbtl@meaning{\expandafter\strip@prefix\meaning}
+
+\def\bbtl@ifshorthand#1{%
+  \@expandtwoargs\in@{#1}{\bbtl@o@shorthands}%
+  \ifin@
+    \expandafter\@firstoftwo
+  \else
+    \expandafter\@secondoftwo
+  \fi}
+   
+\let\bbtl@afterbabelhook\@empty
+\newcommand\AfterBabel[1]{%
+  \g@addto@macro\bbtl@afterbabelhook{#1}}
+
+\let\bbtl@atendofbabelhook\@empty
+\newcommand\AtEndOfBabel[1]{%
+  \g@addto@macro\bbtl@atendofbabelhook{#1}}
+
+\let\bbtl@beforebabelhook\@empty
+\newcommand\BeforeBabel[1]{%
+  \g@addto@macro\bbtl@beforebabelhook{#1}}
+
+% Not to be redefined. The current value, saved by babel, is
+% restored. More robust code is necessary, I think.
+
+\def\bbtl@restore@org#1{%
+  \@ifundefined{#1 }% Not robust?
+    {\expandafter\let\csname #1\expandafter\endcsname
+     \csname org@#1\endcsname}%
+    {\expandafter\let\csname #1 \expandafter\endcsname
+     \csname org@#1\endcsname}}
+
+\def\bbtl@save@org#1{%
+  \expandafter\let\csname org@#1\expandafter\endcsname
+  \csname #1\endcsname}
+
+% Citations and cross refs
+% ~~~~~~~~~~~~~~~~~~~~~~~~
+
+\let\bbtl@ignorepackages\@empty
+
+\DeclareOption{nocitations}
+  {\g@addto@macro\bbtl@ignorepackages{,cite,natbib,}%
+   \AfterBabel{%
+     \bbtl@restore@org{nocite}%
+     \bbtl@restore@org{bibcite}%
+     \bbtl@restore@org{@bibitem}%S
+     \bbtl@restore@org{@citex}}}
+
+\DeclareOption{nocrossrefs}
+  {\g@addto@macro\bbtl@ignorepackages{,varioref,}%
+   \BeforeBabel{%
+     \bbtl@save@org{@newl@bel}}% babel DOESN'T save it!
+   \AfterBabel{%
+     \bbtl@restore@org{@newl@bel}%
+     \bbtl@restore@org{ref}%  Robust
+     \bbtl@restore@org{pageref}}}%  Robust
+
+% More cases are to be added, but they must be delayed at the end of
+% begin document, because they are related to loaded packages (see
+% babel.dtx)
+%
+% Shorthands
+% ~~~~~~~~~~
+% Some languages use the shortand mechanism for tools not defined
+% otherwise, so you can still use them with \babelshorthand{..}.
+% Then you can use it conveniently to define your own macros.
+
+% ~ is an special case, as it's defined in babel.def
+
+% New shorthands
+% --------------
+
+\DeclareOption{adaptive}%
+  {\AfterBabel{%
+     \let\bbtl@initiate@active@char\initiate@active@char
+     \let\initiate@active@char\bbtl@set@shorthand
+     \let\bbtl@declare@shorthand\declare@shorthand
+     \let\declare@shorthand\bbtl@declare
+     \let\bbl@activate\bbtl@activate
+     \let\bbtl@deactivate\bbl@deactivate
+     \let\bbl@deactivate\bbtl@restore}}
+
+% Do \bbtl@initiate@active@char but don't make the char active.
+% Not necessary and a source of bugs.
+
+\def\bbtl@set@shorthand#1{%
+  \expandafter\edef\csname bbtl@savecat\string#1\endcsname
+    {\the\catcode`#1}%
+  \bbtl@initiate@active@char{#1}%
+  \catcode`#1=\csname bbtl@savecat\string#1\endcsname\relax
+  \addto\bbtl@select{\shorthandon{#1}}}
+
+\def\bbtl@use@shorthand{%
+  \if@safe@actives
+    \bbl@afterelse
+    \string
+  \else
+    \bbl@afterfi
+    {\ifx\thepage\relax
+       \bbl@afterelse
+       \string
+     \else
+       \bbl@afterfi
+       \bbtl@use@sh
+     \fi}%
+  \fi}
+
+\def\bbtl@use@sh#1{%
+  \ifx\protect\@unexpandable@protect
+     \bbl@afterelse
+     \noexpand#1%
+   \else%
+     \bbl@afterfi
+     \textormath
+       {\csname active@char\string#1\endcsname}%
+       {\csname normal@char\string#1\endcsname}%
+   \fi}
+
+\gdef\bbtl@activate#1{%
+  \begingroup
+    \lccode`\~=`#1
+    \lowercase{%
+   \endgroup
+   \def~{\bbtl@use@shorthand~}}}
+
+\def\bbtl@restore#1{%
+  \shorthandon{#1}%
+  \begingroup
+    \lccode`\~=`#1
+    \lowercase{%
+  \endgroup
+  \bbtl@deactivate{~}}}
+
+\def\bbtl@declare#1#2{%
+  \@ifundefined{bbtl@savecat\expandafter\string\@firstoftwo#2\@empty}%
+    {\@gobble}%
+    {\bbtl@declare@shorthand{#1}{#2}}}
+
+% No shorthands
+% -------------
+
+% This is done after 'adaptive', if present.
+
+\DeclareOption{shorthands=off}%
+  {\AfterBabel{\bbl@doshorthands}}
+
+\def\babelshorthand#1{%
+  \def\bbtl@tempa{#1}%
+  \@ifundefined{bbtl@@\languagename @@\bbtl@meaning\bbtl@tempa}%
+    {#1}%
+    {\@nameuse{bbtl@@\languagename @@\bbtl@meaning\bbtl@tempa}}}
+
+% Select
+% ----------------------
+\let\bbtl@o@shorthands\@empty
+
+% TO DO: package options are expanded by LaTeX, and ~ raises
+% an error, but not \string~. Is there a way to fix it?
+
+% This is done after 'adaptive', if present.
+
+\def\bbl@doshorthands{%
+   \let\bbtl@s@initiate@active@char\initiate@active@char
+   \def\initiate@active@char##1{%
+     \bbtl@ifshorthand{\string##1}%
+       {\bbtl@s@initiate@active@char{##1}}%
+       {}}%
+   \let\bbtl@s@declare@shorthand\declare@shorthand
+   \def\declare@shorthand##1##2{%
+     \bbtl@ifshorthand{\expandafter\string\@firstoftwo##2\@empty}%
+       {\bbtl@s@declare@shorthand{##1}{##2}}%
+       {\def\bbtl@tempa{##2}%
+        \@namedef{bbtl@@##1@@\bbtl@meaning\bbtl@tempa}}}%
+   \let\bbtl@s@activate\bbl@activate
+   \def\bbl@activate##1{%
+     \bbtl@ifshorthand{\string##1}%
+       {\bbtl@s@activate{##1}}%
+       {}}%
+   \let\bbtl@s@deactivate\bbl@deactivate
+   \def\bbl@deactivate##1{%
+     \bbtl@ifshorthand{\string##1}%
+       {\bbtl@s@deactivate{##1}}%
+       {}}}
+
+% No config
+% ~~~~~~~~~
+% Make sure an unexpected local config doesn't spoil your document.
+% Use of config files is strongly discouraged, but some sites
+% use them
+
+\DeclareOption{noconfig}
+  {\AfterBabel{\let\loadlocalcfg\@gobble}}
+
+% Captions
+% ~~~~~~~~
+
+% redefining names. Somewhat experimental.
+
+\def\bbtl@captions{%
+  \bbtl@elt\prefacename\bbtl@elt\refname\bbtl@elt\abstractname
+  \bbtl@elt\bibname\bbtl@elt\chaptername\bbtl@elt\appendixname
+  \bbtl@elt\contentsname\bbtl@elt\listfigurename
+  \bbtl@elt\listtablename\bbtl@elt\indexname
+  \bbtl@elt\figurename\bbtl@elt\tablename\bbtl@elt\partname
+  \bbtl@elt\enclname\bbtl@elt\ccname\bbtl@elt\headtoname
+  \bbtl@elt\pagename\bbtl@elt\seename\bbtl@elt\alsoname
+  \bbtl@elt\proofname\bbtl@elt\glossaryname}
+
+% 1: \captions... expanded #2 repl fun bbtl@f #3 \...name
+% \lang...name
+\def\bbtl@rep#1\@@\@@#2#3#4{%
+  \in@{#3}{#1}%
+  \ifin@
+    #2#1\@@\@@#3#4%
+  \else
+    \PackageWarningNoLine{babeltools}%
+      {No \string#3 in \bbtl@l}%
+  \fi}
+
+% \bbtl@f is a helper macro:
+% 1 \...name
+% bbtl@f:
+% #1 prev, #2 def of \...name, #3 after
+% #4 \...name, #5 \lang...name
+\DeclareOption{langcaptions}
+  {\def\bbtl@repdef#1{%
+     \def\bbtl@f##1#1##2##3\@@\@@##4##5{%
+       \def##5{##2}%
+       \@namedef{captions\bbtl@l}{##1##4{##5}##3}}}%
+   \def\bbtl@elt#1{%
+     \bbtl@repdef#1%
+     \@temptokena\expandafter\expandafter\expandafter{%
+       \csname captions\bbtl@l\endcsname}%
+     % If \lang...name undefined
+     \edef\bbtl@t{%
+       \noexpand\bbtl@rep
+       \the\@temptokena
+       \noexpand\@@\noexpand\@@
+       \noexpand\bbtl@f
+       \noexpand#1
+       \expandafter\noexpand
+         \csname\bbtl@l\expandafter\@gobble\string#1\endcsname}%
+     \bbtl@t}%
+   \def\bbtl@repdo{%
+     \@for\bbtl@l:=\bbtl@options\do{%
+       \@ifundefined{captions\bbtl@l}{}{%
+       \bbtl@captions}}}%
+   \AtEndOfBabel{\bbtl@repdo}}
+
+% Key=value package options
+% ~~~~~~~~~~~~~~~~~~~~~~~~~
+
+\def\bbtl@process#1=#2\bbtl@process#3{%
+  \expandafter\ifx\csname bbtl@o@#1\endcsname\@empty
+    \expandafter\edef\csname bbtl@o@#1\endcsname{#2}%
+    \DeclareOption{\CurrentOption}{}%
+  \fi}
+
+\DeclareOption*{%
+  \@expandtwoargs\in@{\string=}{\CurrentOption}%
+  \ifin@
+    \expandafter\bbtl@process\CurrentOption\bbtl@process\CurrentOption
+  \fi}
+
+% Process options
+% ~~~~~~~~~~~~~~~~
+
+\ProcessOptions
+
+% shorthands=... option is handled here.
+
+\show\bbtl@o@shorthands
+
+\ifx\bbtl@o@shorthands\@empty\else
+  \edef\bbtl@o@shorthands{\bbtl@meaning\bbtl@o@shorthands}%
+  \bbtl@ifshorthand{'}%
+    {\PassOptionsToPackage{activeacute}{babel}}{}
+  \bbtl@ifshorthand{`}%
+    {\PassOptionsToPackage{activegrave}{babel}}{}
+  \bbtl@ifshorthand{:}{}%
+    {\g@addto@macro\bbtl@ignorepackages{,hhline,}}
+% After any redefinition, the shorthand mechanism comes.
+  \AfterBabel{\bbl@doshorthands}
+\fi
+
+% The first \LdfInit loads the babel core (the sty file doesn't!)
+% That means babeltools is not compatible with classes loading
+% a language:
+
+\@ifundefined{ldf@finish}%
+  {\def\LdfInit{%
+    \expandafter\let\expandafter\bbtl@options
+       \csname opt@babel.sty\endcsname
+     \bbtl@beforebabelhook
+     \AtBeginDocument{%
+       \let\bbtl@ifpackageloaded\@ifpackageloaded
+       \def\@ifpackageloaded##1{%
+         \@expandtwoargs\in@{,##1,}{\bbtl@ignorepackages}%
+         \ifin@
+           \expandafter\@gobbletwo
+         \else
+           \expandafter\bbtl@ifpackageloaded
+         \fi
+         {##1}}}%
+     \chardef\atcatcode =\catcode`\@
+     \catcode`\@=11\relax
+     \input babel.def\relax
+     \catcode`\@ =\atcatcode
+     \let\atcatcode\relax
+     \bbtl@afterbabelhook
+     \AtEndOfPackage{\bbtl@atendofbabelhook}%
+     \LdfInit}}
+  {\PackageError{babeltools}%
+     {Too late -- babel has been loaded}%
+     {babeltools can be used only before babel.\MessageBreak
+      Very likely a package or the class has loaded it.}}
+
+\AtEndOfBabel{%
+  \AtBeginDocument{\let\@ifpackageloaded\bbtl@ifpackageloaded}}
+
+\bbtl@savedcatcodes
+
+\endinput
+
+==============================
+==============================
+
+- Attributes?
+- Quotes ''
+
+
+
+

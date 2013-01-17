@@ -1,0 +1,668 @@
+\NeedsTeXFormat{LaTeX2e}[1994/12/01]
+\ProvidesPackage{ifnextok}[2011/06/27 v0.3 test next token (UL)]
+
+%% Copyright (C) 2011 Uwe Lueck, 
+%% http://www.contact-ednotes.sty.de.vu 
+%% -- author-maintained in the sense of LPPL below -- 
+%%
+%% This file can be redistributed and/or modified under 
+%% the terms of the LaTeX Project Public License; either 
+%% version 1.3c of the License, or any later version.
+%% The latest version of this license is in
+%%     http://www.latex-project.org/lppl.txt
+%% We did our best to help you, but there is NO WARRANTY. 
+%%
+%% Please report bugs, problems, and suggestions via 
+%% 
+%%   http://www.contact-ednotes.sty.de.vu 
+%%
+%% == Outline ==
+%% The 'ifnextok' package deals with the behavior of 
+%% \LaTeX's internal `\@ifnextchar' to skip blank spaces. 
+%% This sometimes has surprising or for some users really 
+%% \emph{unwanted} effects, especially with brackets following 
+%% `\\' when                    %% v0.1a: was `where'
+%% the user does \emph{not} intend to specify an 
+%% optional argument, rather wants that brackets are \emph{printed.} 
+%% The package offers commands and options for modifying this 
+%% behavior, maybe limited to certain parts of the 
+%% document source. They are described in the sections below 
+%% together with the presentation of the implementation.
+%% 
+%% As after multiletter commands blank spaces are skipped anyway 
+%% (\TeX book p.~46f.), the package makes a \emph{difference only 
+%% for one-symbol commands} such as |\\|, or for %% \emph 2011/05/27
+%% \emph{active characters} such as the double quote with 
+%% \ctanpkgref{german}`.sty' and \ctanpkgref{babel}.
+%% (v0.21: Or also optional arguments 
+%%  \emph{following mandatory ones}---``trailing" optional arguments 
+%%  mentioned by Lars Hellstr\"om and Bruno Le Floch on `LATEX-L'. 
+%%  v0.21a: Moreover, with ``starred" command versions having a 
+%%  first optional argument!)   %% 2011/06/14
+%% 
+%% Similar things happen in \ctanpkgref{amsmath} and 
+%% \ctanpkgref{mathtools}, and as of v0.21,     %% v0.21a 2011/06/14
+%% we discuss relations to these packages.
+%% 
+%% A little \strong{overview} of the package's commands and options:
+%%                               %% structured 2011/05/27
+%% === For Macro Writers ===
+%% \begin{enumerate}
+%%  \item |\IfNextToken| is an alternative to `\@ifnextchar', 
+%%      not skipping spaces (\secref{main}). 
+%%      This macro is the \strong{low-level} 
+%%      backbone of all other modifications of \LaTeX\ commands.
+%%  \item |\IfStarNextToken| is an alternative to `\@ifstar', 
+%%      not skipping spaces, using `\IfNextToken' in lieu of 
+%%      `\@ifnextchar' (\secref{star}).
+%%  \item Some ``\strong{patching}" commands aim at modifying 
+%%      existing (\LaTeX) macros without specifying the resulting 
+%%      new definition explicitly 
+%%      (Sections~\ref{sec:patch} and \ref{sec:star}). 
+%%      As a package writer, 
+%%      you just must know which macros need to be modified
+%%      and specify their names as arguments for the patching macros. 
+%%  \item There are low-level commands 
+%%      |\INTstore| and |\INTrestore|
+%%      for undoing modifications of existing macros 
+%%      (\secref{stored}).
+%% \end{enumerate}
+%%
+%% === For End-Users ===
+%%  % \item 
+%%      There are \strong{high-level} commands for modifying 
+%%      |\\| and selecting \LaTeX\ \strong{environments} 
+%%      to be affected (\secref{break}). 
+%%      Package \strong{options} execute some of them 
+%%      (\secref{options}), e.g., `[stdbreaks]'.
+%%
+%% === Intermediate ===
+%% |\MakeNotSkipping{<target>}{<on-space>}| 
+%% described in \secref{genpatch} is somewhat ``intermediate." 
+%% It acts on a document-level command <target> without 
+%% any assumptions about its internals. 
+%% On the other hand, choosing <on-space> for the new behavior 
+%% of <target> in front of a space token may need some knowledge ...
+%%
+%% (TODO: how command names are composed)   %% 2011/05/23, v0.1
+%% 
+%%   \pagebreak                                 %% 2011/06/26
+%% == Caveats ==
+%% \begin{enumerate}
+%% \item Testing has not been very comprehensive so far. 
+%% % \item 
+%%       Usage together with \textcolor{blue}{\ctanpkgref{amsmath}}
+%%       may require special care or fail altogether.
+%% \item Switching into ``don't-skip-spaces" mode 
+%%       \emph{two times} without switching back into normal mode 
+%%       in between won't work with this version (v0.1--v0.3 TODO)
+%%       of the package (TODO: permanent aliases).
+%%       You will get the 
+%%       \[\texttt{Argument of <patching> has an extra }`}.'\]
+%%       error. This also applies to commands that have been issued 
+%%       by package options.
+%% \item Implementation may change much. 
+%%       % , and certain auxiliary 
+%%       % commands may move to separate packages. 
+%%       (TODO 0.3)
+%% \end{enumerate}
+%%
+%% == For Making Macros ==                      %% 2011/05/27
+%% \label{sec:mac}
+%% === The Main Command &\IfNextToken ===       %% & 2011/05/27
+%% \label{sec:main}
+%% |\IfNextToken<match>{<if>}{<else>}| %% add. miss. `\' 2011/05/31
+%% is the obvious variant 
+%% of \LaTeX's internal `\@ifnextchar' executing <if> 
+%% if actually the \emph{``very next"} token is 
+%% <match>                      %% v0.1a: was `mathc'
+%% and executing <else> otherwise. If <match> is \emph{not} 
+%% a \emph{space token} (\LaTeX's `\@sptoken') but 
+%% the next token \emph{is}, <else> is executed; 
+%% while `\@ifnextchar' tries matching the next token 
+%% after ensuing space tokens. 
+\newcommand{\IfNextToken}[3]{%
+    \let\nextok@match= #1% 
+%% ... v0.21 adds \qtd{`= '} after Heiko Oberdiek's explanation 
+%% on \texhaxpref{11-05-017590}{texhax},        %% 2011/06/14
+%% this allows `\@sptoken' as a possible `#1'. 
+    \def\nextok@if{#2}\def\nextok@else{#3}%
+    \futurelet\@let@token\nextok@decide}
+%% ... apart from using different names, this is the same as 
+%% `\new@ifnextchar' in `amsgen.sty' of the \ctanpkgref{amsmath}
+%% bundle:
+%% \begin{verbatim}
+%% \long\def\new@ifnextchar#1#2#3{%
+%%   \let\reserved@d= #1%
+%%   \def\reserved@a{#2}\def\reserved@b{#3}%
+%%   \futurelet\@let@token\new@ifnch
+%% }
+%% \end{verbatim}
+%% ... and the behavior is essentially the same ...
+\def\nextok@decide{%
+    \ifx\@let@token\nextok@match \expandafter\nextok@if
+    \else                        \expandafter\nextok@else
+    \fi}
+%% The analogue to our `\nextok@decide' in 'amsmath'/`amsgen.sty' 
+%% is `\new@ifnch': 
+%% \begin{verbatim}
+%% \def\new@ifnch{%
+%%   \ifx\@let@token\reserved@d \let\reserved@b\reserved@a \fi
+%%   \reserved@b
+%% }
+%% \end{verbatim}
+%%  ... and these two macros ('ifnextok''s and 'amsmath''s) 
+%% actually make the difference to Standard \LaTeX. 
+%% The latter's `\@ifnch' tests for `\@sptoken' before 
+%% looking for the actually wanted `char', 'ifnextok'  and 
+%% 'amsmath' don't. As to `\new@ifnch' vs.\ `\nextok@decide', 
+%% the first has one token less than the latter, but one 
+%% assignment more. What does this mean? TODO
+%% 
+%% When I decided to create the 'ifnextok' package, I was not aware 
+%% of the similarity to 'amsmath', and I am not sure what I would 
+%% have done had I ...
+%%
+%% |\NoNextSkipping| now switches into ``don't-skip-spaces" 
+%% mode ``altogether" (however ...):
+\newcommand*{\NoNextSkipping}{\let\@ifnextchar\IfNextToken}
+%% This appears so dangerous to me that I don't want to support it 
+%% much right now. |\RestoreNextSkipping| just switches back 
+%% to \LaTeX's original version, so some support for 
+%% \ctanpkgref{amsmath} may be missing here. 
+\newcommand*{\RestoreNextSkipping}{%
+    \let\@ifnextchar\kernel@ifnextchar}
+%% Actually, because `\NoNextSkipping' does not affect 
+%% `\kernel@ifnextchar', those of \LaTeX's commands using the latter 
+%% still will skip spaces (with package version v0.1). 
+%% 
+%% As opposed to 'amsmath', 'ifnextok' aims at more choices 
+%% as to what document-level commands are affected by the 
+%% modified `next' checking. Of course, 'amsmath' deals with 
+%% breaks between math display lines, while the present package 
+%% rather was motivated by experiences in the humanities. 
+%%
+%% `\@sptoken' was discussed under \qtd{Some puzzling TeX} on 
+%% texhax in 2011 (February/May/June), and the matter is discussed in 
+%% \meta{The \TeX book} in Exercise~24.6 and on pp.~376f.
+%%
+%% === ``Bold" Patching Commands ===
+%% \label{sec:patch}
+%% % The little auxilary |\@xp@xp@xp| (cf.~`\@xp' in `amsgen.sty'):
+%% % \providecommand*{\@xpxpxp}{\expandafter\expandafter\expandafter}
+%% |\INTpatch<replacer><macro>| replaces 
+%% something in the definition of <macro> according to 
+%% the replacement macro <replacer>. 
+%% This seems to work with the macros I thought of. 
+%% It does \emph{not} work when 
+%% (for replacing `\@ifnextchar')   %% mod. 2011/06/24:
+%% (a)~there are \emph{more} `\@ifnextchar's in the 
+%% macro to patch (outside braces), 
+%% or when (b)~the only `\@ifnextchar' 
+%% is inside a pair of braces.
+\newcommand*{\INTpatch}[2]{%
+  \expandafter\expandafter\expandafter \def
+    \expandafter\expandafter\expandafter #2%
+      \expandafter\expandafter\expandafter {%
+        \expandafter #1#2}}                     %% red. 2011/06/24
+%% |\NextTestPatch<macro>| replaces 
+%% `\@ifnextchar' in the definition of <macro> by 
+%% `\IfNextToken'. 
+\newcommand*{\NextTestPatch}{\INTpatch\nextok@patch}
+\def\nextok@patch#1\@ifnextchar{#1\IfNextToken} %% red. 2011/06/24
+%% Another application of `\INTpatch' is `\StarTestPatch' in \secref{star}.
+%% 
+%% === Storing and Restoring ===
+%% \label{sec:stored}
+%% % |\WCS@namemod@apply@cs{<mod>}<apply>{<cs>}| 
+%% % applies the token <apply> to (the token) <cs> modified by <mod>:
+%% %\providecommand*\WCS@namemod@apply@cs[3]{%
+%% %    \expandafter#2\csname#1#3\endcsname}
+%% % Note the order of the arguments in the replacement text. 
+%% % It allows shorthands like the following 
+%% % |\INT@save@nmod<apply>{<cs>}|
+%% % when one name modifyer is used for various purposes:
+%% % \newcommand*{\INT@save@nmod}{\WCS@namemod@apply@cs\INT@save}
+%% |\INTstore<macro>| stores the meaning of the macro <macro> 
+%% in a special name space. 
+%% %\newcommand*{\INTstore}[1]{\INT@save@nmod\let#1#1} 
+\newcommand*{\INTstore}[1]{%
+    \expandafter\let\csname\INT@save#1\endcsname#1}
+%% In order to apply `\MakeNotSkipping' even to 
+%% active characters below (v0.2), nothing must be gobbled 
+%% from `\string<token>':
+%% % `\INT@save<token>' is a \emph{``name modifier":}
+% \newcommand*{\INT@save}{INT.save\expandafter\@gobble\string}
+\newcommand*{\INT@save}{INT.save\string}
+%% % For restoring, we use another general auxiliary 
+%% % \[|\WCS@namemod@copy@to@from{<mod>}<new>{<old>}|:\]
+%% %\providecommand*{\WCS@namemod@copy@to@from}[3]{%
+%% %    \expandafter\let\expandafter#2\csname#1#3\endcsname}
+%% % \providecommand*{\WCS@namemod@copy@to@from}[2]{%
+%% %     \def\WCS@apply{\let#2}%
+%% %     \WCS@namemod@apply@cs#1\WCS@apply}
+%% |\INTrestore<macro>| \emph{re}stores the meaning of <macro> 
+%% that is expected to have been stored with `\INTstore':
+%% %\newcommand*{\INTrestore}[1]{\WCS@namemod@copy@to@from\INT@save#1#1}
+\newcommand*{\INTrestore}[1]{%
+    \expandafter\let\expandafter#1\csname\INT@save#1\endcsname}
+%%
+%% === The Star Test ===
+%% \label{sec:star}
+%% Before a \LaTeX\ line-break command tests for an optional argument, 
+%% it tests for a star using `\@ifstar', which in turn invokes 
+%% `\@ifnextchar'. So already `\@ifstar' needs to be modified. 
+%% We do not so much want to change `\@ifstar' altogether, 
+%% rather we will replace it at some places by a non-skipping 
+%% variant |\IfStarNextToken|,\footnote{TODO or &\IfNextStar, 
+%%                                      cf.~&\IfNextSpace.} 
+%% using the patching command |\StarTestPatch<macro>|.
+%% (`\@ifstar' has an argument and therefore cannot be patched as 
+%%  nicely as the line-break commands.)
+\newcommand*{\IfStarNextToken}[1]{\IfNextToken*{\@firstoftwo{#1}}}
+\newcommand*{\StarTestPatch}{\INTpatch\nextok@starpatch}
+%% The macro to be patched may contain a \cs{par} 
+%% (`\@centercr' is an example), so we need `\long':
+%%  %% red. 2011/06/24
+\long\def\nextok@starpatch#1\@ifstar{#1\IfStarNextToken}
+%% |\StoreStarSkipping| stores the current meaning of 
+%% `\@ifstar' ...
+%% % is executed before changing `\@ifstar' temporarily:
+\newcommand*{\StoreStarSkipping}{\INTstore\@ifstar}
+%% ... so that it can be restored by |\RestoreStarSkipping|:
+\newcommand*{\RestoreStarSkipping}{\INTrestore\@ifstar}
+%% |\NoStarSkipping| renders `\@ifstar' non-skipping altogether:
+\newcommand*{\NoStarSkipping}{\let\@ifstar\IfStarNextToken}
+%% This again seems to be so dangerous that it will not be 
+%% supported much with package version v0.1 (by a package option). 
+%% 
+%% On the other hand, 'amsmath' (`amsgen.sty') is not as scrupulous 
+%% as we are and indeed redefines `\@ifstar' \emph{altogether},
+%% equivalent to our `\NoStarSkipping', except that the latter 
+%% provides a method to restore. I.e., as soon as you have loaded
+%% `amsgen.sty' (invoked by any 'amsmath' package), 
+%% you have decided that a star appearing after 
+%% whitespace is printed as a star, rather than choosing the 
+%% ``starred" version of the respective command.
+%% %% v0.21a 2011/06/14:
+%% What we actually find in `amsgen.sty' is
+%% \begingroup \hfuzz=33pt
+%% \begin{verbatim}
+%% \def\@ifstar#1#2{\new@ifnextchar *{\def\reserved@a*{#1}\reserved@a}{#2}}
+%% \end{verbatim}
+%% \endgroup \noindent
+%% The `\reserved@a' trick seems to be due to 'amsmath''s idea 
+%% of implementing the conditional 
+%% (see the code we are quoting in \secref{main}).
+%%
+%% === More General Patching with \cs{@sptoken} ===
+%% \label{sec:genpatch}
+%% This section deals with modifying macros by a more general 
+%% technique than employed in \secref{patch}. We do not use any 
+%% knowledge of internals of the target user command 
+%% (a ``control symbol" like `\\' or an ``active character"), 
+%% and the command may take arguments, as the active double quote 
+%% does with 'german.sty' or 'babel'.
+%%
+%% ==== &\IfNextSpace ====
+%% |\IfNextSpace{<if>}{<else>}| is an auxiliary macro that 
+%% executes <if> if the next token is a space token 
+%% (\LaTeX's `\@sptoken'), otherwise it executes <else>:
+\newcommand*{\IfNextSpace}{\IfNextToken\@sptoken}
+%% This did not work with the v0.2 version of `\IfNextToken' 
+%% that didn't have \qtd{`= '}, due to `\@sptoken' being an 
+%% ``implicit space token," as Heiko Oberdiek pointed out 
+%% on texhax. He also provided the remedy that actually was 
+%% 'amsmath''s way ...
+%%
+%% v0.2 was:
+%% \begin{verbatim}
+%% \newcommand*{\IfNextSpace}[2]{%
+%%     \def\nextok@if{#1}\def\nextok@else{#2}%
+%%     \futurelet\@let@token\nextok@ifspace}
+%% \newcommand*{\nextok@ifspace}{%
+%%     \ifx\@let@token\@sptoken \expandafter \nextok@if
+%%     \else                    \expandafter \nextok@else
+%%     \fi}
+%% \end{verbatim}
+%% ... not so bad from an efficiency point of view, but ...---% 
+%% % Is `\IfNextSpace' useful? I don't know of a shorthand 
+%% % like `\@ifnextcharleftbracket' for   %% 2011/06/24 \qtd:
+%% % \qtd{&\@ifnextchar[} ...             %% rm. 2011/06/26
+%%
+%% ==== &\MakeNotSkipping ====
+%% |\MakeNotSkipping{<target>}{<on-space>}| should modify `<target>'
+%% so that it acts in its usual way when no space token is ahead 
+%% while executing <on-space> otherwise. E.g., <target> may be 
+%% the active double quote |"| from 'babel', and on the left of a space 
+%% token you want that the double quote just prints an ordinary 
+%% double quote from the ligature 
+%% \lq\verb+''+\rq\                 %% \ 2011/06/03
+%% (the first pair of argument braces may be omitted):
+%% \[\verb+\MakeNotSkipping{"}{''}+\] 
+%% ... while I don't really recommend this right now (v0.2f.). 
+%% %% rm. 2011/06/27 useless:
+%% % For some unknown |\\|, 
+%% % you may want to block searching for an optional argument by 
+%% % \[`\MakeNotSkipping{\\}{\\\relax}'\]
+%% 
+%% <target>, being on document level and probably appearing 
+%% in moving arguments, must be robust, while `\IfNextSpace' is not. 
+%% When <target> has been defined using `\DeclareRobustCommand'
+%% (`\\' from the `document' environment is an example), 
+%% we would loose the original behavior of <target> if we used 
+%% `\DeclareRobustCommand' ourselves. 
+%%
+%% v0.21 was horribly flawed at this point; I had not tested 
+%% all cases, I had not studied how \LaTeX's `\DeclareRobustCommand' 
+%% handles control symbols (such as `\_', see `source.pdf'), 
+%% and my implementation did not obey the warning in my 
+%% ancompanying documentation ...
+%%
+%% % |\RobustDeferName<cs>| may move to a general package 
+%% % about robust commands TODO:
+%% %\providecommand*{\RobustDeferName}[1]{\expandafter\@gobble\string#1 }
+%% When <target> is a single (active) character, 
+%% it may have been robustified by making it expand 
+%% to a robust control sequence token, such as `~' 
+%% via `\nobreakspace{}'---we don't know, 
+%% or don't try to find out now. We make it robust, 
+%% accepting that this may just introduce an unnecessary extra 
+%% macro. %% rest of paragraph was nonsense 2011/06/27
+\newcommand*{\INT@modified}[1]{%
+    \ifx\protect\@typeset@protect 
+        \expandafter\expandafter\expandafter \IfNextSpace
+            \csname\INT@mod#1\expandafter\endcsname
+    \else 
+        \protect#1%
+    \fi}
+%% `\INT@mod<cs>' is another \emph{``name modifier":}
+%% % `\WCS@namemod@apply@cs' from \secref{stored} 
+%% % provides both arguments for `\IfNextSpace' associated with 
+%% % #1 (TODO!?):
+%% %     \edef\@tempa{\WCS@namemod@apply@cs\INT@mod\noexpand#1}%
+%% %     \expandafter\expandafter\expandafter \IfNextSpace \@tempa}
+\newcommand*{\INT@mod}{INT@mod.\string}
+%% Here is the main command of the section. 
+%% `\@tempa' will store the meaning of the command that <target> 
+%% would call in typesetting mode after 
+%% `\DeclareRobustCommand<target>'.
+%% `\@tempb' will store what <target> does in in typesetting 
+%% mode, maybe that is just the meaning of <target> 
+%% (kind of flag, like `\if@tempswa'):
+\newcommand*{\MakeNotSkipping}[2]{%
+    \expandafter \let \expandafter \@tempa
+        \csname\expandafter\@gobble\string#1 \endcsname
+    \let\@tempb#1%
+%% When #1 is a control word, and its name, extended by a space, 
+%% is the name of a defined token, we \emph{lazily} 
+%% (like \ctanpkgref{makerobust}, TODO) assume that 
+%% its current meaning was assigned by `\DeclareRobustCommand'.
+%% One exception: if that token is the control space~`\ ', 
+%% #1 is a single character (hopefully active, TODO check!?).
+    \ifx\@tempa\relax \else \ifx\@tempa\ \else
+        \let\@tempb\@tempa \fi \fi
+    \expandafter\let\csname\INT@save#1\endcsname\@tempb
+%% We have analyzed #1 and now may modify it:
+    \def#1{\INT@modified#1}%
+%% We do not know beforehand what <on-space> will contain, 
+%% in any case it should \emph{not} be expanded right here, 
+%% that's why we use the token register `\@toks':
+    \toks@{#2}%
+    \expandafter\edef\csname\INT@mod#1\endcsname{%
+        {\the\toks@}%
+        \expandafter\noexpand\csname\INT@save#1\endcsname}%
+}
+%% This still is experimental, and you must care not to apply 
+%% the patch two times when it has not been undone in between. 
+%% The main application may be a macro like |\\| that some 
+%% (non-standard) environment defines; then you could redefine 
+%% the environmont so that its start finally modifies that 
+%% macro according to your wishes. In the latter situation, 
+%% the end of the environment will undo your `\MakeNotSkipping'; 
+%% 
+%% TODO: %% v0.2
+%% In the case of |"|, this might be a starting point 
+%% for handling conventions about moving an ensuing 
+%% punctuation mark to the left of the quotation mark. 
+%% Moreover, getting something really useful would require 
+%% dealing with `"' at the left of a bracket too.
+%%
+%% %  \pagebreak                                 %% 2011/06/26
+%% == ``Manual" Line Breaks ==
+%% \label{sec:break}
+%% === Outline of Implementation ===
+%% In the first instance, the present package aims at rendering 
+%% |\\| a command that interpretes a left-hand square bracket 
+%% as a start of an optional argument only if the bracket is not 
+%% preceded by any other token (apart from the star in `\\*'), 
+%% especially not by a space token. 
+%% 
+%% Indeed, an author may expect that when a bracket opens in a 
+%% \emph{different} line than the `\\', then it will be 
+%% \emph{printed} rather than interpreted as an 
+%% \emph{optional-argument delimiter}
+%% (the package author has been such an author some times). 
+%% Now, when the bracket only is in a line \emph{following} 
+%% the line carrying the `\\', the end-line character 
+%% normally produces a space token (\TeX book p.~47), 
+%% so the present idea of implementation will cover 
+%% the case of a bracket in the next line.
+%% 
+%% In `latex.ltx', the names of the commands implementing the 
+%% line break have some ``pivot" part <pivot> that we can use 
+%% to patch them in a uniform way. They are two in each case: 
+%% The first starts with `\@<pivot>' and invokes `\@ifstar', 
+%% the second starts with `\@x<pivot>' and invokes the 
+%% left-hand-bracket test. Both of them need to be patched. 
+%% 
+%% === ``Normal" Manual Line Breaks ===
+%% \label{sec:newline}
+%% If I had been aware of the difficulties of this part, 
+%% I probably would not have started writing this package, 
+%% hoping it would be the work of about an hour. 
+%% 
+%% `\@xnewline' must be patched in order to get a non-skipping
+%% version of the bracket test, and this patch suffices for the 
+%% optional-argument goal. 
+%% 
+%% %% more accurately 2011/05/31:
+%% The `\@ifstar' call is in `\@normalcr' and its alias `\\ '; 
+%% the latter is invoked by `\\' according to `\DeclareRobustCommand\\'.
+%% 
+%% Things seem to be easier when `\\ ' \emph{expands} to `\@normalcr' 
+%% instead of being an \emph{alias} of it 
+%% (\strong{\textcolor{blue}{CAUTION!}}).
+%% Then we just need to control `\@normalcr':
+\@namedef{\@backslashchar\space}{\@normalcr}
+%% |\StoreNewlineSkipping| \emph{stores} the skipping behavior of |\\|
+%% outside special environments:
+\newcommand*{\StoreNewlineSkipping}{%
+    \INTstore\@normalcr \INTstore\@xnewline}
+%% |\RestoreNewlineSkipping| \emph{re}stores the skipping behavior of |\\|
+%% outside special environments:
+\newcommand*{\RestoreNewlineSkipping}{%
+    \INTrestore\@normalcr \INTrestore\@xnewline}
+%% |\NoNewlineSkipping| \emph{suppresses} skipping blank spaces with 
+%% |\\| outside special environments:
+\newcommand*{\NoNewlineSkipping}{%
+    \StarTestPatch\@normalcr \NextTestPatch\@xnewline}
+%%
+%% === Manual Line Breaks in \LaTeX\ Environments ===
+%% \label{sec:envs}
+%% The macros in the present section should modify \LaTeX's |\\| 
+%% in environments (<env> being one of:) 
+%% |center|, |tab|, |array|, and |tabular|. 
+%% These \emph{environment names} are the expected 
+%% \emph{arguments} of those macros. 
+%% However, argument |center| also affects the 
+%% %% 2011/05/27 v0.11a verse:
+%% |flushleft|, |flushright|, and 
+%% |verse| environments,\footnote{`verse' 
+%%      is provided by \LaTeX's standard \ctanpkgref{classes} only, 
+%%      while `flushleft' and `flushright' belong to the \LaTeX\ 
+%%      kernel.} 
+%% and |array| and |tabular| should also affect 
+%% their enhanced variants from other \LaTeX\ packages. 
+%% When this internal structure of \LaTeX\ changes, 
+%% the present section may become obsolete ...
+%%
+%% |\INTactOnEnv{<action1>}{<action2>}{<env>}| 
+%% is the backbone of these macros. 
+%% <action1> and <action2> are one of 
+%% \[`\INTstore', `\INTrestore', `\StarTestPatch', 
+%% `\NextTestPatch'.\] 
+%% <action1> deals with `\@ifstar', 
+%% <action2> deals with `\@ifnextchar':
+\newcommand*{\INTactOnEnv}[3]{%
+    \expandafter#1\csname  @#3cr\endcsname
+    \expandafter#2\csname @x#3cr\endcsname}
+%% |\StoreSkippingCRs{<env>}| \emph{stores} the skipping behavior 
+%% of |\\| in environments <env>:
+\newcommand*{\StoreSkippingCRs}{%
+    \INTactOnEnv\INTstore\INTstore}
+%% |\RestoreSkippingCRs{<env>}| \emph{re}stores the skipping behavior 
+%% of |\\| in environments <env>:
+\newcommand*{\RestoreSkippingCRs}{%
+    \INTactOnEnv\INTrestore\INTrestore}
+%% |\NotSkippingCRs{<env>}| \emph{suppresses} space skipping
+%% of |\\| in environments <env>: 
+\newcommand*{\NotSkippingCRs}{%
+    \INTactOnEnv\StarTestPatch\NextTestPatch}
+%% % \NotSkippingCRs{center}
+%% \begin{center}
+%%  % \MakeNotSkipping\\{\\\relax}
+%%  %  \show\\
+%%    Do these commands work?\\ [\,Or do they not?\,]
+%% \end{center}
+%% 
+%% %% 2011/05/27 v0.11a:
+%% By contrast, the environments |quotation| and |quote| 
+%% from \LaTeX's standard \ctanpkgref{classes} use the 
+%% ``normal" newline command essentially provided by 
+%% `\@normalcr'.
+%% === 'amsmath' and 'mathtools' ===
+%% Just discussing related functionality in 
+%% the \ctanpkgref{amsmath} and \ctanpkgref{mathtools}
+%% packages, without any own code: 
+%% %% modifications v0.21a 2011/06/14:
+%% 
+%% 'amsmath' modifies the star (|*|) test all over the document 
+%% (see our \secref{star}), while providing own 
+%% (not skipping) versions of |\\| rather in math displays 
+%% and math environments only. This applies quite obviously 
+%% to the `{cases}' and `{matrix}' environments. 
+%% I am not sure about 'amsmath''s use of `\displaybreak',
+%% (cf.~`amstex.sty' and the `\intertext' command) and `\math@cr'. 
+%%
+%% 'mathtools' modifies 'amsmath''s line breaking behavior 
+%% in turn on its options `[allowspaces]' and `[disallowspaces]', 
+%% referring to some strange behavior of 'amsmath'. 
+%% Still I don't understand what is going on entirely, 
+%% and my impression is that nobody else has understood these 
+%% things entirely so far. 'mathtools' is not the first 
+%% package suppressing space skipping with `\\', 'amsmath' has done 
+%% this already; the question is where, where not, and why ... 
+%% 'mathtools''s `[disallowspaces]' just seems to provide 
+%% a more straightforward policy ... TODO
+%% % Again, please see the 'mathtools' documentation for more details. 
+%% %% <- rm. 2011/06/14 
+%%
+%% == Package Options ==
+%% \label{sec:options} 
+%% === Behavior \emph{without} Options ===
+%% If the package is called without any option, 
+%% it only defines `\IfNextToken', `\IfStarNextToken' 
+%% and the other package-writer or user commands, 
+%% without actually changing behavior of any \LaTeX\ command.
+%%
+%% === Option `newline' ===
+%% Package option |newline| stores and disables space skipping for 
+%% |\\| in ``normal" mode according to \secref{newline}:
+\DeclareOption{newline}{\StoreNewlineSkipping\NoNewlineSkipping}
+%% 
+%% === Environments ===
+%% The next package options are just the environment names 
+%% according to \secref{envs} 
+%% (|center|, |tab|, |array|, |tabular|).
+%% Option |<env>| stores and disables the skipping behavior 
+%% of |\\| in <env> environments. 
+%% We abuse the our temporary macro `\nextok@match' from 
+%% \secref{main}:
+\def\nextok@match#1{%
+    \DeclareOption{#1}{\StoreSkippingCRs{#1}\NotSkippingCRs{#1}}}
+\nextok@match{center}
+\nextok@match{tab}
+\nextok@match{array}
+\nextok@match{tabular}
+%% === ``All Options" or ``Standard Options" ===
+%% Package Options |all| and (v0.11:\@) |stdbreaks| have the same effect as 
+%% using the `newline' option and the environment package options 
+%% `center', `tab', `array', and `tabular' at once. 
+\def\nextok@match#1{\csname ds@#1\endcsname}
+%% (... must not be changed before `\ProcessOptions' ...)
+\DeclareOption{all}{%
+    \nextok@match{newline} \nextok@match{center}
+    \nextok@match{tab} \nextok@match{array} \nextok@match{tabular}}
+%% Behavior of option |all| may \emph{change} in the future of the package, 
+%% while option |stdbreaks| should rather \emph{keep} its present behavior.
+\DeclareOption{stdbreaks}{\nextok@match{all}}   %% v0.11
+%%
+%% 
+%% == Processing Options and Leaving the Package ==
+\ProcessOptions
+\endinput
+%%
+%% == Acknowledgments ==                        %% v0.2 2011/05/27
+%% While I experienced the problem myself some years ago with 
+%% a critical edition, I finally decided to do this work 
+%% after postings by Susan Dittmar (March 2011)     %% 017128
+%% and Philipp Stephani (December 2010)             %% 106431
+%% on the \texhaxref{}{'texhax'} mailing list.
+%% The latter pointed to \ctanpkgref{mathtools}. 
+%% 
+%% Moreover, the space skipping matter was discussed on the 
+%% `LATEX-L' mailing list (\qtd{xparse and space skipping}) 
+%% in mid of May 2011, and the present 
+%% package may be considered a contribution to that discussion 
+%% (saying something like: keep the simple standard for beginners, 
+%%  offer something advanced for advanced users if you think 
+%%  some of them want it ... maybe just as `contrib').
+%% Bruno Le Floch (May~11) and Frank Mittelbach (May~15)
+%% made me aware of the similar functionality in 'amsmath'. 
+%% Wordings in describing 'ifnextok' may resemble wordings 
+%% in that `LATEX-L' very much. Only for v0.21, I actually 
+%% read these `LATEX-L' postings, rather than only their 
+%% subject lines.
+%% 
+%% See sections~\ref{sec:main} and~\ref{sec:genpatch} for 
+%% Heiko Oberdiek's contribution.   %% 2011/06/24
+%% 
+%% == VERSION HISTORY ==
+v0.1   2011/05/23   very first 
+v0.11  2011/05/23   typo `mathc' fixed, where/when
+       2011/05/27   &, more structure, option [stdbreaks]
+       2011/05/27   doc. mentions `verse', `quotation', `quote'; 
+                    ack.s
+v0.2   2011/05/30   \IfNextSpace, \MakeNotSkipping 
+       2011/05/31   using \@normalcr differently; 
+                    corrected \IfNextSpace 
+v0.21  2011/06/02   reworked \IfNextToken and \IfNextSpace 
+                    after Heiko Oberdiek, regarding amsmath; 
+                    documentation discusses amsmath and mathtools 
+                    and refers to LATEX-L
+       2011/06/03   ... \ , \rq\ ; corr. version string
+v0.21a 2011/06/14   quoting \@ifstar from amsmath, extended comments 
+                    on amsmath and mathtools, starred versions, 
+                    Heiko Oberdiek for sec:main
+       TO CTAN
+v0.22  2011/06/24   ack's extended; reduced sec:patch; sec:genpatch: 
+                    horribly fragile robustification fixed
+       2011/06/25   re-implementations in sec:patch using \WCS...
+       2011/06/26   was named v0.3, renamed v0.22
+       JUST STORED
+v0.3   2011/06/26   sec:stored as v0.11; 
+                    sec:genpatch code similar to v0.2; 
+                    different sectioning; \pagebreak's
+       2011/06/27   \INT@modified streamlined, rm. useless \\ example 
+                    and wrong description of \INT@modified

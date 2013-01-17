@@ -1,0 +1,3709 @@
+%%
+%% This is file `hypdvips.sty',
+%% Copyright 2008-2011 Raimund Niedrist
+%%
+%% With portions written by Donald Arsenau, David Carlisle, Steven
+%% Douglas Cochran, Toby Cubitt, Geoffrey Keating, Heiko Oberdiek,
+%% Sebastian Rahtz, and the Latex3 Project 1986-2011
+%%
+%% This work may be distributed and/or modified under the conditions
+%% of the LaTeX Project Public License, either version 1.3 of this
+%% license or (at your option) any later version.
+%% The latest version of this license is in
+%%
+%%   http://www.latex-project.org/lppl.txt
+%%
+%% and version 1.3 or later is part of all distributions of LaTeX
+%% version 2005/12/01 or later.
+%%
+%% This work has the LPPL maintenance status `author-maintained'
+%% and consists of all files listed in manifest.txt.
+%% ------------------------------------------------------------------
+%%
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{hypdvips}
+  [2011/12/06 v2.04
+  Hyperref extensions for use with dvips]
+\@ifpackageloaded{hyperref}
+  {
+  \def\pp@string{hdvips}
+  \ifx\Hy@driver\pp@string
+    \else
+  \PackageError{hypdvips}{Wrong hyperref driver `\Hy@driver.def' selected!\MessageBreak Please switch to hdvips.def before loading hypdvips}\@ehd
+    \DeclareOption*{}
+    \ProcessOptions
+    \endinput
+  \fi
+  }
+  {
+  \PackageError{hypdvips}{The hyperref package is not loaded!\MessageBreak Please insert \string\usepackage{hyperref} in your code\MessageBreak before loading hypdvips}\@ehd
+  \DeclareOption*{}
+  \ProcessOptions
+  \endinput
+  }
+\RequirePackage{atveryend}
+\RequirePackage{xcolor}
+\RequirePackage{xkeyval}
+\@ifpackageloaded{bookmark}
+  {
+  \PackageWarning{hypdvips}{Package `bookmark' should not be loaded before\MessageBreak hypdvips.\MessageBreak}%
+  }
+  {
+  \define@key[pp]{bookmarkfix}{header}{\def\pp@headerfile{#1}}
+  \let\pp@backup@special\special
+  \renewcommand{\special}[1]{%
+    \let\pp@headerfile\@undefined%
+    \setkeys*[pp]{bookmarkfix}{#1}%
+    \@ifundefined{pp@headerfile}{\pp@backup@special{#1}}{\pp@backup@special{header=./\pp@headerfile}}%
+    }
+  \RequirePackage{bookmark}
+  \let\special\pp@backup@special
+  }
+\@ifpackageloaded{caption}{}{
+  \RequirePackage[all]{hypcap}
+  \@ifpackageloaded{wrapfig}{%
+    \let\pp@backup@WF@rapt\WF@rapt
+    \def\WF@rapt[#1]#2{% final two args: #1 = overhang,  #2 = width,
+      \gdef\WF@ovh{#1}% hold overhang for later, when \width is known
+      \global\setbox\WF@box\vtop\bgroup \setlength\hsize{#2}%
+      \capstart
+      \ifdim\hsize>\z@ \@parboxrestore \else
+      \setbox\z@\hbox\bgroup \let\wf@@caption\caption \let\caption\wf@caption
+      \ignorespaces \fi}
+    \let\hc@orgendwrapfigure\endwrapfigure
+    \def\endwrapfigure{%
+      \if@capstart
+        \PackageError{hypcap}{You have forgotten to use \string\caption}%
+        \global\@capstartfalse
+      \else
+      \fi
+      \hc@orgendwrapfigure%
+      }%
+    }{}
+}
+\ifHy@unicode
+\else
+  \HyPsd@InitUnicode
+\fi
+\hypersetup{breaklinks=true}
+%%
+%% Debug commands:
+%%
+\newlength{\pp@linewidth}
+\newcommand{\pp@drawcurrentpoint}[1]{%
+  \setlength{\pp@linewidth}{#1}%
+  \pp@SDictPS{1 0 0 \strip@pt\pp@linewidth\space pp.ptToBP pp.drawcurrentpoint}%
+}
+\providecommand{\point}{\pp@drawcurrentpoint{1mm}}
+\providecommand{\currentpoint}[1]{\pp@drawcurrentpoint{#1}}% arguments: {linewidth}
+\providecommand{\debug}[1]{\PackageWarning{DEBUG}{#1}}% arguments: {string}
+%%
+%% End of debug commands.
+%%
+\newcommand{\pp@PScatcodes}{%
+  \edef\pp@backup@dollarsign{\the\catcode`\$}%
+  \edef\pp@backup@ampersand{\the\catcode`\&}%
+  \edef\pp@backup@numbersign{\the\catcode`\#}%
+  \edef\pp@backup@caret{\the\catcode`\^}%
+  \edef\pp@backup@underscore{\the\catcode`\_}%
+  \edef\pp@backup@tilde{\the\catcode`\~}%
+  \edef\pp@backup@quotationmark{\the\catcode`\"}%
+  \catcode`\$=12 %
+  \catcode`\&=12 %
+  \catcode`\#=12 %
+  \catcode`\^=12 %
+  \catcode`\_=12 %
+  \catcode`\~=12 %
+  \catcode`\"=12 %
+}
+\newcommand{\pp@TeXcatcodes}{%
+  \catcode`\$=\pp@backup@dollarsign %
+  \catcode`\&=\pp@backup@ampersand %
+  \catcode`\#=\pp@backup@numbersign %
+  \catcode`\^=\pp@backup@caret %
+  \catcode`\_=\pp@backup@underscore %
+  \catcode`\~=\pp@backup@tilde %
+  \catcode`\"=\pp@backup@quotationmark %
+}
+\pp@PScatcodes
+\newcommand{\pp@pdfstrings@english}{
+  \def\pp@pdf@info{Details}
+  \def\pp@pdf@name{Name: }
+  \def\pp@pdf@unknown{Unknown}
+  \def\pp@pdf@size{Size: }
+  \def\pp@pdf@mime{MIME-type: }
+  \def\pp@pdf@bytes{ bytes}
+  \def\pp@pdf@author{Author: }
+  \def\pp@pdf@subject{Subject: }
+  \def\pp@pdf@desc{Description: }
+  \def\pp@pdf@crd{Created: }
+  \def\pp@pdf@mod{Modified: }
+  \def\pp@pdf@lid{Location in document: }
+  \def\pp@pdf@pl{" + pp_pl + " \string\(Page " + pp_page + "\string\)} % pp_pl = <page label>, pp_page = <page number>
+  \def\pp@pdf@nopl{Page " + pp_page + "} % pp_page = <page number>
+  \def\pp@pdf@tab{Attachments tab}
+  \def\pp@pdf@fasubj{File attachment "\pp@filename"} % \pp@filename = <filename>
+  \def\pp@pdf@openmsg@fivetitle{Embedded files}
+  \def\pp@pdf@openmsg@five{This document contains " + pp_efcount + " embedded file\string\(s\string\).\string\\n\string\\nUse the \string\\"File \string\273 Document Properties \string\273 Embedded Data Objects\string\\" menu to view these files.} % ef_count = <number of embedded files>
+  \def\pp@pdf@openmsg@fiveinbrowser{This document contains " + pp_efcount + " embedded file\string\(s\string\).\string\\n\string\\nTo view these files, click the \string\\"Save\string\\" button to save a copy of this document, open the copy with the Adobe\string\256 Acrobat\string\256 application, and use the \string\\"File \string\273 Document Properties \string\273 Embedded Data Objects\string\\" menu.} % ef_count = <number of embedded files>
+  \def\pp@pdf@openmsg@sixtitle{File attachments}
+  \def\pp@pdf@openmsg@six{This document has " + \string\(pp_efcount + pp_facount\string\) + " file attachment\string\(s\string\).\string\\n\string\\nUse the \string\\"Document \string\273 File Attachments\string\\" menu to view these attachments.} % ef_count = <number of embedded files>, fa_count = <number of FileAttachment-annotations>
+  \def\pp@pdf@openmsg@sixinbrowser{This document has " + \string\(pp_efcount + pp_facount\string\) + " file attachment\string\(s\string\).\string\\n\string\\nTo view these attachments, click on the small black triangle at the top of the window's vertical scrollbar and choose \string\\"File Attachments\string\\".} % ef_count = <number of embedded files>, fa_count = <number of FileAttachment-annotations>
+}
+\newcommand{\pp@pdfstrings@german}{
+  \def\pp@pdf@info{Details}
+  \def\pp@pdf@name{Name: }
+  \def\pp@pdf@unknown{Unbekannt}
+  \def\pp@pdf@size{Gr\string\366\string\337e: }
+  \def\pp@pdf@mime{MIME-Typ: }
+  \def\pp@pdf@bytes{ Byte}
+  \def\pp@pdf@author{Verfasser: }
+  \def\pp@pdf@subject{Thema: }
+  \def\pp@pdf@desc{Beschreibung: }
+  \def\pp@pdf@crd{Erstellt: }
+  \def\pp@pdf@mod{Ge\string\344ndert am: }
+  \def\pp@pdf@lid{Ort in Dokument: }
+  \def\pp@pdf@pl{" + pp_pl + " \string\(Seite " + pp_page + "\string\)}
+  \def\pp@pdf@nopl{Seite " + pp_page + "}
+  \def\pp@pdf@tab{Registerkarte \string\\"Anlagen\string\\"}
+  \def\pp@pdf@fasubj{Dateianlage "\pp@filename"}
+  \def\pp@pdf@openmsg@fivetitle{Eingebettete Dateien}
+  \def\pp@pdf@openmsg@five{Dieses Dokument enth\string\344lt " + pp_efcount + " eingebettete Datei\string\(en\string\).\string\\n\string\\nVerwenden Sie das Men\string\374 \string\\"Datei \string\273 Dokumenteigenschaften \string\273 Dateianlagen\string\\" um diese Dateien anzuzeigen.}
+  \def\pp@pdf@openmsg@fiveinbrowser{Dieses Dokument enth\string\344lt " + pp_efcount + " eingebettete Datei\string\(en\string\).\string\\n\string\\nUm diese Dateien anzuzeigen, klicken Sie zuerst auf die Schaltfl\string\344che \string\\"Speichern\string\\" um eine Kopie dieses Dokuments zu speichern. \string\326ffnen Sie dann die Kopie mit dem Adobe\string\256 Acrobat\string\256 Programm, und verwenden Sie das Men\string\374 \string\\"Datei \string\273 Dokumenteigenschaften \string\273 Dateianlagen\string\\".}
+  \def\pp@pdf@openmsg@sixtitle{Dateianlagen}
+  \def\pp@pdf@openmsg@six{Dieses Dokument hat " + \string\(pp_efcount + pp_facount\string\) + " Dateianlage\string\(n\string\).\string\\n\string\\nVerwenden Sie das Men\string\374 \string\\"Dokument \string\273 Dateianlagen\string\\" um diese Anlagen anzuzeigen.}
+  \def\pp@pdf@openmsg@sixinbrowser{Dieses Dokument hat " + \string\(pp_efcount + pp_facount\string\) + " Dateianlage\string\(n\string\).\string\\n\string\\nUm diese Anlagen anzuzeigen, klicken Sie auf das kleine schwarze Dreieck \string\374ber dem vertikalen Fensterlaufbalken und w\string\344hlen Sie \string\\"Dateianlagen\string\\".}
+}
+\pp@TeXcatcodes
+\def\pp@language@english{%
+  \def\@pdflang{en}
+  \pp@pdfstrings@english
+  \def\pp@loastring{List of File Attachments}
+  \def\pp@optionsstring{\\\tiny\textbf{Options: }\sc}
+  \def\pp@infostring{Details}
+  \def\pp@savestring{Save~a~Copy\dots}
+  \def\pp@launchstring{Launch~attachment}
+  \def\pp@tabstring{Attachments~tab}
+  \@ifpackageloaded{babel}{\addtocontents{loa}{\protect\select@language{english}}}{}
+  \def\pp@br@pagestring{Page}
+  \def\pp@br@documentstring{(document)}
+  \ifHy@backref
+    \ifx\backrefxxx\hyper@section@backref
+      \@ifpackageloaded{cleveref}
+        {
+        \renewcommand*{\backrefalt}[4]{%
+          \setlength{\pp@offset}{\baselineskip}%
+          \\\scriptsize(Referenced in
+          \setlength{\baselineskip}{\pp@offset}%
+          ##2.)
+          }
+        }
+        {
+        \renewcommand*{\backrefalt}[4]{\\\scriptsize(Referenced\ in: ##2.)}
+        }
+    \fi
+    \ifx\backrefxxx\hyper@page@backref
+      \renewcommand*{\backrefalt}[4]{%
+        \ifcase##1%
+        \or%
+          \\\scriptsize(Referenced\ on\ page ##2.)
+        \else%
+          \\\scriptsize(Referenced\ on\ pages ##2.)
+        \fi%
+      }
+    \fi
+  \fi
+  \@ifpackageloaded{cleveref}
+    {
+    \Crefname{abstract}{Abstract}{Abstract}
+    \if@cref@capitalise
+      \crefname{abstract}{Abstract}{Abstracts}
+    \else
+      \crefname{abstract}{abstract}{abstracts}
+    \fi
+    }{}
+  \pp@languagesettrue
+}
+\def\pp@language@german{%
+  \def\@pdflang{de}
+  \pp@pdfstrings@german
+  \def\pp@loastring{Dateianlagenverzeichnis}
+  \def\pp@optionsstring{\\\tiny\textbf{Optionen: }\sc}
+  \def\pp@infostring{Details}
+  \def\pp@savestring{Kopie~speichern\dots}
+  \def\pp@launchstring{Datei~\"{o}ffnen}
+  \def\pp@tabstring{Registerkarte~``Anlagen''}
+  \@ifpackageloaded{babel}{\addtocontents{loa}{\protect\select@language{german}}}{}
+  \def\pp@br@pagestring{Seite}
+  \def\pp@br@documentstring{(Dokument)}
+  \ifHy@backref
+    \ifx\backrefxxx\hyper@section@backref
+      \@ifpackageloaded{cleveref}
+        {
+        \renewcommand*{\backrefalt}[4]{%
+          \setlength{\pp@offset}{\baselineskip}%
+          \\\scriptsize(Zitiert in
+          \setlength{\baselineskip}{\pp@offset}%
+          ##2.)
+          }
+        }
+        {
+        \renewcommand*{\backrefalt}[4]{\\\scriptsize(Zitiert\ in: ##2.)}
+        }
+    \fi
+    \ifx\backrefxxx\hyper@page@backref
+      \renewcommand*{\backrefalt}[4]{%
+        \ifcase##1%
+        \or%
+          \\\scriptsize(Zitiert auf Seite ##2.)
+        \else%
+          \\\scriptsize(Zitiert auf den Seiten ##2.)
+        \fi%
+      }
+    \fi
+  \fi
+  \@ifpackageloaded{cleveref}
+    {
+    \Crefname{abstract}{Zusammenfassung}{Zusammenfassungen}
+    \crefname{abstract}{Zusammenfassung}{Zusammenfassungen}
+    }{}
+  \pp@languagesettrue
+}
+
+\def\pp@true{true}
+\def\pp@false{false}
+\newif\ifpp@error
+\newcommand{\pp@defineboolkey}[4][]{% arguments: [default]{family}{key}{function}
+  \define@key[pp]{#2}{#3}[true]{%
+    \expandafter\newif\csname ifpp@#3\endcsname%
+    \lowercase{\def\pp@string{##1}}%
+    \ifx\pp@string\pp@true%
+      \csname pp@#3true\endcsname%
+      \pp@errorfalse%
+    \else%
+      \ifx\pp@string\pp@false%
+        \csname pp@#3false\endcsname%
+        \pp@errorfalse%
+      \else%
+        \csname pp@#3#1\endcsname%
+        \pp@errortrue%
+      \fi%
+    \fi%
+    #4%
+    }%
+}
+
+\def\pp@macoption{mac}
+\def\pp@javascriptoption{javascript}
+\newcommand{\pp@booloption}[2][]{% arguments: [default]{optionname}
+  \pp@defineboolkey[#1]{options}{#2}{
+    \ifpp@error
+      \def\pp@string{#2}
+      \ifx\pp@string\pp@javascriptoption
+        \def\pp@string{JavaScript}
+      \fi
+      \ifx\pp@string\pp@macoption
+        \def\pp@string{Mac}
+      \fi
+      \PackageWarning{hypdvips}{
+        Illegal value `##1' for package option `\pp@string' discarded. Allowed values are:\MessageBreak
+        \pp@string\space= true\MessageBreak
+        \pp@string\space= false\MessageBreak
+        }
+    \fi
+    \def\pp@string{#2}
+    \ifx\pp@string\pp@javascriptoption
+      \def\pp@string{JavaScript\noexpand™}
+    \fi
+    \ifx\pp@string\pp@macoption
+      \def\pp@string{Mac}
+    \fi
+    \csname ifpp@#2\endcsname
+      \typeout{[x] \pp@string}
+    \else
+      \typeout{[ ] \pp@string}
+    \fi
+    }
+}
+
+\newcommand{\pp@languageoption}[1]{
+  \define@key[pp]{options}{#1}[]{\ifpp@languageset\else\csname pp@language@#1\endcsname\typeout{language = #1}\fi}
+}
+
+\newcommand{\pp@obsoleteoption}[1]{% arguments: {optionname}
+  \define@key[pp]{options}{#1}[true]{\PackageWarning{hypdvips}{Obsolete package option `#1 = ##1' discarded.\MessageBreak}}
+}
+
+\newcommand{\pp@SpecialPS}[1]{\special{" #1}}
+\newcommand{\pp@HeaderPS}[1]{\special{! #1}}
+\newcommand{\pp@SDictPS}[1]{\special{ps:SDict begin #1 end}}
+\newcommand{\pp@SkipOnErrorPS}[1]{\special{ps:SDict begin pp.readerror not {#1} if end}}
+
+\pp@booloption[false]{autoauthor}
+\pp@obsoleteoption{autocrop}
+\pp@booloption[false]{autotitle}
+\pp@booloption[false]{detailedbr}
+\pp@obsoleteoption{detailedpagebr}
+\pp@booloption[true]{emptypagelabels}
+\pp@booloption[false]{evenboxes}
+\pp@booloption[true]{fish}
+\pp@booloption[false]{flip}
+\pp@booloption[false]{fullbookmarks}
+\pp@booloption[true]{hypertnotes}
+\pp@booloption[true]{javascript}
+\pp@booloption[false]{landscape}
+\pp@booloption[false]{loabr}
+\pp@booloption[false]{lofbr}
+\pp@booloption[false]{lotbr}
+\pp@booloption[false]{mac}
+\pp@booloption[false]{mirror}
+\pp@booloption[true]{nlwarning}
+\pp@booloption[true]{openmessage}
+\pp@booloption[true]{quadpoints}
+\pp@booloption[false]{showdests}
+\pp@booloption[true]{smallfootnotes}
+\pp@booloption[false]{tocbr}
+\pp@booloption[false]{twoside}
+\pp@languageoption{german}
+\define@key[pp]{options}{JavaScript}[true]{\pp@options@javascript{#1}\let\pp@options@javascript\@gobble}
+\define@key[pp]{options}{Mac}[true]{\pp@options@mac{#1}\let\pp@options@mac\@gobble}
+\DeclareOptionX*{\PackageWarning{hypdvips}{Unknown option `\CurrentOption' discarded.\MessageBreak}}
+
+\presetkeys[pp]{options}{}
+  {
+  autoauthor=false,
+  autotitle=false,
+  detailedbr=false,
+  emptypagelabels=true,
+  evenboxes=false,
+  fish=true,
+  flip=false,
+  fullbookmarks=false,
+  hypertnotes=true,
+  javascript=true,
+  landscape=false,
+  loabr=false,
+  lofbr=false,
+  lotbr=false,
+  mac=false,
+  mirror=false,
+  nlwarning=true,
+  openmessage=true,
+  quadpoints=true,
+  showdests=false,
+  smallfootnotes=true,
+  tocbr=false,
+  twoside=false
+  }
+
+\newif\ifpp@languageset
+\pp@languagesetfalse
+
+\typeout{-------------------------------------------------------------------------------}
+\typeout{Package hypdvips Options:}
+\typeout{ }
+\ProcessOptionsX*[pp]<options>
+\ifpp@languageset
+\else
+  \pp@language@english\typeout{language = english}
+\fi
+\typeout{-------------------------------------------------------------------------------}
+
+\ifpp@quadpoints
+  \pp@HeaderPS{true setglobal SDict /pp.quadpoints true put false setglobal}
+\fi
+\ifpp@showdests
+  \pp@HeaderPS{true setglobal SDict /pp.showdests true put false setglobal}
+\fi
+
+\newlength{\pp@offset}
+\newsavebox{\pp@textbox}
+\def\pp@ABC{[(0123456789)]The quick brown fox jumps over the lazy dog!$^0$}
+
+\special{papersize=\the\paperwidth,\the\paperheight}
+
+\pp@PScatcodes
+\pp@HeaderPS{
+  true setglobal
+    /pp.globaldict 8 dict def
+    pp.globaldict /pp.gsborderwarning true put
+    pp.globaldict /pp.starttime realtime put
+    pp.globaldict /pp.warncount 0 put
+    pp.globaldict /pp.errcount 0 put
+    pp.globaldict /pp.efnametree 0 array put
+  false setglobal
+  /pp.stdout (\%stdout) (w) file def
+  SDict /pp.intwidth 0 {1 add 1 1 index bitshift dup type /integertype ne exch 0 le or {exit} if} loop 1 add put
+  SDict /pp.64bit pp.intwidth 64 ge put
+  SDict /pp.maxint 1 pp.intwidth 1 sub bitshift not put
+  SDict /pp.minint 1 pp.intwidth 1 sub bitshift put
+  userdict /bop-hook
+    {
+    mark /CropBox [0 0 hsize vsize] /PAGE pdfmark
+    \ifpp@landscape
+      [0 1 -1 0 hsize 0] concat
+      \ifpp@flip
+        [-1 0 0 1 vsize 0] concat
+      \fi
+      \ifpp@mirror
+        [1 0 0 -1 0 hsize] concat
+      \fi
+    \else
+      \ifpp@flip
+        [1 0 0 -1 0 vsize] concat
+      \fi
+      \ifpp@mirror
+        [-1 0 0 1 hsize 0] concat
+      \fi
+    \fi
+    } put
+  /H.V
+    {
+    \ifpp@mirror
+      hsize pdf@hoff sub
+    \else
+      pdf@hoff 
+    \fi
+    \ifpp@flip
+      vsize pdf@voff sub
+    \else
+      pdf@voff 
+    \fi
+    null
+    } def
+  /pp.openmsg
+    (
+    if \string\(app.viewerVersion < 7\string\)
+      {
+      if \string\(this.dataObjects != null\string\)
+        var pp_efcount = this.dataObjects.length;
+      else
+        var pp_efcount = 0;
+      if \string\(pp_efcount > 0 && app.viewerVersion < 6 && app.viewerVersion >= 5 && \string\(app.viewerVariation == "Fill-In" || app.viewerVariation == "Full"\string\)\string\)
+        if \string\(this.external\string\)
+          app.alert\string\({cMsg: "\pp@pdf@openmsg@fiveinbrowser", nIcon: 3, nType: 0, cTitle: "\pp@pdf@openmsg@fivetitle", oDoc: this}\string\);
+        else
+          app.alert\string\({cMsg: "\pp@pdf@openmsg@five", nIcon: 3, nType: 0, cTitle: "\pp@pdf@openmsg@fivetitle", oDoc: this}\string\);
+      if \string\(app.viewerVersion >= 6\string\)
+        {
+        var pp_facount = 0;
+        syncAnnotScan\string\(\string\);
+        for \string\(var pp_i = 0; pp_i < this.numPages; ++pp_i\string\)
+          {
+          var pp_ann = this.getAnnots\string\(pp_i\string\);
+          if \string\(pp_ann != null\string\)
+            {
+            for \string\(var pp_j = 0; pp_j < pp_ann.length; ++pp_j\string\)
+              {
+              if \string\(pp_ann[pp_j].type == "FileAttachment"\string\)
+                {
+                pp_facount += 1;
+                }
+              }
+            }
+          }
+        if \string\(pp_efcount > 0 || pp_facount > 0\string\)
+          if \string\(this.external\string\)
+            app.alert\string\({cMsg: "\pp@pdf@openmsg@sixinbrowser", nIcon: 3, nType: 0, cTitle: "\pp@pdf@openmsg@sixtitle", oDoc: this}\string\);
+          else
+            app.alert\string\({cMsg: "\pp@pdf@openmsg@six", nIcon: 3, nType: 0, cTitle: "\pp@pdf@openmsg@sixtitle", oDoc: this}\string\);
+        }
+      }
+    ) def
+%
+% MD5 derived from RFC 1321, "The MD5 Message-Digest Algorithm",
+% R. Rivest, MIT, RSADSI; Copyright 1996 Geoffrey Keating.
+%
+% We construct the MD5 transform by a sort of inline expansion.
+% this takes up quite a bit of memory (around 17k), but gives a
+% factor-of-two speed increase.
+% This also allows us to take advantage of interpreters with 64-bit
+% wide integers.
+% This will not run on interpreters with 16-bit wide integers, if such
+% things exist.
+%
+  20 dict
+    begin
+    /T
+      [
+      16#d76aa478 16#e8c7b756 16#242070db 16#c1bdceee
+      16#f57c0faf 16#4787c62a 16#a8304613 16#fd469501
+      16#698098d8 16#8b44f7af 16#ffff5bb1 16#895cd7be
+      16#6b901122 16#fd987193 16#a679438e 16#49b40821
+      16#f61e2562 16#c040b340 16#265e5a51 16#e9b6c7aa
+      16#d62f105d 16#02441453 16#d8a1e681 16#e7d3fbc8
+      16#21e1cde6 16#c33707d6 16#f4d50d87 16#455a14ed
+      16#a9e3e905 16#fcefa3f8 16#676f02d9 16#8d2a4c8a
+      16#fffa3942 16#8771f681 16#6d9d6122 16#fde5380c
+      16#a4beea44 16#4bdecfa9 16#f6bb4b60 16#bebfbc70
+      16#289b7ec6 16#eaa127fa 16#d4ef3085 16#04881d05
+      16#d9d4d039 16#e6db99e5 16#1fa27cf8 16#c4ac5665
+      16#f4292244 16#432aff97 16#ab9423a7 16#fc93a039
+      16#655b59c3 16#8f0ccc92 16#ffeff47d 16#85845dd1
+      16#6fa87e4f 16#fe2ce6e0 16#a3014314 16#4e0811a1
+      16#f7537e82 16#bd3af235 16#2ad7d2bb 16#eb86d391
+      ] def
+    /F
+      [
+      { c d /xor b /and d /xor } { b c /xor d /and c /xor }
+      { b c /xor d /xor } { d /not b /or c /xor }
+      ] def
+    /R
+      [
+      16#0007 16#010c 16#0211 16#0316 16#0407 16#050c 16#0611 16#0716
+      16#0807 16#090c 16#0a11 16#0b16 16#0c07 16#0d0c 16#0e11 16#0f16
+      16#0105 16#0609 16#0b0e 16#0014 16#0505 16#0a09 16#0f0e 16#0414
+      16#0905 16#0e09 16#030e 16#0814 16#0d05 16#0209 16#070e 16#0c14
+      16#0504 16#080b 16#0b10 16#0e17 16#0104 16#040b 16#0710 16#0a17
+      16#0d04 16#000b 16#0310 16#0617 16#0904 16#0c0b 16#0f10 16#0217
+      16#0006 16#070a 16#0e0f 16#0515 16#0c06 16#030a 16#0a0f 16#0115
+      16#0806 16#0f0a 16#060f 16#0d15 16#0406 16#0b0a 16#020f 16#0915
+      ] def
+    /W 1 31 bitshift 0 gt def
+    /A W { /add } { /md5add } ifelse def
+    /t W { 1744 } { 1616 } ifelse array def
+    /C 0 def
+    0 1 63
+      {
+      /i exch def
+      /r R i get def
+      /a/b/c/d 4 i 3 and roll [ /d/c/b/a ] { exch def } forall
+      t C
+        [
+        a F i -4 bitshift get exec 
+        a A /x r -8 bitshift /get A T i get A
+        W { 1 32 bitshift 1 sub /and } if
+        /dup r 31 and /bitshift /exch r 31 and 32 sub /bitshift /or
+        b A
+        /def
+        ]
+      dup length C add /C exch def putinterval
+      }
+    for
+    1 1 C 1 sub
+      {
+      dup 1 sub t exch get /def cvx eq
+        {pop}
+        {t exch 2 copy get cvx put}
+      ifelse
+      }
+    for
+%
+% If we could put t into a _packed_ array, its memory requirements
+% would go from about 13k to about 4k. Unfortunately, we'd need around
+% 1600 stack positions, around 3 times what we can expect to have 
+% available---and if that kind of memory is available, we don't really
+% need to pack t. Sigh.
+%
+% In fact, it's worse than that. You can't even determine what t will 
+% be and write it in directly (something like
+% { /a c d xor b and d xor a md5add x 0 get md5add -680876936 md5add dup 7 
+%   bitshift exch -25 bitshift or b md5add def /d b c xor a ...
+% ) because the scanner uses the operand stack to accumulate procedures.
+% So the only way to have md5transform as a single procedure is the above 
+% trick.
+%
+    W /md5transform t
+  end
+  cvx bind def
+%
+% Unfortunately, PostScript & its imitators convert large
+% integers to floating-point. Worse, the fp representation probably
+% won't have 32 significant bits.
+% This procedure accounts for about 35% of the total time on 32-bit 
+% machines.
+%
+  not
+    {
+    /md5add
+      {
+      2 copy xor 0 lt % if one is positive and one is negative, can't overflow
+        { add } % if both are positive or negative
+        { 16#80000000 xor add 16#80000000 xor } % same as subtracting (or adding) 2^31 and then subtracting (or adding) it back.
+      ifelse
+      } bind def
+    }
+    {
+    /md5add {add 16#0FFFFFFFF and} bind def
+    }
+  ifelse
+  /md5.init % arguments: screen_update_rate(ms), file
+    {
+    /md5.file exch def
+    /md5.rate exch def
+    /a 16#67452301 def
+    /b 16#efcdab89 def
+    /c 16#98badcfe def
+    /d 16#10325476 def
+    /x 16 array def
+    /md5.eof false def
+    /md5.console (\%stdout) (w) file def
+    /md5.consolewidth 80 def
+    /md5.sizebyte0 2#00000000 def
+    /md5.sizebyte1 2#00000000 def
+    /md5.sizebyte2 2#00000000 def
+    /md5.sizebyte3 2#00000000 def
+    /md5.sizebyte4 2#00000000 def
+    /md5.sizebyte5 2#00000000 def
+    /md5.sizebyte6 2#00000000 def
+    /md5.sizebyte7 2#00000000 def
+    \ifpp@fish
+      /md5.time realtime def
+      /md5.fish (\string\074\string\047\string\050\string\050\string\076\string\173) def
+      /md5.fishpos 74 def
+      /md5.fishspeed 0 def
+      /md5.consolepos 1 def
+    \fi
+    } def
+  /md5.calc % argument: 512-bit chunk (64 8bit-wide integers)
+    {
+    15 -1 0 { x exch 6 2 roll 3 { 8 bitshift or } repeat put } for
+    a b c d
+    md5transform
+    d md5add /d exch def
+    c md5add /c exch def
+    b md5add /b exch def
+    a md5add /a exch def
+    } def
+  /md5.string
+    {
+    16 string
+    [ [ a b c d ] { 3 { dup -8 bitshift } repeat } forall ]
+    0 1 15
+      {3 copy dup 3 1 roll get 255 and put pop}
+    for
+    pop
+    } def
+  \ifpp@fish
+    /md5.invertfish % argument: newfishpos
+      {
+      pop
+      md5.fish 0 get 125 eq
+        {
+        md5.consolewidth md5.fish length sub
+        md5.fish 0 (\string\074\string\047\string\050\string\050\string\076\string\173) putinterval
+        /md5.fishspeed 0 def
+        }
+        {
+        1
+        md5.fish 0 (\string\175\string\074\string\051\string\051\string\140\string\076) putinterval
+        /md5.fishspeed 4 def
+        }
+      ifelse
+      } def
+    /md5.progress
+      {
+      realtime dup md5.time lt exch md5.time sub md5.rate gt or
+        {
+        md5.console dup md5.consolepos md5.fishpos ge md5.consolepos md5.fishpos md5.fish length add lt and
+        {md5.fish md5.consolepos md5.fishpos sub 1 getinterval} {(.)} ifelse writestring flushfile
+        /md5.consolepos md5.consolepos 1 add def
+        md5.consolepos md5.consolewidth eq
+          {
+          md5.console dup (\string\n) writestring flushfile
+          /md5.fishspeed md5.fishspeed 1 add def
+          /md5.fishpos md5.fishpos md5.fish dup length md5.fishspeed add exch 0 get 125 eq
+          {add} {sub} ifelse
+          dup md5.fish length 1 sub add md5.consolewidth ge 1 index 1 lt or {md5.invertfish} if def
+          /md5.consolepos 1 def
+          }
+        if
+        /md5.time realtime def
+        }
+      if
+      } def
+  \fi
+  /md5.addtomsgsize % argument: increment
+    {
+    /md5.carry false def
+    0 1 7
+      {
+      1 index 1 index -8 mul bitshift 2#11111111 and
+      exch 1 string cvs (md5.sizebyte?) exch 1 index exch 12 exch putinterval
+      exch 1 index cvx exec md5.carry {1 add} if add dup 2#11111111 gt /md5.carry exch def
+      exch cvn exch 2#11111111 and def
+      }
+    for
+    md5.carry
+      {
+      (\string\n MD5 error: Message size is larger than 18446744073709551615 bits (2^64 - 1)\string\n) print
+      md5.console flushfile
+      /md5.addtomsgsize errordict /limitcheck get exec
+      }
+    if
+    pop
+    } def
+  /md5.msgsize
+    {
+    0 1 7
+      {
+      1 string cvs (md5.sizebyte?) exch 1 index exch 12 exch putinterval
+      cvx exec
+      }
+    for
+    } def
+  /md5.filesize
+    {
+    /md5.carry 2#00000000 def
+    7 -1 0
+      {
+      1 string cvs (md5.sizebyte?) exch 1 index exch 12 exch putinterval
+      cvx exec
+      md5.carry
+      1 index 2#00000111 and 8 bitshift /md5.carry exch def
+      add
+      -3 bitshift
+      }
+    for
+    } def
+  /md5.fromfile % arguments: screen_update_rate(ms), file; returns: filesize(bytes) (8 8bit-wide integers with LSB on top), md5hash (16-byte string)
+    {
+    100 dict
+    begin
+      md5.init
+      mark
+        {
+        \ifpp@fish
+          md5.progress
+        \fi
+        64 {md5.file read not {/md5.eof true def exit} if} repeat
+        md5.eof {exit} if
+        512 md5.addtomsgsize
+        md5.calc
+        }
+      loop
+      counttomark 8 mul md5.addtomsgsize
+      2#10000000
+      counttomark 56 gt
+        {
+        65 counttomark sub {2#00000000} repeat
+        md5.calc
+        }
+      if
+      57 counttomark sub {2#00000000} repeat
+      md5.msgsize
+      md5.calc
+      pop
+      md5.filesize
+      md5.string
+    end
+  } def
+  /pp.append % arguments: array, any
+    {
+    exch dup length 1 add array exch 1 index
+    copy pop
+    exch 1 index exch 1 index length 1 sub exch put
+    } def
+  /pp.embedfile % arguments: mark, /Name, UnicodeName, /FS, mark, obj_Filespec, Filespec
+    {
+    exch pop exch pop /EMBED pdfmark
+    } def
+  /pp.appendef {pop pop} def
+  /pp.putefnametree {} def
+%
+% substitute for /EMBED-pdfmark:
+%
+  /pp.subst.embedfile % arguments: mark, /Name, UnicodeName, /FS, mark, obj_Filespec, Filespec
+    {
+    /PUT pdfmark
+    cleartomark
+    } def
+  /pp.subst.appendef % arguments: obj_Filespec, UnicodeName
+    {
+    pp.globaldict /pp.efnametree get
+    exch pp.append exch pp.append
+    pp.globaldict exch /pp.efnametree exch put
+    } def
+  /pp.subst.putefnametree
+    {
+    mark
+    {Catalog}
+      <<
+      /Names
+        <<
+        /EmbeddedFiles
+          <<
+          /Names pp.globaldict /pp.efnametree get
+          >>
+        >>
+      >>
+    /PUT pdfmark
+    } def
+  /pp.substEMBEDpdfmark
+    {
+    /pp.embedfile {pp.subst.embedfile} def
+    /pp.appendef {pp.subst.appendef} def
+    /pp.putefnametree {pp.subst.putefnametree} def
+    } def
+  /pp.strippt % arguments: string
+    {
+    (pt) search
+      {cvr exch pop exch pop}    
+      {pop 0}
+    ifelse
+    } def
+  /pp.savecurrentpoint % arguments: xname, xoffset, yname, yoffset
+    {
+    gsave
+      initmatrix
+      \ifpp@flip
+        0 vsize translate 1 -1 scale
+      \fi
+      \ifpp@mirror
+        hsize 0 translate -1 1 scale
+      \fi
+      currentpoint exch pop
+      add def
+      currentpoint pop
+      add def
+    grestore
+    } def
+  /pp.concat % argument: array_of_strings; returns: concatenated_string
+    {
+    0 string exch
+      {
+      dup length 2 index length add dup string
+      dup 0 6 -1 roll putinterval
+      dup 4 -2 roll 1 index length sub exch putinterval
+      }
+    forall
+    } def
+  /pp.getlasterror % returns: string
+    {
+    [(\string\(PostScript\string\256 language error: /) (\string\044error) cvx exec /errorname get pp.cvs (\string\))] pp.concat
+    } def
+  /pp.warning % argument: string
+    {
+    () pp.println
+    (-------------------------------------------------------------------------------) dup pp.println exch
+    (Package hypdvips Warning:\string\n) 3 {pp.println} repeat
+    pp.globaldict /pp.warncount 1 index 1 index get 1 add put
+    } def
+  /pp.error % argument: string
+    {
+    () pp.println
+    (===============================================================================) dup pp.println exch
+    (Package hypdvips Error:\string\n) 3 {pp.println} repeat
+    pp.globaldict /pp.errcount 1 index 1 index get 1 add put
+    } def
+  /pp.println % arguments: string
+    {
+    print
+    (\string\r\string\n) print
+    pp.stdout flushfile
+    } def
+  /pp.cvs % arguments: any
+    {
+    65534 string cvs
+    } def
+  /pp.sysinfo
+    {
+    (Machine serial number: ) print serialnumber pp.cvs pp.println
+    (Product name: ) print product pp.println
+    (Product revision level: ) print revision pp.cvs pp.println
+    (Interpreter version: ) print version pp.println
+    (LanguageLevel: ) print languagelevel pp.cvs pp.println
+    (64-bit support: ) print pp.64bit {(yes)} {(no)} ifelse pp.cvs pp.println
+    } def
+  /pp.drawdest % arguments: name, top
+    {
+    dup dup
+    gsave
+      initmatrix
+      newpath
+      0 exch moveto
+      hsize exch lineto
+      0.1 setlinewidth
+      1 0 0 setrgbcolor
+      stroke
+      /Courier findfont
+      5 scalefont
+      setfont
+      newpath
+      15 exch 6 sub moveto
+      show
+    grestore
+    } def
+  /pp.drawcurrentpoint % arguments: R, G, B, linewidth
+    {
+    gsave
+      initmatrix
+      setlinewidth
+      setrgbcolor
+      -5 -5 rmoveto
+      10 10 rlineto
+      -10 0 rmoveto
+      10 -10 rlineto
+      stroke
+    grestore
+    } def
+  /pp.addtocreator % arguments: /DOCINFO-pdfmark
+    {
+    pop
+    counttomark 2 mod 0 eq
+      {
+      counttomark /pp.count exch def
+        {
+        pp.count 0 eq {exit} if
+        counttomark 2 roll
+        1 index /Creator eq
+          {pop (LaTeX with hyperref package + hypdvips) exit}
+          {pp.count 2 sub /pp.count exch def}
+        ifelse
+        }
+      loop
+      }
+    if
+    /DOCINFO
+    } def
+  /pp.PDFArrayToDvips % arguments: array (in PDF-coordinates)
+    {
+    /pp.origmatrix matrix currentmatrix def
+    0
+    exch dup length 2 idiv
+      {
+      dup dup 3 index get
+      exch 3 index 1 add get
+      gsave
+        initmatrix
+        moveto
+        pp.origmatrix setmatrix
+        currentpoint
+      grestore
+      2 index exch 4 index 1 add exch put
+      1 index exch 3 index exch put
+      exch 2 add exch
+      }
+    repeat
+    exch pop
+    } def
+  /pp.DvipsArrayToPDF % arguments: array (in user-coordinates)
+    {
+    0
+    exch dup length 2 idiv
+      {
+      dup dup 3 index get
+      exch 3 index 1 add get
+      gsave
+        moveto
+        initmatrix
+        currentpoint
+      grestore
+      2 index exch 4 index 1 add exch put
+      1 index exch 3 index exch put
+      exch 2 add exch
+      }
+    repeat
+    exch pop
+    } def
+  /pp.tracing false def
+  /pp.enabletracing
+    {
+    SDict /pp.tracing true put
+    SDict /pp.leftboundary undef
+    SDict /pp.rightboundary undef
+    /a where
+      {
+      /a
+        {
+        currentpoint pop
+        SDict /pp.rightboundary known dup
+          {
+          SDict /pp.rightboundary get 2 index lt {not} if
+          }
+        if
+          {pop}
+          {SDict exch /pp.rightboundary exch put}
+        ifelse
+        moveto
+        currentpoint pop
+        SDict /pp.leftboundary known dup
+          {
+          SDict /pp.leftboundary get 2 index gt {not} if
+          }
+        if
+          {pop}
+          {SDict exch /pp.leftboundary exch put}
+        ifelse
+        }
+      put
+      }
+    if
+    } def
+  /pp.disabletracing
+    {
+    /a where {/a {moveto} put} if
+    /x where {/x {0 exch rmoveto} put} if
+    SDict /pp.leftboundary known {pp.outerbox 0 pp.leftboundary put} if
+    SDict /pp.rightboundary known {pp.outerbox 2 pp.rightboundary put} if
+    SDict /pp.tracing false put
+    } def
+  /pp.continuetracing
+    {
+    /pp.toks pp.globaldict /pp.brokenlinktoks get def
+    /pp.outerbox pp.globaldict /pp.brokenlinkrect get def
+    /pp.baselineskip pp.globaldict /pp.brokenlinkskip get def
+    pp.globaldict dup dup /pp.brokenlinktoks undef /pp.brokenlinkskip undef /pp.brokenlinkrect undef
+    currentpoint /pp.originy exch def /pp.originx exch def
+    /a where
+      {
+      /a
+        {
+        moveto
+        SDict
+          begin
+          currentpoint pp.originy ne exch pp.originx ne or
+            {
+            H.S /pdf@lly pdf@lly pp.outerbox 1 get sub def
+            pp.enabletracing
+            }
+          if
+          end
+        }
+      put
+      }
+    if
+    /x where
+      {
+      /x
+        {
+        0 exch rmoveto
+        SDict
+          begin
+          currentpoint pp.originy ne exch pp.originx ne or
+            {
+            H.S /pdf@lly pdf@lly pp.outerbox 1 get sub def
+            pp.enabletracing
+            }
+          if
+          end
+        }
+      put
+      }
+    if
+    } def
+  /pp.eop
+    {
+    pp.tracing
+      {
+      pp.disabletracing
+      true setglobal
+        pp.globaldict /pp.brokenlinkrect [pp.outerbox aload pop] put
+        pp.globaldict /pp.brokenlinkskip pp.baselineskip put
+        pp.globaldict /pp.brokenlinktoks pp.toks pp.cvs put
+      false setglobal
+      mark pp.toks cvx exec /Rect
+        [
+        pdf@llx
+        pdf@lly
+        pp.outerbox 2 get HyperBorder add
+        currentpoint exch pop pp.outerbox pp.getheight sub HyperBorder sub
+        ]
+      /ANN pdfmark
+      }
+    if
+    } def
+  /pp.getheight % argument: rectangle (array); returns: height of rectangle
+    {
+    dup 1 get neg exch 3 get add
+    } def
+  /pp.addtoquadpoints
+    {
+    currentdict /pp.qp known
+      {pp.qp length 8 add array dup pp.qp exch copy pop}
+      {8 array}
+    ifelse
+    dup dup length 8 sub pp.currentrect 0 get put
+    dup dup length 7 sub pp.currentrect 1 get put
+    dup dup length 6 sub pp.currentrect 2 get put
+    dup dup length 5 sub pp.currentrect 1 get put
+    dup dup length 4 sub pp.currentrect 2 get put
+    dup dup length 3 sub pp.currentrect 3 get put
+    dup dup length 2 sub pp.currentrect 0 get put
+    dup dup length 1 sub pp.currentrect 3 get put
+    /pp.qp exch def
+    } def
+  /pp.writebrokenlink % arguments: /ANN-pdfmark with /Rect as last entry and without /ANN
+    {
+    counttomark 1 add copy
+    pop pp.currentrect
+    /ANN pp.backup.pdfmark
+    } def
+  /pp.breaklink % arguments: /ANN-pdfmark
+    {
+    pop
+    counttomark 2 mod 0 eq
+      {
+      counttomark /pp.count exch def
+        {
+        pp.count 0 eq {exit} if
+        counttomark 2 roll
+        1 index /Rect eq
+          {
+          dup 4 array copy
+          dup dup 1 get pp.outerbox pp.getheight HyperBorder 2 mul add sub 3 exch put
+          dup 2 pp.outerbox 2 get HyperBorder add put
+          dup dup 3 get pp.outerbox pp.getheight HyperBorder 2 mul add add 1 exch put
+          /pp.currentrect exch def
+          SDict /pp.quadpoints known
+            {pp.addtoquadpoints}
+            {pp.writebrokenlink}
+          ifelse
+            {
+            pp.currentrect
+            dup 0 pp.outerbox 0 get HyperBorder sub put
+            dup 2 pp.outerbox 2 get HyperBorder add put
+            dup dup 1 get pp.baselineskip add 1 exch put
+            dup dup 3 get pp.baselineskip add 3 exch put
+            /pp.currentrect exch def
+            SDict /pp.quadpoints known
+              {pp.addtoquadpoints}
+              {pp.writebrokenlink}
+            ifelse
+            }
+          1 index 3 get HyperBorder 2 mul add pp.outerbox pp.getheight add 2 index 1 get sub pp.baselineskip div round cvi 1 sub exch repeat
+          pp.currentrect
+          dup 0 pp.outerbox 0 get HyperBorder sub put
+          dup dup 1 get pp.baselineskip add 1 exch put
+          dup dup 3 get pp.baselineskip add 3 exch put
+          dup 2 index 2 get 2 exch put
+          /pp.currentrect exch def
+          SDict /pp.quadpoints known
+            {
+            pp.addtoquadpoints
+            dup 2 pp.outerbox 0 get HyperBorder sub 1 PDFToDvips sub put
+            dup dup 1 get pp.outerbox pp.getheight HyperBorder 2 mul add sub 1 PDFToDvips sub 3 exch put
+            dup 0 pp.outerbox 2 get HyperBorder add 1 PDFToDvips add put
+            dup 1 pp.currentrect 1 get 1 PDFToDvips add put
+            /QuadPoints pp.qp pp.DvipsArrayToPDF
+            }
+            {
+            pp.writebrokenlink
+            SDict /pp.goodpdfmark false put
+            }
+          ifelse
+          exit
+          }
+          {pp.count 2 sub /pp.count exch def}
+        ifelse
+        }
+      loop
+      }
+    if
+    /ANN
+    } def
+  /pp.storepdfmark % argument: pdfmark
+    {
+    /pp.pdfmarkcontent 65534 dict def
+    counttomark 1 add copy
+    pop
+      {
+      dup mark eq
+        {pop exit}
+        {pp.pdfmarkcontent begin def end}
+      ifelse
+      }
+    loop
+    } def
+  /pp.pdfmark % argument: pdfmark
+    {
+    SDict /pp.goodpdfmark true put
+    dup /DOCINFO eq
+      {
+      pp.storepdfmark
+      pp.pdfmarkcontent
+        begin
+        Creator (LaTeX with hyperref package) eq
+        {pp.addtocreator} if
+        end
+      }
+    if
+    dup /DEST eq
+      {
+      pp.storepdfmark
+      pp.pdfmarkcontent
+        begin
+        Dest pp.cvs (subfigure.) search
+            {exch pop exch pop () eq}
+            {pop false}
+        ifelse
+          {
+          SDict /pp.goodfiguredest known not
+          {SDict /pp.goodpdfmark false put} if
+          SDict /pp.goodfiguredest undef
+          }
+        if
+        SDict /pp.showdests known pp.goodpdfmark and
+          {
+          Dest pp.cvs
+          false
+          View 0 get /FitH eq {View 1 get exch not} if
+          View 0 get /FitBH eq {View 1 get exch not} if
+          View 0 get /XYZ eq {View 2 get exch not} if
+            {pp.drawdest}
+            {pop}
+          ifelse
+          }
+        if
+        end
+      currentdict /pp.pdfmarkcontent undef
+      }
+    if
+    dup /ANN eq
+      {
+      pp.storepdfmark
+      pp.pdfmarkcontent
+        begin
+        Subtype /Link eq
+        currentdict /Rect known and
+        SDict /pp.outerbox known and
+        SDict /pp.baselineskip known and
+          {Rect 1 get Rect 3 get sub pp.outerbox pp.getheight lt {pp.breaklink} if}
+        if
+        end
+      SDict /pp.outerbox undef
+      SDict /pp.baselineskip undef
+      currentdict /pp.pdfmarkcontent undef
+      }
+    if
+    pp.goodpdfmark
+      {pp.backup.pdfmark}
+      {cleartomark}
+    ifelse
+    } def
+  /pp.disablepdfmarks
+    {
+    /H.S {} def
+    /H.L {} def
+    /H.A {} def
+    /H.R {} def
+    /pdfmark {cleartomark} def 
+    } def
+  /pp.enablepdfmarks
+    {
+    /H.S {pp.H.S} def
+    /H.L {pp.H.L} def
+    /H.A {pp.H.A} def
+    /H.R {pp.H.R} def
+    /pdfmark {pp.pdfmark} def
+    } def
+  /pp.ptToBP
+    {
+    72 mul 72.27 div
+    } def
+  /pp.addifknown % arguments: offsetname
+    {
+    currentdict 1 index known
+      {
+      currentdict 1 index get
+      exch currentdict exch undef
+      add
+      }
+      {
+      pop
+      }
+    ifelse
+    } def
+  /pp.H.S
+    {
+    currentpoint
+    HyperBorder add /pp.yoffset pp.addifknown /pdf@lly exch def
+    dup DvipsToPDF 72 add /pp.hoffset pp.addifknown /pdf@hoff exch def
+    HyperBorder sub /pp.xoffset pp.addifknown /pdf@llx exch def
+    } def
+  /pp.H.L % arguments: baselineskip
+    {
+    2 sub dup
+    /HyperBasePt exch def
+    PDFToDvips /HyperBaseDvips exch def
+    currentpoint
+    HyperBorder sub HyperBaseDvips sub /pp.yoffset pp.addifknown /pdf@ury exch def
+    HyperBorder add /pp.xoffset pp.addifknown /pdf@urx exch def
+    } def
+  /pp.H.A % arguments: baselineskip
+    {
+    pp.H.L
+    currentpoint exch pop
+    vsize 72 sub exch DvipsToPDF
+    HyperBasePt sub % baseline skip
+    sub /pp.voffset pp.addifknown /pdf@voff exch def
+    } def
+  /pp.H.R
+   {
+   currentpoint
+   HyperBorder sub /pp.yoffset pp.addifknown /pdf@ury exch def
+   HyperBorder add /pp.xoffset pp.addifknown /pdf@urx exch def
+   currentpoint exch pop vsize 72 sub
+   exch DvipsToPDF sub /pp.voffset pp.addifknown /pdf@voff exch def
+   } def
+  /pp.cvsr % arguments: int, length
+    {
+    exch dup 0 lt
+      {
+      pop pop ()
+      }
+      {
+      pp.cvs
+      exch dup 2 index length le
+        {
+        dup 2 index length eq
+          {pop}
+          {pop pop ()}
+        ifelse
+        }
+        {
+        string dup 0 exch
+          {
+          pop
+          1 index 1 index 48 put
+          1 add
+          }
+        forall
+        pop
+        1 index length 1 index length exch sub
+        1 index exch 3 index putinterval
+        exch pop
+        }
+      ifelse
+      }
+    ifelse
+    } def
+  /pp.getlatextime % arguments: timezonestring
+    {
+    [
+    (D:)
+    (\number\year) cvi 4 pp.cvsr
+    (\number\month) cvi 2 pp.cvsr
+    (\number\day) cvi 2 pp.cvsr
+    (\number\time) dup cvi 60 idiv 2 pp.cvsr exch cvi 60 mod 2 pp.cvsr
+    (00)
+    true
+    9 index length 1 ge
+      {
+      9 index 0 get dup 43 eq 1 index 45 eq or exch 90 eq or and % +, -, Z
+      9 index 0 get 90 eq {9 index dup (Z) eq exch (Z00'00') eq or and} if % Z
+      9 index 0 get dup 43 eq exch 45 eq or % +, -
+        {
+        9 index length 7 eq
+        dup
+          {
+          10 index 1 get dup 47 ge exch 51 lt and and % 0-2
+          10 index 2 get dup 47 ge exch 52 lt and and % 0-3
+          10 index 3 get 39 eq and % '
+          10 index 4 get dup 47 ge exch 54 lt and and % 0-5
+          10 index 5 get dup 47 ge exch 58 lt and and % 0-9
+          10 index 6 get 39 eq and % '
+          }
+        if
+        and
+        }
+      if
+      }
+    if
+      {8 index}
+      {[(Illegal timezone offset `) 10 index (' discarded.)] pp.concat pp.warning}
+    ifelse
+    ] pp.concat
+    exch pop
+    /pp.latextime exch def
+    } def
+  /pp.unixtime2pdftime % arguments: unixtime (=seconds since Jan. 1, 1970 00:00:00)
+    {
+    /pp.datestring 17 string dup dup 0 (D:) putinterval 16 (Z) putinterval def
+    dup 60 mod 2 pp.cvsr pp.datestring exch 14 exch putinterval
+    dup 3600 mod 60 idiv 2 pp.cvsr pp.datestring exch 12 exch putinterval
+    dup 86400 mod 3600 idiv 2 pp.cvsr pp.datestring exch 10 exch putinterval
+    86400 idiv 2509157 add cvi /pp.date1 exch def
+    pp.date1 4 mul 146097 idiv /pp.date2 exch def
+    pp.date1 pp.date2 146097 mul 3 add 4 idiv sub /pp.date1 exch def
+    pp.date1 1 add 4000 mul 1461001 idiv /pp.date3 exch def
+    pp.date1 pp.date3 1461 mul 4 idiv sub 31 add /pp.date1 exch def
+    pp.date1 80 mul 2447 idiv /pp.date4 exch def
+    pp.date4 11 idiv /pp.date5 exch def
+    pp.date1 pp.date4 2447 mul 80 idiv sub 2 pp.cvsr pp.datestring exch 8 exch putinterval
+    pp.date4 2 add pp.date5 12 mul sub 2 pp.cvsr pp.datestring exch 6 exch putinterval
+    pp.date2 49 sub 100 mul pp.date3 add pp.date5 add 4 pp.cvsr pp.datestring exch 2 exch putinterval
+    pp.datestring
+    } def
+  /pp.getfileinfo % arguments: rffilename, filename
+    {
+    dup status
+      {
+      true
+      product (AFPL Ghostscript) eq product (GPL Ghostscript) eq or
+        {
+        pop
+        pp.fidict /CreationDate known {pop} {pp.fidict exch /CreationDate exch pp.unixtime2pdftime put} ifelse
+        pp.fidict /ModDate known {pop} {pp.fidict exch /ModDate exch pp.unixtime2pdftime put} ifelse
+        pop
+        pop
+        false
+        }
+      if
+      product (Distiller) eq
+        {
+        pop
+        pp.fidict /ModDate known {pop} {pp.fidict exch /ModDate exch pp.unixtime2pdftime put} ifelse
+        pop
+        pop
+        pop
+        false
+        }
+      if
+        {
+        pop
+        pop
+        pop
+        pop
+        }
+      if
+      }
+    if
+    /pp.readerror false def
+    {dup (r) file} stopped
+      {
+      pop pop
+      [(Unable to access file `) 2 index ('.\string\n) pp.getlasterror] pp.concat pp.error
+      /pp.readerror true def
+      }
+      {
+      pop
+      }
+    ifelse
+    \ifpp@mac
+      1 index () ne
+        {
+        {1 index (r) file} stopped
+          {
+          pop
+          [(Unable to access resourcefork file `) 2 index ('.\string\n) pp.getlasterror] pp.concat pp.error pop
+          /pp.readerror true def
+          }
+          {
+          pop
+          }
+        ifelse
+        }
+      if
+    \fi
+    pp.readerror
+      {
+      pop
+      }
+      {
+      pp.fidict /CheckSum known not
+        {
+        (\string\n Calculating MD5-checksum of file: ) print dup pp.println
+        125 exch (r) file md5.fromfile dup pp.fidict exch /CheckSum exch put
+        (\string\n<) print pp.stdout exch writehexstring (>) pp.println
+        pp.fidict /Size known
+          {
+          8 {pop} repeat
+          }
+          {
+          8 -1 1 {1 roll} for
+          pp.64bit
+            {
+            56 -8 0 {bitshift 8 1 roll} for
+            7 {add} repeat
+            pp.fidict exch /Size exch put
+            }
+            {
+            true
+            4 {exch 0 eq and} repeat
+            1 index 128 lt and
+               {
+               24 -8 0 {bitshift 4 1 roll} for
+               add add add
+               pp.fidict exch /Size exch put
+               }
+               {
+               4 {pop} repeat
+               (File size exceeds maximum of 2147483647 bytes.\string\n`Size'-entry in embedded file parameter dictionary omitted.) pp.warning
+               }
+            ifelse
+            }
+          ifelse
+          }
+        ifelse
+        }
+        {
+        pp.fidict /Size known
+          {pop}
+          {pp.getfilesize}
+        ifelse
+        }
+      ifelse
+      }
+    ifelse
+    pop
+    } def
+  /pp.mimetype % arguments: string
+    {
+    0 1 index length {1 index 1 index get 0 eq {exit} {1 add} ifelse} repeat
+    0 exch getinterval cvn
+    } def
+  /pp.getbbox % argument: iconfilename
+    {
+    {(r) file} stopped
+      {
+      [2 index (.eps)] pp.concat exch {file} stopped
+        {pop pop [(Unable to access icon file `) 2 index ('.\string\n) pp.getlasterror] pp.concat pp.warning pop false}
+        {exch pop true}
+      ifelse
+      }
+      {
+      true
+      }
+    ifelse
+      {
+        {
+        dup 32768 string readline
+          {(BoundingBox:) search {pop pop exch pop exit} {pop} ifelse}
+          {exch pop (BoundingBox:) search {pop pop exch pop} {pop ()} ifelse exit}
+        ifelse
+        }
+      loop
+      [exch cvx stopped pop]
+      dup length 4 eq
+      }
+      {
+      [] false
+      }
+    ifelse
+    1 index {dup type /integertype eq exch type /realtype eq or and} forall
+      {/pp.bbox exch def}
+      {pop /pp.bbox [0 0 0 0] def}
+    ifelse
+    } def
+  /pp.isemptybbox
+    {
+    false
+    pp.bbox
+      {0 ne or}
+    forall
+    } def
+  /pp.iconrect % arguments: defaultarray, arraystring (with coordinates in default user space)
+    {
+    true 1 index
+      {
+      dup 47 gt 1 index 58 lt and % 0-9
+      1 index 46 eq % .
+      2 index 32 eq % space
+      or or exch pop and
+      }
+    forall
+    dup
+      {
+      [
+      2 index cvx stopped pop
+      ]
+      dup length 4 eq
+      exch {dup type /integertype eq 1 index type /realtype eq or dup {1 index 0 ge and} if exch pop and} forall
+      and
+      }
+    if
+      {[exch cvx exec] exch pop}
+      {
+      [(Illegal icon coordinates [) 2 index (] discarded.)] pp.concat pp.warning
+      pop
+      }
+    ifelse
+    /pp.attachmentrect exch def
+    } def
+  /pp.opacity % argument: string; returns: real (default: 1.0)
+    {
+    {cvr} stopped
+    dup not
+      {
+      1 index 1.0 gt 2 index 0 lt or or
+      }
+    if
+      {
+      [(Illegal opacity value `) 2 index pp.cvs (' discarded.)] pp.concat pp.warning
+      pop
+      1.0
+      }
+    if
+    } def
+  /pp.flags % argument: string; returns: flags (default: 2#00000000000000000000000000000100)
+    {
+    {cvi} stopped
+      {
+      [(Illegal annotation flags `) 2 index (' discarded.)] pp.concat pp.warning
+      pop
+      2#00000000000000000000000000000100
+      }
+      {
+      dup 2#11111111111111111111110000000000 and 0 ne
+        {
+        [(Reserved flag bits \string\(positions 11-32\string\)
+          of annotation flags 2#) 2 index 2 32 string cvrs ( set to 0.)] pp.concat pp.warning
+        2#00000000000000000000001111111111 and
+        }
+      if                 
+      }
+    ifelse
+    } def
+  /pp.color % argument: string; returns: colorarray (default: [1 1 0])
+    {
+    true 1 index
+      {
+      dup 47 gt 1 index 58 lt and % 0-9
+      1 index 46 eq % .
+      2 index 32 eq % space
+      or or exch pop and
+      }
+    forall
+    dup 
+      {
+      [
+      2 index cvx stopped pop
+      ]
+      dup length 3 eq
+      exch {dup type /integertype eq 1 index type /realtype eq or dup {1 index 1 le 2 index 0 ge and and} if exch pop and} forall
+      and
+      }
+    if
+      {[exch cvx exec]}
+      {
+      [(Illegal attachment color `) 2 index (' discarded.)] pp.concat pp.warning
+      pop
+      [1 1 0]
+      }
+    ifelse
+    } def
+  /pp.save
+    {
+    count array astore /pp.operandstack exch def
+    pp.operandstack aload pop
+    /pp.vmimage save def
+    } def
+  /pp.restore
+    {
+    pp.vmimage restore
+    clear pp.operandstack aload pop
+    } def
+  /pp.dest % argument: string
+    {
+    dup () ne dup {1 index 0 get 91 eq and} if % [
+      {
+      dup dup length 1 sub get 93 eq % ]
+        {pp.save dup cvx stopped {/SDict where {/SDict get} {TeXDict begin SDict} ifelse begin pp.restore true} {false} ifelse}
+        {true}
+      ifelse
+      dup not
+        {
+        1 index length 2 lt or
+        dup not {1 index 0 get type /integertype ne or} if
+        dup not {1 index 0 get 0 lt or} if
+        dup not {1 index 1 get type /nametype ne or} if
+        dup {exch pop} {3 -1 roll pop} ifelse
+        }
+      if
+      }
+      {
+      true
+      }
+    ifelse
+      {
+      dup () ne dup
+        {
+        1 index 0 get 40 eq and % (
+        1 index dup length 1 sub get 41 eq and % )
+        }
+      if
+        {1 1 index length 2 sub getinterval false}
+        {true}
+      ifelse
+      }
+      {
+      false
+      }
+    ifelse
+      {
+      true 1 index {0 ne and} forall
+        {
+        dup 0 get 47 eq % /
+          {
+          1 1 index length 1 sub getinterval
+          }
+        if
+        cvn
+        }
+      if
+      }
+    if
+    } def
+  /pp.ischecksum % argument: string; returns: boolean
+    {
+    dup length dup 32 eq exch 0 eq or
+    1 index
+      {
+      dup 47 gt 1 index 58 lt and % 0-9
+      1 index 96 gt 2 index 103 lt and % a-f
+      2 index 64 gt 3 index 71 lt and % A-F
+      or or exch pop and
+      }
+    forall
+    dup not
+      {[(Illegal MD5-checksum <) 3 index (> discarded.)] pp.concat pp.warning}
+    if
+    exch pop
+    } def
+  /pp.getfilesize % argument: filename
+    {
+    true
+    pp.64bit {1 index status {pop pop pp.fidict exch /Size exch put pop pop pop false} if} if
+      {
+      \ifpp@fish
+        /md5.rate 125 def
+        /md5.console pp.stdout def
+        /md5.consolewidth 80 def
+        /md5.time realtime def
+        /md5.fish (\string\074\string\047\string\050\string\050\string\076\string\173) def
+        /md5.fishpos 74 def
+        /md5.fishspeed 0 def
+        /md5.consolepos 1 def
+      \fi
+      (\string\n Calculating size of file: ) print
+      dup pp.println
+      (r) file 32768 string 0
+        {
+        \ifpp@fish
+          md5.progress
+        \fi
+        2 index 2 index readstring
+          {length add}
+          {length add exch pop exch pop exit}
+        ifelse
+        }
+      loop
+      dup type /integertype eq
+        {
+        (\string\n\string\() print
+        dup pp.cvs print
+        dup 1 gt {( bytes\string\))} {( byte\string\))} ifelse pp.println
+        pp.fidict exch /Size exch put
+        }
+        {
+        pop
+          [
+          (File size exceeds maximum of ) pp.maxint pp.cvs ( bytes.
+          `Size'-entry in embedded file parameter dictionary omitted.)
+          ]
+          pp.concat pp.warning
+        }
+      ifelse
+      }
+    if
+    } def
+  /pp.size % argument: string
+    {
+    true 1 index
+      {
+      dup 47 gt 1 index 58 lt and % 0-9
+      exch pop and
+      }
+    forall
+    dup 2 index () ne and
+      {
+      exch
+      {cvi} stopped
+        {
+        (\string\044error) cvx exec /errorname get /rangecheck eq
+          {[(File size `) 2 index (' exceeds maximum of ) pp.maxint pp.cvs (  bytes.)] pp.concat pp.warning}
+        if
+        }
+      if
+      dup type /integertype ne {exch not exch} if
+      exch
+      }
+    if
+      {pp.fidict exch /Size exch put}
+      {[(Illegal file size `) 2 index pp.cvs (' discarded.)] pp.concat pp.warning pop}
+    ifelse
+    } def
+  /pp.macenc % argument: string; returns: (int, true) or (string, false)
+    {
+    dup length 4 eq
+      {0 0 1 3 {2 index 1 index get exch 3 exch sub 8 mul bitshift add} for exch pop true}
+      {false}
+    ifelse
+    } def
+  /pp.maccreator % argument: string
+    {
+    pp.macenc
+      {pp.fidict exch /Creator exch put}
+      {[(Illegal file creator signature `) 2 index pp.cvs (' discarded.)] pp.concat pp.warning pop}
+    ifelse
+    } def
+  /pp.macfiletype % argument: string
+    {
+    pp.macenc
+      {pp.fidict exch /Subtype exch put}
+      {[(Illegal file type `) 2 index pp.cvs (' discarded.)] pp.concat pp.warning pop}
+    ifelse
+    } def
+  /pp.undefifempty %argument: key (in pp.fidict)
+    {
+    dup pp.fidict exch known {dup pp.fidict exch get () eq {pp.fidict exch undef} {pop} ifelse} {pop} ifelse
+    } def
+  /pp.getifknown % argument: key (in pp.fidict)
+    {
+    dup pp.fidict exch known {dup pp.fidict exch get} {pop} ifelse
+    } def
+  /pp.fliprect
+    {
+    [ exch {} forall 3 1 roll exch]
+    } def
+  /pp.mirrorrect
+    {
+    [ exch {} forall 4 -2 roll 3 1 roll exch]
+    } def
+  /pp.BPEPmatrix
+    {
+    initmatrix
+    } def
+  pp.sysinfo
+  /pdfmark where
+    {
+    /pdfmark get /pp.backup.pdfmark exch def
+    }
+    {
+    /pp.backup.pdfmark {cleartomark} def
+    (Product doesn't support pdfmarks.) pp.error
+    }
+  ifelse
+  pp.enablepdfmarks
+  product (Jaws PDF Creator) eq
+    {
+    /BorderArrayPatch {} def % interprets the values as default user space
+    version (3010) eq
+      {
+      pp.substEMBEDpdfmark
+      /pp.BPEPmatrix {} def % uses CTM in /BP- & /EP-pdfmarks
+      }
+    if
+    }
+  if
+  product (AFPL Ghostscript) eq
+  product (GPL Ghostscript) eq or
+    {
+    pp.substEMBEDpdfmark
+    /BorderArrayPatch
+      {
+      [ exch
+        {
+        dup dup
+        type /integertype eq exch
+        type /realtype eq or
+        {BPToDvips} if
+        dup type /arraytype eq
+          {
+          pop
+          pp.globaldict /pp.gsborderwarning get
+            {
+            (Ghostscript doesn't support dashed borders in hyperref option `pdfborder'.\string\n
+             Use option `pdfborderstyle={/W <border-width> /S /D /D <dash-array>}' instead.) pp.warning
+            pp.globaldict /pp.gsborderwarning false put
+            }
+          if
+          }
+        if
+        }
+      forall ]
+      } def
+    }
+  if
+    <<
+    /DeferredMediaSelection true
+    /PageSize [\strip@pt\paperwidth\space pp.ptToBP \strip@pt\paperheight\space pp.ptToBP]
+    /ImagingBBox null
+    \ifpp@twoside
+      /Duplex true
+    \fi
+    >>
+  setpagedevice
+  userdict /end-hook
+    {
+    TeXDict
+      begin
+      SDict
+        begin
+        () pp.println
+        realtime pp.globaldict /pp.starttime get sub dup 0 gt
+          {[exch (Elapsed time: ) exch 1000 div pp.cvs ( seconds.)] pp.concat pp.println}
+        if
+        pp.globaldict /pp.errcount get pp.globaldict /pp.warncount get add 0 gt
+        {
+        [
+        (Package hypdvips encountered )
+        pp.globaldict /pp.errcount get dup 0 gt {dup pp.cvs exch 1 eq {( error)} {( errors)} ifelse} {pop} ifelse
+        pp.globaldict /pp.errcount get 0 gt pp.globaldict /pp.warncount get 0 gt and {( and )} if
+        pp.globaldict /pp.warncount get dup 0 gt {dup pp.cvs exch 1 eq {( warning)} {( warnings)} ifelse} {pop} ifelse
+        (\string\n during processing of this PostScript\string\256 language file.)
+        ] pp.concat pp.println
+        }
+        if
+        end
+      end
+    } put
+}
+\pp@TeXcatcodes
+
+\let\pp@backup@begin\begin
+\renewcommand{\begin}[1]{%
+  \global\expandafter\let\csname pp@saved@before#1@cref@currentlabel\endcsname\cref@currentlabel%
+  \global\expandafter\let\csname pp@saved@before#1@@currentHref\endcsname\@currentHref%
+  \pp@backup@begin{#1}%
+}
+
+\let\pp@backup@end\end
+\renewcommand{\end}[1]{%
+  \pp@backup@end{#1}%
+  \global\expandafter\let\expandafter\@currentHref\csname pp@saved@before#1@@currentHref\endcsname%
+  \global\expandafter\let\expandafter\cref@currentlabel\csname pp@saved@before#1@cref@currentlabel\endcsname%
+  \ignorespaces
+}
+
+\newif\ifpp@subfigure
+\pp@subfigurefalse
+\let\pp@backup@@subfigure\@subfigure
+\def\@subfigure{%
+  \pp@subfiguretrue%
+  \pp@backup@@subfigure%
+}
+\g@addto@macro{\endfigure}{\pp@subfigurefalse}%
+
+\def\Gin@setfile#1#2#3{%
+  \ifx\\#2\\\Gread@false\fi
+  \ifGin@bbox\else
+    \ifGread@
+      \csname Gread@%
+         \expandafter\ifx\csname Gread@#1\endcsname\relax
+           eps%
+         \else
+           #1%
+         \fi
+      \endcsname{\Gin@base#2}%
+    \else
+      \Gin@nosize{#3}%
+    \fi
+  \fi
+  \Gin@viewport@code
+  \Gin@nat@height\Gin@ury bp%
+  \advance\Gin@nat@height-\Gin@lly bp%
+  \Gin@nat@width\Gin@urx bp%
+  \advance\Gin@nat@width-\Gin@llx bp%
+  \Gin@req@sizes
+  \expandafter\ifx\csname Ginclude@#1\endcsname\relax
+    \Gin@drafttrue
+    \expandafter\ifx\csname Gread@#1\endcsname\relax
+      \@latex@error{Can not include graphics of type: #1}\@ehc
+      \global\expandafter\let\csname Gread@#1\endcsname\@empty
+    \fi
+  \fi
+  \leavevmode
+  \ifpp@subfigure%
+    \pp@SDictPS{/pdf@hoff -5 /pdf@voff \strip@pt\Gin@req@height\space pp.ptToBP 5 add pp.savecurrentpoint}%
+    \pp@SDictPS{/pp.goodfiguredest true def}%
+    \ifHy@draft%
+    \else%
+      \pdfmark{%
+        pdfmark=/DEST,%
+        linktype=anchor,%
+        View={/\@pdfview \@pdfviewparams},%
+        Dest={\@currentHlabel}%
+        }%
+    \fi%
+  \fi%
+  \ifGin@draft
+      \hb@xt@\Gin@req@width{%
+        \vrule\hss
+        \vbox to \Gin@req@height{%
+           \hrule \@width \Gin@req@width
+           \vss
+           \edef\@tempa{#3}%
+           \rlap{ \ttfamily\expandafter\strip@prefix\meaning\@tempa}%
+           \vss
+           \hrule}%
+        \hss\vrule}%
+  \else
+    \@addtofilelist{#3}%
+    \ProvidesFile{#3}[Graphic file (type #1)]%
+    \setbox\z@\hbox{\csname Ginclude@#1\endcsname{#3}}%
+    \dp\z@\z@
+    \ht\z@\Gin@req@height
+    \wd\z@\Gin@req@width
+  \box\z@
+  \fi}
+
+\@ifundefined{abstract}{}{
+  \let\pp@backup@abstract\abstract
+  \renewcommand{\abstract}{%
+    \protected@xdef\cref@currentlabel{[abstract][][]}%
+    \gdef\@currentHref{abstract}%
+    \hyper@anchorstart{abstract}%
+    \hyper@anchorend%
+    \pp@backup@abstract%
+  }
+}
+
+\def\pp@activerect{false}
+\def\pdf@rect#1{%
+  \def\pp@activerect{true}%
+  \begingroup
+    \chardef\x=1 %
+    \def\Hy@temp{#1}%
+    \ifx\Hy@temp\ltx@empty
+      \chardef\x=0 %
+    \else
+      \def\y{\anchor@spot}%
+      \ifx\Hy@temp\y
+        \def\y{\relax}%
+        \ifx\anchor@spot\y
+          \chardef\x=0 %
+        \fi
+      \fi
+    \fi
+  \expandafter\endgroup
+  \ifcase\x
+    \literalps@out{H.S}%
+    \literalps@out{H.R}%
+  \else
+    \leavevmode
+    \Hy@SaveSpaceFactor
+    \ifmmode
+      \def\Hy@LinkMath{$}%
+    \else
+      \let\Hy@LinkMath\ltx@empty
+    \fi
+    \ifHy@breaklinks
+      \Hy@setouterhbox\pdf@box{%
+        \Hy@RestoreSpaceFactor
+        \Hy@LinkMath
+        \Hy@AllowHyphens#1\Hy@xspace@end
+        \Hy@LinkMath
+        \Hy@SaveSpaceFactor
+      }%
+    \else
+      \sbox\pdf@box{%
+        \Hy@RestoreSpaceFactor
+        \Hy@LinkMath
+        #1\Hy@xspace@end
+        \Hy@LinkMath
+        \Hy@SaveSpaceFactor
+      }%
+    \fi
+    \ifpp@evenboxes%
+      \sbox\pp@textbox\pp@ABC%
+      \setlength{\pp@offset}{-\the\dp\pdf@box}%
+      \addtolength{\pp@offset}{\the\dp\pp@textbox}%
+      \pp@SDictPS{/pp.yoffset \strip@pt\pp@offset\space PDFToDvips def}%
+    \else%
+      \sbox\pp@textbox{\usebox{\pdf@box}}%
+    \fi%
+    \ifodd\value{page}%
+      \gdef\pp@sidemargin{\the\oddsidemargin}%
+    \else%
+      \gdef\pp@sidemargin{\the\evensidemargin}%
+    \fi%
+    \pp@SDictPS{
+      /pp.outerbox
+        [
+        (\pp@sidemargin) pp.strippt
+        (-\the\dp\pp@textbox) pp.strippt
+        (\pp@sidemargin) pp.strippt (\the\textwidth) pp.strippt add
+        (\the\ht\pp@textbox) pp.strippt
+        ] [ exch {PDFToDvips} forall ] def
+      /pp.baselineskip (\the\baselineskip) pp.strippt dup 0 gt {PDFToDvips def} {pop pop} ifelse
+      }%
+    \dimen@\ht\pdf@box
+    \ifdim\dp\pdf@box=\z@
+      \literalps@out{H.S}%
+    \else
+      \lower\dp\pdf@box\hbox{\literalps@out{H.S}}%
+    \fi
+    \pp@SDictPS{pp.enabletracing}%
+    \ifHy@breaklinks
+      \ifhmode
+        \Hy@breaklinksunhbox\pdf@box
+      \else
+        \box\pdf@box
+      \fi
+    \else
+      \expandafter\box\pdf@box
+    \fi
+    \pp@SDictPS{pp.disabletracing}%
+    \ifpp@evenboxes%
+      \setlength{\pp@offset}{\the\dimen@}%
+      \addtolength{\pp@offset}{-\the\ht\pp@textbox}%
+      \pp@SDictPS{/pp.yoffset \strip@pt\pp@offset\space PDFToDvips def}%
+    \fi%
+    \ifdim\dimen@=\z@
+      \literalps@out{H.R}%
+    \else
+      \raise\dimen@\hbox{\literalps@out{H.R}}%
+    \fi
+    \Hy@RestoreSpaceFactor
+  \fi
+  \ifx\pdf@type\Hy@DEST
+  \else
+    \pdf@addtoksx{H.B}%
+  \fi
+  \def\pp@activerect{false}%
+}
+
+\def\pdfmark@[#1]#2{%
+  \Hy@pdfmarkerrorfalse
+  \edef\@processme{\noexpand\pdf@toks={\the\pdf@defaulttoks}}%
+  \@processme
+  \let\pdf@type\relax
+  \kvsetkeys{PDF}{#2}%
+  \ifHy@pdfmarkerror
+  \else
+    \pp@SDictPS{/pp.toks (\the\pdf@toks\string) def}%
+    \ifx\pp@activerect\pp@true%
+      \ifpp@nlwarning%
+        \PackageWarning{hypdvips}{Nested link discarded: dest = `\Hy@pstringDest'\MessageBreak}%
+      \fi%
+      #1%
+    \else%
+      \ifx\pdf@type\relax
+         \Hy@WarningNoLine{no pdfmark type specified in #2!!}%
+         \ifx\\#1\\%
+         \else
+           \pdf@rect{#1}%
+         \fi
+      \else
+         \ifx\\#1\\%
+           \literalps@out{%
+             [\the\pdf@toks\space\pdf@type\space pdfmark%
+           }%
+         \else
+             \@ifundefined{@\pdf@linktype color}{%
+             \Hy@colorlink\@linkcolor
+           }{%
+               \expandafter\Hy@colorlink
+                         \csname @\pdf@linktype color\endcsname
+           }%
+           \pdf@rect{#1}%
+           \literalps@out{%
+             [\the\pdf@toks\space\pdf@type\space pdfmark%
+           }%
+           \Hy@endcolorlink
+         \fi
+      \fi
+    \fi%
+  \fi
+}
+
+\edef\@footnotecolor{\@linkcolor}
+\edef\@footnotebordercolor{\@linkbordercolor}
+\ifHy@hyperfootnotes
+  \newcommand{\pp@hyperfootnote}{%
+    \ifx\pp@activerect\pp@true%
+      \@makefnmark%
+    \else%
+      \ifpp@smallfootnotes%
+        \let\pp@backup@@thefnmark\@thefnmark%
+        \renewcommand{\@thefnmark}{\pdf@rect{\pp@backup@@thefnmark}}%
+        \Hy@colorlink\@footnotecolor%
+        \@makefnmark%
+        \Hy@endcolorlink%
+        \pdfmark{%
+          pdfmark=/ANN,%
+          linktype=footnote,%
+          Subtype=/Link,%
+          AcroHighlight=\@pdfhighlight,%
+          Border=\@pdfborder,%
+          BorderStyle=\@pdfborderstyle,%
+          Color=\@footnotebordercolor,%
+          Dest=\Hy@footnote@currentHref,%
+          Raw=H.B%
+          }%
+      \let\@thefnmark\pp@backup@@thefnmark%
+      \else%
+        \pdfmark[\@makefnmark]{%
+          pdfmark=/ANN,%
+          linktype=footnote,%
+          Subtype=/Link,%
+          AcroHighlight=\@pdfhighlight,%
+          Border=\@pdfborder,%
+          BorderStyle=\@pdfborderstyle,%
+          Color=\@footnotebordercolor,%
+          Dest=\Hy@footnote@currentHref%
+          }%
+      \fi%
+    \fi%
+    }
+  \def\@footnotemark{%
+    \leavevmode
+    \ifhmode\edef\@x@sf{\the\spacefactor}\nobreak\fi
+    \stepcounter{Hfootnote}%
+    \global\let\Hy@saved@currentHref\@currentHref
+    \hyper@makecurrent{Hfootnote}%
+    \global\let\Hy@footnote@currentHref\@currentHref
+    \global\let\@currentHref\Hy@saved@currentHref
+    \ifHy@draft%
+      \@makefnmark%
+    \else%
+      \pp@hyperfootnote%
+    \fi%
+    \ifhmode\spacefactor\@x@sf\fi
+    \relax
+    }
+  \let\pp@backup@@footnotetext\@footnotetext
+  \renewcommand{\@footnotetext}[1]{%
+    \global\let\pp@saved@beforefootnote@cref@currentlabel\cref@currentlabel%
+    \pp@backup@@footnotetext{#1}%
+    \global\let\cref@currentlabel\pp@saved@beforefootnote@cref@currentlabel%
+    }
+  \let\pp@backup@H@@footnotetext\H@@footnotetext
+  \renewcommand{\H@@footnotetext}[1]{%
+    \pp@backup@H@@footnotetext{%
+      \pp@SDictPS{/pp.voffset \f@size\space pp.ptToBP 5 add def}%
+      #1%
+      }%
+    }
+\fi
+
+\let\pp@backup@bibstyle\bibstyle
+\renewcommand{\bibstyle}[1]{%
+  \gdef\pp@bibstyle{#1}%
+  \pp@backup@bibstyle{#1}%
+}
+
+\let\pp@backup@bibitem\bibitem
+\def\bibitem{%
+  \setlength{\pp@offset}{-\the\baselineskip}%
+  \def\pp@string{plain}%
+  \ifx\pp@bibstyle\pp@string%
+    \pp@SDictPS{/pp.voffset \strip@pt\pp@offset\space pp.ptToBP 5 add def}%
+  \fi%    
+  \def\pp@string{gerplain}%
+  \ifx\pp@bibstyle\pp@string%
+    \pp@SDictPS{/pp.voffset \strip@pt\pp@offset\space pp.ptToBP 5 add def}%
+  \fi%    
+  \pp@backup@bibitem%
+}
+
+\@ifundefined{autodot}
+  {}
+  {\def\Hy@numberline#1{#1\autodot~}}
+
+\bookmarkdefinestyle{pp@bmstyle@empty}{italic=false,bold=false,color={},rellevel=0,keeplevel=true}
+\let\pp@backup@@startsection\@startsection
+\def\@startsection#1#2#3#4#5#6{%
+  \bookmarksetup{style=pp@bmstyle@empty}%
+  \ifx#2\@M%
+    \xdef\BKM@currentlevel{1}%
+  \else%
+    \xdef\BKM@currentlevel{#2}%
+  \fi%
+  \@ifundefined{BKM@style@\BKM@currentlevel}{}{\bookmarksetup{style=\BKM@currentlevel}}%
+  \pp@backup@@startsection{#1}{#2}{#3}{#4}{#5}{#6}%
+}
+\let\pp@backup@@sect\@sect
+\def\@sect#1#2#3#4#5#6[#7]#8{%
+  \ifx#2\@M%
+    \@ifundefined{BKM@style@*}{}{\bookmarksetup{style=*}}%
+  \fi%
+  \ifx#2\@m%
+    \@ifundefined{BKM@style@*}{}{\bookmarksetup{style=*}}%
+  \fi%
+  \pp@backup@@sect{#1}{#2}{#3}{#4}{#5}{#6}[#7]{#8}%
+  \ifpp@fullbookmarks%
+    \ifx#7\contentsname%
+      \Hy@writebookmark{}{#7}{\@currentHref}{\BKM@currentlevel}{toc}%
+    \fi%
+  \fi%
+}
+
+\let\pp@backup@@ssect\@ssect
+\def\@ssect#1#2#3#4#5{%
+  \@ifundefined{BKM@style@*}{}{\bookmarksetup{style=*}}%
+  \pp@backup@@ssect{#1}{#2}{#3}{#4}{#5}%
+  \ifpp@fullbookmarks%
+    \Hy@writebookmark{}{#5}{\@currentHref}{\BKM@currentlevel}{toc}%
+  \fi%
+}
+
+\@ifundefined{chapter}{}{
+  \let\pp@backup@chapter\chapter
+  \def\chapter{%
+    \bookmarksetup{style=pp@bmstyle@empty}%
+    \@ifundefined{BKM@style@0}{}{\bookmarksetup{style=0}}
+    \pp@backup@chapter%
+  }
+  \let\pp@backup@@schapter\@schapter
+  \def\@schapter#1{%
+    \pp@backup@@schapter{#1}%
+    \ifpp@fullbookmarks%
+      \@ifundefined{BKM@style@*}{}{\bookmarksetup{style=*}}
+      \Hy@writebookmark{}{#1}{\@currentHref}{0}{toc}%
+    \fi%
+  }
+}
+
+\renewcommand{\Hy@backout}[1]{%
+  \@bsphack
+  \ifpp@detailedbr%
+  \else%
+    \ifpp@pagebackref%
+      \def\pp@br@currentHref{page.\thepage}%
+    \else%
+      \ifx\@currentHref\@empty%
+        \def\pp@br@currentHref{Doc-Start}%
+      \else%
+        \def\pp@br@currentHref{\@currentHref}%
+      \fi%
+    \fi%
+  \fi%
+  \ifpp@pagebackref%
+    \def\pp@string{\pp@br@pagestring~\thepage}%
+  \else%
+    \ifx\@empty\@currentlabel%
+      \def\pp@string{\pp@br@documentstring}%
+    \else%
+      \def\pp@string{\@currentlabel}%
+    \fi%
+  \fi%
+  \protected@write\@auxout{}{%
+    \string\@writefile{brf}{%
+      \string\backcite{#1}{{\thepage}{\pp@string}{\pp@br@currentHref}}%
+      }%
+    }%
+  \@esphack
+}
+
+\@ifpackageloaded{cleveref}
+  {
+  \creflabelformat{equation}{\textup{(}#2\textup{#1}#3\textup{)}}
+  \def\pp@link#1\relax#2\relax#3\relax#4{#1\hyper@@link{}{#4}{#2}#3}
+  \def\pp@rangelink#1\relax#2\relax#3\relax#4\relax#5\relax#6#7{#1\hyper@@link{}{#6}{#2}#3\hyper@@link{}{#7}{#4}#5}
+  \renewcommand{\@@setcref}[2]{%
+    \cref@getlabel{#2}{\@templabel}%
+    \if@crefstarred%
+      #1{\@templabel}{}{}%
+    \else%
+      \edef\@templink{\cref@hyperref{#2}}%
+      \expandafter\pp@link#1{\@templabel}{\relax}{\relax}\relax{\@templink}%
+    \fi%
+    }
+  \renewcommand{\@@setcrefrange}[3]{%
+    \cref@getlabel{#2}{\@labela}%
+    \cref@getlabel{#3}{\@labelb}%
+    \if@crefstarred%
+      #1{\@labela}{\@labelb}{}{}{}{}%
+    \else%
+      \edef\@linka{\cref@hyperref{#2}}%
+      \edef\@linkb{\cref@hyperref{#3}}%
+      \expandafter\pp@rangelink#1{\@labela}{\@labelb}{\relax}{\relax}{\relax}{\relax}\relax{\@linka}{\@linkb}%
+    \fi%
+    }
+  \renewcommand{\Hy@backout}[1]{%
+    \@bsphack%
+    \ifpp@detailedbr%
+    \else%
+      \ifpp@pagebackref%
+        \def\pp@br@currentHref{page.\thepage}%
+      \else%
+        \def\pp@br@currentHref{\@currentHref}%
+      \fi%
+    \fi% 
+    \ifpp@pagebackref%
+      \def\pp@string{\pp@br@pagestring~\thepage}%
+    \else%
+      \edef\pp@labelcaption{\@currentlabel}%
+      \expandafter\@cref@gettype\cref@currentlabel\@nil{\pp@labeltype}%
+      \@ifundefined{Cref@\pp@labeltype @name}%
+        {%
+        \PackageWarning{hypdvips}{\string\Cref\space reference format for label type `\pp@labeltype'\MessageBreak undefined in reference `\pp@labelcaption'.\MessageBreak Back-referencing to page `\thepage'.\MessageBreak}%
+        \ifpp@detailedbr%
+        \else%
+          \def\pp@br@currentHref{page.\thepage}%
+        \fi%
+        \def\pp@labelcaption{\thepage}%
+        \def\pp@labelname{\pp@br@pagestring}%
+        }%
+        {%
+        \def\pp@labelname{\csname Cref@\pp@labeltype @name\endcsname}%
+        }%
+      \ifx\pp@labelcaption\@empty%
+        \def\pp@string{\pp@labelname}%
+      \else%
+        \def\pp@string{\pp@labelname~\pp@labelcaption}%
+      \fi%
+    \fi%
+    \protected@write\@auxout{}{%
+      \string\@writefile{brf}{%
+        \string\backcite{#1}{{\thepage}{\pp@string}{\pp@br@currentHref}}%
+        }%
+      }%
+    \@esphack%
+    }%
+  }{}
+
+\@ifpackageloaded{biblatex}
+  {
+  \appto\blx@mkhyperref{%
+    \ifundef\hyper@natanchorstart
+      {%
+      \long\def\blx@bibhyperref[#1]#2{%
+        \blx@sfsave%
+        \hyper@@link[cite]{}{cite.\the\c@refsection @#1}{\blx@sfrest#2\blx@sfsave}%
+        \blx@sfrest}%
+      \protected\long\def\blx@imc@bibhyperlink#1#2{%
+        \blx@sfsave%
+        \hyper@@link[cite]{}{cite.\the\c@refsection:#1}{\blx@sfrest#2\blx@sfsave}%
+        \blx@sfrest}%
+      }%
+      {%
+      \long\def\blx@bibhyperref[#1]#2{%
+        \blx@sfsave%
+        \Hy@backout{\the\c@refsection @#1}%
+        \def\hyper@nat@current{#1}%
+        \hyper@@link[cite]{}{cite.\the\c@refsection @#1}{\blx@sfrest#2\blx@sfsave}%
+        \blx@sfrest}%
+      \protected\long\def\blx@imc@bibhyperlink#1#2{%
+        \blx@sfsave%
+        \Hy@backout{\the\c@refsection:#1}%
+        \def\hyper@nat@current{#1}%
+        \hyper@@link[cite]{}{cite.\the\c@refsection:#1}{\blx@sfrest#2\blx@sfsave}%
+        \blx@sfrest}%
+      }%
+    }
+  }{}
+
+\newlength{\pp@backup@baselineskip}
+\newcommand{\pp@odest}[2]{% arguments: {name}{offset}
+  \setlength{\pp@backup@baselineskip}{\the\baselineskip}%
+  \baselineskip#2%
+  \hyper@anchorstart{#1}%
+  \hyper@anchorend%
+  \baselineskip\pp@backup@baselineskip%
+}
+
+\newcommand{\pp@UCenc}[2]{% arguments: result (=Unicode string), text
+  \ifHy@unicode%
+    \pdfstringdef#1{#2}%
+  \else%
+    \Hy@unicodetrue%
+    \pdfstringdef#1{#2}%
+    \Hy@unicodefalse%
+  \fi%
+}
+
+\newcommand{\pp@PSenc}[2]{% arguments: result (=PostScript string), text
+  \ifHy@unicode%
+    \Hy@unicodefalse%
+    \pdfstringdef#1{#2}%
+    \Hy@unicodetrue%
+  \else%
+    \pdfstringdef#1{#2}%
+  \fi%
+}
+
+\def\pp@fa{FileAttachment}
+\define@key[pp]{attachfile}{appearance}[true]{\lowercase{\def\pp@string{#1}}\ifx\pp@string\pp@true\PackageWarning{hypdvips}{Option `appearance' in \string\attachfile\space is obsolete.\MessageBreak Use option `iconfilename' paired with option `rect'\MessageBreak to embed the file attachment's icon explicitly.\MessageBreak}\fi}
+\define@key[pp]{attachfile}{anncreated}{\pp@PSenc\pp@fa@crdate{#1}}
+\define@key[pp]{attachfile}{annmodified}{\pp@PSenc\pp@fa@moddate{#1}}
+\define@key[pp]{attachfile}{author}{\pdfstringdef\pp@fa@title{#1}}
+\define@key[pp]{attachfile}{checksum}{\pp@PSenc\pp@string{#1}\pp@SDictPS{(\pp@string) pp.ischecksum {pp.fidict /CheckSum <\pp@string> put} if}}
+\define@key[pp]{attachfile}{color}{\pp@PSenc\pp@fa@color{#1}}
+\define@key[pp]{attachfile}{created}{\pp@PSenc\pp@string{#1}\pp@SDictPS{pp.fidict /CreationDate (\pp@string) put}}
+\define@key[pp]{attachfile}{creator}{\pp@PSenc\pp@string{#1}\pp@SDictPS{(\pp@string) pp.maccreator}}
+\define@key[pp]{attachfile}{description}{\pdfstringdef\pp@fa@contents{#1}}
+\define@key[pp]{attachfile}{date}{\pp@PSenc\pp@fa@date{#1}}
+\define@key[pp]{attachfile}{filetype}{\pp@PSenc\pp@string{#1}\pp@SDictPS{(\pp@string) pp.macfiletype}}
+\define@key[pp]{attachfile}{flags}{\pp@PSenc\pp@fa@flags{#1}}
+\define@key[pp]{attachfile}{icon}{\pp@seticon{#1}}
+\newcommand{\pp@seticon}[1]{%
+  \lowercase{\def\pp@string{#1}}%
+  \ifx\pp@string\pp@icon@graph%
+    \def\pp@fa@attachmenticon{/Graph}%
+    \pp@SDictPS{/pp.attachmentrect [0 \f@size\space -0.25 mul dup neg 3 mul dup 4 3 div mul exch] def}%
+    \setlength{\pp@iconskip}{\f@size pt}%
+    \setlength{\pp@iconskip}{1.004\pp@iconskip}%
+  \fi%
+  \ifx\pp@string\pp@icon@paperclip%
+    \def\pp@fa@attachmenticon{/Paperclip}%
+    \pp@SDictPS{/pp.attachmentrect [0 \f@size\space -0.25 mul dup neg 3 mul dup 0.7 mul exch] def}%
+    \setlength{\pp@iconskip}{\f@size pt}%
+    \setlength{\pp@iconskip}{0.527\pp@iconskip}%
+  \fi%
+  \ifx\pp@string\pp@icon@pushpin%
+    \def\pp@fa@attachmenticon{/PushPin}%
+    \pp@SDictPS{/pp.attachmentrect [0 \f@size\space -0.25 mul dup neg dup 2.5 mul exch 3 mul] def}%
+    \setlength{\pp@iconskip}{\f@size pt}%
+    \setlength{\pp@iconskip}{0.627\pp@iconskip}%
+  \fi%
+  \ifx\pp@string\pp@icon@tag%
+    \def\pp@fa@attachmenticon{/Tag}%
+    \pp@SDictPS{/pp.attachmentrect [0 \f@size\space -0.25 mul dup neg 3 mul dup 2 mul exch] def}%
+    \setlength{\pp@iconskip}{\f@size pt}%
+    \setlength{\pp@iconskip}{1.506\pp@iconskip}%
+  \fi%
+  \@ifundefined{pp@fa@attachmenticon}{\PackageWarning{hypdvips}{Illegal icon name `#1' discarded.\MessageBreak}\pp@attachfile@icon{paperclip}}{}%
+  }
+\define@key[pp]{attachfile}{iconfilename}{\pp@PSenc\pp@fa@iconfilename{#1}\def\pp@fa@caption{\special{psfile="#1"}}}
+\define@key[pp]{attachfile}{mimetype}{\pp@PSenc\pp@string{#1}\pp@SDictPS{pp.fidict /MIMEtype (\pp@string) pp.mimetype put}}
+\define@key[pp]{attachfile}{modified}{\pp@PSenc\pp@string{#1}\pp@SDictPS{pp.fidict /ModDate (\pp@string) put}}
+\define@key[pp]{attachfile}{name}{\def\pp@fa@name{#1}}
+\define@key[pp]{attachfile}{opacity}{\pp@PSenc\pp@fa@opacity{#1}}
+\define@boolkey+[pp]{attachfile}[pp@]{overprint}[true]{\def\pp@string{#1}\ifx\pp@string\@empty\PackageWarning{hypdvips}{Illegal option `\XKV@tkey\space= #1' discarded.\MessageBreak}\pp@overprintfalse\fi}{\PackageWarning{hypdvips}{Illegal option `\XKV@tkey\space= #1' discarded.\MessageBreak}\pp@overprintfalse}
+\define@key[pp]{attachfile}{print}[]{\PackageWarning{hypdvips}{Option `print' in \string\attachfile\space is obsolete.\MessageBreak Use option `flags' to set the `Print' flag.\MessageBreak}}
+\define@key[pp]{attachfile}{rect}{\pp@PSenc\pp@fa@rect{#1}}
+\define@key[pp]{attachfile}{resourcefork}{\pp@PSenc\pp@fa@forkpath{#1}}
+\define@key[pp]{attachfile}{size}{\pp@PSenc\pp@string{#1}\pp@SDictPS{(\pp@string) pp.size}}
+\define@key[pp]{attachfile}{subject}{\pdfstringdef\pp@fa@subj{#1}}
+\define@key[pp]{attachfile}{text}{\def\pp@fa@caption{#1}}
+\define@key[pp]{attachfile}{timezone}{\pp@PSenc\pp@fa@timezone{#1}}
+\define@key[pp]{attachfile}{zoom}[]{\PackageWarning{hypdvips}{Option `zoom' in \string\attachfile\space is obsolete.\MessageBreak Use option `flags' to set the `NoZoom' flag.\MessageBreak}}
+\presetkeys[pp]{attachfile}{}{color={\@embeddedbordercolor},flags=4,icon=paperclip,opacity=1,overprint=false,timezone=}
+\newcounter{pp@AttachmentID}
+\setcounter{pp@AttachmentID}{1} 
+\newcommand{\pp@FID}{\arabic{pp@AttachmentID}}
+\def\pp@icon@graph{graph}
+\def\pp@icon@paperclip{paperclip}
+\def\pp@icon@pushpin{pushpin}
+\def\pp@icon@tag{tag}
+\newif\ifpp@useicon
+\newlength{\pp@iconskip}
+\newcommand{\pp@attachfile}[2][]{% arguments: [options]{filename}
+  \protected@write\@auxout{}{\string\gdef\string\pp@attachmenttype@\Roman{pp@AttachmentID}{\pp@fa}}%
+  \protected@write\@auxout{}{\string\gdef\string\pp@attachmentpage@\Roman{pp@AttachmentID}{\the\Hy@abspage}}%
+  \expandafter\xdef\csname pp@attachmenttype@\Roman{pp@AttachmentID}\endcsname{\pp@fa}%
+  \expandafter\xdef\csname pp@attachmentpage@\Roman{pp@AttachmentID}\endcsname{\the\Hy@abspage}%
+  \hskip0.001pt%
+  \pp@SDictPS{/pp.fidict 10 dict def}%
+  \let\pp@fa@crdate\@undefined%
+  \let\pp@fa@moddate\@undefined%
+  \let\pp@fa@attachmenticon\@undefined%
+  \let\pp@fa@caption\@undefined%
+  \let\pp@fa@contents\@undefined%
+  \let\pp@fa@date\@undefined%
+  \let\pp@fa@forkpath\@undefined%
+  \let\pp@fa@iconfilename\@undefined%
+  \let\pp@fa@name\@undefined%
+  \let\pp@fa@rect\@undefined%
+  \let\pp@fa@subj\@undefined%
+  \let\pp@fa@title\@undefined%
+  \setkeys[pp]{attachfile}{#1}%
+  \ifpp@overprint%
+    \@ifundefined{pp@fa@rect}{}%
+      {%
+      \PackageWarning{hypdvips}{Can't overprint when option `rect' is used.\MessageBreak
+                                Option `overprint' set to false.\MessageBreak}%
+      \pp@overprintfalse%
+      }%
+  \fi%
+  \@ifundefined{pp@fa@attachmenticon}{\pp@attachfile@icon{paperclip}}{}%
+  \@ifundefined{pp@fa@crdate}{\@ifundefined{pp@fa@date}{}{\let\pp@fa@crdate\pp@fa@date}}{}%
+  \@ifundefined{pp@fa@moddate}{\@ifundefined{pp@fa@date}{}{\let\pp@fa@moddate\pp@fa@date}}{}%
+  \pp@PSenc\pp@fa@filepath{#2}%
+  \@ifundefined{pp@fa@name}%
+    {%
+    \pp@strippathdef\pp@fa@filename{\pp@fa@filepath}%
+    \pp@UCenc\pp@string{#2}%
+    \pp@strippathdef\pp@string{\pp@string}%
+    \ifpp@stripped%
+      \edef\pp@fa@UCfilename{\string\376\string\377\pp@string}%
+    \else%
+      \edef\pp@fa@UCfilename{\pp@string}%
+    \fi%
+    \@ifundefined{pp@fa@subj}{\pp@strippathdef\pp@filename{#2}\pdfstringdef\pp@fa@subj{\pp@pdf@fasubj}}{}%
+    }%
+    {%
+    \pp@PSenc\pp@fa@filename{\pp@fa@name}%
+    \pp@UCenc\pp@fa@UCfilename{\pp@fa@name}%
+    \@ifundefined{pp@fa@subj}{\pp@strippathdef\pp@filename{\pp@fa@name}\pdfstringdef\pp@fa@subj{\pp@pdf@fasubj}}{}%
+    }%
+  \@ifundefined{pp@fa@forkpath}{\def\pp@fa@forkpath{\pp@fa@filepath/..namedfork/rsrc}}{}%
+  \ifHy@draft%
+  \else%
+    \pp@SDictPS{(\pp@fa@forkpath) (\pp@fa@filepath) pp.getfileinfo}%
+    \pp@SDictPS{/Size pp.undefifempty /CreationDate pp.undefifempty /ModDate pp.undefifempty /CheckSum pp.undefifempty}%
+    \pp@SkipOnErrorPS{mark /_objdef {\pp@FID_data} /type /stream /OBJ pdfmark}%
+    \pp@SkipOnErrorPS{mark {\pp@FID_data} (\pp@fa@filepath) (r) file /PUT pdfmark}%
+    \ifpp@mac%
+      \pp@SkipOnErrorPS{mark /_objdef {\pp@FID_rsrc} /type /stream /OBJ pdfmark}%
+      \pp@SkipOnErrorPS{(\pp@fa@forkpath) () ne
+                          {
+                          mark {\pp@FID_rsrc} (\pp@fa@forkpath) (r) file /PUT pdfmark
+                          pp.fidict /ResFork {\pp@FID_rsrc} put
+                          }
+                        if}%
+    \fi%
+    \pp@SkipOnErrorPS{
+      mark {\pp@FID_data}
+        <<
+        /Type /EmbeddedFile
+        /Subtype pp.fidict /MIMEtype known {pp.fidict /MIMEtype get} {pop} ifelse
+        /Params
+          <<
+          /Size pp.getifknown
+          /CreationDate pp.getifknown
+          /ModDate pp.getifknown
+          \ifpp@mac
+            /Mac
+              <<
+              /Subtype pp.getifknown
+              /Creator pp.getifknown
+              /ResFork pp.getifknown
+              >>
+            dup length 0 eq {pop pop} if
+          \fi
+          /CheckSum pp.getifknown
+          >>
+        >>
+      /PUT pdfmark}%
+  \fi%
+  \@ifundefined{pp@fa@caption}{}%
+    {%
+    \savebox{\pp@textbox}{\pp@fa@caption}%
+    \pp@SDictPS{currentpoint /pp.bboriginy exch def /pp.bboriginx exch def}%
+    \@ifundefined{pp@fa@iconfilename}%
+      {%
+      \pp@SDictPS{
+        /pp.attachmentrect
+          [
+          -1
+          -\strip@pt\dp\pp@textbox\space pp.ptToBP 1 sub
+          \strip@pt\wd\pp@textbox\space pp.ptToBP 1 add
+          \strip@pt\ht\pp@textbox\space pp.ptToBP 1 add
+          ]
+        def
+        /pp.bbox pp.attachmentrect 4 array copy def
+        }%
+      }%
+      {%
+      \pp@SDictPS{(\pp@fa@iconfilename) pp.getbbox pp.isemptybbox {/pp.attachmentrect pp.bbox 4 array copy def} if}%
+      \@ifundefined{pp@fa@rect}{\PackageWarning{hypdvips}{Rectangle coordinates for annotation icon missing.\MessageBreak}}{}%
+      }%
+    \pp@SDictPS{
+      gsave
+        pp.BPEPmatrix
+        mark
+          /_objdef {\pp@FID_caption}
+          /BBox pp.bbox
+        /BP pdfmark
+        \ifpp@flip
+          0 pp.bbox 3 get pp.bbox 1 get add translate 1 -1 scale
+        \fi
+        \ifpp@mirror
+          pp.bbox 2 get pp.bbox 0 get add 0 translate -1 1 scale
+        \fi
+        72 Resolution div 72 VResolution div neg scale
+        pp.bboriginx neg pp.bboriginy neg translate
+        }%
+    \usebox{\pp@textbox}%
+    \pp@SDictPS{
+      grestore
+      mark /EP pdfmark
+      }%
+    \hskip-\wd\pp@textbox%
+    \ifHy@draft%
+    \else%
+      \pp@SDictPS{mark /_objdef {\pp@FID_xobj} /type /stream /OBJ pdfmark}%
+      \pp@SDictPS{mark {\pp@FID_xobj} (/pp.xobjborder gs /pp.xobj Do) /PUT pdfmark}%
+      \pp@SDictPS{mark {\pp@FID_xobj} <<
+                                      /Type /XObject
+                                      /Subtype /Form
+                                      /FormType 1
+                                      /BBox pp.bbox
+                                      /Resources
+                                        <<
+                                        /XObject
+                                          <<
+                                          /pp.xobj {\pp@FID_caption}
+                                          >>
+                                        /ProcSet [/PDF]
+                                        /ExtGState
+                                          <<
+                                          /pp.xobjborder
+                                            <<
+                                            /Type /ExtGState
+                                            /CA (\pp@fa@opacity) pp.opacity dup /ca exch
+                                            /AIS false
+                                            >>
+                                          >>
+                                        >>
+                                      >>
+                                      /PUT pdfmark}%
+    \fi%
+    }%
+  \ifHy@draft%
+  \else%
+    \pp@SkipOnErrorPS{mark /_objdef {\pp@FID_filespec} /type /dict /OBJ pdfmark}%
+    \pp@SkipOnErrorPS{
+      mark {\pp@FID_filespec}
+        <<
+        /Type /Filespec
+        \@ifundefined{pp@fa@contents}{}{/Desc (\pp@fa@contents)}
+        /F (\pp@fa@filename)
+        /UF (\pp@fa@UCfilename)
+        /EF
+          <<
+          /F {\pp@FID_data}
+          /UF {\pp@FID_data}
+          >>
+        >>
+      /PUT pdfmark}%
+    \@ifundefined{pp@fa@rect}{}{\pp@SDictPS{pp.attachmentrect (\pp@fa@rect) pp.iconrect}}%
+    \pp@SkipOnErrorPS{(\pp@fa@timezone) pp.getlatextime}%
+    \pp@SpecialPS{
+      SDict /pp.readerror get not
+        {
+        \@ifundefined{pp@fa@rect}{}
+          {
+          initmatrix
+          \ifpp@flip
+            0 vsize translate 1 -1 scale
+          \fi
+          \ifpp@mirror
+            hsize 0 translate -1 1 scale
+          \fi
+          }
+        mark
+        /Type /Annot
+        /Subtype /FileAttachment
+        /Rect pp.attachmentrect \ifpp@mirror pp.mirrorrect \fi\ifpp@flip pp.fliprect \fi
+        \@ifundefined{pp@fa@contents}{}{/Contents (\pp@fa@contents)}
+        /NM (Attachment \pp@FID)
+        \@ifundefined{pp@fa@moddate}{/M pp.latextime}{/M (\pp@fa@moddate) dup () eq {pop pop} if}
+        /F (\pp@fa@flags) pp.flags
+        \@ifundefined{pp@fa@caption}{}{pp.isemptybbox {/AP << /N {\pp@FID_xobj} /R {\pp@FID_xobj} /D {\pp@FID_xobj} >>} if}
+        /C (\pp@fa@color) pp.color
+        \@ifundefined{pp@fa@title}{/T (\@pdfauthor)}{/T (\pp@fa@title)}
+        /CA (\pp@fa@opacity) pp.opacity
+        \@ifundefined{pp@fa@crdate}{/CreationDate pp.latextime}{/CreationDate (\pp@fa@crdate) dup () eq {pop pop} if}
+        /Subj (\pp@fa@subj)
+        /FS {\pp@FID_filespec}
+        /Name \pp@fa@attachmenticon
+        /ANN pdfmark
+        }
+      if
+      }%
+  \fi%
+  \@ifundefined{pp@fa@rect}
+    {%
+    \@ifundefined{pp@fa@caption}%
+      {%
+      \hskip\pp@iconskip
+      }%
+      {%
+      \ifpp@overprint%
+        \usebox{\pp@textbox}%
+      \else%
+        \hskip\wd\pp@textbox%
+      \fi%
+      }%
+    }{}%
+  \ifHy@draft%
+  \else%
+    \@ifundefined{pp@fa@rect}%
+      {%
+      \pp@SDictPS{
+        /pdf@hoff pp.attachmentrect 2 get 5 add neg
+        /pdf@voff pp.attachmentrect 3 get 5 add
+        pp.savecurrentpoint}%
+      }%
+      {%
+      \pp@SDictPS{
+        /pdf@hoff pp.attachmentrect 0 get 5 sub def
+        /pdf@voff pp.attachmentrect 3 get 5 add def
+        }%
+      }%
+  \pdfmark{%
+    pdfmark=/DEST,%
+    linktype=anchor,%
+    View={/\@pdfview \@pdfviewparams},%
+    Dest={attachment.\pp@FID}%
+    }%
+  \fi%
+  \pp@SDictPS{currentdict /pp.fidict undef}%
+  \addtocontents{loa}{\protect\contentsline{\pp@fa}{\protect\numberline{\pp@FID}\protect\loaformat{\pp@FID}{\pp@fa}{#2}{#1}}{\thepage}{attachment.\pp@FID}}%
+  \addtocounter{pp@AttachmentID}{1}%
+}
+
+\newcommand{\pp@file}[2]{% arguments: {filename}{description}
+  \pp@strippathdef\pp@strippedpath{#1}%
+  \@ifundefined{textcolor}%
+    {%
+    \def\pp@linkcaption{\underline{\ttfamily\pp@strippedpath}}
+    }%
+    {%
+    \def\pp@linkcaption{\textcolor{\@embeddedcolor}{\ttfamily\underline{\pp@strippedpath}}}
+    }%
+  \pp@attachfile[overprint=true,opacity=0.01,text={\pp@linkcaption},description={#2}]{#1}%
+}
+
+\def\pp@ef{EmbeddedFile}
+\define@key[pp]{embedfile}{checksum}{\pp@PSenc\pp@string{#1}\pp@SDictPS{(\pp@string) pp.ischecksum {pp.fidict /CheckSum <\pp@string> put} if}}
+\define@key[pp]{embedfile}{created}{\pp@PSenc\pp@string{#1}\pp@SDictPS{pp.fidict /CreationDate (\pp@string) put}}
+\define@key[pp]{embedfile}{creator}{\pp@PSenc\pp@string{#1}\pp@SDictPS{(\pp@string) pp.maccreator}}
+\define@key[pp]{embedfile}{description}{\pdfstringdef\pp@ef@desc{#1}}
+\define@key[pp]{embedfile}{filetype}{\pp@PSenc\pp@string{#1}\pp@SDictPS{(\pp@string) pp.macfiletype}}
+\define@key[pp]{embedfile}{mimetype}{\pp@PSenc\pp@string{#1}\pp@SDictPS{pp.fidict /MIMEtype (\pp@string) pp.mimetype put}}
+\define@key[pp]{embedfile}{modified}{\pp@PSenc\pp@string{#1}\pp@SDictPS{pp.fidict /ModDate (\pp@string) put}}
+\define@key[pp]{embedfile}{name}{\pp@PSenc\pp@ef@filename{#1}\pp@UCenc\pp@ef@UCfilename{#1}}
+\define@key[pp]{embedfile}{resourcefork}{\pp@PSenc\pp@ef@forkpath{#1}}
+\define@key[pp]{embedfile}{size}{\pp@PSenc\pp@string{#1}\pp@SDictPS{(\pp@string) pp.size}}
+\newcommand\pp@embedfile[2][]{%
+  \protected@write\@auxout{}{\string\gdef\string\pp@attachmenttype@\Roman{pp@AttachmentID}{\pp@ef}}%
+  \expandafter\xdef\csname pp@attachmenttype@\Roman{pp@AttachmentID}\endcsname{\pp@ef}%
+  \ifHy@draft%
+  \else%
+    \pp@SDictPS{/pp.fidict 10 dict def}%
+    \let\pp@ef@desc\@undefined%
+    \let\pp@ef@filename\@undefined%
+    \let\pp@ef@forkpath\@undefined%
+    \setkeys[pp]{embedfile}{#1}%
+    \pp@PSenc\pp@ef@filepath{#2}%
+    \@ifundefined{pp@ef@filename}%
+      {%
+      \pp@strippathdef\pp@ef@filename{\pp@ef@filepath}%
+      \pp@UCenc\pp@string{#2}%
+      \pp@strippathdef\pp@string{\pp@string}%
+      \ifpp@stripped%
+        \edef\pp@ef@UCfilename{\string\376\string\377\pp@string}%
+      \else%
+        \edef\pp@ef@UCfilename{\pp@string}%
+      \fi%
+      }{}%
+    \@ifundefined{pp@ef@forkpath}{\def\pp@ef@forkpath{\pp@ef@filepath/..namedfork/rsrc}}{}%
+    \pp@SDictPS{(\pp@ef@forkpath) (\pp@ef@filepath) pp.getfileinfo}%
+    \pp@SDictPS{/Size pp.undefifempty /CreationDate pp.undefifempty /ModDate pp.undefifempty /CheckSum pp.undefifempty}%
+    \pp@SkipOnErrorPS{mark /_objdef {\pp@FID_data} /type /stream /OBJ pdfmark}%
+    \pp@SkipOnErrorPS{mark {\pp@FID_data} (\pp@ef@filepath) (r) file /PUT pdfmark}%
+    \ifpp@mac%
+      \pp@SkipOnErrorPS{mark /_objdef {\pp@FID_rsrc} /type /stream /OBJ pdfmark}%
+      \pp@SkipOnErrorPS{(\pp@ef@forkpath) () ne
+                          {
+                          mark {\pp@FID_rsrc} (\pp@ef@forkpath) (r) file /PUT pdfmark
+                          pp.fidict /ResFork {\pp@FID_rsrc} put
+                          }
+                        if}%
+    \fi%
+    \pp@SkipOnErrorPS{
+      mark {\pp@FID_data}
+        <<
+        /Type /EmbeddedFile
+        /Subtype pp.fidict /MIMEtype known {pp.fidict /MIMEtype get} {pop} ifelse
+        /Params
+          <<
+          /Size pp.getifknown
+          /CreationDate pp.getifknown
+          /ModDate pp.getifknown
+          \ifpp@mac
+            /Mac
+              <<
+              /Subtype pp.getifknown
+              /Creator pp.getifknown
+              /ResFork pp.getifknown
+              >>
+            dup length 0 eq {pop pop} if
+          \fi
+          /CheckSum pp.getifknown
+          >>
+        >>
+      /PUT pdfmark}%
+    \pp@SDictPS{currentdict /pp.fidict undef}%
+    \pp@SkipOnErrorPS{mark /_objdef {\pp@FID_filespec} /type /dict /OBJ pdfmark}%
+    \pp@SkipOnErrorPS{
+      mark /Name (Attachment \pp@FID) /FS
+      mark {\pp@FID_filespec}
+        <<
+        /Type /Filespec
+        \@ifundefined{pp@ef@desc}{}{/Desc (\pp@ef@desc)}
+        /F (\pp@ef@filename)
+        /UF (\pp@ef@UCfilename)
+        /EF
+          <<
+          /F {\pp@FID_data}
+          /UF {\pp@FID_data}
+          >>
+        >>
+      pp.embedfile}%
+    \pp@SDictPS{true setglobal {\pp@FID_filespec} (Attachment \pp@FID) pp.appendef false setglobal}%
+    \pp@SkipOnErrorPS{pp.putefnametree}%
+  \fi%
+  \addtocontents{loa}{\protect\contentsline{\pp@ef}{\protect\numberline{\pp@FID}\protect\loaformat{\pp@FID}{\pp@ef}{#2}{#1}}{-}{}}%
+  \addtocounter{pp@AttachmentID}{1}%
+}
+
+\let\pp@EoD\@empty
+\AtEndDocument{\gdef\pp@EoD{true}}
+\newcounter{pp@PL@pagenum}
+\newcommand{\pp@documentPL}[2]{% arguments: {pagenum}{pagelabel}
+  \setcounter{pp@PL@pagenum}{#1}%
+  \expandafter\gdef\csname pp@PL@\Roman{pp@PL@pagenum}\endcsname{#2}%
+}
+
+\def\pp@attachPL{}
+\newcounter{pp@backup@Hy@abspage}
+\newcommand{\pp@attachmentPL}[2]{% arguments: {pagenum}{pagelabel}
+\g@addto@macro{\pp@attachPL}{%
+  \setcounter{pp@backup@Hy@abspage}{\the\Hy@abspage}%
+  \pdfstringdef\pp@PL{#2}%
+  \Hy@abspage=#1%
+  \global\advance\Hy@abspage by -1%
+  \HyPL@StorePageLabel{/P(\pp@PL)}%
+  \Hy@abspage=\value{pp@backup@Hy@abspage}%
+  }%
+}
+
+\def\pp@ps@empty{empty}
+\newcounter{pp@PL@currentpage}
+\setcounter{pp@PL@currentpage}{1}
+\let\pp@backup@HyPL@EveryPage\HyPL@EveryPage
+\@ifundefined{HyPL@EveryPage}{}{
+\renewcommand{\HyPL@EveryPage}{%
+  \edef\0{\string\0}%
+  \edef\1{\string\1}%
+  \edef\2{\string\2}%
+  \edef\3{\string\3}%
+  \ifpp@emptypagelabels%
+    \ifx\pp@specialpagestyle\@empty%
+      \edef\pp@string{\pp@currentpagestyle}%
+    \else%
+      \edef\pp@string{\pp@specialpagestyle}%
+      \global\let\pp@specialpagestyle\@empty%
+    \fi%
+  \else%
+    \let\pp@string\@empty%
+  \fi%
+  \ifx\pp@string\pp@ps@empty%
+    \ifHy@unicode%
+      \gdef\HyPL@thisLabel{\000\000}%
+    \else%
+      \gdef\HyPL@thisLabel{\000}%
+    \fi%
+  \else%
+    \expandafter\global\expandafter\let\expandafter\HyPL@thisLabel\csname pp@PL@\Roman{pp@PL@currentpage}\endcsname%
+  \fi%
+  \global\let\HyPL@LastType\relax%
+  \pp@backup@HyPL@EveryPage%
+  \ifx\pp@EoD\@empty%
+  \else%
+    \pp@attachPL%
+  \fi%
+  \stepcounter{pp@PL@currentpage}%
+}%
+}
+
+\let\pp@BoD\@empty
+\AtBeginDocument{\gdef\pp@BoD{true}}
+\BeforeClearDocument{%
+  \setcounter{pp@PL@pagenum}{\Hy@abspage}%
+  \addtocounter{pp@PL@pagenum}{1}%
+  \protected@write\@auxout{}{\string\gdef\string\pp@totpages{\thepp@PL@pagenum}}%
+}
+\newcommand{\pp@pagelabel}[2][]{% {pagenum}{pagelabel}
+  \ifx\pp@BoD\@empty%
+    \AtBeginDocument{\pp@pagelabel[#1]{#2}}%
+  \else%
+    \def\pp@string{#1}%
+    \ifx\pp@string\@empty%
+      \edef\pp@string{\value{pp@PL@currentpage}}%
+    \fi%
+    \ifnum1>\pp@string%
+      \PackageWarning{hypdvips}{Pagelabel `#2' for illegal page `#1' discarded.\MessageBreak}%
+    \else%
+      \ifnum\pp@totpages=0%
+        \pp@documentPL{\pp@string}{#2}%
+      \else%
+        \ifnum\pp@totpages<\pp@string%
+          \pp@attachmentPL{#1}{#2}%
+        \else%
+          \pp@documentPL{\pp@string}{#2}%
+        \fi%
+      \fi%
+    \fi%
+  \fi%
+}
+
+\let\pp@currentpagestyle\@empty
+\let\pp@backup@pagestyle\pagestyle
+\renewcommand{\pagestyle}[1]{%
+  \def\pp@currentpagestyle{#1}%
+  \pp@backup@pagestyle{#1}%
+  }
+
+\let\pp@specialpagestyle\@empty
+\let\pp@backup@thispagestyle\thispagestyle
+\renewcommand{\thispagestyle}[1]{%
+  \def\pp@specialpagestyle{#1}%
+  \pp@backup@thispagestyle{#1}%
+  }
+
+\AtEndDocument{%
+  \@ifundefined{pp@openaction}%
+    {
+    \ifpp@openmessage%
+      \ifpp@javascript%
+        \ifnum\value{pp@AttachmentID}>1%
+          \Hy@PutCatalog{/OpenAction << /Type /Action /S /JavaScript /JS pp.openmsg >>}%
+        \fi%
+      \fi%
+    \fi%
+    }
+    {
+    \ifpp@openmessage%
+      \ifnum\value{pp@AttachmentID}>1%
+        \ifpp@javascript%
+          \Hy@PutCatalog{/OpenAction << /Type /Action /S /JavaScript /JS pp.openmsg /Next <<\pp@openaction>> >>}%
+        \else%
+          \Hy@PutCatalog{/OpenAction <<\pp@openaction>>}%
+        \fi%
+      \else%
+        \Hy@PutCatalog{/OpenAction <<\pp@openaction>>}%
+      \fi%
+    \else%
+      \Hy@PutCatalog{/OpenAction <<\pp@openaction>>}%
+    \fi%
+    }
+}
+
+\renewcommand{\contentsline}[4]{%
+  \ifx\\#4\\%
+    \csname l@#1\endcsname{#2}{#3}%
+  \else
+    \ifcase\Hy@linktoc % none
+      \csname l@#1\endcsname{#2}{#3}%
+    \or % section
+      \csname l@#1\endcsname{%
+        \hyper@@link{}{#4}{#2}
+      }{#3}%
+    \or % page
+      \csname l@#1\endcsname{{#2}}{%
+        \hyper@@link{}{#4}{#3}
+      }%
+    \else % all
+      \csname l@#1\endcsname{%
+        \hyper@@link{}{#4}{#2}
+      }{%
+        \hyper@@link{}{#4}{#3}
+      }%
+    \fi
+  \fi
+}
+
+\edef\@backrefcolor{\@citecolor}
+\edef\@backrefbordercolor{\@citebordercolor}
+\long\def\pp@backref@callback#1#2#3{%
+  \edef\Hy@pstringDest{#3}%
+  \ifpp@pagebackref%
+    \def\pp@string{#1}%
+  \else%
+    \def\pp@string{#2}%
+  \fi%
+  \ifHy@draft%
+    \pp@string%
+  \else%
+    \pdfmark[\pp@string]{%
+      pdfmark=/ANN,%
+      linktype=backref,%
+      Subtype=/Link,%
+      AcroHighlight=\@pdfhighlight,%
+      Border=\@pdfborder,%
+      BorderStyle=\@pdfborderstyle,%
+      Color=\@backrefbordercolor,%
+      View={/\@pdfview \@pdfviewparams},%
+      Dest={\Hy@pstringDest}%
+      }%
+  \fi%
+  }
+
+\newif\ifpp@pagebackref
+\pp@pagebackreffalse
+\@ifundefined{backrefxxx}
+  {
+  }
+  {
+  \ifx\backrefxxx\page@backref
+    \pp@pagebackreftrue
+  \fi
+  \ifx\backrefxxx\hyper@page@backref
+    \pp@pagebackreftrue
+    \let\backrefxxx\pp@backref@callback
+  \fi
+  \ifx\backrefxxx\hyper@section@backref
+    \let\backrefxxx\pp@backref@callback
+  \fi
+  \ifHy@backref
+    \renewcommand*{\backref}[1]{}% for backref < 1.33 necessary
+  \fi
+  \newcounter{pp@backrefID}
+  \setcounter{pp@backrefID}{1}
+  \ifpp@detailedbr
+    \let\pp@backup@@cite\@cite
+    \def\@cite{%
+      \ifHy@draft%
+      \else%
+        \setlength{\pp@offset}{\the\baselineskip}%
+        \pp@SDictPS{/pdf@hoff -2 /pdf@voff \strip@pt\pp@offset\space pp.ptToBP pp.savecurrentpoint}%
+        \pp@SDictPS{mark /Dest (backref.\arabic{pp@backrefID}) cvn /View [/\@pdfview \@pdfviewparams] /DEST pdfmark}%
+    \fi%
+    \edef\pp@br@currentHref{backref.\arabic{pp@backrefID}}%
+    \stepcounter{pp@backrefID}%
+    \pp@backup@@cite%
+    }
+  \fi  
+  }
+
+\ifHy@draft
+  \def\HyPL@SetPageLabels{}
+\fi
+
+\let\pp@backup@Hy@backout\Hy@backout
+\newcommand{\pp@br@disable}{\let\Hy@backout\@gobble}
+\newcommand{\pp@br@enable}{\let\Hy@backout\pp@backup@Hy@backout}
+
+\ifpp@lofbr
+\else
+  \let\pp@backup@listoffigures\listoffigures%
+  \renewcommand{\listoffigures}{%
+    \pp@br@disable%
+    \pp@backup@listoffigures%
+    \pp@br@enable%
+    }
+\fi
+
+\ifpp@lotbr
+\else
+  \let\pp@backup@listoftables\listoftables%
+  \renewcommand{\listoftables}{%
+    \pp@br@disable%
+    \pp@backup@listoftables%
+    \pp@br@enable%
+    }
+\fi
+
+\ifpp@tocbr
+\else
+  \let\pp@backup@tableofcontents\tableofcontents%
+  \renewcommand{\tableofcontents}{%
+    \pp@br@disable%
+    \pp@backup@tableofcontents%
+    \pp@br@enable%
+    }
+\fi
+
+\@ifpackageloaded{subfigure}{%
+  \newcounter{pp@subcaptioncounter}
+  \renewcommand*{\@listsubcaptions}[1]{%
+    \@ifundefined{@captype}{}{%
+      \@ifundefined{ext@sub#1}{}{%
+        \let\pp@backup@@currentHref\@currentHref%
+        \setcounter{pp@subcaptioncounter}{1}%
+        \@for \sf@temp:=\@subfigcaptionlist \do {%
+          \ifx \@empty\sf@temp\relax \else
+            \edef\@currentHref{sub#1.\arabic{figure}.\arabic{pp@subcaptioncounter}}%
+            \stepcounter{pp@subcaptioncounter}%
+            \addcontentsline
+              {\@nameuse{ext@sub#1}}%
+              {sub#1}%
+              {\sf@temp}%
+          \fi}\let\@currentHref\pp@backup@@currentHref}}%
+    \gdef\@subfigcaptionlist{}}
+  }{}
+
+\ifpp@autoauthor
+  \let\pp@backup@author\author
+  \renewcommand{\author}[1]{%
+    \hypersetup{pdfauthor={#1}}%
+    \pp@backup@author{#1}%
+  }
+\fi
+
+\ifpp@autotitle
+  \let\pp@backup@title\title
+  \renewcommand{\title}[1]{%
+    \hypersetup{pdftitle={#1}}%
+    \pp@backup@title{#1}%
+  }
+\fi
+
+\def\pp@parent{parent}
+\newcounter{pp@id}
+\edef\@embeddedcolor{\@runcolor}
+\edef\@embeddedbordercolor{\@runbordercolor}
+\define@key[pp]{goto}{dest}{\pp@PSenc\pp@go@destination{#1}}
+\define@key[pp]{goto}{filename}{\ifnum\c@pp@id<1\pp@PSenc\pp@go@filename{#1}\else\PackageWarning{hypdvips}{Option `filename' cannot be used with option `id'.\MessageBreak Option `filename' discarded.\MessageBreak}\fi}
+\define@key[pp]{goto}{id}[]{\@ifundefined{pp@go@filename}{\setcounter{pp@id}{#1}\ifnum\c@pp@id=0\PackageWarning{hypdvips}{Illegal attachment ID `#1' discarded.\MessageBreak}\fi}{\PackageWarning{hypdvips}{Option `id' cannot be used with option `filename'.\MessageBreak Option `id' discarded.\MessageBreak}}}
+\define@boolkey[pp]{goto}[pp@]{newwindow}[true]{\ifx#1\@empty\else\lowercase{\def\pp@go@newwindow{#1}}\fi}
+\define@key[pp]{goto}{target}{\def\pp@go@target{#1}}
+\presetkeys[pp]{goto}{}{dest={[0 /Fit]}}
+\newcommand{\pp@goto}[2][]{% arguments: [options]{text}
+  \ifHy@draft%
+    #2%
+  \else%
+    \setcounter{pp@id}{-1}%
+    \let\pp@go@filename\@undefined%
+    \let\pp@go@target\@undefined%
+    \let\pp@go@newwindow\@undefined%
+    \setkeys[pp]{goto}{#1}%
+    \@ifundefined{pp@go@filename}%
+    {%
+    \ifnum\c@pp@id=0%
+      \nfss@text{\reset@font\bfseries ??}%
+    \fi%
+    \ifnum\c@pp@id<0%
+      \@ifundefined{pp@go@target}%
+      {%
+      \edef\Hy@pstringDest{\pp@go@destination}%
+      \pdfmark[#2]{%
+        pdfmark=/ANN,%
+        linktype=link,%
+        Subtype=/Link,%
+        AcroHighlight=\@pdfhighlight,%
+        Border=\@pdfborder,%
+        BorderStyle=\@pdfborderstyle,%
+        Color=\@linkbordercolor,%
+        Action={<<
+                /Type /Action
+                /S /GoTo
+                /D (\pp@go@destination) pp.dest
+                >>},%
+        }%
+      }%
+      {%
+      \edef\Hy@pstringDest{\pp@go@destination\space in <<\pp@go@target>>}%
+      \pdfmark[#2]{%
+        pdfmark=/ANN,%
+        linktype=embedded,%
+        Subtype=/Link,%
+        AcroHighlight=\@pdfhighlight,%
+        Border=\@pdfborder,%
+        BorderStyle=\@pdfborderstyle,%
+        Color=\@embeddedbordercolor,%
+        Action={<<
+                /Type /Action
+                /S /GoToE
+                /D (\pp@go@destination) pp.dest
+                \@ifundefined{pp@go@newwindow}{}{ /NewWindow \pp@go@newwindow}
+                /T <<\pp@go@target>>
+                >>},%
+        }%
+    }%
+    \fi%
+    \ifnum\c@pp@id>0%
+      \edef\pp@string{\csname pp@attachmenttype@\Roman{pp@id}\endcsname}%
+      \ifx\pp@string\pp@fa%
+        \@ifundefined{pp@go@target}%
+          {%
+          \edef\Hy@pstringDest{\pp@go@destination\space in \pp@fa\space (ID = \thepp@id)}%
+          }%
+          {%
+          \edef\Hy@pstringDest{\pp@go@destination\space in <<\pp@go@target>> of \pp@fa\space (ID = \thepp@id)}%
+          }%
+        \pdfmark[#2]{%
+        pdfmark=/ANN,%
+        linktype=embedded,%
+        Subtype=/Link,%
+        AcroHighlight=\@pdfhighlight,%
+        Border=\@pdfborder,%
+        BorderStyle=\@pdfborderstyle,%
+        Color=\@embeddedbordercolor,%
+        Action={<<
+                /Type /Action
+                /S /GoToE
+                /D (\pp@go@destination) pp.dest
+                \@ifundefined{pp@go@newwindow}{}{ /NewWindow \pp@go@newwindow}
+                /T <<
+                   /R /C
+                   /P \csname pp@attachmentpage@\Roman{pp@id}\endcsname\space
+                   /A (Attachment \thepp@id)
+                   \@ifundefined{pp@go@target}{}{/T <<\pp@go@target>>}
+                   >>
+                >>},%
+        }%
+      \else%
+        \ifx\pp@string\pp@ef%
+          \@ifundefined{pp@go@target}%
+            {%
+            \edef\Hy@pstringDest{\pp@go@destination\space in \pp@ef\space (ID = \thepp@id)}%
+            }%
+            {%
+            \edef\Hy@pstringDest{\pp@go@destination\space in <<\pp@go@target>> of \pp@ef\space (ID = \thepp@id)}%
+            }%
+          \pdfmark[#2]{%
+          pdfmark=/ANN,%
+          linktype=embedded,%
+          Subtype=/Link,%
+          AcroHighlight=\@pdfhighlight,%
+          Border=\@pdfborder,%
+          BorderStyle=\@pdfborderstyle,%
+          Color=\@embeddedbordercolor,%
+          Action={<<
+                  /Type /Action
+                  /S /GoToE
+                  /D (\pp@go@destination) pp.dest
+                  \@ifundefined{pp@go@newwindow}{}{ /NewWindow \pp@go@newwindow}
+                  /T <<
+                     /R /C
+                     /N (Attachment \thepp@id)
+                     \@ifundefined{pp@go@target}{}{/T <<\pp@go@target>>}
+                     >>
+                  >>},%
+          }%
+        \else%
+          \nfss@text{\reset@font\bfseries ??}%
+          \PackageWarning{hypdvips}{GoToE-link to unknown attachment (ID = \thepp@id) discarded.\MessageBreak}%
+        \fi%
+      \fi%
+    \fi%
+    }%
+    {%
+    \@ifundefined{pp@go@target}%
+      {%
+      \edef\Hy@pstringDest{\pp@go@destination\space in file `\pp@go@filename'}%
+      \pdfmark[#2]{%
+        pdfmark=/ANN,%
+        linktype=file,%
+        Subtype=/Link,%
+        AcroHighlight=\@pdfhighlight,%
+        Border=\@pdfborder,%
+        BorderStyle=\@pdfborderstyle,%
+        Color=\@filebordercolor,%
+        Action={<<
+                /Type /Action
+                /S /GoToR
+                /F (\pp@go@filename)
+                /D (\pp@go@destination) pp.dest
+                \@ifundefined{pp@go@newwindow}{}{ /NewWindow \pp@go@newwindow}
+                >>},%
+        }%
+      }%
+      {%
+      \edef\Hy@pstringDest{\pp@go@destination\space in <<\pp@go@target>> of file `\pp@go@filename'}%
+      \pdfmark[#2]{%
+        pdfmark=/ANN,%
+        linktype=file,%
+        Subtype=/Link,%
+        AcroHighlight=\@pdfhighlight,%
+        Border=\@pdfborder,%
+        BorderStyle=\@pdfborderstyle,%
+        Color=\@filebordercolor,%
+        Action={<<
+                /Type /Action
+                /S /GoToE
+                /F (\pp@go@filename)
+                /D (\pp@go@destination) pp.dest
+                \@ifundefined{pp@go@newwindow}{}{ /NewWindow \pp@go@newwindow}
+                /T <<\pp@go@target>>
+                >>},%
+        }%
+      }%
+    }%
+  \fi%
+}
+
+\newif\ifpp@stripped
+\def\pp@compare#1#2{\if#1}
+\def\pp@afterslash#1/#2{#2}
+\def\pp@beforeslash#1/#2{#1}
+\newcommand{\pp@strippathdef}[2]{% arguments: filename (=result), path
+  \pp@strippedfalse%
+  \edef\pp@string{#2/\relax}%
+  \loop%
+    \edef\pp@result{\pp@string}%
+    \edef\pp@string{\expandafter\pp@afterslash\pp@string}%
+    \pp@compare{\pp@string}\relax%
+    \else%
+  \pp@strippedtrue%
+  \repeat%
+  \edef#1{\expandafter\pp@beforeslash\pp@result}%
+}
+
+\define@key[pp]{@loaformat}{name}[\pp@string]{\def\pp@loaname{#1}}
+\define@key[pp]{@loaformat}{description}[]{\def\pp@loadesc{#1}}
+\presetkeys[pp]{@loaformat}{}{description=,name=\pp@string}
+\newcommand{\pp@loaformat}[4]{% arguments: {attachment_id}{attachment_type}{filename}{options}
+  \pp@strippathdef\pp@string{#3}%
+  \setkeys*[pp]{@loaformat}{#4}%
+  \ifx\pp@loadesc\@empty%
+    \ifx\pp@loaname\@empty%
+      \pp@pdf@unknown%
+    \else%
+      {\ttfamily\pp@loaname}%
+    \fi%
+  \else%
+    \pp@loadesc%
+  \fi%
+  \pp@attachmentbuttons{#1}{#2}%
+}
+
+\let\l@FileAttachment\l@figure%
+\let\l@EmbeddedFile\l@figure%
+\newcommand{\listofattachments}{%
+  \section*{\pp@loastring}%
+    \@mkboth{%
+        \MakeUppercase\pp@loastring}%
+       {\MakeUppercase\pp@loastring}%
+  \@starttoc{loa}%
+}
+
+\ifpp@loabr
+\else
+  \let\pp@backup@listofattachments\listofattachments%
+  \renewcommand{\listofattachments}{%
+    \pp@br@disable%
+    \pp@backup@listofattachments%
+    \pp@br@enable%
+    }
+\fi
+
+\newcommand{\pp@jsbutton}[3]{% arguments: {caption}{color}{code}
+  \ifHy@draft%
+    #1%
+  \else%
+    \ifpp@javascript%
+    \def\Hy@pstringDest{<JavaScript\noexpand™ language code>}%
+      \pdfmark[#1]{%
+        pdfmark=/ANN,%
+        linktype=#2,%
+        Subtype=/Link,%
+        AcroHighlight=\@pdfhighlight,%
+        Border=\@pdfborder,%
+        BorderStyle=\@pdfborderstyle,%
+        Color={\csname @#2bordercolor\endcsname},%
+        Action={<< /Type /Action /S /JavaScript /JS (#3) >>},%
+        }%
+    \else%
+      #1%
+    \fi%
+  \fi%
+}
+
+\pp@PScatcodes
+\catcode`\#=6 %
+\newcommand{\pp@runattachment}[2]{% arguments: {attachment_id}{text}
+  \ifnum#1>0%
+    \setcounter{pp@id}{#1}%
+    \edef\pp@string{\csname pp@attachmenttype@\Roman{pp@id}\endcsname}%
+    \ifx\pp@string\pp@ef%
+      \pp@jsbutton{#2}{embedded}{this.exportDataObject \string\( \string{cName: "Attachment #1", nLaunch: 2\string} \string\);}%
+    \else%
+      \ifx\pp@string\pp@fa%
+        \PackageWarning{hypdvips}{Attachment (ID = #1) is a FileAttachment-annotation,\MessageBreak
+                                  which cannot be launched via JavaScript\noexpand™ language\MessageBreak
+                                  code. Use the \string\embedfile\space command to create an\MessageBreak
+                                  embedded file instead.\MessageBreak}%
+      \else%
+        \PackageWarning{hypdvips}{Attachment (ID = \thepp@id) unknown.\MessageBreak}%
+        \nfss@text{\reset@font\bfseries ??}
+      \fi%
+    \fi%
+  \else%
+    \PackageWarning{hypdvips}{Illegal attachment ID `#1' discarded.\MessageBreak}%
+    \nfss@text{\reset@font\bfseries ??}
+  \fi%  
+}
+
+\newcommand{\pp@faibutton}[1]{% arguments: {attachment_id}
+  \ifnum#1>0%
+    \pp@jsbutton{\pp@infostring}{menu}
+    {
+    for \string\(var pp_i = 0; pp_i < this.numPages; pp_i++ \string\) {pp_ann = this.getAnnot\string\(pp_i, "Attachment #1"\string\);
+    if \string\(pp_ann != null\string\) pp_i = this.numPages };
+    var pp_props = pp_ann.getProps\string\(\string\);
+    var pp_pl = this.getPageLabel\string\(pp_ann.page\string\);
+    var pp_page = pp_ann.page + 1;
+    var pp_pagestr = "";
+    pp_pagestr += pp_page;
+    var pp_crlf = "\string\\015\string\\012";
+    var pp_str = "";
+    if \string\(pp_ann.author != null\string\) pp_str += "\pp@pdf@author" + pp_ann.author + pp_crlf;
+    if \string\(pp_ann.subject != null\string\) pp_str += "\pp@pdf@subject" + pp_ann.subject + pp_crlf;
+    if \string\(pp_ann.creationDate != null\string\) pp_str += "\pp@pdf@crd" + util.printd\string\(2, pp_ann.creationDate\string\) + pp_crlf;
+    if \string\(pp_ann.modDate != null\string\) pp_str += "\pp@pdf@mod" + util.printd\string\(2, pp_ann.modDate\string\) + pp_crlf;
+    pp_str += "\pp@pdf@lid";
+    if \string\(pp_pl != pp_pagestr\string\) pp_str += "\pp@pdf@pl"; else pp_str += "\pp@pdf@nopl";
+    app.alert\string\({cTitle: "\pp@pdf@info", nIcon: 3, cMsg: pp_str}\string\);
+    pp_ann = null;
+    }%
+  \fi%
+}
+
+\newcommand{\pp@efibutton}[1]{% arguments: {attachment_id}
+  \ifnum#1>0%
+    \pp@jsbutton{\pp@infostring}{menu}
+    {
+    var pp_emb = this.getDataObject\string\("Attachment #1"\string\);
+    var pp_crlf = "\string\\015\string\\012";
+    var pp_str = "";
+    if \string\(pp_emb.path != null\string\) pp_str += "\pp@pdf@name" + pp_emb.path + pp_crlf;
+    if \string\(pp_emb.size != null\string\) pp_str += "\pp@pdf@size" + pp_emb.size + "\pp@pdf@bytes" + pp_crlf;
+    if \string\(pp_emb.MIMEType != null\string\) pp_str += "\pp@pdf@mime" + pp_emb.MIMEType + pp_crlf;
+    if \string\(pp_emb.description != null\string\) pp_str += "\pp@pdf@desc" + pp_emb.description + pp_crlf;
+    if \string\(pp_emb.creationDate != null\string\) pp_str += "\pp@pdf@crd" + util.printd\string\(2, pp_emb.creationDate\string\) + pp_crlf;
+    if \string\(pp_emb.modDate != null\string\) pp_str += "\pp@pdf@mod" + util.printd\string\(2, pp_emb.modDate\string\) + pp_crlf;
+    pp_str += "\pp@pdf@lid" + "\pp@pdf@tab";
+    app.alert\string\({cTitle: "\pp@pdf@info", nIcon: 3, cMsg: pp_str}\string\);
+    pp_emb = null;
+    }%
+  \fi%
+}
+
+\newcommand{\pp@savebutton}[1]{% arguments: {attachment_id}
+  \ifnum#1>0%
+    \pp@jsbutton{\pp@savestring}{menu}{this.exportDataObject \string\( \string{cName: "Attachment #1", nLaunch: 0\string} \string\);}%
+  \fi%
+}
+
+\newcommand{\pp@launchbutton}[1]{% arguments: {attachment_id}
+  \ifnum#1>0%
+    \pp@jsbutton{\pp@launchstring}{menu}{this.exportDataObject \string\( \string{cName: "Attachment #1", nLaunch: 2\string} \string\);}%
+  \fi%
+}
+\pp@TeXcatcodes
+
+\newcommand{\pp@tabbutton}{%
+  \def\Hy@pstringDest{<Named action: ShowHideFileAttachment>}%
+  \Acrobatmenu{ShowHideFileAttachment}{\pp@tabstring}%
+}
+
+\newcommand{\pp@attachmentbuttons}[2]{% arguments: {attachment_id}{attachment_type}
+    \pp@optionsstring%
+    \ifpp@javascript%
+      \def\pp@string{#2}%
+      \ifx\pp@string\pp@ef%
+        \pp@efibutton{#1},~\pp@tabbutton,~\pp@savebutton{#1},~\pp@launchbutton{#1}%
+      \else%
+        \pp@faibutton{#1},~\pp@tabbutton%
+      \fi%
+    \else
+      \pp@tabbutton%
+    \fi%      
+}
+
+\def\Acrobatmenu#1#2{%
+  \Hy@Acrobatmenu{#1}{#2}{%
+    \pp@PSenc\pp@menustring{#1}%
+    \pdfmark[{#2}]{%
+      linktype=menu,%
+      pdfmark=/ANN,%
+      AcroHighlight=\@pdfhighlight,%
+      Border=\@pdfborder,%
+      BorderStyle=\@pdfborderstyle,%
+      Color=\@menubordercolor,%
+      Action={<< /Subtype /Named /N (\pp@menustring) cvn >>},%
+      Subtype=/Link,%
+      PDFAFlags=4%
+    }%
+  }%
+}
+
+\edef\@tablenotecolor{\@linkcolor}
+\edef\@tablenotebordercolor{\@linkbordercolor}
+\@ifpackageloaded{threeparttable}{
+\ifHy@draft
+\else
+  \ifpp@hypertnotes
+    \newcommand{\pp@tnotedest}[1]{%
+      \def\pp@string{#1}%
+      \@onelevel@sanitize\pp@string%
+      \pdfmark{%
+        pdfmark=/DEST,%
+        linktype=anchor,%
+        View={/\@pdfview \@pdfviewparams},%
+        Dest={\@currentHlabel.note: \pp@string}%
+        }%
+      }%
+    \renewcommand{\tnote}[1]{%
+      \protect\TPToverlap{\textsuperscript{%
+        \def\pp@string{tablenotes}%
+        \ifx\@currenvir\pp@string%
+          \TPTtagStyle{#1}%
+        \else%
+          \def\pp@string{#1}%
+          \@onelevel@sanitize\pp@string%
+          \pdfmark[\TPTtagStyle{#1}]{%
+            pdfmark=/ANN,%
+            linktype=tablenote,%
+            Subtype=/Link,%
+            AcroHighlight=\@pdfhighlight,%
+            Border=\@pdfborder,%
+            BorderStyle=\@pdfborderstyle,%
+            Color=\@tablenotebordercolor,%
+            View={/\@pdfview \@pdfviewparams},%
+            Dest={\@currentHlabel.note: \pp@string}%
+            }%
+        \fi}}%
+      }
+    \g@addto@macro{\TPTdoTablenotes}{%
+      \let\pp@backup@item\item%
+      \renewcommand\item[1][]{%
+        \par%
+        \pp@SDictPS{/pdf@hoff -2 /pdf@voff 2 pp.savecurrentpoint}%
+        \pp@tnotedest{#1}%
+        \pp@backup@item[#1]%
+        }%
+      }
+    \def\TPT@doparanotes{\par
+       \prevdepth\z@ \TPT@hsize
+       \TPTnoteSettings
+       \parindent\z@ \pretolerance 8
+       \linepenalty 200
+       \renewcommand\item[1][]{\relax\ifhmode \begingroup
+           \unskip
+           \advance\hsize 10em % \hsize is scratch register, based on real hsize
+           \penalty -45 \hskip\z@\@plus\hsize \penalty-19
+           \hskip .15\hsize \penalty 9999 \hskip-.15\hsize
+           \hskip .01\hsize\@plus-\hsize\@minus.01\hsize 
+           \hskip 1em\@plus .3em
+          \endgroup\fi
+          \hskip0pt%
+          \pp@SDictPS{/pdf@hoff -2 /pdf@voff \f@size\space 3 add pp.savecurrentpoint}%
+          \pp@tnotedest{##1}%
+          \tnote{##1}\,\ignorespaces}%
+       \let\TPToverlap\relax
+       \def\endtablenotes{\par}%
+    }
+  \fi
+\fi
+}{}
+
+\global\let\pp@backup@@makecol\@makecol
+\gdef\@makecol{%
+  \setbox\@cclv\vbox{\unvbox\@cclv\pp@SDictPS{pp.eop}}%
+  \pp@backup@@makecol%
+  }
+
+\global\let\pp@backup@@startcolumn\@startcolumn
+\gdef\@startcolumn{%
+  \pp@SDictPS{pp.globaldict /pp.brokenlinkrect known \string{pp.continuetracing\string} if}%
+  \pp@backup@@startcolumn%
+  }
+
+%%
+%% Exported commands:
+%%
+\providecommand{\attachfile}[2][]{\pp@attachfile[#1]{#2}}% arguments: [options]{filename}
+\providecommand{\backrefbordercolor}[1]{\gdef\@backrefbordercolor{#1}}% arguments: {R G B}
+\providecommand{\backrefcolor}[1]{\gdef\@backrefcolor{#1}}% arguments: {color}
+\providecommand{\bmstyle}[2]{\bookmarkdefinestyle{#1}{#2}}% arguments: {level}{style}
+\providecommand{\embeddedbordercolor}[1]{\gdef\@embeddedbordercolor{#1}}% arguments: {R G B}
+\providecommand{\embeddedcolor}[1]{\gdef\@embeddedcolor{#1}}% arguments: {color}
+\providecommand{\embedfile}[2][]{\pp@embedfile[#1]{#2}}% arguments: [options]{filename}
+\providecommand{\evenboxesstring}[1]{\gdef\pp@ABC{#1}}% arguments: {string}
+\providecommand{\file}[2]{\pp@file{#1}{#2}}% arguments: {filename}{description}
+\providecommand{\footnotebordercolor}[1]{\gdef\@footnotebordercolor{#1}}% arguments: {R G B}
+\providecommand{\footnotecolor}[1]{\gdef\@footnotecolor{#1}}% arguments: {color}
+\providecommand{\goto}[2][]{\pp@goto[#1]{#2}}% arguments: [options]{text}
+\providecommand{\gotoparent}[2]{\pp@goto[dest={#1},target=/R/P]{#2}}% arguments: {destination}{text}
+\providecommand{\loaformat}[4]{\pp@loaformat{#1}{#2}{#3}{#4}}% arguments: {attachment_id}{attachment_type}{filename}{options}
+\providecommand{\odest}[2]{\pp@odest{#1}{#2}}% arguments: {name}{offset}
+\providecommand{\openaction}[1]{\def\pp@openaction{#1}}% arguments: {action}
+\providecommand{\pagelabel}[2][]{\pp@pagelabel[#1]{#2}}% {pagenumber}{pagelabel}
+\providecommand{\runattachment}[2]{\pp@runattachment{#1}{#2}}% arguments: {attachment_id}{text}
+\providecommand{\tablenotebordercolor}[1]{\gdef\@tablenotebordercolor{#1}}% arguments: {R G B}
+\providecommand{\tablenotecolor}[1]{\gdef\@tablenotecolor{#1}}% arguments: {color}
+%%
+%% End of file `hypdvips.sty'.
+%%

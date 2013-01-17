@@ -1,0 +1,131 @@
+%
+% mathlig.tex
+%
+% (c) 2001 Jules Bean <jules@jellybean.co.uk>
+% Permission is granted to freely use, copy, and distribute
+% without restriction. Permission is also granted to distribute
+% modified versions and incorporate into your own macro packages
+% if a brief acknowledgement is given.
+%
+% Version 1.0  11 May 2001
+
+% Define 'mathmode' ligatures, as in 
+%
+%\mathlig{->}{\rightarrow}
+%\mathlig{<-}{\leftarrow}
+%\mathlig{<->}{\leftrightarrow}
+%
+% Works even if they have common prefixes (takes the longest match,
+% then backtracks).
+%
+% Can be used to create ligatures even if the second
+% and subsequent characters have weird catcodes, but I don't recommend 
+% it.
+
+\count255\catcode`@
+\catcode`@=11
+\chardef\mathlig@atcode\count255
+
+% Let or def an 'active' version of a token.  Thanks to Donald
+% Arseneau and groups.google.com
+\def\actively#1#2{\begingroup\uccode`\~=`#2\relax\uppercase{\endgroup#1~}}
+% Eat the next token, and then pass control to mathlig@next@cmd
+\def\mathlig@gobble{\afterassignment\mathlig@next@cmd\let\mathlig@next= }
+% Used to delimit delimited arguments, and ifx tests for emptyness.
+\def\mathlig@delim{\mathlig@delim}
+% Some macros to help dealing with 'computed names' (csnames).
+% Just like def, but first parameter is evaluated as a csname
+\def\mathlig@defcs#1{\expandafter\def\csname#1\endcsname}
+% A version of \let <normal cs><computed cs>
+\def\mathlig@let@cs#1#2{\expandafter\let\expandafter#1\csname#2\endcsname}
+% Maintain a 'list' of tokens as a macro which expands to them
+\def\mathlig@appendcs#1#2{\expandafter\edef\csname#1\endcsname{\csname#1\endcsname#2}}
+
+% The main externally visible macro. 
+% Defines '#1' as a 'ligature' to expand to #2
+% First uses \mathlig@checklig to make sure that all initial segments of
+% #1 as set up as ligatures.
+% Then sets the ligature #1 to expand to #2.
+\def\mathlig#1#2{\mathlig@checklig#1\mathlig@end\mathlig@defcs{mathlig@back@#1}{#2}\ignorespaces}
+
+% All the @check macros should be idempotent: they set up the definitions
+% only if it hasn't already been done.
+
+%Check #1#2 can be a ligature:
+% Check #1 is math-active.
+% If not, save the mathcode, set the macros #1
+%Now check the suffix tables with \checkrest
+\def\mathlig@checklig#1#2\mathlig@end{%
+ \expandafter\ifx\csname mathlig@forw@#1\endcsname\relax
+ \expandafter\mathchardef\csname mathlig@back@#1\endcsname=\mathcode`#1%
+ \mathcode`#1"8000\actively\def#1{\csname mathlig@look@#1\endcsname}%
+ \mathlig@dolig#1\mathlig@delim
+\fi
+\mathlig@checksuffix#1#2\mathlig@end
+}
+
+%Two-part macro.
+%Check suffix tables. If #2 is empty, no suffix!
+%Otherwise, we make sure #2 is a valid suffix for #1,
+%then recurse for #3 on #1#2
+\def\mathlig@checksuffix#1#2\mathlig@end{%
+\ifx\mathlig@delim#2\mathlig@delim\relax\else\mathlig@checksuffix@{#1}#2\mathlig@end\fi
+}
+\def\mathlig@checksuffix@#1#2#3\mathlig@end{%
+\expandafter\ifx\csname mathlig@forw@#1#2\endcsname\relax\mathlig@dosuffix{#1}{#2}\fi
+\mathlig@checksuffix{#1#2}#3\mathlig@end
+}
+
+% The do macros should not be called more than once for a given ligature.
+
+% Add #2 to the list of valid suffixes for #1
+% Then make the ligature for #1#2 one which only backtracks, for now
+\def\mathlig@dosuffix#1#2{%
+\mathlig@appendcs{mathlig@toks@#1}{#2}%
+\mathlig@dolig{#1}{#2}\mathlig@delim
+}
+
+% Setup #1#2 so that ligatures beginning #1#2 work.
+% Such ligatures will look at what's coming next (in case
+% of a longer ligature) and, failing that, 
+% backtrack to just #1
+
+\def\mathlig@dolig#1#2\mathlig@delim{%
+%The look macro just \futurelets what's coming up and
+%then passes control to forw
+ \mathlig@defcs{mathlig@look@#1#2}{%
+ \mathlig@let@cs\mathlig@next{mathlig@forw@#1#2}\futurelet\mathlig@next@tok\mathlig@next}%
+%The forw macro uses chck to try all possible suffixes, passing control
+%either to one of those, or to the back macro
+ \mathlig@defcs{mathlig@forw@#1#2}{%
+  \mathlig@let@cs\mathlig@next{mathlig@back@#1#2}%
+  \mathlig@let@cs\checker{mathlig@chck@#1#2}%
+  \mathlig@let@cs\mathligtoks{mathlig@toks@#1#2}%
+  \expandafter\ifx\expandafter\mathlig@delim\mathligtoks\mathlig@delim\relax\else
+  \expandafter\checker\mathligtoks\mathlig@delim\fi
+  \mathlig@next
+ }%
+%The toks macro just stores the suffixes
+ \mathlig@defcs{mathlig@toks@#1#2}{}%
+%The chk macro goes through the suffixes one by one
+%tail recursing until it runs out, or finds one.
+ \mathlig@defcs{mathlig@chck@#1#2}##1##2\mathlig@delim{%
+  %\message{Lig so far '#1#2', checking for '##1'}%
+  \ifx\mathlig@next@tok##1%
+   \mathlig@let@cs\mathlig@next@cmd{mathlig@look@#1#2##1}\let\mathlig@next\mathlig@gobble
+  \fi 
+  \ifx\mathlig@delim##2\mathlig@delim\relax\else
+   \csname mathlig@chck@#1#2\endcsname##2\mathlig@delim
+  \fi
+ }%
+%
+% The back macro, defined only if this is a ligature of at least
+% two characters, is a default fallback: go back to the previous char.
+% (If this is a ligature of only one character, the mathcode will have 
+% been saved and set as the fallback elsewhere)
+ \ifx\mathlig@delim#2\mathlig@delim\else
+  \mathlig@defcs{mathlig@back@#1#2}{\csname mathlig@back@#1\endcsname #2}%
+ \fi
+}%
+
+\catcode`@\mathlig@atcode

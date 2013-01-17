@@ -1,0 +1,714 @@
+%% $Id: pst-fp.tex 259 2010-01-17 09:51:50Z herbert $
+%%
+%%
+%% This is file `pst-fp.tex',
+%%
+%% IMPORTANT NOTICE:
+%%
+%% Package `pst-fp.tex'
+%%
+%% Herbert Voss <hvoss@tug.org>
+%% stolen from the fp package by Michael Mehlich
+%%
+%% This program can be redistributed and/or modified under the terms
+%% of the LaTeX Project Public License Distributed from CTAN archives
+%% in directory macros/latex/base/lppl.txt.
+%%
+%% DESCRIPTION:
+%%   `pst-fp' is a PSTricks related package for a division, 
+%%    multiplication and addition
+%%
+\csname PSTFPloaded\endcsname
+\let\PSTFPloaded\endinput
+%
+% Requires some packages
+\ifx\PSTricksLoaded\endinput\else\input pstricks \fi
+%
+\def\fileversion{0.05}
+\def\filedate{2010/01/17}
+\message{`pst-fp' v\fileversion, \filedate\space (hv)}
+%
+\edef\PstAtCode{\the\catcode`\@} \catcode`\@=11\relax
+
+%fixed point arithmetic with values between (including)
+%      -999999999999999999.999999999999999999
+% and  +999999999999999999.999999999999999999
+
+\def\pstFPadd#1#2#3{\pstFP@callc\pstFP@add#1{#2}{#3}+\relax} % #1 := #2+#3
+\def\pstFPsub#1#2#3{\pstFP@callc\pstFP@add#1{#2}{-#3}-\relax}% #1 := #2-#3
+\def\pstFPmul#1#2#3{\pstFP@callc\pstFP@mul#1{#2}{#3}}        % #1 := #2*#3
+\def\pstFPdiv#1#2#3{\pstFP@callc\pstFP@div#1{#2}{#3}}        % #1 := #2/#3
+
+\def\pst@int#1{\expandafter\pst@@int#1..\@nil}
+\def\pst@@int#1.#2.\@nil{#1}
+\def\pst@Int#1{%
+  \@tempdima=#1\relax%
+  \expandafter\pst@@Int\the\@tempdima\@nil}
+\def\pst@@Int#1.#2\@nil{#1}
+
+%
+\def\pstFPMul#1#2#3{\pstFP@callc\pstFP@mul#1{#2}{#3}%        % #1 := int(#2/#3)
+  \edef#1{\pst@int{#1}}}%
+\def\pstFPDiv#1#2#3{\pstFP@callc\pstFP@div#1{#2}{#3}%        % #1 := int(#2/#3)
+  \edef#1{\pst@int{#1}}}%
+\def\pstFPstripZeros#1#2{\pst@dimm=#1pt\relax \edef#2{\strip@pt\pst@dimm}}
+%
+\countdef\pstFP@actcounter=10 % register 0 for counter
+\ifnum\pstFP@actcounter<60\relax \pstFP@actcounter=60\fi
+
+\newcount\pstFP@xs %sign of 1st value
+\newcount\pstFP@xia%integer part of 1st value
+\newcount\pstFP@xib%integer part of 1st value
+\newcount\pstFP@xfa%fractional part of 1st value
+\newcount\pstFP@xfb%fractional part of 1st value
+
+\countdef\pstFP@ys=5 %sign of 2nd value
+\countdef\pstFP@yia=6%integer part of 2nd value
+\countdef\pstFP@yib=7%integer part of 2nd value
+\countdef\pstFP@yfa=8%fractional part of 2nd value
+\countdef\pstFP@yfb=9%fractional part of 2nd value
+
+\countdef\pstFP@xk=10  %registers for splitting 1st value
+\countdef\pstFP@xl=11
+\countdef\pstFP@xm=12
+\countdef\pstFP@xn=13
+\countdef\pstFP@xo=14
+\countdef\pstFP@xp=15
+\countdef\pstFP@xq=16
+\countdef\pstFP@xr=17
+\countdef\pstFP@xz=18
+\countdef\pstFP@xt=19
+\countdef\pstFP@xu=20
+\countdef\pstFP@xv=21
+
+\countdef\pstFP@yk=22 %registers for splitting 2nd value
+\countdef\pstFP@yl=23
+\countdef\pstFP@ym=24
+\countdef\pstFP@yn=25
+\countdef\pstFP@yo=26
+\countdef\pstFP@yp=27
+\countdef\pstFP@yq=28
+\countdef\pstFP@yr=29
+\countdef\pstFP@yz=30
+\countdef\pstFP@yt=31
+\countdef\pstFP@yu=32
+\countdef\pstFP@yv=33
+
+\newcount\pstFP@rega   %auxiliary registers
+\newcount\pstFP@regb
+\countdef\pstFP@regc=36
+\countdef\pstFP@regd=37
+\countdef\pstFP@rege=38
+
+\countdef\pstFP@rs=39 %result registers
+\countdef\pstFP@ria=40
+\countdef\pstFP@rib=41
+\countdef\pstFP@rfa=42
+\countdef\pstFP@rfb=43
+
+\newcount\pstFP@regs    %local auxiliary registers
+\countdef\pstFP@count=45
+\countdef\pstFP@res=46
+\countdef\pstFP@shift=47
+\newcount\pstFP@times
+\countdef\pstFP@prod=49
+
+%auxiliary macros which may be used in all of the following macros
+\newif\ifpstFP@test
+
+\def\pstFP@ignorenext#1{}
+\def\pstFP@first#1#2\relax{#1}
+\def\pstFP@swallow#1\relax{}
+%
+\def\ifpstFP@zero#1{%
+  \ifnum%
+    \expandafter\ifnum\csname pstFP@#1ia\endcsname=0 0\else1\fi%
+    \expandafter\ifnum\csname pstFP@#1ib\endcsname=0 0\else1\fi%
+    \expandafter\ifnum\csname pstFP@#1fa\endcsname=0 0\else1\fi%
+    \expandafter\ifnum\csname pstFP@#1fb\endcsname=0 0\else1\fi%
+    =0\relax%
+}
+%
+%read value
+%
+\def\pstFP@correctintcounter#1\relax{%
+  {\edef\pstFP@tmp{#1}%
+   \pstFP@count=0\relax%
+   \loop%
+     \edef\pstFP@tmpa{\expandafter\pstFP@first\pstFP@tmp\noexpand\relax}%
+     \expandafter\ifx\pstFP@tmpa0\relax%
+        \advance\pstFP@count1\relax%
+        \edef\pstFP@tmp{\expandafter\pstFP@ignorenext\pstFP@tmp}%
+     \repeat%
+   \ifnum\pstFP@count>18\relax \typeout{>>>> Overflow}\fi%
+   \expandafter\if!\pstFP@tmp!%
+     \advance\pstFP@count-18\relax%
+     \pstFP@count=-\pstFP@count%
+     \loop%
+       \ifnum\pstFP@count>0\relax%
+          \pstFP@regc=\pstFP@rega%
+	  \divide\pstFP@rega10\relax\multiply\pstFP@rega10\relax%
+	  \advance\pstFP@regc-\pstFP@rega\multiply\pstFP@regc100000000\relax%
+	  \divide\pstFP@rega10\relax%
+	  \divide\pstFP@regb10\relax\advance\pstFP@regb\pstFP@regc%
+	  \advance\pstFP@count-1\relax%
+       \repeat%
+     \global\pstFP@rega=\pstFP@rega%
+     \global\pstFP@regb=\pstFP@regb%
+   \else%
+     \typeout{>>>>Number too big}%
+   \fi%
+  }%
+}
+\def\pstFP@@setintcounter#1#2#3#4#5#6#7#8#9{%
+  \pstFP@regb=#1#2#3#4#5#6#7#8#9\relax%
+  \pstFP@correctintcounter%
+}
+\def\pstFP@setintcounter#1#2#3#4#5#6#7#8#9{%
+  \pstFP@rega=#1#2#3#4#5#6#7#8#9\relax%
+  \pstFP@@setintcounter%
+}
+
+\def\pstFP@@setfractcounter#1#2#3#4#5#6#7#8#9{%
+  \pstFP@regb=#1#2#3#4#5#6#7#8#9\relax%
+  \pstFP@swallow%
+}
+\def\pstFP@setfractcounter#1#2#3#4#5#6#7#8#9{%
+  \pstFP@rega=#1#2#3#4#5#6#7#8#9\relax%
+  \pstFP@@setfractcounter%
+}
+
+\def\pstFP@getsign#1\relax{%
+  {\pstFP@regs=1\relax%
+   \edef\pstFP@tmp{#1}%
+   \loop%
+     \edef\pstFP@tmpa{\expandafter\pstFP@first\pstFP@tmp\noexpand\relax}%
+     \expandafter\ifx\pstFP@tmpa-\relax%
+        \multiply\pstFP@regs-1\relax%
+     \fi%
+     \ifnum\expandafter\ifx\pstFP@tmpa-1\else0\fi\expandafter\ifx\pstFP@tmpa+1\else0\fi>0%
+        \edef\pstFP@tmp{\expandafter\pstFP@ignorenext\pstFP@tmp}%
+     \repeat%
+   \global\let\pstFP@tmp\pstFP@tmp%
+   \global\pstFP@regs=\pstFP@regs%
+  }%
+}
+
+\def\pstFP@removeleadingzeros#1\relax{%
+  {\edef\pstFP@tmp{#1}%
+   \loop%
+     \edef\pstFP@tmpa{\expandafter\pstFP@first\pstFP@tmp\noexpand\relax}%
+     \expandafter\ifx\pstFP@tmpa0\relax%
+       \edef\pstFP@tmp{\expandafter\pstFP@ignorenext\pstFP@tmp}%
+     \repeat%
+   \global\let\pstFP@tmp\pstFP@tmp%
+  }%
+}
+
+\newif\ifpstFP@nonstop
+\def\pstFP@strip#1{%
+  {\edef\pstFP@tmp{#1}%
+   \edef\pstFP@tmpb{}%
+   \ifx\pstFP@tmp\@empty\else%
+     \pstFP@nonstoptrue%
+     \loop%
+       \edef\pstFP@tmpa{\expandafter\pstFP@first\pstFP@tmp\noexpand\relax}%
+       \expandafter\ifx\pstFP@tmpa-\relax\edef\pstFP@tmpb{\pstFP@tmpb\pstFP@tmpa}\else%
+       \expandafter\ifx\pstFP@tmpa+\relax\edef\pstFP@tmpb{\pstFP@tmpb\pstFP@tmpa}\else%
+       \expandafter\ifx\pstFP@tmpa0\relax\edef\pstFP@tmpb{\pstFP@tmpb\pstFP@tmpa}\else%
+       \expandafter\ifx\pstFP@tmpa1\relax\edef\pstFP@tmpb{\pstFP@tmpb\pstFP@tmpa}\else%
+       \expandafter\ifx\pstFP@tmpa2\relax\edef\pstFP@tmpb{\pstFP@tmpb\pstFP@tmpa}\else%
+       \expandafter\ifx\pstFP@tmpa3\relax\edef\pstFP@tmpb{\pstFP@tmpb\pstFP@tmpa}\else%
+       \expandafter\ifx\pstFP@tmpa4\relax\edef\pstFP@tmpb{\pstFP@tmpb\pstFP@tmpa}\else%
+       \expandafter\ifx\pstFP@tmpa5\relax\edef\pstFP@tmpb{\pstFP@tmpb\pstFP@tmpa}\else%
+       \expandafter\ifx\pstFP@tmpa6\relax\edef\pstFP@tmpb{\pstFP@tmpb\pstFP@tmpa}\else%
+       \expandafter\ifx\pstFP@tmpa7\relax\edef\pstFP@tmpb{\pstFP@tmpb\pstFP@tmpa}\else%
+       \expandafter\ifx\pstFP@tmpa8\relax\edef\pstFP@tmpb{\pstFP@tmpb\pstFP@tmpa}\else%
+       \expandafter\ifx\pstFP@tmpa9\relax\edef\pstFP@tmpb{\pstFP@tmpb\pstFP@tmpa}\else%
+       \ifx\pstFP@tmpa\@empty\pstFP@nonstopfalse\else%
+       \ifx\pstFP@tmpa\space\pstFP@nonstopfalse\else%
+         \typeout{>>> Illegal character \pstFP@tmpa\space found in float number}%
+       \fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi%
+       \edef\pstFP@tmp{\expandafter\pstFP@ignorenext\pstFP@tmp}%
+       \ifx\pstFP@tmp\@empty\pstFP@nonstopfalse\fi%
+       \ifpstFP@nonstop%
+       \repeat%
+   \fi%
+   \global\let\pstFP@tmp\pstFP@tmpb%
+  }%
+}
+
+\def\pstFP@readvalue#1#2#3{%
+  % #1    macro family to catch the value
+  % #2.#3 value
+  %
+  % regular expression [+|-]*[d]_0^18.[d]*
+  %
+  \pstFP@strip{#2}%
+  %sign
+  \expandafter\pstFP@getsign\pstFP@tmp\relax%
+  \csname pstFP@#1s\endcsname=\pstFP@regs%
+  %
+  %integer part
+  \pstFP@removeleadingzeros\pstFP@tmp\relax%
+  \expandafter\pstFP@setintcounter\pstFP@tmp000000000000000000\relax%
+  \csname pstFP@#1ia\endcsname=\pstFP@rega%
+  \csname pstFP@#1ib\endcsname=\pstFP@regb%
+  %
+  %fractional part
+  \pstFP@strip{#3}%
+  \expandafter\pstFP@setfractcounter\pstFP@tmp000000000000000000\relax%
+  \csname pstFP@#1fa\endcsname=\pstFP@rega%
+  \csname pstFP@#1fb\endcsname=\pstFP@regb%
+  %
+  %correct sign
+  \ifnum\pstFP@rega=0\relax%
+    \ifnum\pstFP@regb=0\relax%
+      \expandafter\ifnum\csname pstFP@#1ib\endcsname=0\relax%
+        \expandafter\ifnum\csname pstFP@#1ia\endcsname=0\relax%
+	  \csname pstFP@#1s\endcsname=1\relax%
+	\fi%
+      \fi%
+    \fi%
+  \fi%
+}
+%
+%store value in macro
+%
+\def\pstFP@store#1#2{%
+  % #1 macro
+  % #2 macro family (value) to store
+  %
+  \ifpstFP@zero{#2}%
+    \csname pstFP@#2s\endcsname=1\relax%
+  \fi%
+  \expandafter\ifnum\csname pstFP@#2s\endcsname<0\relax%
+    \edef#1{-}%
+  \else%
+    \edef#1{}%
+  \fi%
+  \expandafter\ifnum\csname pstFP@#2ia\endcsname=0\relax%
+     \expandafter\ifnum\csname pstFP@#2ib\endcsname=0\relax%
+       \edef#1{#10}%
+     \else%
+       \edef#1{#1\expandafter\the\csname pstFP@#2ib\endcsname}%
+     \fi%
+  \else%
+    \expandafter\advance\csname pstFP@#2ib\endcsname1000000000\relax%
+    \edef#1{#1\expandafter\the\csname pstFP@#2ia\endcsname\expandafter\pstFP@ignorenext\the\csname pstFP@#2ib\endcsname}%
+  \fi%
+  \expandafter\advance\csname pstFP@#2fa\endcsname1000000000\relax%
+  \expandafter\advance\csname pstFP@#2fb\endcsname1000000000\relax%
+  \edef#1{#1\noexpand.\expandafter\pstFP@ignorenext\the\csname pstFP@#2fa\endcsname\expandafter\pstFP@ignorenext\the\csname pstFP@#2fb\endcsname}%
+}
+%macros to expand some arguments
+%
+\def\pstFP@callc#1#2#3#4{%
+  % #1 macro to call
+  % #2 macro, which gets the result
+  % #3 1st value
+  % #4 2nd value
+  % expand the values and split them into the integer and the fractional parts
+  \edef\next{\noexpand#1\noexpand#2#3..\noexpand\relax#4..\noexpand\relax}%
+  \next%
+}
+%
+\def\pstFP@divten#1{%
+  \expandafter\pstFP@regc\csname pstFP@#1ia\endcsname%
+  \expandafter\divide\csname pstFP@#1ia\endcsname10\relax%
+  \expandafter\pstFP@regb\csname pstFP@#1ia\endcsname%
+  \multiply\pstFP@regb10\relax%
+  \advance\pstFP@regc-\pstFP@regb%
+  \multiply\pstFP@regc100000000\relax%
+  %
+  \expandafter\pstFP@rega\csname pstFP@#1ib\endcsname%
+  \expandafter\divide\csname pstFP@#1ib\endcsname10\relax%
+  \expandafter\pstFP@regb\csname pstFP@#1ib\endcsname%
+  \multiply\pstFP@regb10\relax%
+  \advance\pstFP@rega-\pstFP@regb%
+  \multiply\pstFP@rega100000000\relax%
+  \expandafter\advance\csname pstFP@#1ib\endcsname\pstFP@regc%
+  %
+  \expandafter\pstFP@regc\csname pstFP@#1fa\endcsname%
+  \expandafter\divide\csname pstFP@#1fa\endcsname10\relax%
+  \expandafter\pstFP@regb\csname pstFP@#1fa\endcsname%
+  \multiply\pstFP@regb10\relax%
+  \advance\pstFP@regc-\pstFP@regb%
+  \multiply\pstFP@regc100000000\relax%
+  \expandafter\advance\csname pstFP@#1fa\endcsname\pstFP@rega%
+  %
+  \expandafter\divide\csname pstFP@#1fb\endcsname10\relax%
+  \expandafter\advance\csname pstFP@#1fb\endcsname\pstFP@regc%
+}
+%
+\def\pstFP@multen#1{%
+  \expandafter\multiply\csname pstFP@#1ia\endcsname10\relax%
+  \expandafter\ifnum\csname pstFP@#1ib\endcsname<100000000\relax%
+  \else%
+    \expandafter\pstFP@regc\csname pstFP@#1ib\endcsname%
+    \divide\pstFP@regc100000000%
+    \expandafter\advance\csname pstFP@#1ia\endcsname\pstFP@regc%
+    \multiply\pstFP@regc100000000%
+    \expandafter\advance\csname pstFP@#1ib\endcsname-\pstFP@regc%
+  \fi%
+  \expandafter\multiply\csname pstFP@#1ib\endcsname10\relax%
+  \expandafter\ifnum\csname pstFP@#1fa\endcsname<100000000\relax%
+  \else%
+    \expandafter\pstFP@regc\csname pstFP@#1fa\endcsname%
+    \divide\pstFP@regc100000000%
+    \expandafter\advance\csname pstFP@#1ib\endcsname\pstFP@regc%
+    \multiply\pstFP@regc100000000%
+    \expandafter\advance\csname pstFP@#1fa\endcsname-\pstFP@regc%
+  \fi%
+  \expandafter\multiply\csname pstFP@#1fa\endcsname10\relax%
+  \expandafter\ifnum\csname pstFP@#1fb\endcsname<100000000\relax%
+  \else%
+    \expandafter\pstFP@regc\csname pstFP@#1fb\endcsname%
+    \divide\pstFP@regc100000000%
+    \expandafter\advance\csname pstFP@#1fa\endcsname\pstFP@regc%
+    \multiply\pstFP@regc100000000%
+    \expandafter\advance\csname pstFP@#1fb\endcsname-\pstFP@regc%
+  \fi%
+  \expandafter\multiply\csname pstFP@#1fb\endcsname10\relax%
+}
+%
+\def\pstFP@counttimes{%
+  {\global\pstFP@times=0\relax%
+   \loop%
+     \ifnum%
+        \ifnum\pstFP@xia>\pstFP@yia1%
+	\else\ifnum\pstFP@xia<\pstFP@yia0%
+	\else%
+	  \ifnum\pstFP@xib>\pstFP@yib1%
+	  \else\ifnum\pstFP@xib<\pstFP@yib0%
+	  \else%
+	    \ifnum\pstFP@xfa>\pstFP@yfa1%
+	    \else\ifnum\pstFP@xfa<\pstFP@yfa0%
+	    \else%
+	      \ifnum\pstFP@xfb>\pstFP@yfb1%
+	      \else\ifnum\pstFP@xfb<\pstFP@yfb0%
+	      \else%
+	         1%
+	      \fi\fi%
+	    \fi\fi%
+	  \fi\fi%
+	\fi\fi%
+	=1\relax%
+       \global\advance\pstFP@times1\relax%
+       \global\advance\pstFP@xfb-\pstFP@yfb%
+       \ifnum\pstFP@xfb<0\relax%
+         \global\advance\pstFP@xfb1000000000\relax%
+	 \global\advance\pstFP@xfa-1\relax%
+       \fi%
+       \global\advance\pstFP@xfa-\pstFP@yfa%
+       \ifnum\pstFP@xfa<0\relax%
+         \global\advance\pstFP@xfa1000000000\relax%
+	 \global\advance\pstFP@xib-1\relax%
+       \fi%
+       \global\advance\pstFP@xib-\pstFP@yib%
+       \ifnum\pstFP@xib<0\relax%
+         \global\advance\pstFP@xib1000000000\relax%
+	 \global\advance\pstFP@xia-1\relax%
+       \fi%
+       \global\advance\pstFP@xia-\pstFP@yia%
+     \repeat%
+  }%
+}
+%
+\def\pstFP@add#1#2.#3.#4\relax#5.#6.#7\relax#8\relax{%
+  % #1 macro, which gets the result
+  % #2 integer part of 1st value 
+  % #3 fractional part of 1st value
+  % #4 dummy to swallow everthing after the 2nd '.'
+  % #5 integer part of 2nd value 
+  % #6 fractional part of 2nd value
+  % #7 dummy to swallow everthing after the 2nd '.'
+  %
+  {\pstFP@readvalue{x}{#2}{#3}%
+   \pstFP@readvalue{y}{#5}{#6}%
+   %
+   \ifnum\pstFP@xs=\pstFP@ys%
+     \advance\pstFP@xfb\pstFP@yfb%
+     \advance\pstFP@xfa\pstFP@yfa%
+     \ifnum\pstFP@xfb<1000000000\relax\else%
+       \advance\pstFP@xfb-1000000000\relax%
+       \advance\pstFP@xfa1\relax%
+     \fi%
+     \advance\pstFP@xib\pstFP@yib%
+     \ifnum\pstFP@xfa<1000000000\relax\else%
+       \advance\pstFP@xfa-1000000000\relax%
+       \advance\pstFP@xib1\relax%
+     \fi%
+     \advance\pstFP@xia\pstFP@yia%
+     \ifnum\pstFP@xib<1000000000\relax\else%
+       \advance\pstFP@xib-1000000000\relax%
+       \advance\pstFP@xia1\relax%
+     \fi%
+     \ifnum\pstFP@xia<1000000000\relax\else%
+       \pstFP@errmessage{Overflow}%
+     \fi%
+     \pstFP@store\pstFP@tmp{x}%
+   \else%
+     \advance\pstFP@xfb-\pstFP@yfb%
+     \ifnum\pstFP@xfb<0\relax%
+       \advance\pstFP@yfa1\relax%
+       \advance\pstFP@xfb1000000000\relax%
+     \fi%
+     \advance\pstFP@xfa-\pstFP@yfa%
+     \ifnum\pstFP@xfa<0\relax%
+       \advance\pstFP@yib1\relax%
+       \advance\pstFP@xfa1000000000\relax%
+     \fi%
+     \advance\pstFP@xib-\pstFP@yib%
+     \ifnum\pstFP@xib<0\relax%
+       \advance\pstFP@yia1\relax%
+       \advance\pstFP@xib1000000000\relax%
+     \fi%
+     \advance\pstFP@xia-\pstFP@yia%
+     \ifnum\pstFP@xia<0\relax%
+       \pstFP@xs=-\pstFP@xs%
+       \ifnum\pstFP@xfb=0\relax\else%
+         \advance\pstFP@xfb-1000000000\relax\pstFP@xfb=-\pstFP@xfb%
+	 \advance\pstFP@xfa1\relax%
+       \fi%
+       \ifnum\pstFP@xfa=0\relax\else%
+         \advance\pstFP@xfa-1000000000\relax\pstFP@xfa=-\pstFP@xfa%
+	 \advance\pstFP@xib1\relax%
+       \fi%
+       \ifnum\pstFP@xib=0\relax\else%
+         \advance\pstFP@xib-1000000000\relax\pstFP@xib=-\pstFP@xib%
+	 \advance\pstFP@xia1\relax%
+       \fi%
+       \relax\pstFP@xia=-\pstFP@xia%
+     \fi%
+     \pstFP@store\pstFP@tmp{x}%
+   \fi%
+   \global\let\pstFP@tmp\pstFP@tmp%
+  }%
+  \let#1\pstFP@tmp%
+}
+
+
+\def\pstFP@div#1#2.#3.#4\relax#5.#6.#7\relax{%
+  % #1 macro, which gets the result
+  % #2 integer part of 1st value 
+  % #3 fractional part of 1st value
+  % #4 dummy to swallow everthing after the 2nd '.'
+  % #5 integer part of 2nd value 
+  % #6 fractional part of 2nd value
+  % #7 dummy to swallow everthing after the 2nd '.'
+  %
+  % algorithmic idea (for x>0, y>0)
+  %   - %determine \pstFP@shift  such that y*10^\pstFP@shift <100000000<=y*10^(\pstFP@shift+1)
+  %   - %determine \pstFP@shift' such that x*10^\pstFP@shift'<100000000<=x*10^(\pstFP@shift+1)
+  %   - x=x*\pstFP@shift'
+  %   - y=y*\pstFP@shift
+  %   - \pstFP@shift=\pstFP@shift-\pstFP@shift'
+  %   - res=0
+  %   - while y>0 %fixed-point representation!
+  %   -   \pstFP@times=0
+  %   -	  while x>y
+  %   -     \pstFP@times=\pstFP@times+1
+  %   -     x=x-y
+  %   -   end
+  %   -   y=y/10
+  %   -   res=10*res+\pstFP@times/1000000000
+  %   - end
+  %   - %shift the result according to \pstFP@shift
+  %
+  {\pstFP@readvalue{x}{#2}{#3}%
+   \pstFP@readvalue{y}{#5}{#6}%
+   %
+   %sign
+   \multiply\pstFP@xs\pstFP@ys%
+   \pstFP@rs=\pstFP@xs%
+   %
+   %compute division
+   \ifpstFP@zero{y}%
+     \typeout{>>>>Division by zero}%
+   \else%
+     \ifpstFP@zero{x}\def\next##1{\edef\pstFP@tmp{0}}\else\def\next##1{##1}\fi%
+     \next%
+       {\pstFP@shift=0\relax%
+        \loop%
+          \ifnum\pstFP@yia<100000000\relax%
+	     \pstFP@multen{y}%
+	     \advance\pstFP@shift1\relax%
+	   \repeat%
+        \loop%
+          \ifnum\pstFP@xia<100000000\relax%
+	     \pstFP@multen{x}%
+	     \advance\pstFP@shift-1\relax%
+	  \repeat%
+        \pstFP@ria=0\pstFP@rib=0\pstFP@rfa=0\pstFP@rfb=0\relax%
+        \loop%
+          \ifpstFP@zero{y}\else%
+	     \pstFP@counttimes%divides x by \pstFP@times*y
+	     \pstFP@divten{y}%
+	     \pstFP@multen{r}%
+	     \advance\pstFP@rfb\pstFP@times%
+	     \ifnum\pstFP@rfb<1000000000\relax\else%
+	       \advance\pstFP@rfa1\advance\pstFP@rfb-1000000000\relax%
+	       \ifnum\pstFP@rfa<1000000000\relax\else%
+	         \advance\pstFP@rib1\advance\pstFP@rfa-1000000000\relax%
+		 \ifnum\pstFP@rib<1000000000\relax\else%
+		   \advance\pstFP@ria1\advance\pstFP@rib-1000000000\relax%
+		 \fi%
+	       \fi%
+	     \fi%
+	  \repeat%
+        \loop%
+          \ifnum\pstFP@shift>17%
+	    \advance\pstFP@shift-1\relax%
+	    \ifnum\pstFP@ria<100000000\else\pstFP@ria=-1\fi%
+	    \ifnum\pstFP@ria<0\pstFP@ria=-1\fi%
+	    \pstFP@multen{r}%
+	  \repeat%
+        \ifnum\pstFP@ria<1000000000\else\pstFP@ria=-1\fi%
+        \loop%
+          \ifnum\pstFP@shift<17%
+	    \advance\pstFP@shift1\relax%
+	    \pstFP@divten{r}%
+	  \repeat%
+        \ifnum\pstFP@ria<0\relax%
+          \typeout{>>>>Overflow}%
+        \else%
+          \pstFP@store\pstFP@tmp{r}%
+        \fi%
+       }%
+    \fi%
+   %
+   \global\let\pstFP@tmp=\pstFP@tmp%
+   %
+  }%
+  \let#1\pstFP@tmp%
+}
+%multiply two values
+
+\def\pstFP@firstnine#1#2#3#4#5#6#7#8#9{%
+  \pstFP@res=#1#2#3#4#5#6#7#8#9\relax%
+}
+\def\pstFP@@ninesplit#1\relax#2\end#3{%
+  #1%
+  \edef#3{#2}%
+}
+\def\pstFP@ninesplit#1{%
+  \edef#1{\expandafter\pstFP@firstnine\pstFP@rd}%
+  \expandafter\pstFP@@ninesplit#1\end#1\relax%
+}
+
+\def\pstFP@split#1#2#3#4{%
+  % #1 highest three digits
+  % #2 medium three digits
+  % #3 least three digits
+  % #4 counter
+  \pstFP@regc=#4%
+  \divide\pstFP@regc1000000\relax%
+  #1=\pstFP@regc%
+  \multiply\pstFP@regc-1000000\relax\advance\pstFP@regc#4%
+  #3=\pstFP@regc%
+  \divide\pstFP@regc1000\relax%
+  #2=\pstFP@regc%
+  \multiply\pstFP@regc-1000\relax\advance\pstFP@regc#3%
+  #3=\pstFP@regc%
+}
+
+\def\pstFP@@mul#1#2#3{%
+  \pstFP@regc=\csname pstFP@x#1\endcsname%
+  \multiply\pstFP@regc\csname pstFP@y#2\endcsname%
+  \advance\pstFP@prod\pstFP@regc%
+  %
+  \ifx#3\relax%
+    \let\next=\relax% 
+  \else%
+    \let\next=\pstFP@@mul%
+  \fi%
+  \next#3%
+}
+
+\def\pstFP@saveshift{%
+  % save rightmost three digits 
+  \pstFP@regc=\pstFP@prod%
+  \divide\pstFP@prod1000\relax%
+  \multiply\pstFP@prod1000\relax%
+  \advance\pstFP@regc-\pstFP@prod%
+  \advance\pstFP@regc1000\relax%
+  \edef\pstFP@rd{\expandafter\pstFP@ignorenext\the\pstFP@regc\pstFP@rd}%
+  %
+  \divide\pstFP@prod1000\relax%
+}
+
+\def\pstFP@mul#1#2.#3.#4\relax#5.#6.#7\relax{%
+  % #1 macro, which gets the result
+  % #2 integer part of 1st value 
+  % #3 fractional part of 1st value
+  % #4 dummy to swallow everthing after the 2nd '.'
+  % #5 integer part of 2nd value 
+  % #6 fractional part of 2nd value
+  % #7 dummy to swallow everthing after the 2nd '.'
+  %
+  % split value in various parts
+  % x y = 123 456 789 123 456 789 . 123 456 789 123 456 789
+  % ->    xk  xl  xm  xn  xo  xp    xq  xr  xs  xt  xu  xv
+  % ->    yk  yl  ym  yn  yo  yp    yq  yr  ys  yt  yu  yv
+  % multiply these parts and save the result wrt the necessary shifts
+  %
+  {\pstFP@readvalue{x}{#2}{#3}%
+   \pstFP@readvalue{y}{#5}{#6}%
+   %
+   %sign
+   \multiply\pstFP@xs\pstFP@ys%
+   \pstFP@rs=\pstFP@xs%
+   %
+   % split parts
+   \pstFP@split\pstFP@xk\pstFP@xl\pstFP@xm\pstFP@xia\pstFP@split\pstFP@xn\pstFP@xo\pstFP@xp\pstFP@xib%
+   \pstFP@split\pstFP@xq\pstFP@xr\pstFP@xz\pstFP@xfa\pstFP@split\pstFP@xt\pstFP@xu\pstFP@xv\pstFP@xfb%
+   \pstFP@split\pstFP@yk\pstFP@yl\pstFP@ym\pstFP@yia\pstFP@split\pstFP@yn\pstFP@yo\pstFP@yp\pstFP@yib%
+   \pstFP@split\pstFP@yq\pstFP@yr\pstFP@yz\pstFP@yfa\pstFP@split\pstFP@yt\pstFP@yu\pstFP@yv\pstFP@yfb%
+   %
+   \pstFP@prod=0\relax%
+   \edef\pstFP@rd{}%
+   %
+   %compute result
+   \pstFP@@mul vv 				   \relax\pstFP@saveshift%
+   \pstFP@@mul vu uv			           \relax\pstFP@saveshift%
+   \pstFP@@mul uu vt tv 			   \relax\pstFP@saveshift%
+   \pstFP@@mul ut tu vz zv 		           \relax\pstFP@saveshift%
+   \pstFP@@mul tt zu uz rv vr		           \relax\pstFP@saveshift%
+   \pstFP@@mul zt tz ur ru vq qv 		   \relax\pstFP@saveshift%
+   \pstFP@@mul zz rt tr uq qu vp pv  	           \relax\pstFP@saveshift%
+   \pstFP@@mul zr rz tq qt up pu vo ov 	           \relax\pstFP@saveshift%
+   \pstFP@@mul rr qz zq tp pt uo ou vn nv 	   \relax\pstFP@saveshift%
+   \pstFP@@mul rq qr zp pz to ot un nu vm mv       \relax\pstFP@saveshift%
+   \pstFP@@mul qq rp pr zo oz tn nt um mu vl lv    \relax\pstFP@saveshift%
+   \pstFP@@mul qp pq ro or zn nz tm mt ul lu kv vk \relax\pstFP@saveshift%
+   \pstFP@@mul pp oq qo rn nr zm mz tl lt ku uk    \relax\pstFP@saveshift%
+   \pstFP@@mul op po nq qn rm mr zl lz tk kt       \relax\pstFP@saveshift%
+   \pstFP@@mul oo pn np mq qm rl lr kz zk          \relax\pstFP@saveshift%
+   \pstFP@@mul no on mp pm lq ql kr rk 	           \relax\pstFP@saveshift%
+   \pstFP@@mul nn mo om pl lp qk kq 	           \relax\pstFP@saveshift%
+   \pstFP@@mul mn nm lo ok pk kp 		   \relax\pstFP@saveshift%
+   \pstFP@@mul mm ln nl ko ok 		           \relax\pstFP@saveshift%
+   \pstFP@@mul lm ml kn nk			   \relax\pstFP@saveshift%
+   \pstFP@@mul ll km mk 			   \relax\pstFP@saveshift%
+   \pstFP@@mul kl lk 			           \relax\pstFP@saveshift%
+   \pstFP@@mul kk 				   \relax\pstFP@saveshift\pstFP@saveshift%
+   \pstFP@ninesplit\pstFP@rd%
+   \ifnum\pstFP@res=0\relax%
+     \pstFP@ninesplit\pstFP@rd%
+     \ifnum\pstFP@res=0\relax%
+       \pstFP@ninesplit\pstFP@rd\pstFP@ria=\pstFP@res%
+       \pstFP@ninesplit\pstFP@rd\pstFP@rib=\pstFP@res%
+       \pstFP@ninesplit\pstFP@rd\pstFP@rfa=\pstFP@res%
+       \pstFP@ninesplit\pstFP@rd\pstFP@rfb=\pstFP@res%
+       \pstFP@store\pstFP@tmp{r}%
+     \else\typeout{pstFPmul: Overflow}\fi%
+   \else\typeout{pstFPmul: Overflow}\fi%
+   \global\let\pstFP@tmp\pstFP@tmp}%
+  \let#1\pstFP@tmp%
+}
+%
+\catcode`\@=\PstAtCode\relax
+%
+%% END: pst-fp.tex
+\endinput

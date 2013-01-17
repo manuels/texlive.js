@@ -1,0 +1,212 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Repeat loop macro, version 0.93a, September 2006
+% Copyright Victor Eijkhout 1999-2006
+% file name: repeat.tex
+%
+% Author:
+% Victor Eijkhout
+% Texas Advanced Computing Center
+% The University of Texas at Austin, Austin TX 78758, USA
+%
+% victor@eijkhout.net
+%
+% This program is released under the LaTeX Project Public License
+% see <http://www.latex-project.org/lppl/> for further information.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% General loop macro:
+% \repeat
+%   \for{<var>} \from{<start>} \by{<step>} \to{<end>} \downto{<end>}
+%               \until{<cond>} \while{<cond>}
+%   \do { <loop body> }
+% where all control sequences in between \repeat and \do are optional.
+%
+% var: characters to form a control sequence;
+%    after \for{index} you can access the loop counter as \index.
+%    This is a count register; to print it use \number\index.
+% start,step,end: integers with obvious relations to the loop counter;
+%    start and step have a default value of 1
+% cond: (sequence of commands ending in) any TeX \if... test.
+%
+% Count down instead of up with \downto; the increment given in \by
+% is always positive, and is added or subtracted accordingly.
+%
+% Tests: \until is evaluated at the end of the loop body; \while
+% at the beginning of the loop body.
+%
+% Exit from middle of loop: \breakrepeat
+% use this at any place in the loop; in case of a conditional use
+%   \ifsomething ... \expandafter \breakrepeat \fi
+%
+% There are some examples at the end of this file, after the \endinput line;
+% remove the \endinput statement to see the examples executed.
+% Note that the line ends do not cause spaces in the output.
+%
+% Technical details:
+% The loop body is not executed in a group: the braces are those
+% of a token list.
+% The `for' variable is \let to a \count register.
+% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% revision history:
+% 0.9  first release, January 1999
+% 0.91 documentation update,
+%      csarg-like control sequences made REP...
+%      counter update made global in case the body issues grouping,
+%      copyright notice, February 1999
+% 0.92 installed trace switches
+% 0.93 spaces are now ignored after each argument group. Author info updated.
+% 0.93a removed \bye from \endinput line.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+
+%%
+%% Prevent multiple loading of this file
+%%
+\expandafter\ifx\csname REPdepth\endcsname\relax
+  \message{Loading loop macro, version 0.93a}%
+\else \endinput \fi
+
+%%
+%% Auxiliary stuff
+%%
+\def\REPcsarg#1#2{\expandafter#1\csname#2\endcsname}
+\def\REPcsrom#1{\csname #1\romannumeral\REPdepth\endcsname}
+\def\REPcsargrom#1#2{\expandafter#1\csname#2\romannumeral\REPdepth\endcsname}
+
+\newcount\REPdepth
+\let\endrepeat\relax \def\csprotect{}
+% Trace switches may later be defined by PAC_utils
+\let\REPtraceinit\relax \let\REPtraceexit\relax
+
+%%
+%% Main repeat macro
+%% - go to next level and allocate unique counter/toks if this is the
+%%   first time we visit this level
+%% - setup: gather bounds and termination conditions
+%% - scoop up body in token list; after the assignment define and
+%%   execute body
+%%
+\def\repeat#1\do{\REPtraceinit % exit in \breakrepeat
+  \advance\REPdepth by 1\relax
+  \REPcsargrom\ifx{REPcount}\relax
+    \REPcsargrom{\csname newcount\expandafter\endcsname}{REPcount}%
+    \REPcsargrom{\csname newtoks\expandafter\endcsname}{REPtoks}%
+    \REPcsargrom{\csname newtoks\expandafter\endcsname}{REPwtest}%
+    \REPcsargrom{\csname newtoks\expandafter\endcsname}{REPutest}%
+  \fi \REPzero \def\REPsign{}\def\REPcomp{>}\REPsetup{#1}%
+  \edef\REPtmp
+     {\def\REPcsargrom\noexpand{REPrepeat}{\REPcsargrom\noexpand{REPbody}}}\REPtmp
+  \afterassignment\REPdxbody\REPcsrom{REPtoks}}
+%%
+%% Define and execute loop body
+%% This is done with an \edef to construct the actual sequence
+%%
+\def\REPdxbody{\REPcsargrom\edef{REPbody}{%
+    \REPcsargrom\the{REPwtest}%
+      \noexpand\the\REPcsargrom\noexpand{REPtoks}%
+        \REPcsargrom\the{REPutest}%
+    \global\REPcsargrom\advance{REPcount} by \REPsign\REPcsrom{REPinc}\relax
+    \noexpand\endrepeat
+    \REPcsargrom\noexpand{REPrepeat}}%
+  \REPcsrom{REPbody}\ignorespaces}
+%%
+%% Stop test
+%% In order to stop, issue a
+%% \breakrepeat which scoops up the rest of the body and exits
+%%
+\def\breakrepeat#1\endrepeat{\REPzero\REPcsargrom\let{REPrepeat}\relax
+  \advance\REPdepth by -1 \REPtraceexit
+  }
+%%
+%% Setup
+%% gather bounds and termination conditions
+%%
+\def\REPsetup#1{%
+  \begingroup
+    \def\for##1{%
+      \edef\REPtmp{%
+        \global\let\REPcsarg\noexpand{##1}\REPcsrom{REPcount}\ignorespaces}%
+      \REPtmp}%
+    \def\from##1{\REPcsargrom\global{REPcount}##1\ignorespaces}%
+    \def\to##1{%
+      \edef\REPtmp{\global\REPcsargrom\noexpand{REPwtest}=
+       {\REPcsargrom\the{REPwtest}%
+        \noexpand\ifnum\REPcsargrom\noexpand{REPcount}\REPcomp##1\relax
+          \noexpand\expandafter \noexpand\breakrepeat 
+        \noexpand\fi}\ignorespaces}%
+      \REPtmp}%
+    \def\downto##1{%
+      \gdef\REPsign{-}\gdef\REPcomp{<}\to{##1}\ignorespaces}%
+    \def\by##1{\ifnum##1<0 \message{REPEAT: increment has to be >0}%
+               \REPcsargrom\gdef{REPinc}{-##1}\else
+               \REPcsargrom\gdef{REPinc}{##1}\fi\ignorespaces}%
+    \def\until##1{%
+      \edef\REPtmp{\global\REPcsargrom\noexpand{REPutest}=
+         {\noexpand##1\relax
+          \noexpand\expandafter \noexpand\breakrepeat \noexpand\fi}\ignorespaces}%
+      \REPtmp}%
+    \def\while##1{%
+      \edef\REPtmp{\global\REPcsargrom\noexpand{REPwtest}=
+         {\noexpand##1\relax \noexpand\else
+          \noexpand\expandafter \noexpand\breakrepeat \noexpand\fi}\ignorespaces}%
+    \REPtmp}%
+    \from{1}\by{1}#1%
+  \endgroup}
+\def\REPzero
+   {\REPcsrom{REPtoks}{}\REPcsrom{REPutest}{}\REPcsrom{REPwtest}{}%
+    \REPcsargrom\def{REPbody}{}}
+
+\endinput
+
+%\tracingmacros2
+\newcount\tmpcount % used in some examples below
+1
+\repeat \for{i}
+        \by{2}
+  \do {%
+     \ifnum\i=13 \expandafter\breakrepeat \fi
+     \message{doing \number\i}%
+}%
+2
+\repeat \for{iii}
+        \to{8}
+   \do {}
+\message{After loop: \number\iii}%
+3
+\repeat \for{i}
+        \from{10}
+        \by{2}
+        \downto{0}
+   \do {\message{countdown \number\i}}
+4
+\repeat \for{x} \while{\ifnum\x<7}
+   \do {\message{going \number\x}}
+5
+\repeat \to{3} \do {\message{hello there!}}
+6
+\repeat \for{j}
+        \until{\tmpcount\j \divide\tmpcount by 37 \noexpand\ifnum\tmpcount=1}
+  \do {\message{testing \number\j}}
+7
+\repeat \for{i} \by{2} \to{10} \do
+ {\repeat \for{j} \from{\i} \by{3} \to{18} 
+  \do {\message{(\number\i.\number\j)}}
+ }
+8
+
+1
+2
+3
+4
+5
+6
+7
+8
+
+% infinite loop
+%\repeat \do {}
+
+\bye

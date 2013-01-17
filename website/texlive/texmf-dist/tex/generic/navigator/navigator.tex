@@ -1,0 +1,776 @@
+% This is the Navigator package.
+% Relevant information can be found in navigator-doc.pdf
+%
+% Author: Paul Isambert.
+% E-mail: zappathustra AT free DOT fr
+% Comments and suggestions are welcome.
+% Date: January 2011.
+
+\ifdefined\NavigatorHasAlreadyBeenLoadedMyDear
+  \expandafter\endinput
+\fi
+\let\NavigatorHasAlreadyBeenLoadedMyDear\relax
+
+\input yax
+\ifdim\yaxversion pt<1.03pt
+  \senderror{Navigator}{YaX should be at least version 1.03. I quit}%
+  \expandafter\endinput
+\fi
+
+\ifnum\texenginenumber>1
+  \lettocs\ifpdforluatex{iftrue}
+\else
+  \letcstocs{ifpdforluatex}{iffalse}
+\fi
+\newsyntax#1:#2;{nav@}
+\setcatcodes{_@=11}
+\def\nav@error#1{\senderror{Navigator}{#1}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%% Strings %%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\ifcase\texenginenumber
+\or
+% XeTeX: we do nothing. Under some circumstances,
+% xdvipdfmx writes a good UTF-16 string.
+\let\pdfstring\unbrace
+
+\or
+% PDFTeX: we escape the string.
+\let\pdfstring\pdfescapestring
+
+\or
+% LuaTeX: the string is converted from UTF-8 to
+% UTF-16, and expressed in octal form (otherwise LuaTeX
+% would complain about non-UTF-8 characters). Hexadecimal
+% strings may be better, but \pdfoutline encloses the title
+% between braces, whereas hexadecimal strings should be
+% enclosed between "<" and ">".
+%
+% The UTF-16 conversion covers the entire Unicode range,
+% because one has the right to use Linear-B or musical notations
+% in a bookmark, but the viewer is very unlikely to display
+% anything beside the basic plane (unless one can change
+% the UI's font).
+
+% One could use a catcode table for this, but I don't think
+% it's worth it.
+{\catcode`\_=0
+\catcode`\\=12
+_gdef_navbackslash{\}}
+
+\bgroup
+\catcode`\%=12
+\directlua{
+local function to8 (...)
+  local str = ""
+  for _, num in ipairs(arg) do
+    str = str .. string.format("\noexpand\\navbackslash%.3o", num)
+  end
+  return str
+end
+function toutf16(str)
+  local result = ""
+  for c in string.utfvalues(str) do
+    if c < 0x10000 then
+      result = result .. to8(c / 256, c % 256)
+    else
+      c = c - 0x10000
+      local a, b = c / 1024 + 0xD800, c % 1024 + 0xDC00
+      result = result .. to8(a / 256, a % 256, b / 256, b % 256)
+    end
+  end
+  tex.print([[\noexpand\navbackslash376\noexpand\navbackslash377]] .. result)
+end
+}
+\egroup
+
+\long\def\pdfstring#1{%
+  \directlua{toutf16("\luaescapestring{#1}")}%
+  }
+
+\fi
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%% Object creation %%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\def\pdfobjectstatus#1{%
+  \ifcs{nav@pdfobject:#1}
+    {\ifcs{nav@pdfobject_used:#1}{2}{1}}
+    {0}%
+  }
+
+\def\ifpdfobject#1{%
+  \ifcs{nav@pdfobject:#1}%
+  }
+
+\def\pdfobject#1#2{%
+  \nav@pdfobject{}{}[]{#1}{#2}%
+  }
+
+\def\pdfdictobject#1#2{%
+  \nav@pdfobject{}{}[]{#1}{<< #2 >>}%
+  }
+
+\def\pdfstreamobject{%
+  \ifnext[
+    {\nav@pdfobject{stream}{}}
+    {\nav@pdfobject{stream}{}[]}%
+  }
+
+\def\pdffileobject{%
+  \ifnext[
+    {\nav@pdfobject{stream}{file}}
+    {\nav@pdfobject{stream}{file}[]}%
+  }
+
+\ifpdforluatex
+
+\def\nav@pdfobject#1#2[#3]#4#5{%
+  \ifnum\pdfobjectstatus{#4}=2
+    \nav@error{There already exists an object named `#4'}%
+  \else
+    \immediate\pdfobj
+    \ifnum\pdfobjectstatus{#4}=1 useobjnum \pdfobjectnumber{#4}\fi
+    #1 % "stream" or nothing.
+    \reverse\iffemptystring{#3}{attr {#3} }% "attr {...}" or nothing.
+    #2 % "file" or nothing.
+    {#5}% Contents.
+    \ifnum\pdfobjectstatus{#2}=0
+      \xdefcs{nav@pdfobject:#4}{\the\pdflastobj}%
+    \fi
+    \global\letcs{nav@pdfobject_used:#4}\relax
+  \fi
+  }
+
+\def\pdfreserveobject#1{%
+  \ifcase\pdfobjectstatus{#1}
+    \pdfobj reserveobjnum
+    \xdefcs{nav@pdfobject:#1}{\the\pdflastobj}%
+  \or
+    \nav@error{Object `#1' is already reserved}%
+  \or
+    \nav@error{Object `#1' is already in use}%
+  \fi
+  }
+
+% An error message here wouldn't reach the terminal
+% but would spoil the PDF file instead; therefore
+% I prefer to return an unexisting (and impossible)
+% object with number 0.
+
+\def\pdfobjectnumber#1{%
+  \ifcs{nav@pdfobject:#1}
+    {\usecs{nav@pdfobject:#1}}
+    {0}%
+  }
+
+\def\pdfrefobject#1{%
+  \ifcs{nav@pdfobject:#1}
+    {\usecs{nav@pdfobject:#1} 0 R}
+    {0 0 R}%
+  }
+
+\else
+
+\def\nav@pdfobject#1#2[#3]#4#5{%
+  \ifnum\pdfobjectstatus{#4}=2
+    \nav@error{There already exists an object named `#4'}%
+  \else
+    \special{pdf:
+      \ifemptystring{#1}
+        % No matter whether the object has been reserved,
+        % it doesn't mean anything with xdvipdfmx.
+        {obj \pdfrefobject{#4} #5}
+        {\ifemptystring{#2}{stream}{fstream}
+         \pdfrefobject{#4} (#5)
+         \reverse\iffemptystring{#3}{<< #3 >>}}}%
+    % Useless. But so the same behavior can be expected
+    % no matter the driver.
+    \global\defcs{nav@pdfobject:#4}{@nav_#4}%
+    \global\letcs{nav@pdfobject_used:#4}\relax
+  \fi
+  }
+
+\def\pdfreserveobject#1{%
+  \ifcase\pdfobjectstatus{#1}
+    % We do absolutely nothing except register the object
+    % as ``reserved''.
+    \xdefcs{nav@pdfobject:#1}{@nav_#1}%
+  \or
+    % Stupid, but then the same behavior can be expected
+    % across engines.
+    \nav@error{Object `#1' is already reserved}%
+  \or
+    \nav@error{Object `#1' is already in use}%
+  \fi
+  }
+
+% We can't do anything meaningful here, so we do nothing.
+\def\pdfobjectnumber#1{}
+
+% With XeTeX, referencing of unreserved
+% object is allowed, because reserving objects is
+% dummy behavior anyway. Thus, rather than returning
+% an unexisting 0 object, at least there exists the
+% possibility that the object will be created later,
+% even if it hasn't been reserved yet.
+\def\pdfrefobject#1{@nav_#1}
+
+\fi
+
+\def\pdfensureobject#1{%
+  \ifpdfobject{#1}{}{\pdfreserveobject{#1}}%
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%% Anchors %%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% REMARK
+%
+% Here and elsewhere, \usevalueor (or similar) is used (with a default
+% value as the or-part), because the user might do something like:
+%
+% \setparameter param:
+%   up = 12pt
+%
+% \anchor[meta = param]{foo}
+%
+% Then there is no value for the "left" attribute, since "param"
+% doesn't have "navigator" (which holds the user's default values)
+% as a meta-parameter.
+% If no meta is detected, "navigator" is assigned to meta.
+
+\def\nav@prepare_options#1#2{%
+  \setparameterlist{nav@temp}[#1]{#2}%
+  \nav@ifattribute nav@temp:meta;
+    {}{\nav@setattribute nav@temp:meta; = navigator }%
+  }
+
+\def\anchor{%
+  \ifnext[
+    {\nav@anchor}
+    {\nav@anchor[]}%
+  }
+
+\def\nav@anchor[#1]#2{%
+  \ifcs{nav@pdfanchor:#2}
+    {\nav@error{Anchor `#2' already exists}}
+    {\global\letcs{nav@pdfanchor:#2}\relax
+     \nav@prepare_options{\gobbleone}{#1}%
+     \nav@anchor_position{#2}%
+     \deleteparameter nav@temp:}%
+  }
+
+\def\nav@anchor_position#1{%
+  \ifvmode
+    \nav@passvalueand{\nav@anchor_pass{nav@pdfanchor:#1}}nav@temp:fit;{{\nav@usevalue nav@temp:zoom;}}
+      {\nav@anchor_pass{nav@pdfanchor:#1}{xyz}{}}%
+  \else
+    \vbox to 0pt{\vss
+      \vbox to \nav@usevalueor nav@temp:up;{\baselineskip}{%
+        \hbox to 0pt{%
+          \kern-\nav@usevalueor nav@temp:left;{0pt}%
+          \nav@passvalueand{\nav@anchor_pass{nav@pdfanchor:#1}}nav@temp:fit;{{\nav@usevalue nav@temp:zoom;}}
+            {\nav@anchor_pass{nav@pdfanchor:#1}{xyz}{}}\hss}\vss}}%
+  \fi
+  }
+
+\def\nav@anchor_pass#1#2#3{%
+  \lowercase{\nav@anchor_create{#2}}{#1}{#3}%
+  }
+
+\ifpdforluatex
+
+\def\nav@anchor_xyz   #1{xyz zoom 0#1}
+\def\nav@anchor_fit   #1{fit}
+\def\nav@anchor_fith  #1{fith}
+\def\nav@anchor_fitv  #1{fitv}
+\def\nav@anchor_fitb  #1{fitb}
+\def\nav@anchor_fitbh #1{fitbh}
+\def\nav@anchor_fitbv #1{fitbv}
+\def\nav@anchor_fitr  #1{fitr}
+
+\def\nav@anchor_create#1#2#3{%
+  \pdfdest name {#2} \ifcs{nav@anchor_#1}{\usecs{nav@anchor_#1}{#3}}{xyz}%
+  }
+
+\else
+
+% FitR is quite unusable with xdvipdfm.
+{\setcatcodes{pt=12}\gdef\noPT#1pt{#1}}
+\def\nav@anchor_xyz   #1{XYZ   @xpos @ypos \expandafter\noPT\the\dimexpr0#1pt/1000\relax}
+\def\nav@anchor_fit   #1{Fit}
+\def\nav@anchor_fith  #1{FitH  @ypos}
+\def\nav@anchor_fitv  #1{FitV  @xpos}
+\def\nav@anchor_fitb  #1{FitB}
+\def\nav@anchor_fitbh #1{FitBH @ypos}
+\def\nav@anchor_fitbv #1{FitBV @xpos}
+
+\def\nav@anchor_create#1#2#3{%
+  \special{pdf: dest (#2)
+    [ @thispage /\ifcs{nav@anchor_#1}{\usecs{nav@anchor_#1}{#3}}{XYZ} ]
+    }%
+  }
+
+\fi
+
+\def\anchorname#1{%
+  nav@pdfanchor:#1%
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%% Outlines %%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\def\nav@pdfdef_list{}
+\def\pdfdef#1{%
+  \global\addright\nav@pdfdef_list{#1}%
+  \gdefcs{nav@pdfdef:\commandtoname#1}%
+  }
+
+\newfor\nav@pdfdef_loop#1{%
+  \lettocs#1{nav@pdfdef:\commandtoname#1}%
+  }
+
+\def\outline{%
+  \ifnext[
+    {\nav@outline}
+    {\nav@outline[]}%
+  }
+
+\def\nav@outline[#1]#2{%
+  \ifnext[
+    {\nav@outline_do{#1}{#2}}
+    {\nav@outline_do{#1}{#2}[]}%
+  }
+
+\newcount\nav@outline_count
+\ifpdforluatex
+
+\def\nav@outline_do#1#2[#3]#4{%
+  \global\advance\nav@outline_count 1
+  \gdefcs{nav@outline_\the\nav@outline_count:specs}{#1,}%
+  \gdefcs{nav@outline_\the\nav@outline_count:level}{#2}%
+  \gdefcs{nav@outline_\the\nav@outline_count:title}{#4}%
+  \nav@prepare_options{\gobbleone}{#1}%
+  \nav@outline_getaction{#1}{#3}%
+  % It'd be simpler to create one action object anyway and let \nav@outline_n:action
+  % refer to it; but then I'd have to use the /NoAction trick (in \nav@outline_getaction), which not all
+  % viewers understand; at least here outlines with destinations work.
+  \global\xdefcs{nav@outline_\the\nav@outline_count:action}{<< \nav@temp >>}%
+  \deleteparameter nav@temp:%
+  }
+
+\def\nav@processoutlines{%
+  \bgroup
+  \passexpanded\nav@pdfdef_loop\nav@pdfdef_list
+  \nav@processoutlines_loop{1}%
+  \egroup
+  }
+
+\newwhile\nav@processoutlines_loop1{#1+1}
+  {\straightenif{ifnum}{\numexpr#1>\nav@outline_count}
+     {\breakwhile{}}
+     {\nav@processoutlines_subloop{#1+1}{#1}{}{0}}%
+  }
+
+\newwhile\nav@processoutlines_subloop4{#1+1}{#2}{#3}{#4}
+  {\straightenif{ifnum}{\numexpr#1>\nav@outline_count}
+      {\breakwhile{\nav@processoutlines_create{#2}{#4}}}
+      {\straightenif{ifdim}{\usecs{nav@outline_\the\numexpr#2:level}pt<\usecs{nav@outline_\the\numexpr#1:level}pt\relax}
+         {\ifemptystring{#3}
+            {\changewhile{#1+1}{#2}{#1}{#4+1}}
+            {\reverse\straighteniff{ifdim}{\usecs{nav@outline_\the\numexpr#3:level}pt<\usecs{nav@outline_\the\numexpr#1:level}pt\relax}
+               {\changewhile{#1+1}{#2}{#1}{#4+1}}}}
+         {\breakwhile{\nav@processoutlines_create{#2}{#4}}}}%
+  }
+
+\def\nav@processoutlines_create#1#2{%
+  \passexpandedcs{\nav@prepare_options{}}{nav@outline_\the\numexpr#1:specs}%
+  \pdfoutline
+    attr {\nav@outline_attributes}
+    user {\usecs{nav@outline_\the\numexpr#1:action}}
+    count \nav@ifvalue nav@temp:open; = true {}{-}\numexpr#2\relax {\pdfstring{\usecs{nav@outline_\the\numexpr#1:title}}}%
+  \deleteparameter nav@temp:%
+  }
+
+\else
+%
+% So much simpler because xdvipdfmx deals with children
+% automatically; thus \nav@processoutlines is unnecessary.
+%
+
+\let\nav@processoutlines\relax
+
+\def\nav@outline_do#1#2[#3]#4{%
+  \global\advance\nav@outline_count 1
+  \nav@outline_getaction{#1}{#3}%
+  \nav@prepare_options{}{#1}%
+  \bgroup
+  \passexpanded\nav@pdfdef_loop\nav@pdfdef_list
+%  
+  \special{pdf: out
+    [\nav@ifvalue nav@temp:open;=true {}{-}] #2
+    << /Title (#4)
+       /A << \nav@temp >>
+       \nav@outline_attributes >>}%
+%
+  \egroup
+  \deleteparameter nav@temp:%
+  }
+
+\fi
+
+\def\nav@outline_getaction#1#2{%
+  \nav@storevalueand\nav@temp nav@temp:anchor;
+    {\edef\nav@temp{/S/GoTo /D (\anchorname{\nav@temp})}}
+    {\nav@storevalueand\nav@temp nav@temp:action;
+      {\pdfensureobject{\nav@temp}%
+       \edef\nav@temp{/S/Named /N/NoAction /Next \pdfrefobject{\nav@temp}}}
+      {\nav@anchor[#1]{\ifemptystring{#2}{outline_\the\nav@outline_count}{#2}}%
+       \edef\nav@temp{/S/GoTo /D (\anchorname{\ifemptystring{#2}{outline_\the\nav@outline_count}{#2})}}}}%
+  }
+
+
+\def\nav@outline_attributes{%
+  % See REMARK above for default values.
+  /C [\nav@usevalueor nav@temp:color;{\nav@usevalueor nav@temp:outlinecolor;{0 0 0}}]
+  /F \nav@ifvalue nav@temp:bold; = true {1}{0}\nav@ifvalue nav@temp:italic; = true {1}{0}
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%% Annotations %%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\def\actionlink{%
+  \ifnext[
+    {\nav@actionlink_do{a}}
+    {\nav@actionlink_do{a}[]}%
+  }
+
+\def\rawactionlink{%
+  \ifnext[
+    {\nav@actionlink_do{r}}
+    {\nav@actionlink_do{r}[]}%
+  }
+
+\def\jumplink{%
+  \ifnext[
+    {\nav@actionlink_do{d}}
+    {\nav@actionlink_do{d}[]}% 
+  }
+
+\def\annotation{%
+  \ifnext[
+    {\nav@actionlink_do{x}}
+    {\nav@actionlink_do{x}[]}% 
+  }
+
+\def\openfilelink{%
+  \ifnext[
+    {\nav@openfilelink}
+    {\nav@openfilelink[]}%
+  }
+
+\def\nav@openfilelink[#1]#2{%
+  \ifnext[
+    {\nav@openfilelink_do{#1}{#2}}
+    {\nav@openfilelink_do{#1}{#2}[0]}%
+  }
+
+\def\nav@openfilelink_do#1#2[#3]{%
+  \nav@actionlink_do{r}[#1]
+    {/S/GoToE /D [\the\numexpr#3-1\relax /Fit] 
+     /T << /R/C /N (#2) >> /NewWindow true}%
+  }
+
+\long\def\nav@actionlink_do#1[#2]#3#4{%
+  \nav@quitvmode
+  \nav@prepare_options{}{#2}%
+  \iffstring{#1}{a}{\pdfensureobject{#3}}%
+  \nav@actionlink_create{#1}{#3}{%
+    % Something in pre might be delimited by something in post
+    % so post must be passed expanded.
+    \nav@passvaluenobracesor{\nav@usevalue nav@temp:pre;#4}nav@temp:post;
+      {\nav@usevalue nav@temp:pre;#4}%
+    }%
+  \deleteparameter nav@temp:%
+  }
+
+\ifpdforluatex
+
+\let\nav@quitvmode\quitvmode
+
+\long\def\nav@actionlink_create#1#2#3{%
+  \pdfstartlink
+  attr {\nav@actionlink_attributes{#1}{#2}}
+  user {}%
+  #3\pdfendlink
+  }
+
+\else
+
+\let\nav@quitvmode\leavevmode
+
+\long\def\nav@actionlink_create#1#2#3{%
+  \special{pdf: bannot
+    << \nav@actionlink_attributes{#1}{#2} >>}%
+    #3\special{pdf: eannot}%
+  }
+
+\fi
+
+\def\nav@actionlink_attributes#1#2{%
+  /Border [0 0 \nav@usevalueor nav@temp:border;{1}%
+      \nav@passvaluenobracesand{[}nav@temp:dash;{]}{}]
+  /C [\nav@usevalueor nav@temp:color;{\nav@usevalueor nav@temp:linkcolor;{0 0 0}}]
+  \nav@ifcasevalue nav@temp:highlight;%
+  \val none    /H/N
+  \val invert  /H/I
+  \val outline /H/O
+  \val push    /H/P
+  \endval
+  \ifstring{#1}{x}
+    {#2}
+    {/Subtype/Link
+     \ifstring{#1}{d}
+       {/Dest (\anchorname{#2})}
+       {/A \ifstring{#1}{r}
+           {<< #2 >>}
+           {\pdfrefobject{#2}}}}%
+  \nav@usevalue nav@temp:raw;%
+  }
+
+\pdfdictobject{firstpage}{/S/Named /N/FirstPage}
+\pdfdictobject{lastpage} {/S/Named /N/LastPage}
+\pdfdictobject{prevpage} {/S/Named /N/PrevPage}
+\pdfdictobject{nextpage} {/S/Named /N/NextPage}
+
+\def\urlaction#1#2{%
+  \pdfdictobject{#1}{/S/URI /URI (#2)}%
+  }
+
+\def\javascriptaction#1#2{%
+  \pdfdictobject{#1}{/S/JavaScript /JS (\pdfstring{#2})}%
+  }
+
+\def\urllink{%
+  \ifnext[
+    {\nav@urllink}
+    {\nav@urllink[]}%
+  }
+
+\def\nav@urllink[#1]#2{%
+  \nav@actionlink_do{r}[#1]{/S/URI /URI (#2)}%
+  }
+
+\def\javascriptlink{%
+  \ifnext[
+    {\nav@javascriptlink}
+    {\nav@javascriptlink[]}%
+  }
+
+\def\nav@javascriptlink[#1]#2{%
+  \nav@actionlink_do{r}[#1]{/S/JavaScript /JS (\pdfstring{#2})}%
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%% Embedded files %%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\def\nav@embeddedfile_names{}%
+
+\ifcase\texenginenumber
+
+\or % XeTeX
+\def\nav@sort#1#2{%
+  \straightenif{ifnum}{\strcmp{#1}{#2} < 0\relax}%
+  }
+
+\or % PDFTeX
+\def\nav@sort#1#2{%
+  \straightenif{ifnum}{\pdfstrcmp{#1}{#2} < 0\relax}%
+  }
+
+\or % LuaTeX
+\def\nav@sort#1#2{%
+  \usecs{%
+    \directlua{%
+      if [[#1]] < [[#2]] then
+        tex.print("firstoftwo")
+      else
+        tex.print("secondoftwo")
+      end}}}
+\fi
+
+\def\embeddedfile{%
+  \ifnext[
+    {\nav@embeddedfile_getdesc}
+    {\nav@embeddedfile_getdesc[]}%
+  }
+
+\def\nav@embeddedfile_getdesc[#1]#2{%
+  \ifnext[
+    {\nav@embeddedfile_do{#1}{#2}}
+    {\nav@embeddedfile_do{#1}{#2}[]}%
+  }
+
+\def\nav@embeddedfile_do#1#2[#3]#4{%s
+  \pdffileobject[/Type/EmbeddedFile]{nav@embeddedfile:#2}{#4}%
+  \pdfdictobject{#2}{%
+    /Type/Filespec
+    /F (\ifemptystring{#3}{#4}{#3})
+    \reverse\iffemptystring{#1}{/Desc (\pdfstring{#1})}
+    /EF << /F \pdfrefobject{nav@embeddedfile:#2} >>}%
+  \let\nav@temp\nav@embeddedfile_names
+  \let\nav@embeddedfile_names\emptycs
+  \passexpanded{\ifemptystring{#3}{\nav@embeddedfile_add{#4}}{\nav@embeddedfile_add{#3}}{\pdfrefobject{#2}}}\nav@temp
+  }
+
+\newfor\nav@embeddedfile_add{2}#3#4{%
+  \nav@sort{#1}{#3}
+    {\global\eaddright\nav@embeddedfile_names{{#1}{#2}{#3}{#4}}%
+     \retrieverest{\global\eaddright\nav@embeddedfile_names}}
+    {\global\eaddright\nav@embeddedfile_names{{#3}{#4}}}%
+  }[\global\eaddright\nav@embeddedfile_names{{#1}{#2}}]
+
+\newfor\nav@embeddedfile_print#1#2{(#1) #2}
+
+\def\nav@embeddedfile_process{%
+  \pdfdictobject{EmbeddedFiles}{/Names [\passexpanded\nav@embeddedfile_print\nav@embeddedfile_names]}%
+  \nav@embeddedfile_setnames
+  }
+
+\ifpdforluatex
+
+\def\nav@embeddedfile_setnames{%
+  \pdfnames{/EmbeddedFiles \pdfrefobject{EmbeddedFiles}}%
+  }
+
+\else
+
+\def\nav@embeddedfile_setnames{%
+  \special{pdf: put @names << /EmbeddedFiles \pdfrefobject{EmbeddedFiles} >>}%
+  }
+
+\fi
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%% INFO %%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newif\ifnav@finished
+\def\finishpdffile{%
+  \unless\ifnav@finished
+    \global\nav@finishedtrue
+    \nav@embeddedfile_process
+    \nav@processoutlines
+    \nav@processinfo
+  \fi
+  }
+
+\setparameter navigator :
+% ANCHORS (and bookmarks which create implicit anchors)
+  up    = \baselineskip
+  left  = 0pt
+  fit   = xyz
+%  zoom = 1000 % If it is set, it always sets view to 100%, which is extremely irritating.
+%
+% LINKS
+  border    = 0
+  linkcolor = "0 0 0" % "color" in individual links
+  highlight = invert
+% dash      = 1 0
+% raw       = makes sense for individual links only
+% pre       = nothing
+% post      = nothing
+%
+% OUTLINES
+  outlinecolor = "0 0 0" % "color" in individual outlines
+  open         = false
+  bold         = false
+  italic       = false
+% action       = makes sense for individual outlines only
+% anchor       = idem
+%
+% PDF info, no default values:
+% author, title, keywords, subject, date, moddate,
+% creator, producer, rawinfo
+%
+% PDF catalog, idem:
+% layout, mode, uri or base, openaction, rawcatalog
+
+
+\def\nav@processinfo_do#1#2{%
+  \nav@passvalueand{/#1 (\pdfstring}navigator:#2;{) }{}%
+  }
+
+\def\nav@processinfo{%
+  \nav@info{%
+    \nav@processinfo_do{Author}       {author}%
+    \nav@processinfo_do{Title}        {title}%
+    \nav@processinfo_do{Keywords}     {keywords}%
+    \nav@processinfo_do{Subject}      {subject}%
+    \nav@processinfo_do{CreationDate} {date}%
+    \nav@processinfo_do{ModDate}      {moddate}%
+    \nav@processinfo_do{Creator}      {creator}%
+    \nav@processinfo_do{Producer}     {producer}%
+    \nav@usevalue navigator:rawinfo;}%
+%
+  \nav@passvalue\pdfensureobject navigator:openaction;%
+  \nav@catalog{%
+    \nav@ifattribute navigator:layout;
+      {/PageLayout%
+       \nav@ifcasevalue navigator:layout;%
+       \val onepage    /SinglePage
+       \val onecolumn  /OneColumn
+       \val twopage    /TwoPageRight
+       \val twopage*   /TwoPageLeft
+       \val twocolumn  /TwoColumnRight
+       \val twocolumn* /TwoColumnLeft
+       \endval\spacecs}{}%
+    \nav@ifattribute navigator:mode;
+      {/PageMode
+       \nav@ifcasevalue navigator:mode;%
+       \val outlines    /UseOutlines
+       \val bookmarks   /UseOutlines
+       \val thumbnails  /UseThumbs
+       \val thumbs      /UseThumbs
+       \val oc          /UseOC
+       \val attachments /UseAttachments
+       \val files       /UseAttachments
+       \elseval         /UseOutlines
+       \endval\spacecs}{}%
+    \nav@ifattribute navigator:uri;
+      {/URI << /Base (\nav@usevalue navigator:uri;) >> }
+      {\nav@ifattribute navigator:base;
+         {/URI << /Base (\nav@usevalue navigator:base;) >> }
+         {}}%
+    \nav@passvalue{/OpenAction \pdfrefobject}navigator:openaction;%
+    \nav@usevalue navigator:rawcatalog;}%
+  }%
+
+\ifpdforluatex
+
+\let\nav@info\pdfinfo
+\let\nav@catalog\pdfcatalog
+
+\else
+
+\def\nav@info#1{%
+  \special{pdf: docinfo << #1 >>}%
+  }
+\def\nav@catalog#1{%
+  \special{pdf: docview << #1 >>}%
+  }
+
+\fi
+
+\restorecatcodes
+\endinput
+% Almost 800 lines? Gee, that code was supposed to
+% be short and light...

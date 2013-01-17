@@ -1,0 +1,435 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% This is a helper package with an elementary list datastructure.
+%
+% Its implementation is based on Knuth's list macros in "The TeXbook".
+%
+% It features a convenient set of list macros, but it is not fast.
+% In fact, every elementary operation requires time O(N), so working 
+% with this list easily leads to O(N^2) runtime.
+%
+% The following macros are supplied:
+%
+% \pgfplotslistnewempty
+% \pgfplotslistnew
+% \pgfplotslistcopy
+% \pgfplotslistpopfront
+% \pgfplotslistfront
+% \pgfplotslistpushback
+% \pgfplotslistpushfront
+% \pgfplotslistsize
+% \pgfplotslistselect
+% \pgfplotslistset
+% \pgfplotslistcheckempty
+% \pgfplotslistforeach
+%
+% @see \pgfplotsapplist a "real" list with O(1) pushback, but limited application.
+% @see \pgfplotsapplistX a preasymptotical fast list to accumulate elements.
+% @see \pgfplotsapplistXX an optimized version of \pgfplotsapplistX.
+%
+% Copyright 2007/2008 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newif\ifpgfplotslistempty
+
+% Low-level IMPLEMENTATION NOTE 
+% the list is stored in the form 
+% '\pgfpl@@{<first>}\pgfpl@@{<second>}\pgfpl@@{<third>}....\pgfpl@@{<last>}'
+
+\newif\ifpgfplots@loop@CONTINUE
+\newif\ifpgfplotslist@is@backslash@terminated
+
+% Creates a new, empty list.
+\long\def\pgfplotslistnewempty#1{\let#1=\pgfutil@empty}
+
+% Creates a new list with an abirtrary number of elements.
+% Arguments:
+% #1: the list's name (a macro name)
+% #2: the elements in the form 
+%     first\\second\\third\\ ...\\
+%     like in tabular with one column.
+%     You can also use comma-separated lists
+%     first,second,third
+%
+% Example:
+% 1.
+%  \pgfplotslistnew\foolist{First Element\\Second Element\\Third Element\\}
+%   WARNING: do NOT forget the final '\\'!
+%
+% 2.
+% \pgfplotslistnew\foolist{First Element,Second Element,Third Element}
+%
+% Use braces '{}' to use '\\' or ',' as arguments.
+%
+\long\def\pgfplotslistnew#1#2{%
+	\pgfplotslist@check@backslash@list #2\\\pgfplotslist@EOI
+	\ifpgfplotslist@is@backslash@terminated
+		\pgfplotslistnew@backslash@{#1}{#2}%
+	\else
+		\pgfplots@foreach@to@list{#2}\to#1%
+	\fi
+}
+% Is this here *ever* used!? I guess not.
+\long\def\pgfplotslistnew@backslash#1#2{%
+	\pgfplotslistnewempty{#1}%
+	\pgfplotslist@check@backslash@list #2\\\pgfplotslist@EOI
+	\ifpgfplotslist@is@backslash@terminated
+		\long\def\pgfplotslistnew@impl@rest{#2\pgfplotslist@EOI\\}%
+		\def\pgfplotslistnew@backslash@loop{\pgfplotslistnew@impl{#1}}%
+	\else
+		\def\pgfplotslistnew@backslash@loop{\pgfplotslistnew@impl@comma{#1}}%
+		\long\def\pgfplotslistnew@impl@rest{#2\pgfplotslist@EOI,}%
+	\fi
+	\expandafter\pgfplotslistnew@backslash@loop\pgfplotslistnew@impl@rest
+}%
+\long\def\pgfplotslistnew@backslash@#1#2{%
+	\pgfplotslistnewempty{#1}%
+	\def\pgfplotslistnew@backslash@loop{\pgfplotslistnew@impl{#1}}%
+	\pgfplotslistnew@backslash@loop#2\pgfplotslist@EOI\\%
+}%
+
+% helper macro for \pgfplotslistnew
+\long\def\pgfplotslistnew@impl#1#2\\{%
+	\def\pgfplotslist@loc@TMPa{#2}%
+	\ifx\pgfplotslist@loc@TMPa\pgfplotslist@EOI
+	\else
+		\pgfplotslistpushback{#2}\to#1\relax%
+		\expandafter\pgfplotslistnew@backslash@loop
+	\fi
+}
+\long\def\pgfplotslistnew@impl@comma#1#2,{%
+	\def\pgfplotslist@loc@TMPa{#2}%
+	\ifx\pgfplotslist@loc@TMPa\pgfplotslist@EOI
+	\else
+		\pgfplotslistpushback{#2}\to#1\relax%
+		\expandafter\pgfplotslistnew@backslash@loop
+	\fi
+}
+\def\pgfplotslist@EOI{\pgfplotslist@EOI}
+\def\pgfplotslist@backslashsep{\\}
+
+\long\def\pgfplotslist@check@backslash@list#1\\#2\pgfplotslist@EOI{%
+	\def\pgfplotslist@loc@TMPx{#2}%
+	\ifx\pgfplotslist@loc@TMPx\pgfutil@empty
+		\pgfplotslist@is@backslash@terminatedfalse
+		\let\pgfplotslist@check@backslash@list@next=\relax
+	\else
+		\def\pgfplotslist@loc@TMPy{ }%
+		\ifx\pgfplotslist@loc@TMPx\pgfplotslist@loc@TMPy
+			\pgfplotslist@is@backslash@terminatedfalse
+			\let\pgfplotslist@check@backslash@list@next=\relax
+		\else
+			\ifx\pgfplotslist@loc@TMPx\pgfplotslist@backslashsep
+				% ok. The list is something like 'a\\b\\' so the
+				% complete input is
+				% 'a\\b\\ \\ \EOI'
+				% we have iterated long enough to find only the '\\'
+				% right before the \EOI. It is thus backslash
+				% terminated.
+				\pgfplotslist@is@backslash@terminatedtrue
+				\let\pgfplotslist@check@backslash@list@next=\relax
+			\else
+				% Iterate. We want to check the last list element.
+				\long\def\pgfplotslist@check@backslash@list@next{\pgfplotslist@check@backslash@list#2\pgfplotslist@EOI}%
+			\fi
+		\fi
+	\fi
+	\pgfplotslist@check@backslash@list@next
+}%
+
+% Copies list #1 to list #2.
+\def\pgfplotslistcopy#1\to#2{\let#2=#1}
+
+
+
+
+% #1: the item to prepend
+% #2: the list as macro name
+% Example:
+% \pgfplotslistpushfront Next first Element\to\foolist
+\long\def\pgfplotslistpushfront#1\to#2{%
+	\t@pgfplots@toka={\pgfpl@@{#1}}%
+	\t@pgfplots@tokb=\expandafter{#2}%
+  	\edef#2{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+}
+\long\def\pgfplotslistpushfrontglobal#1\to#2{%
+	\t@pgfplots@toka={\pgfpl@@{#1}}%
+	\t@pgfplots@tokb=\expandafter{#2}%
+  	\xdef#2{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+}
+
+% Assembles a low-level list item representation into the token
+% register #2.
+\long\def\pgfplotslist@assembleentry#1\into#2{%
+	#2={\pgfpl@@{#1}}%
+}
+
+% #1: the item to append
+% #2: the list as macro name
+% Example:
+% \pgfplotslistpushback Next last element\to\foolist
+\long\def\pgfplotslistpushback#1\to#2{%
+	\t@pgfplots@toka={\pgfpl@@{#1}}%
+	\ifx#2\pgfutil@empty
+		\t@pgfplots@tokb={}%
+	\else
+		\t@pgfplots@tokb=\expandafter{#2}%
+	\fi
+ 	\edef#2{\the\t@pgfplots@tokb\the\t@pgfplots@toka}%
+}
+% Adds '#1' to the GLOBAL list '#2'.
+\long\def\pgfplotslistpushbackglobal#1\to#2{%
+	\t@pgfplots@toka={\pgfpl@@{#1}}%
+	\ifx#2\pgfutil@empty
+		\t@pgfplots@tokb={}%
+	\else
+		\t@pgfplots@tokb=\expandafter{#2}%
+	\fi
+ 	\xdef#2{\the\t@pgfplots@tokb\the\t@pgfplots@toka}%
+}
+
+% Concatenates two lists #2 and #3 into #1
+% Example:
+% \pgfplotslistconcat\result=\foolist&\bar
+\long\def\pgfplotslistconcat#1=#2&#3{%
+	\t@pgfplots@toka=\expandafter{#2}%
+	\t@pgfplots@tokb=\expandafter{#3}%
+	\edef#1{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+}
+
+% implements #2 := pop_front(#1)
+% Example:
+% \pgfplotslistpopfront\foolist\to\poppedfirstelem
+\long\def\pgfplotslistpopfront#1\to#2{%
+	\pgfplotslistcheckempty#1\relax
+	\ifpgfplotslistempty
+		\pgfplotsthrow{no such element}{#1}{\string\pgfplotslistpopfront\ from \string#1\ although list is EMPTY}\pgfeov%
+	\else
+		\expandafter\pgfplotslistpopfront@impl#1\pgfplotslistpopfront@macronames#1#2%
+	\fi
+}
+\long\def\pgfplotslistfront#1\to#2{%
+	\pgfplotslistcheckempty#1\relax
+	\ifpgfplotslistempty
+		\pgfplotsthrow{no such element}{#2}{\string\pgfplotslistfront\ from \string#1\ although list is EMPTY}\pgfeov%
+	\else
+		\expandafter\pgfplotslistfront@impl#1\pgfplotslistpopfront@macronames#2%
+	\fi
+}
+
+% implementation helper for listpopfront
+\long\def\pgfplotslistpopfront@impl\pgfpl@@#1#2\pgfplotslistpopfront@macronames#3#4{%
+	\def#4{#1}%
+	\def#3{#2}%
+}
+\long\def\pgfplotslistfront@impl\pgfpl@@#1#2\pgfplotslistpopfront@macronames#3{%
+	\def#3{#1}%
+}
+
+% Counts the number of elements in list #1, storing it into the count
+% register #2.
+% Example:
+% \pgfplotslistsize\foo\to{\count0}%
+% \the\count0
+\long\def\pgfplotslistsize#1\to#2{%
+	#2=0%
+	\long\def\pgfpl@@##1{\advance#2 by 1 }%
+	#1%
+}
+
+% Returns the #1th element of list #2 into macro #3
+% Arguments:
+% #1: a count 0,...,N-1 where N is the list size.
+%     You may specify a number of a count.
+% #2: a list
+% #3: a macro name
+% Example:
+%   Element 0:
+%   \pgfplotslistselect0\of\foo\to\elem
+%   \elem
+%   Element \count1:
+%   \pgfplotslistselect\count1\of\foo\to\elem
+\long\def\pgfplotslistselect#1\of#2\to#3{%
+	\global\def\pgfplotslistselect@tmp{\pgfplotsthrow{no such element}{#3}{The requested list entry with index #1 of \string#2 is too large; this list has not enough elements.}\pgfeov}%
+	\pgfplotslistselect@{#1}\of{#2}\to{#3}%
+}
+\long\def\pgfplotslistselect@#1\of#2\to#3{%
+	\begingroup
+	\count0=#1\relax
+ 	\long\def\pgfpl@@##1{%
+		\advance\count0 by-1\relax
+		\ifnum\count0=-1\relax
+			\global\def\pgfplotslistselect@tmp{\def#3{##1}}%
+		\fi%
+	}%
+	#2%
+	\endgroup
+	\pgfplotslistselect@tmp
+}
+
+% Selects a list entry. If it does not exist, '#' will be empty.
+\long\def\pgfplotslistselectorempty#1\of#2\to#3{%
+	\global\def\pgfplotslistselect@tmp{\def#3{}}%
+	\pgfplotslistselect@{#1}\of{#2}\to{#3}%
+}
+
+% Changes the element at index '#1' of list '#2' to the content '#3'.
+%
+% This operation has quadratic (!) time in the worst case.
+\long\def\pgfplotslistset#1\of#2\to#3{%
+	\ifcase#1\relax
+		% change first:
+		\def\pgfplotslistset@\pgfpl@@##1##2\relax{\def#2{\pgfpl@@{#3}##2}}%
+		\expandafter\pgfplotslistset@#2\relax
+	\or
+		% change second:
+		\def\pgfplotslistset@\pgfpl@@##1\pgfpl@@##2##3\relax{\def#2{\pgfpl@@{##1}\pgfpl@@{#3}##2}}%
+		\expandafter\pgfplotslistset@#2\relax
+	\or
+		\def\pgfplotslistset@\pgfpl@@##1\pgfpl@@##2\pgfpl@@##3##4\relax{\def#2{\pgfpl@@{##1}\pgfpl@@{##2}\pgfpl@@{#3}##3}}%
+		\expandafter\pgfplotslistset@#2\relax
+	\or
+		\def\pgfplotslistset@\pgfpl@@##1\pgfpl@@##2\pgfpl@@##3\pgfpl@@##4##5\relax{\def#2{\pgfpl@@{##1}\pgfpl@@{##2}\pgfpl@@{##3}\pgfpl@@{#3}##4}}%
+		\expandafter\pgfplotslistset@#2\relax
+	\else
+		\begingroup
+		\global\pgfplotslistnewempty\pgfplotslistnewempty\pgfplotslist@glob@TMPa
+		\let\pgfpl@@=\pgfutil@empty % make sure it is not \relax.
+		\count0=#1\relax
+		\count1=0
+		\def\pgfplotslistset@newelem{#3}%
+		\expandafter\pgfplotslistset@loop#2\relax
+		\ifnum\count1 =\count0
+		\else
+			\pgfplotsthrow{no such element}{\pgfplots@loc@TMPa}{\string\pgfplotslistset{\the\count0} failed because there are only \the\count1\space elements in the list. Use pushback to resize it.}\pgfeov%
+			\global\let\pgfplotslist@glob@TMPa=\pgfplots@loc@TMPa
+		\fi
+		\endgroup
+		\let#3=\pgfplotslist@glob@TMPa
+		\global\let\pgfplotslist@glob@TMPa=\relax
+	\fi
+}%
+
+\def\pgfplotslistset@loop{%
+	\pgfutil@ifnextchar\relax{%
+		\pgfplotslistset@loop@break
+	}{%
+		\pgfplotslistset@loop@next
+	}%
+}
+\def\pgfplotslistset@loop@break#1\relax{%
+	% re-append remaining elements:
+	\expandafter\gdef\expandafter\pgfplotslist@glob@TMPa\expandafter{\pgfplotslist@glob@TMPa#1}
+}%
+\def\pgfplotslistset@loop@next\pgfpl@@#1{%
+	\ifnum\count1 =\count0
+		% Ah - we found the element to replace!
+		\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplotslistset@newelem}\to\pgfplotslist@glob@TMPa
+		\expandafter\pgfplotslistset@loop@break
+	\else
+		\pgfplotslistpushbackglobal{#1}\to\pgfplotslist@glob@TMPa
+		\advance\count1 by1
+		\expandafter\pgfplotslistset@loop
+	\fi
+}%
+
+% Sets the boolean \ifpgfplotslistempty depending on whether list #1 is empty
+% or not.
+% Example:
+%
+% \pgfplotslistcheckempty\foolist
+% \ifpgfplotslistempty
+%    List foolist is empty!
+% \else
+%    List is not empty.
+% \fi
+\def\pgfplotslistcheckempty#1{%
+	\ifx#1\pgfutil@empty
+		\pgfplotslistemptytrue
+	\else
+		\ifx#1\relax
+			\pgfplots@warning{WARNING: possible logic error in script code: the command \string\pgfplotslistcheckempty{\string#1} encountered an undefined argument.}%
+			\pgfplotslistemptytrue
+		\else
+			\pgfplotslistemptyfalse
+		\fi
+	\fi
+}
+
+
+% Iterates through each list element, names it #2 and calls code #3.
+% Example:
+% \pgfplotslistnew\foolist{Eins\\Zwei\\Drei\\}%
+% \pgfplotslistforeach\foolist\as\foo{Element \foo\par}%
+% results in
+%  Element Eins
+%  Element Zwei
+%  Element Drei
+% Each single element will be grouped with TeX groups.
+\long\def\pgfplotslistforeach#1\as#2#3{%
+	\begingroup
+	\long\def\pgfpl@@##1{%
+		\t@pgfplots@tokc={##1}% this allows '#' inside of '##1'
+		\edef#2{\the\t@pgfplots@tokc}%
+		\begingroup #3\endgroup}%
+	#1\relax
+	\endgroup
+}
+
+% The same but without groups around #3.
+%
+% The list can be nested.
+\long\def\pgfplotslistforeachungrouped#1\as#2#3{%
+	\t@pgfplots@tokb={{#2}{#3}}%
+	\t@pgfplots@tokc=\expandafter{#1}%
+	\edef\pgfplotslist@loc@TMPa{%
+		\noexpand\pgfplotslistforeachungrouped@
+		\the\t@pgfplots@tokb%
+		\the\t@pgfplots@tokc
+		\noexpand\pgfpl@@\noexpand\pgfplotslistforeachungrouped@EOI
+	}%
+	\pgfplotslist@loc@TMPa
+}%
+
+% Technical helper method which performs the loop.
+% ASSUMPTION:
+% \pgfplotslistforeachungrouped@
+% 	{<macro name>}
+% 	{<code to execute>}
+% 	\pgfpl@@{<list elem>}\pgfpl@@{<list elem>}\pgfpl@@{<list elem>}\pgfpl@@\pgfplotslistforeachungrouped@EOI
+%
+% -> iterate through argument until \pgfplotslistforeachungrouped@EOI
+%  comes.
+\long\def\pgfplotslistforeachungrouped@#1#2\pgfpl@@#3{%
+	\def\pgfplotslist@loc@TMPa{#3}%
+	\ifx\pgfplotslist@loc@TMPa\pgfplotslistforeachungrouped@EOI
+		% ok, terminate loop.
+		\let\pgfplotslistforeachungrouped@next=\relax
+	\else
+		% perform loop iteration ... 
+		\t@pgfplots@tokc={#3}%
+		\edef#1{\the\t@pgfplots@tokc}% this allows '#' inside of '#3'
+		#2\relax
+		% and continue iterating.
+		\def\pgfplotslistforeachungrouped@next{\pgfplotslistforeachungrouped@{#1}{#2}}%
+	\fi
+	\pgfplotslistforeachungrouped@next
+}%
+\def\pgfplotslistforeachungrouped@EOI{\pgfplotslistforeachungrouped@EOI}% equals only itself in \ifx
+

@@ -1,0 +1,675 @@
+%%
+%% This is file `silence.sty',
+%% generated with the docstrip utility.
+%%
+%% The original source files were:
+%%
+%% silence-doc.dtx  (with options: `package')
+%% 
+%% ******************************************************************************
+%% ******************************************************************************
+%% **                                                                          **
+%% ** silence v.1.4 by Paul Isambert                                           **
+%% ** See the documentation for a comment on the implementation.               **
+%% **                                                                          **
+%% ** This set of macros is published under the LaTeX Project Public License.  **
+%% **                                                                          **
+%% ** Comments, suggestions and bugs:                                          **
+%% **                                                                          **
+%% ** zappathustra@free.fr                                                     **
+%% **                                                                          **
+%% ** http://paulisambert.free.fr/                                             **
+%% **                                                                          **
+%% ** Enjoy!                                                                   **
+%% **                                                                          **
+%% ******************************************************************************
+%% ******************************************************************************
+%% 
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{silence}[2011/12/06 v1.4 Selective filtering of warnings and error messages]
+\makeatletter
+
+\newcount\sl@Save
+\newif\ifsl@Debrief
+\newif\ifsl@ShowWarnings
+\newif\ifsl@ShowErrors
+\newif\ifsl@Immediate
+\newif\ifsl@SafeMode
+
+\DeclareOption{debrief}{\sl@Debrieftrue}
+\DeclareOption{immediate}{\sl@Immediatetrue}
+\DeclareOption{safe}{\sl@SafeModetrue}
+\DeclareOption{save}{\sl@Save1
+  \newwrite\sl@Write
+  \immediate\openout\sl@Write=\jobname.sil}
+\DeclareOption{saveall}{\sl@Save2
+  \newwrite\sl@Write
+  \immediate\openout\sl@Write=\jobname.sil}
+\DeclareOption{showwarnings}{\sl@ShowWarningstrue}
+\DeclareOption{showerrors}{\sl@ShowErrorstrue}
+\ProcessOptions\relax
+
+\newcount\sl@StateNumber
+\newcount\sl@MessageCount
+\newcount\sl@Casualties
+
+\newtoks\sl@Filter
+\newtoks\sl@Message
+\newtoks\sl@UnexpandedMessage
+\newtoks\sl@Mess@ge
+
+\newif\ifsl@Check
+\newif\ifsl@Belong
+\newif\ifsl@KillMessage
+\newif\ifsl@SafeTest
+
+\def\sl@end{sl@end}
+\def\sl@latex{latex}
+\def\sl@Terminator{\sl@Terminator}
+\gdef\sl@active{active}
+\gdef\sl@safe{safe}
+\gdef\sl@PackageName{NoPackage}
+\def\SafeMode{\global\sl@SafeModetrue}
+\def\BoldMode{\global\sl@SafeModefalse}
+\def\sl@Gobble#1sl@end,{}
+
+\newcount\sl@WarningCount
+\newcount\sl@WarningNumber
+\newcount\sl@WarningCasualties
+
+\newtoks\sl@TempBOW
+\newtoks\sl@BankOfWarnings
+
+\newif\ifsl@WarningsOff
+\newif\ifsl@NoLine
+
+\expandafter\gdef\csname sl@family:WarningState\endcsname{active}
+\def\sl@WarningNames{}
+\def\sl@UnwantedWarnings{}
+\def\sl@ProtectedWarnings{}
+
+\def\WarningsOn{%
+  \@ifnextchar[%
+  {\ifsl@WarningsOff
+      \def\sl@next{\sl@Add\sl@ProtectedWarnings}%
+    \else
+      \def\sl@next{\sl@Remove\sl@UnwantedWarnings}%
+    \fi\sl@next}%
+  {\global\sl@WarningsOfffalse
+  \gdef\sl@ProtectedWarnings{}%
+  \gdef\sl@UnwantedWarnings{}}}
+
+\def\WarningsOff{%
+  \@ifstar
+  {\global\sl@WarningsOfftrue
+    \gdef\sl@UnwantedWarnings{}%
+    \gdef\sl@ProtectedWarnings{}}%
+  {\@ifnextchar[{%
+    \ifsl@WarningsOff
+      \def\sl@next{\sl@Remove\sl@ProtectedWarnings}%
+    \else
+      \def\sl@next{\sl@Add\sl@UnwantedWarnings}%
+    \fi\sl@next}%
+    {\global\sl@WarningsOfftrue
+    \gdef\sl@UnwantedWarnings{}%
+    \gdef\sl@ProtectedWarnings{latex,}}}}
+
+\def\sl@Add#1[#2]{%
+  \xdef#1{#1#2,}}
+
+\def\sl@Remove#1[#2]{%
+  \def\sl@Items{#2}%
+  \def\sl@TempNewList{}%
+  \expandafter\sl@@Remove#1sl@end,%
+  \let#1\sl@TempNewList}
+
+\def\sl@@Remove#1,{%
+  \def\sl@Tempa{#1}%
+  \ifx\sl@Tempa\sl@end
+    \let\sl@next\relax
+  \else
+    \sl@Checkfalse
+    \expandafter\sl@ListCheck\sl@Items,sl@end,%
+    \ifsl@Check
+    \else
+      \xdef\sl@TempNewList{\sl@TempNewList#1,}%
+    \fi
+    \let\sl@next\sl@@Remove
+  \fi\sl@next}%
+
+\def\sl@ListCheck#1,{%
+  \def\sl@Tempb{#1}%
+  \ifx\sl@Tempb\sl@end
+    \let\sl@next\relax
+  \else
+    \ifx\sl@Tempa\sl@Tempb
+      \sl@Checktrue
+      \let\sl@next\sl@Gobble
+    \else
+      \let\sl@next\sl@ListCheck
+    \fi
+  \fi\sl@next}
+
+\def\WarningFilter{%
+  \global\advance\sl@WarningNumber1
+  \@ifstar
+    {\expandafter\gdef\csname\the\sl@WarningNumber:WarningMode\endcsname{safe}%
+    \sl@WarningFilter}%
+    {\sl@WarningFilter}}
+
+\def\sl@WarningFilter{%
+  \@ifnextchar[%
+  {\sl@@WarningFilter}%
+  {\sl@@WarningFilter[sl@family]}}
+
+\def\sl@@WarningFilter[#1]#2{%
+  \expandafter\ifx\csname #2@WarningFilter\endcsname\relax
+    \expandafter\xdef\csname #2@WarningFilter\endcsname{\the\sl@WarningNumber:sl@#1}%
+  \else
+    \expandafter\xdef\csname #2@WarningFilter\endcsname{%
+      \csname #2@WarningFilter\endcsname,\the\sl@WarningNumber:sl@#1}%
+  \fi
+  \expandafter\ifx\csname #1:WarningState\endcsname\relax
+    \sl@Add\sl@WarningNames[#1]%
+  \fi
+  \expandafter\ifx\csname #1:WarningState\endcsname\sl@active
+  \else
+    \ifsl@Immediate
+      \expandafter\gdef\csname #1:WarningState\endcsname{active}%
+    \else
+      \expandafter\gdef\csname #1:WarningState\endcsname{inactive}%
+    \fi
+  \fi
+  \begingroup
+  \expandafter\ifx\csname\the\sl@WarningNumber:WarningMode\endcsname\sl@safe
+    \makeatletter
+  \else
+    \catcode`\\12
+  \fi
+  \sl@AddToBankOfWarnings}
+
+\long\def\sl@AddToBankOfWarnings#1{%
+  \sl@TempBOW{#1}%
+  \edef\sl@act{%
+  \global\noexpand\sl@BankOfWarnings{%
+    \the\sl@BankOfWarnings
+    (:sl@\the\sl@WarningNumber:)\the\sl@TempBOW(:sl@\the\sl@WarningNumber:)}}%
+  \sl@act
+  \endgroup}
+
+\def\ActivateWarningFilters{%
+  \sl@StateNumber0\relax
+  \@ifnextchar[%
+  {\sl@ChangeState}%
+  {\sl@ChangeState[\sl@WarningNames]}}
+
+\def\DeactivateWarningFilters{%
+  \sl@StateNumber1\relax
+  \@ifnextchar[%
+  {\sl@ChangeState}%
+  {\sl@ChangeState[\sl@WarningNames]}}
+
+\def\sl@ChangeState[#1]{%
+  \expandafter\sl@@ChangeState#1,sl@end,}
+
+\def\sl@@ChangeState#1,{%
+  \def\sl@Tempa{#1}%
+  \ifx\sl@Tempa\sl@end
+    \let\sl@next\relax
+  \else
+    \ifcase\sl@StateNumber
+      \expandafter\gdef\csname #1:WarningState\endcsname{active}%
+    \or
+      \expandafter\gdef\csname #1:WarningState\endcsname{inactive}%
+    \or
+      \expandafter\gdef\csname #1:ErrorState\endcsname{active}%
+    \or
+      \expandafter\gdef\csname #1:ErrorState\endcsname{inactive}%
+    \fi
+    \let\sl@next\sl@@ChangeState
+  \fi\sl@next}
+
+\def\ActivateFilters{%
+  \@ifnextchar[%
+  {\sl@StateNumber0
+  \sl@RetrieveArgument}%
+  {\sl@StateNumber0
+  \sl@ChangeState[\sl@WarningNames]%
+  \sl@StateNumber2
+  \sl@ChangeState[\sl@ErrorNames]}}
+
+\def\DeactivateFilters{%
+  \@ifnextchar[%
+  {\sl@StateNumber1
+  \sl@RetrieveArgument}%
+  {\sl@StateNumber1
+  \sl@ChangeState[\sl@WarningNames]%
+  \sl@StateNumber3
+  \sl@ChangeState[\sl@ErrorNames]}}
+
+\def\sl@RetrieveArgument[#1]{%
+  \def\sl@Argument{#1}%
+  \ifcase\sl@StateNumber
+    \sl@ChangeState[\sl@Argument]%
+    \sl@StateNumber2\relax
+    \sl@ChangeState[\sl@Argument]%
+  \or
+    \sl@ChangeState[\sl@Argument]%
+    \sl@StateNumber3\relax
+    \sl@ChangeState[\sl@Argument]%
+  \fi}
+
+\def\sl@GetNumber#1:sl@#2,{%
+  \ifnum#1>0
+    \expandafter
+    \ifx\csname #2:\ifcase\sl@StateNumber Warning\or Error\fi State\endcsname\sl@active
+      \sl@GetMessage{#1}%
+    \else
+      \let\sl@next\sl@GetNumber
+    \fi
+  \else
+    \let\sl@next\relax
+  \fi\sl@next}
+
+\def\sl@GetMessage#1{%
+  \def\sl@@GetMessage##1(:sl@#1:)##2(:sl@#1:)##3(:sl@end:){\sl@Filter={##2\sl@Terminator}}%
+  \ifcase\sl@StateNumber
+    \edef\sl@act{\noexpand\sl@@GetMessage\the\sl@BankOfWarnings(:sl@end:)}%
+  \or
+    \edef\sl@act{\noexpand\sl@@GetMessage\the\sl@BankOfErrors(:sl@end:)}%
+  \fi
+  \sl@act
+  \ifsl@SafeMode
+    \sl@SafeTesttrue
+    \edef\sl@act{\noexpand\sl@Mess@ge{\the\sl@UnexpandedMessage\noexpand\sl@Terminator}}%
+  \else
+    \expandafter
+    \ifx\csname #1:\ifcase\sl@StateNumber Warning\or Error\fi Mode\endcsname\sl@safe%
+      \sl@SafeTesttrue
+      \edef\sl@act{\noexpand\sl@Mess@ge{\the\sl@UnexpandedMessage\noexpand\sl@Terminator}}%
+    \else
+      \sl@SafeTestfalse
+      \edef\sl@act{\noexpand\sl@Mess@ge{\the\sl@Message\noexpand\sl@Terminator}}%
+    \fi
+  \fi
+  \sl@act
+  \sl@TestStrings}
+
+\def\sl@TestStrings{%
+  \edef\sl@act{%
+  \noexpand\sl@Slice\the\sl@Filter(:sl@mid:)\noexpand\sl@Filter\noexpand\sl@FilterToken
+  \noexpand\sl@Slice\the\sl@Mess@ge(:sl@mid:)\noexpand\sl@Mess@ge\noexpand\sl@MessageToken}%
+  \sl@act
+  \ifx\sl@FilterToken\sl@Terminator
+    \sl@KillMessagetrue
+    \let\sl@@next\relax
+    \let\sl@next\sl@Gobble
+  \else
+    \ifx\sl@MessageToken\sl@Terminator
+      \let\sl@@next\relax
+      \let\sl@next\sl@GetNumber
+    \else
+      \ifsl@SafeTest
+        \ifx\sl@FilterToken\sl@MessageToken
+          \let\sl@@next\sl@TestStrings
+        \else
+          \let\sl@@next\relax
+          \let\sl@next\sl@GetNumber
+        \fi
+      \else
+        \if\sl@FilterToken\sl@MessageToken
+          \let\sl@@next\sl@TestStrings
+        \else
+          \let\sl@@next\relax
+          \let\sl@next\sl@GetNumber
+        \fi
+      \fi
+    \fi
+  \fi\sl@@next}
+
+\def\sl@Slice#1#2(:sl@mid:)#3#4{\def#4{#1}#3={#2}}
+
+\def\sl@Belong#1,{%
+  \def\sl@Tempa{#1}%
+  \ifx\sl@Tempa\sl@end
+    \let\sl@next\relax
+  \else
+    \ifx\sl@Tempa\sl@PackageName
+      \sl@Belongtrue
+      \let\sl@next\sl@Gobble
+    \else
+      \let\sl@next\sl@Belong
+    \fi
+  \fi\sl@next}
+
+\def\sl@RemoveGobble#1\@gobble\sl@Terminator#2\sl@Terminator{%
+  \def\sl@Tempb{#2}%
+  \ifx\sl@Tempb\@empty
+  \else
+    \def\sl@Tempa{#1}%
+    \expandafter\@gobble
+  \fi
+  }
+
+\def\sl@RemoveGobbletwo#1\@gobbletwo\sl@Terminator#2\sl@Terminator{%
+  \def\sl@Tempb{#2}%
+  \ifx\sl@Tempb\@empty
+  \else
+    \def\sl@Tempa{#1}%
+    \expandafter\@gobble
+  \fi
+  }
+
+\def\sl@StoreMessage#1{%
+  \ifsl@SafeMode
+    \sl@UnexpandedMessage{#1}%
+  \else
+    \sl@UnexpandedMessage{#1}%
+    \bgroup
+    \let\protect\string
+    \let\noexpand\string
+    \def\sl@Tempa{#1}%
+    \sl@RemoveGobble#1\sl@Terminator\@gobble\sl@Terminator\sl@Terminator
+    \sl@RemoveGobbletwo#1\sl@Terminator\@gobbletwo\sl@Terminator\sl@Terminator
+    \edef\sl@Tempa{\sl@Tempa}%
+    \global\expandafter\sl@Message\expandafter{\sl@Tempa}%
+    \egroup
+  \fi}
+
+\ifsl@ShowWarnings
+\else
+\expandafter\let\expandafter\sl@GenericWarning\csname GenericWarning \endcsname
+\let\sl@PackageWarning\PackageWarning
+\let\sl@ClassWarning\ClassWarning
+\let\sl@latex@warning\@latex@warning
+\let\sl@font@warning\@font@warning
+
+\def\PackageWarning#1#2{%
+  \def\sl@PackageName{#1}%
+  \ifsl@NoLine
+    \sl@NoLinefalse
+  \else
+    \sl@StoreMessage{#2}%
+  \fi
+  \sl@PackageWarning{#1}{#2}}
+
+\def\PackageWarningNoLine#1#2{%
+  \sl@StoreMessage{#2}%
+  \sl@NoLinetrue
+  \PackageWarning{#1}{#2\@gobble}}
+
+\def\ClassWarning#1#2{%
+  \def\sl@PackageName{#1}%
+  \ifsl@NoLine
+    \sl@NoLinefalse
+  \else
+    \sl@StoreMessage{#2}%
+  \fi
+  \sl@ClassWarning{#1}{#2}}
+
+\def\ClassWarningNoLine#1#2{%
+  \sl@StoreMessage{#2}%
+  \sl@NoLinetrue
+  \ClassWarning{#1}{#2\@gobble}}
+
+\def\@latex@warning#1{%
+  \def\sl@PackageName{latex}%
+  \ifsl@NoLine
+    \sl@NoLinefalse
+  \else
+    \sl@StoreMessage{#1}%
+  \fi
+  \sl@latex@warning{#1}}
+
+\def\@latex@warning@no@line#1{%
+  \sl@StoreMessage{#1}%
+  \sl@NoLinetrue
+  \@latex@warning{#1\@gobble}}
+
+\def\@font@warning#1{%
+  \def\sl@PackageName{latexfont}%
+  \sl@StoreMessage{#1}%
+  \sl@font@warning{#1}}
+
+\DeclareRobustCommand{\GenericWarning}[2]{%
+  \global\advance\sl@WarningCount1
+  \sl@KillMessagefalse
+  \sl@Belongfalse
+  \ifsl@WarningsOff
+    \expandafter\sl@Belong\sl@ProtectedWarnings sl@end,%
+    \ifsl@Belong
+    \else
+      \sl@KillMessagetrue
+    \fi
+  \else
+    \expandafter\sl@Belong\sl@UnwantedWarnings sl@end,%
+    \ifsl@Belong
+      \sl@KillMessagetrue
+    \fi
+  \fi
+  \ifsl@KillMessage
+  \else
+    \expandafter\ifx\csname\sl@PackageName @WarningFilter\endcsname\relax
+    \else
+      \sl@StateNumber0
+      \expandafter\expandafter\expandafter
+      \sl@GetNumber\csname\sl@PackageName @WarningFilter\endcsname,0:sl@sl@end,%
+    \fi
+  \fi
+  \ifsl@KillMessage
+    \global\advance\sl@WarningCasualties1
+  \else
+    \sl@GenericWarning{#1}{#2}%
+  \fi
+  \ifcase\sl@Save
+  \or
+    \ifsl@KillMessage
+      \bgroup
+      \let\@unused\sl@Write
+      \sl@GenericWarning{#1}{#2}%
+      \egroup
+    \fi
+  \or
+    \bgroup
+    \let\@unused\sl@Write
+    \sl@GenericWarning{#1}{#2}%
+    \egroup
+  \fi
+  \gdef\sl@PackageName{NoPackage}}%
+\fi
+
+\newcount\sl@ErrorCount
+\newcount\sl@ErrorNumber
+\newcount\sl@ErrorCasualties
+
+\newtoks\sl@TempBOE
+\newtoks\sl@BankOfErrors
+
+\newif\ifsl@ErrorsOff
+
+\expandafter\gdef\csname sl@family:ErrorState\endcsname{active}
+\expandafter\gdef\csname sl@end:ErrorState\endcsname{active}
+\def\sl@ErrorNames{}
+\def\sl@UnwantedErrors{}
+\def\sl@ProtectedErrors{}
+
+\def\ErrorsOn{%
+  \@ifnextchar[%
+  {\ifsl@ErrorsOff
+      \def\sl@next{\sl@Add\sl@ProtectedErrors}%
+    \else
+      \def\sl@next{\sl@Remove\sl@UnwantedErrors}%
+    \fi\sl@next}%
+  {\global\sl@ErrorsOfffalse
+  \gdef\sl@ProtectedErrors{}%
+  \gdef\sl@UnwantedErrors{}}}
+
+\def\ErrorsOff{%
+  \@ifstar
+  {\global\sl@ErrorsOfftrue
+    \gdef\sl@UnwantedErrors{}%
+    \gdef\sl@ProtectedErrors{}}%
+  {\@ifnextchar[{%
+    \ifsl@ErrorsOff
+      \def\sl@next{\sl@Remove\sl@ProtectedErrors}%
+    \else
+      \def\sl@next{\sl@Add\sl@UnwantedErrors}%
+    \fi\sl@next}%
+    {\global\sl@ErrorsOfftrue
+    \gdef\sl@UnwantedErrors{}%
+    \gdef\sl@ProtectedErrors{latex,}}}}
+
+\def\ErrorFilter{%
+  \global\advance\sl@ErrorNumber1
+  \@ifstar
+    {\expandafter\gdef\csname\the\sl@ErrorNumber:ErrorMode\endcsname{safe}\sl@ErrorFilter}%
+    {\sl@ErrorFilter}}
+
+\def\sl@ErrorFilter{%
+  \@ifnextchar[%
+  {\sl@@ErrorFilter}%
+  {\sl@@ErrorFilter[sl@family]}}
+
+\def\sl@@ErrorFilter[#1]#2{%
+  \expandafter\ifx\csname #2@ErrorFilter\endcsname\relax
+    \expandafter\xdef\csname #2@ErrorFilter\endcsname{\the\sl@ErrorNumber:sl@#1}%
+  \else
+    \expandafter\xdef\csname #2@ErrorFilter\endcsname{%
+      \csname #2@ErrorFilter\endcsname,\the\sl@ErrorNumber:sl@#1}%
+  \fi
+  \expandafter\ifx\csname #1:ErrorState\endcsname\relax
+    \sl@Add\sl@ErrorNames[#1]%
+  \fi
+  \expandafter\ifx\csname #1:ErrorState\endcsname\sl@active
+  \else
+    \ifsl@Immediate
+      \expandafter\gdef\csname #1:ErrorState\endcsname{active}%
+    \else
+      \expandafter\gdef\csname #1:ErrorState\endcsname{inactive}%
+    \fi
+  \fi
+  \begingroup
+  \expandafter\ifx\csname\the\sl@ErrorNumber:ErrorMode\endcsname\sl@safe
+    \makeatletter
+  \else
+     \catcode`\\12
+  \fi
+  \sl@AddToBankOfErrors}
+
+\long\def\sl@AddToBankOfErrors#1{%
+  \sl@TempBOE{#1}%
+  \edef\sl@act{%
+    \global\noexpand\sl@BankOfErrors{%
+    \the\sl@BankOfErrors
+    (:sl@\the\sl@ErrorNumber:)\the\sl@TempBOE(:sl@\the\sl@ErrorNumber:)}}%
+  \sl@act
+  \endgroup}
+
+\def\ActivateErrorFilters{%
+  \sl@StateNumber2
+  \@ifnextchar[%
+  {\sl@ChangeState}%
+  {\sl@ChangeState[\sl@ErrorNames]}}
+
+\def\DeactivateErrorFilters{%
+  \sl@StateNumber3
+  \@ifnextchar[%
+  {\sl@ChangeState}%
+  {\sl@ChangeState[\sl@ErrorNames]}}
+
+\ifsl@ShowErrors
+\else
+\expandafter\let\expandafter\sl@GenericError\csname GenericError \endcsname
+\let\sl@PackageError\PackageError
+\let\sl@ClassError\ClassError
+\let\sl@latex@error\@latex@error
+
+\def\PackageError#1#2#3{%
+  \def\sl@PackageName{#1}%
+  \sl@StoreMessage{#2}%
+  \sl@PackageError{#1}{#2}{#3}}
+
+\def\ClassError#1#2#3{%
+  \def\sl@PackageName{#1}%
+  \sl@StoreMessage{#2}%
+  \sl@ClassError{#1}{#2}{#3}}
+
+\def\@latex@error#1#2{%
+  \def\sl@PackageName{latex}%
+  \sl@StoreMessage{#1}%
+  \sl@latex@error{#1}{#2}}
+
+\DeclareRobustCommand{\GenericError}[4]{%
+  \global\advance\sl@ErrorCount1
+  \sl@KillMessagefalse
+  \sl@Belongfalse
+  \ifsl@ErrorsOff
+    \expandafter\sl@Belong\sl@ProtectedErrors,sl@end,%
+    \ifsl@Belong
+    \else
+      \sl@KillMessagetrue
+    \fi
+  \else
+    \expandafter\sl@Belong\sl@UnwantedErrors,sl@end,%
+    \ifsl@Belong
+      \sl@KillMessagetrue
+    \fi
+  \fi
+  \ifsl@KillMessage
+  \else
+    \expandafter\ifx\csname\sl@PackageName @ErrorFilter\endcsname\relax
+    \else
+      \sl@StateNumber1
+      \expandafter\expandafter\expandafter
+      \sl@GetNumber\csname\sl@PackageName @ErrorFilter\endcsname,0:sl@sl@end,%
+    \fi
+  \fi
+  \ifsl@KillMessage
+    \global\advance\sl@ErrorCasualties1
+  \else
+    \sl@GenericError{#1}{#2}{#3}{#4}%
+  \fi
+  \ifcase\sl@Save
+  \or
+    \ifsl@KillMessage
+      \bgroup
+      \let\@unused\sl@Write
+      \sl@GenericError{#1}{#2}{#3}{#4}%
+      \egroup
+    \fi
+  \or
+    \bgroup
+    \let\@unused\sl@Write
+    \sl@GenericError{#1}{#2}{#3}{#4}%
+    \egroup
+  \fi
+  \gdef\sl@PackageName{NoPackage}}%
+  \fi
+\AtEndDocument{%
+  \ifsl@Debrief
+    \clearpage
+    \sl@MessageCount\sl@WarningCount
+    \advance\sl@MessageCount\sl@ErrorCount
+    \sl@Casualties\sl@WarningCasualties
+    \advance\sl@Casualties\sl@ErrorCasualties
+    \ifnum\sl@MessageCount>0
+      \ifnum\sl@Casualties>0
+        \advance\sl@WarningCount-1
+        \PackageWarningNoLine{silence}{%
+        There were \the\sl@WarningCount\space warning(s)
+        and \the\sl@ErrorCount\space error(s).\MessageBreak
+        \ifnum\sl@Casualties=\sl@MessageCount
+          None survived. This is a violent world%
+        \else
+          I've killed \the\sl@WarningCasualties\space warning(s)
+          and \the\sl@ErrorCasualties\space error(s)%
+        \fi}%
+      \fi
+    \fi
+  \fi}
+
+\makeatother
+\endinput
+%%
+%% End of file `silence.sty'.

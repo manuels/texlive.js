@@ -1,0 +1,535 @@
+\typeout{%
+Pictures in Paragraphs. Version 1.2a, July 13, 1993}
+% This is picinpar.sty version 1.2a as of july 13, 1993
+% Macros for making windows with LaTeX
+%
+% By Friedhelm Sowa, Heinrich-Heine-University D\"usseldorf,
+%                    Computing Center
+%                    In case of emergency try to get the email adress
+%                    after having checked the input :-)
+%                    Okay, for those who are too lazy:
+%                          sowa@uni-duesseldorf.de
+% Distributed under the terms of the GNU General Public License.
+% This program is free software; you can redistribute it and/or
+% modify it under the terms of the GNU General Public License as
+% published by the Free Software Foundation; either version 2, or (at your
+% option) any later version.
+%
+% Incorporated are basic ideas of Alan Hoenig (Thanks Alan!)
+% Thanks to Phil Taylor, who gave some useful hints during his
+% tutorial at the EURO TeX 92 in Prague.
+%
+% Also thanks to Ulrik Vieth, who incorporated the macros for
+% generating captions within the windows.
+%
+%----------------
+% Known problems:
+%
+%    - Don't use \samepage
+%    - Use \footnotemark within and \footnotetext outside the
+%      window-environment instead of \footnote
+%    - When using the epic-package load picinpar before epic
+%      like \documentstyle[...,picinpar,epic]{...}
+%----------------
+% Changes:
+%
+% 1.1  If \brokenpenalty\maxdimen then it's set to 9999 within the
+%      window's group
+%
+%      Reported by kuhlmav@elec.canterbury.ac.nz
+%
+% 1.2  When centering a window and the right column contains less
+%      lines than the left column then the right lines are raised
+%      by using \vfill
+%
+%      Reported by Wolfgang Riedel, TU Chemnitz
+%
+% 1.2a A better way to shift the right box. There was some trouble
+%      when the window is on the left. I don't know why I didn't
+%      notice TeX's overfull \vbox
+%
+%      Reported by Stephan Seidl, seidl@rcs.urz.tu-dresden.de
+
+%
+%
+%
+%                       Here we go
+%
+% Counts
+\newcount\br
+\newcount\bl
+\newcount\na
+\newcount\nb
+\newcount\tcdsav
+\newcount\tcl
+\newcount\tcd
+\newcount\tcn
+\newcount\cumtcl
+\newcount\cumpartcl
+% Dimens
+\newdimen\lftside
+\newdimen\rtside
+\newdimen\hpic
+\newdimen\vpic
+\newdimen\strutilg
+\newdimen\picwd
+\newdimen\topheight
+\newdimen\ilg
+\newdimen\lpic
+\newdimen\lwindowsep \newdimen\rwindowsep	% VK 10 Feb 93
+\lwindowsep0.5\baselineskip			% "
+\rwindowsep0.5\baselineskip			% "
+\newdimen\cumpar
+% Tokens
+\newtoks\twa
+\newtoks\la
+\newtoks\ra
+\newtoks\ha
+\newtoks\pictoc
+% Boxes
+\newbox\rawtext
+\newbox\holder
+\newbox\windowbox
+\newbox\wartext
+\newbox\finaltext
+\newbox\aslice
+\newbox\bslice
+\newbox\wbox
+\newbox\wstrutbox
+\newbox\picbox
+\newbox\waslice
+\newbox\wbslice
+\newbox\fslice
+% Another strut
+\def\wstrut{\relax\ifmmode\copy\wstrutbox\else\unhcopy\wstrutbox\fi}
+%
+\long\def\window[#1,#2,#3,#4] {%
+% #1 is an integer---no.  of lines down from par top
+% #2 is l, r or c what means left, right or centered
+%    default is, that the picture is printed at the left side
+% #3 is the material for setting a graphic box
+% #4 is the explanation for the graphic
+\vskip\parskip\everypar{}
+\global\cumpar=0pt
+\global\cumpartcl=0
+\global\cumtcl=0
+    \tcd=#1
+    \lftside=0pt \rtside=0pt
+%    \hpic=\linewidth
+    \twa={} \la={} \ra={} \ha={}
+\setbox\wbox=\hbox{(}
+\computeilg
+\pictoc={#3}
+\setbox\windowbox=\vbox{\hbox{#3}}
+\setbox\wbox=\vbox{\hbox{\noindent#4}}
+\picwd=\wd\windowbox
+\hpic=\picwd
+\vpic=\ht\windowbox\advance\vpic\dp\windowbox
+\if #2c\lftside=\linewidth\advance\lftside-\picwd\rtside=0.5\lftside
+       \lftside=\rtside
+\else \if #2r\lftside=\linewidth\advance\lftside-\picwd
+              \rtside=0pt
+      \else\rtside=\linewidth\advance\rtside-\picwd
+           \lftside=0pt
+      \fi
+\fi
+%
+% In case of a centered picture, that does not allow text beside
+% we have to add some glue between preceding text, window and
+% following text.
+%
+\if #2c
+ \ifdim\rtside<72pt
+  \rtside=0pt\lftside=0pt
+  \setbox\windowbox=\vbox{%
+    \hrule width\picwd height0pt depth0pt
+    \vskip.5\parskip\box\windowbox\vskip.5\parskip
+    \hrule width\picwd height0pt depth0pt}
+  \vpic=\ht\windowbox\advance\vpic\dp\windowbox
+ \fi
+ \parskip0pt % Within the window area a \parskip>0pt may look ugly
+\fi
+\ifnum\picwd=0\setbox\picbox=\vbox{\hbox{\noindent#4}}   % without picture
+                               \hpic=\wd\picbox % calculate dimensions
+              \ifnum\lftside=0\rtside=\linewidth\advance\rtside-\hpic
+              \else\ifnum\rtside=0\lftside=\linewidth\advance\lftside-\hpic
+              \else\rtside=0.5\linewidth\advance\rtside-0.5\hpic
+                   \lftside=\rtside
+              \fi\fi
+\else\setbox\picbox=\vbox{\hsize=\hpic\vbox to\vpic{\box\windowbox\vfill}%
+\ifdim\ht\wbox>0pt\vskip\ilg\vbox{\hsize=\hpic\noindent#4
+%
+% See above, this is the second part of glue
+%
+\if #2c
+ \ifdim\rtside=0pt \ifdim\lftside=0pt
+ \vskip\parskip\hrule width\hpic height0pt depth0pt
+ \fi \fi
+\fi
+}
+\fi}\fi
+\vpic=\ht\picbox\advance\vpic\dp\picbox
+%\ifdim\lftside>0pt\advance\lftside-0.5\baselineskip\fi  % put in a distance
+%\ifdim\rtside>0pt\advance\rtside-0.5\baselineskip\fi    % between text and
+%                                                        % window
+\ifdim\lftside>0pt\advance\lftside-\lwindowsep\fi  % VK 10 Feb 93
+\ifdim\rtside>0pt\advance\rtside-\rwindowsep\fi    % "
+\global\br=\rtside \global\bl=\lftside
+\ifnum\picwd=0
+\ifdim\vpic>0pt\picwd=\hpic
+\else\vpic=\ht\picbox\advance\vpic\dp\picbox
+\fi
+\fi
+    \global\tcl=0 \lpic=0pt
+    \loop\global\advance\tcl by 1 \lpic=\tcl\baselineskip
+    \ifdim\lpic<\vpic\repeat
+    \vpic=\lpic
+    \global\cumtcl=\tcl
+%
+% Here we know exactly the number of indented lines and
+% are able to generate the tokens for the \parshape list
+%
+    \ifnum\bl>0\la={ 0pt \lftside}\fi
+    \ifnum\br>0\ra={ 0pt \rtside}\fi
+    \ifnum\tcd>0\ha={ 0pt \linewidth}\fi
+    \ifnum\tcl<1\global\tcl=1\fi
+    \createparshapespec
+    \tcd=#1                        % restore the lintel
+    \global\tcdsav=#1
+%
+% This is a very tricky part of the package. Some day there
+% will exist a detailed documentation.
+%
+\ifdim\parskip>0pt
+    \def\par{\hfill\vadjust{\vskip0pt\vbox to\parskip{\vss}}
+             \global\advance\cumpartcl by 1
+             \global\advance\cumpar by \parskip
+             \global\lpic=\ht\wstrutbox
+             \global\advance\lpic by \dp\wstrutbox
+             \ifdim\cumpar<\lpic
+             \else\advance\cumpar by -\lpic
+                  \advance\cumtcl by -1
+             \fi
+             \egroup\global\tcd=\tcdsav
+             \setbox\wartext=\vbox{\unvbox\rawtext}
+\setbox\rawtext=\vbox\bgroup
+\clubpenalty=0\widowpenalty=0
+\ifnum\brokenpenalty<\maxdimen\else\brokenpenalty=9999\fi
+\tolerance=1000
+\global\lpic=\ht\wstrutbox
+\global\advance\lpic by \dp\wstrutbox
+%
+% Pick up header lines
+%
+\ifnum\tcd>0\vbadness=10000\splittopskip0pt
+ \loop\setbox\holder=\vsplit\wartext to \lpic
+  \hpic=\wd\holder\prune\holder\hpic
+  \ifdim\ht\holder=\parskip
+   \hbox{\vrule height\parskip width0pt depth0pt}
+   \typeout{A paragraph ended within headlines! Please change }
+   \typeout{the number of headlines for the window environment!}
+   \global\advance\tcd by -1
+  \else\hbox{\vbox{\box\holder\unskip}}
+   \global\advance\tcd by -1
+  \fi
+ \ifnum\tcd>0\repeat
+ \global\tcd=0
+ \ifdim\ht\wartext>0pt
+ \ifdim\ht\wartext=\parskip\global\advance\tcdsav by 1
+       \setbox\holder=\vsplit\wartext to \lpic
+       \hbox{\vrule height\parskip width0pt depth0pt}
+       \global\advance\cumpar by -\parskip
+       \global\advance\cumpartcl by -1
+ \fi\fi
+\fi
+%
+% Pick up lines beside window, the rest too
+%
+\global\tcn=0
+\topheight=0pt
+\ifdim\ht\wartext>0pt\vbadness=10000\splittopskip0pt
+ \loop\setbox\holder=\vsplit\wartext to \lpic
+  \hpic=\wd\holder\prune\holder\hpic
+  \ifdim\ht\holder=\parskip
+  \hbox{\vrule height\parskip width0pt depth0pt}
+  \global\advance\topheight by \parskip
+  \else
+   \setbox\fslice=\hbox{\box\holder}
+    \hpic=\ht\fslice
+    \advance\hpic by\dp\fslice
+   \ifdim\hpic>\lpic
+   \global\advance\topheight by\hpic
+   \hbox{\vbox{\box\fslice\vss}}
+   \else\ifdim\hpic=0pt\relax
+   \else\global\advance\topheight by \lpic
+   \hbox{\vbox{\box\fslice}}\fi\fi
+  \fi
+ \ifdim\ht\wartext>0pt\repeat
+\tcn=0
+\loop\advance\tcn by 1
+\advance\topheight by -\lpic
+\ifdim\topheight>0pt\repeat
+\hpic=\topheight
+\ifdim\hpic<0pt\advance\tcn by -1\fi
+\global\topheight=\tcn\lpic
+\fi
+%
+% If the indented part is not completed we have to generate a
+% new token for the \parshape list
+%
+\ifnum\tcn<\cumtcl
+\global\tcl=\cumtcl
+\global\advance\topheight by\cumpartcl\parskip
+             \global\advance\tcl by -\tcn \global\twa={}
+             \ifnum\tcl>0
+\global\vpic=\topheight
+\global\topheight=\tcl\lpic
+\global\advance\vpic by \topheight
+\global\advance\vpic by \lpic
+             \createparshapespec
+             \parshape=\tcn \the\twa
+             \else\parshape=0
+             \fi
+\else\parshape=0\fi}
+\else\def\par{\\}
+\fi % new definition of \par in case of \parskip>0 ends here
+%
+% This is where we start to pick up the paragraph(s)
+%
+    \setbox\rawtext=\vbox\bgroup\unvbox\rawtext\unskip
+    \clubpenalty=0\widowpenalty=0
+    \ifnum\brokenpenalty<\maxdimen\else\brokenpenalty=9999\fi
+    \tolerance=1000
+    \parshape=\tcn \the\twa }
+%
+\def\endwindow{%
+    \global\tcd=\tcdsav
+    \egroup\vskip\parskip\parshape=0 % reset parshape; end \box\rawtext
+    \vbadness=10000
+    \splittopskip=0pt
+%
+% Typeset the lines above the window
+%
+\ifnum\tcd>0\setbox\holder=\vsplit\rawtext to \tcd\baselineskip
+\tcn=\tcd
+\loop\advance\tcn -1
+\setbox\fslice=\vsplit\holder to\baselineskip
+\prune\fslice\linewidth
+\topheight=0pt
+\ifnum\dp\fslice>\dp\wstrutbox
+       \advance\topheight-\dp\fslice
+       \advance\topheight\dp\wstrutbox
+       \advance\topheight\ilg\fi
+\hbox to\linewidth{\box\fslice}
+\vskip-\topheight
+\ifdim\ht\holder>0pt\repeat
+\fi
+%
+% Now we build the boxes beside the window
+%
+\global\topheight=\tcl\baselineskip
+\ifnum\cumpartcl>0\global\tcl=\cumtcl
+      \global\topheight=\vpic
+\fi
+\ifnum\bl>0 \ifnum\br>0 \multiply\topheight by 2\fi\fi
+\ifnum\bl>0\setbox\holder=\vsplit\rawtext to\topheight
+\else\ifnum\br>0\setbox\holder=\vsplit\rawtext to\topheight\fi\fi
+\tcn=\tcl \na=0 \nb=0
+\ifnum\bl>0 \ifnum\br>0 \multiply\tcn by 2\fi\fi
+\ifnum\bl>0\na=\tcn\ifnum\br>0\divide\na by 2\fi\fi
+\ifnum\br>0\nb=\tcn\ifnum\bl>0\divide\nb by 2\fi\fi
+\ifnum\na=0\ifnum\nb=0
+      \setbox\waslice=\vbox to\vpic{\vss}
+      \setbox\wbslice=\vbox to\vpic{\vss}
+      \bl=1\br=1
+      \vskip\ilg
+\fi\fi
+%
+% both sides
+%
+\ifnum\na>0 \ifnum\nb>0
+\loop\advance\nb -1
+\advance\na -1
+\setbox\aslice=\vsplit\holder to\baselineskip
+\prune\aslice\lftside
+\setbox\waslice=\vbox{\unvbox\waslice\hbox
+to\lftside{\box\aslice\hfil}}
+\setbox\bslice=\vsplit\holder to\baselineskip
+\prune\bslice\rtside
+\setbox\wbslice=\vbox{\unvbox\wbslice\hbox
+to\rtside{\box\bslice\hfil}}
+\ifnum\nb>0\repeat
+\fi\fi
+%
+% only text on the left side
+%
+\ifnum\na>0
+    \loop\advance\na -1
+    \setbox\aslice=\vsplit\holder to\baselineskip
+    \prune\aslice\lftside
+    \setbox\waslice=\vbox{\unvbox\waslice\hbox
+    to\lftside{\box\aslice\hfil}}
+    \ifdim\ht\holder>0pt\repeat
+\fi
+%
+% only text on the right side
+%
+\ifnum\nb>0
+    \loop\advance\nb -1
+    \setbox\bslice=\vsplit\holder to\baselineskip
+    \prune\bslice\rtside
+    \setbox\wbslice=\vbox{\unvbox\wbslice\hbox
+    to\rtside{\box\bslice\hfil}}
+    \ifdim\ht\holder>0pt\repeat
+\fi
+%
+% fixing the dimensions of the window part
+%
+\ifnum\bl=0\topheight=\ht\wbslice
+\else\ifnum\br=0\topheight=\ht\waslice
+      \else\ifdim\ht\waslice>\ht\wbslice\topheight=\ht\waslice
+            \else\topheight=\ht\wbslice\fi\fi\fi
+%
+% ship out the window material to the main vertical list
+%
+\ifnum\bl>0 \ifnum\br>0 \ifdim\ht\wbslice<\topheight
+\setbox\wbslice=\vbox to\topheight{\box\wbslice\vfill}
+\fi\fi\fi
+\setbox\windowbox=\vbox{\hbox to\linewidth{%
+\ifnum\bl>0\box\waslice\hfill\fi%
+\vbox to\topheight{\hrule width\picwd height0pt depth0pt\vskip0pt%
+\vfill\unvbox\picbox%
+\ifnum\picwd>0\vfill\fi%
+\vss}\ifnum\br>0\hfill\vbox{\box\wbslice}\fi}}%
+\unvbox\windowbox%
+\loop
+ \setbox\bslice=\vsplit\rawtext to\baselineskip
+ \prune\bslice\linewidth
+ \setbox\wbslice=\vbox{\hbox to\linewidth{\box\bslice\hfil}}
+ \unvbox\wbslice
+ \ifdim\ht\rawtext>0pt
+\repeat
+}% FINITO
+%
+% What else do we need?
+%
+\def\prune#1#2{
+% take a \vbox containing a single \hbox,
+% \unvbox it, and cancel the \lastskip
+% put in a \hbox of width #2
+ \unvbox#1 \setbox#1=\lastbox % \box#1 now is an \hbox
+ \ifdim\ht#1=\parskip
+ \setbox#1=\hbox to#2{\vrule height\parskip depth0pt width0pt\hfill}
+ \else\ifdim\ht#1=0pt\relax
+ \else\setbox#1=\hbox to#2{\wstrut\unhbox#1\unskip}\fi\fi}
+%
+% Here the token \twa is generated.
+% It's not so difficult as it looks like.
+%
+\def\createparshapespec{%
+\global\tcn=0
+\ifnum\bl>0\global\tcn=\tcl\else\ifnum\br>0\global\tcn=\tcl\fi\fi
+\na=0 \nb=0
+\ifnum\bl>0 \ifnum\br>0 \multiply\tcn by 2\fi\fi
+\ifnum\bl>0\na=\tcn\ifnum\br>0\divide\na by 2\fi\fi
+\ifnum\br>0\nb=\tcn\ifnum\bl>0\divide\nb by 2\fi\fi
+\global\advance\tcn by\tcd \global\advance\tcn by1
+\ifnum\tcd>0
+\loop\twa=\expandafter{\the\twa\the\ha}\advance\tcd -1
+\ifnum\tcd>0\repeat
+\fi
+\ifnum\bl>0 \ifnum\br>0
+\loop\twa=\expandafter{\the\twa\the\la}\advance\na -1
+\twa=\expandafter{\the\twa\the\ra}\advance\nb -1
+\ifnum\na>0\repeat
+\fi\fi
+\ifnum\na>0
+\loop\twa=\expandafter{\the\twa\the\la}\advance\na -1
+\ifnum\na>0\repeat
+\fi
+\ifnum\nb>0
+\loop\twa=\expandafter{\the\twa\the\ra}\advance\nb -1
+\ifnum\nb>0\repeat
+\fi
+\global\twa=\expandafter{\the\twa 0pt \the\linewidth}}
+%
+\def\computeilg{% compute the interline glue
+ \tcl=0\ilg=0pt\strutilg=0pt
+ \loop\setbox\wbox=\hbox{\char\tcl}
+ \ifdim\ht\wbox>\ilg\ilg=\ht\wbox\fi
+ \ifdim\dp\wbox>\strutilg\strutilg=\dp\wbox\fi
+ \advance\tcl by 1
+ \ifnum\tcl<128\repeat
+ \ht\wbox=\ilg
+ \dp\wbox=\strutilg
+ \strutilg=\ht\wbox %\advance\strutilg by\ilg
+ \ifdim\strutilg>\baselineskip
+  \typeout{character with height greater baselineskip found in font}
+  \typeout{baselineskip changed to 1.5 of that height!}
+  \baselineskip=1.5\strutilg
+ \fi
+ \global\ilg=\baselineskip
+ \global\advance\ilg-\ht\wbox \global\advance\ilg-\dp\wbox
+ \strutilg=\ht\wbox \advance\strutilg by\ilg
+ \setbox\wstrutbox=\hbox{\vrule height\strutilg depth\dp\wbox width0pt}}
+%
+% frames
+%
+\def\framepic#1{\vbox{%
+\hsize\expandafter\wd\csname #1box\endcsname
+\advance\hsize .8pt \hrule%
+\hbox to\hsize%
+{\vrule\hfill\vbox to\expandafter\ht\csname #1box\endcsname{%
+\expandafter\box\csname #1box\endcsname }\hfill\vrule}\hrule\vss}}
+%
+\def\wframepic#1{\vbox{%
+\hsize\expandafter\wd\csname #1box\endcsname
+\advance\hsize 3.8pt\hrule%
+\hbox to\hsize%
+{\vrule\hfill\vbox{\kern1.5pt%
+\expandafter\box\csname #1box\endcsname
+\kern1.5pt}\hfill\vrule}\hrule\vss}}
+%
+% caption
+%
+\def\winstepcounter#1{\global\advance\csname c@#1\endcsname 1
+    {\let\@elt\@stpelt \csname cl@#1\endcsname}}
+
+\def\winrefstepcounter#1{\winstepcounter{#1}\let\@tempa\protect
+\def\protect{\noexpand\protect\noexpand}%
+\edef\@currentlabel{\csname p@#1\endcsname\csname the#1\endcsname}%
+\let\protect\@tempa}
+\long\def\w@dblarg#1{\@ifnextchar[{#1}{\w@xdblarg{#1}}}
+\long\def\w@xdblarg#1#2\par{#1[{#2}]#2\par}
+
+\def\wincaption{\winrefstepcounter\@captype \w@dblarg{\@wincaption\@captype}}
+
+\long\def\@wincaption#1[#2]#3\par{\par\addcontentsline{\csname
+  ext@#1\endcsname}{#1}{\protect\numberline{\csname
+  the#1\endcsname}{\ignorespaces #2}}\begingroup
+    \@parboxrestore
+    \normalsize
+    \@makewincaption{\csname fnum@#1\endcsname}{\ignorespaces #3}\par
+  \endgroup}
+
+\long\def\@makewincaption#1#2{%
+   \setbox\@tempboxa\hbox{\footnotesize{\bf #1:\enspace}{#2}}%
+   \ifdim\wd\@tempboxa>\picwd
+      {\footnotesize{\bf #1:\enspace}{#2\par}}
+   \else
+      \hbox to\picwd{\hfil\box\@tempboxa\hfil}
+   \fi}
+
+\long\def\figwindow[#1,#2,#3,#4] {%
+     \advance\c@figure -1
+     \begin{window}[#1,#2,{#3},{\def\@captype{figure}%
+        \wincaption#4\par}] }
+
+\long\def\tabwindow[#1,#2,#3,#4] {%
+     \advance\c@table -1
+     \begin{window}[#1,#2,{#3},{\def\@captype{table}%
+        \wincaption#4\par}] }
+
+\def\endfigwindow{\end{window}}
+\def\endtabwindow{\end{window}}
+\endinput

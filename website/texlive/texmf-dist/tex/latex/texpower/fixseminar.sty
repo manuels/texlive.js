@@ -1,0 +1,169 @@
+%%
+%% This is file `fixseminar.sty',
+%% generated with the docstrip utility.
+%%
+%% The original source files were:
+%%
+%% texpower-addons.dtx  (with options: `fixseminar')
+%% 
+%% --------------------------------------------------------------
+%% TeXPower bundle - dynamic online presentations with LaTeX
+%% Copyright (C) 1999-2004 Stephan Lehmke
+%% Copyright (C) 2003-2005 Hans Fredrik Nordhaug
+%% 
+%% This program is free software; you can redistribute it and/or
+%% modify it under the terms of the GNU General Public License
+%% as published by the Free Software Foundation; either version 2
+%% of the License, or (at your option) any later version.
+%% 
+%% This program is distributed in the hope that it will be useful,
+%% but WITHOUT ANY WARRANTY; without even the implied warranty of
+%% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%% GNU General Public License for more details.
+%% --------------------------------------------------------------
+%% 
+%% The list of all files belonging to the TeXPower bundle is
+%% given in the file `00readme.txt'.
+%% 
+%=======================================================================================================================
+% File: fixseminar.sty
+%
+% Fix some problems in conjunction with seminar.
+%
+% This package is part of the TeXPower bundle, to be found at
+%
+% http://texpower.sourceforge.net/
+%
+% If using hyperref, load this package _after_ hyperref.
+%
+%=======================================================================================================================
+% Author: Stephan Lehmke <Stephan.Lehmke@cs.uni-dortmund.de>
+%
+% v0.0.1  Mar 28, 2000 First version for the pre-alpha release of texpower and hyperref v6.70a.
+%
+% v0.0.1a May 18, 2000 Added a \vss to a \vbox to get rid of an `overfull vbox' message.
+%
+% v0.0.2  Jun 02, 2000 Now handle seminar as well as powersem.
+%
+% v0.0.3  Sep 07, 2000 hyperref v6.70u and later don't have the \@hyperfixhead bug any more.
+%
+% v0.0.4  Nov 22, 2002 Now using ifpdf package if available.
+%                      As hyperref v6.70u exists for some time now, the \@hyperfixhead hack is removed.
+%                      Fixed a problem with \twoup (bug found and fix proposed by Laurent Mugnier).
+%                      Added a preliminary fix for rotating slides with pdftex.
+%
+% v0.0.5  May 26, 2003 A small change to make fixseminar work better when hyperref is not loaded.
+
+
+\NeedsTeXFormat{LaTeX2e}
+
+\ProvidesPackage%
+{fixseminar}%
+[2003/05/26 v0.0.5 Fix some problems of seminar.]
+
+
+%=======================================================================================================================
+
+\RequirePackage{ifthen}
+
+
+%=======================================================================================================================
+% Options and general setup.
+
+\ProcessOptions
+
+
+% The switch \ifpdf is to determine whether pdfLaTeX is being run and outputting pdf, using Heiko Oberdiek's faultproof
+% pdf detector:
+
+\IfFileExists{ifpdf.sty}
+{%
+  \RequirePackage{ifpdf}%
+  }
+{%
+  \@ifundefined{pdftrue}
+  {%
+  \expandafter\newif\csname ifpdf\endcsname
+  \ifx\pdfoutput\undefined
+   \else
+    \ifx\pdfoutput\relax
+     \else
+      \ifcase\pdfoutput
+       \else
+        \pdftrue
+       \fi
+     \fi
+   \fi
+   }{}%
+   }
+
+
+%=======================================================================================================================
+% Here come the fixes.
+
+% We need to make sure that magnification, as used by seminar, is respected when setting \pdfpageheight and
+% \pdfpagewidth. We strip the pt and add truept which respects magnification.
+
+
+\ifthenelse{\boolean{pdf}}%          Are we outputting PDF?
+{% Yes.
+  \@ifclassloaded{seminar}%         seminar document class?
+  {%
+    \RequirePackage{graphics}%
+    \def\leftsliderotation#1{\rotatebox{90}{#1}}%
+    \def\rightsliderotation#1{\rotatebox{270}{#1}}%
+    \sliderotation{left}%
+  }{}%
+  \AtBeginDocument%                   Then we need to set \pdfpagewidth and \pdfpageheight in a _true_ unit to make sure
+  {%                                  the pdf page has the right dimensions even when magnifying (as seminar does).
+    \setlength{\pdfhorigin}{1truein}% \pdfhorigin and \pdfvorigin also need to be set to true dimensions.
+    \setlength{\pdfvorigin}{1truein}%
+    \@ifclassloaded{seminar}%         seminar document class?
+    {%
+      \ifportrait%                    Portrait slides?
+        \setlength{\pdfpageheight}{\strip@pt\paperheight truept}%
+        \setlength{\pdfpagewidth}{\strip@pt\paperwidth truept}%
+       \else%                         Landscape. Need to exchange height and width.
+        \renewcommand{\printlandscape}
+        {%
+          \setlength{\pdfpagewidth}{\strip@pt\paperheight truept}%
+          \setlength{\pdfpageheight}{\strip@pt\paperwidth truept}%
+        }%
+      \fi
+      }%
+    {%
+      \setlength{\pdfpageheight}{\strip@pt\paperheight truept}%
+      \setlength{\pdfpagewidth}{\strip@pt\paperwidth truept}%
+    }%
+  }%
+}
+{% No. In this case we define \special@paper which will put an appropriate \special into the dvi file.
+  \@ifclassloaded{seminar}
+  {%
+    \ifportrait
+      \edef\special@paper{\the\paperwidth,\the\paperheight}%
+     \else%                                                     Need to exchange height and width.
+      \renewcommand{\printlandscape}{\edef\special@paper{\the\paperheight,\the\paperwidth}}
+    \fi
+    \AtBeginDocument{\special{papersize=\special@paper}}%
+    }%
+  {%
+    }%
+  }%
+
+
+% There is a bug in old hyperref versions to the effect that apparently, when using seminar there is a glitch in
+% vertical spacing. Issue a warning if hyperref is too old.
+
+\@ifpackageloaded{hyperref}%               Looking for \@hyperfixhead bug.
+{%
+  \@ifpackagelater{hyperref}{2000/09/07}%  Is the \@hyperfixhead bug present in hyperref?
+  {}%                                      No.
+  {%                                       Yes. Issue a warning.
+    \PackageWarning{fixseminar}
+    {Package hyperref too old (older than 6.70u).\MessageBreak Expect problems with seminar}%
+    }%
+  }{}
+\endinput
+%%
+%% End of file `fixseminar.sty'.

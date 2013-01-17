@@ -1,0 +1,1401 @@
+\ProvidesPackage{blog}[2012/05/15 v0.7 simple fast HTML (UL)] 
+%% copyright (C) 2010 2011 2012 Uwe Lueck, 
+%% http://www.contact-ednotes.sty.de.vu 
+%% -- author-maintained in the sense of LPPL below.
+%%
+%% This file can be redistributed and/or modified under 
+%% the terms of the LaTeX Project Public License; either 
+%% version 1.3c of the License, or any later version.
+%% The latest version of this license is in
+%%     http://www.latex-project.org/lppl.txt
+%% We did our best to help you, but there is NO WARRANTY. 
+%%
+%% Please report bugs, problems, and suggestions via 
+%% 
+%%   http://www.contact-ednotes.sty.de.vu 
+%%
+%% == Processing ==
+%% \label{sec:process}
+%% === Requirement ===
+%% We are building on the 'fifinddo' package
+%% (using `\protected@edef' for \secref{ligs}):
+\RequirePackage{fifinddo}[2011/11/21]
+%%
+%% === Output File Names ===
+%% |\htmakeext| is the extension of the generated file. 
+%% Typically it should be `.html', as set here, 
+%% but my Atari emulator needs `.htm' 
+%% (see `texblog.fdf'):
+\newcommand*{\htmakeext}{.html}
+%%
+%% === General Insertions ===
+%% |\CLBrk| is a \emph{code line break} 
+%% (also saving subsequent comment mark in macro definitions):
+\newcommand*{\CLBrk}{^^J}
+%% |\ | is turned into an alias for `\space', 
+%% so it inserts a blank space. It even works at line ends, 
+%% thanks to the choice of `\endlinechar' in \secref{catcodes}.
+\let\ \space
+%% %% v0.42:
+%% |\ProvidesFile{<file-name>.tex}[<file-info>]| \ is supported 
+%% for use with the \CtanPkgRef{morehype}{myfilist} 
+%% package  %% TODO \urlpkgfoot!? 2011/02/22
+%% to get a list of source file infos. 
+%% In generating the \HTML\ file, the file infos are transformed 
+%% into an \HTML\ comment. Actually it is 
+%% |\BlogProvidesFile| (for the time being, 2011/02/22):
+\@ifdefinable\BlogProvidesFile{%
+    \def\BlogProvidesFile#1[#2]{%
+        \comment{ generated from\CLBrk\CLBrk
+                  \ \ \ \ \ \ \ \ \ #1, #2,\CLBrk\CLBrk
+                  \ \ \ \ \ with blog.sty,
+                  \isotoday\ }}} 
+\edef\isotoday{%% texblog 2011/11/02, here 2011/11/20
+   \the\year-\two@digits{\the\month}-\two@digits{\the\day}}
+%% %% changes 2011/02/24:
+%% (TODO: customizable style.)---Due to the limitations 
+%% of the approach reading the source file
+%% line by line, the ``optional argument" `[<file-info>]' 
+%% of `\ProvidesFile' must appear in the same line as 
+%% the closing brace of its mandatory argument.
+%% The feature may require inserting 
+%% \[`\let\ProvidesFile\BlogProvidesFile'\] 
+%% somewhere, e.g., in `\BlogProcessFile'. 
+%%
+%% === Category Codes etc. ===
+%% \label{sec:catcodes}
+%% For a while, line endings swallowed inter-word spaces, 
+%% until I found the setting of `\endlinechar' 
+%% ('fifinddo''s default is `-1') 
+%% in |\BlogCodes|:
+\newcommand*{\BlogCodes}{%                              %% 2010/09/07
+    \endlinechar`\ %
+%% <- Comment character to get space rather than `^^M'!%%% 2011/11/08
+%% ---The tilde |~| is active as in Plain~TeX too, it is so natural to 
+%% use it for abbreviating \HTML's `&nbsp;'! %% moved up 2011/11/08
+%     \catcode`\~\active
+    \MakeActiveDef\~{&nbsp;}%%          for \FDpseudoTilde 2012/01/07
+%% \qtd{&'} for \HTML\ convenience (cf. \secref{quotes}):
+    \MakeActiveDef\'{&rsquo;}%                     %% here 2011/11/08
+    \BasicNormalCatCodes}
+% \MakeOther\< \MakeOther\>                         %% rm. 2011/11/20
+%%
+%% === The Processing Loop ===
+%% \[|\BlogProcessFile[<changes>]{<source-file>}|\]
+%% %% <- display 2011/11/06
+%% ``copies" the \TeX\ source file <source-file> 
+%% into the file specified by `\ResultFile'. 
+\newcommand*{\BlogProcessFile}[2][]{%                   %% 2011/11/05
+    \ProcessFileWith[\BlogCodes 
+                     \let\ProvidesFile\BlogProvidesFile %% 2011/02/24 
+                     \let\protect\@empty                %% 2011/03/24
+                     \let\@typeset@protect\@empty       %% 2012/03/17
+                     #1]{#2}{%
+        \IfFDinputEmpty
+            {\IfFDpreviousInputEmpty
+                \relax
+                {\WriteResult{\ifBlogAutoPars<p>\fi}}}% 
+            \BlogProcessLine                            %% 2011/11/05
+    }%
+}
+%% 'fifinddo' v0.5 allows the following                 %% 2011/11/20
+%% \[|\BlogProcessFinalFile[<changes>]{<source-file>}|\]
+%% working just like `\BlogProcessFile' except that the final 
+%% `\CloseResultFile' is issued automatically, no more need 
+%% having it in the driver file. 
+\newcommand*{\BlogProcessFinalFile}{%
+    \FinalInputFiletrue\BlogProcessFile}
+%% TODO:                                                %% 2011/11/20
+%% optionally include `.css' code with \xmltagcode{style}.
+%% === \emph{Executing} Source File Code Optionally ===
+%% For v0.7,                                            %% 2011/11/05 
+%% `\BlogCopyFile' is renamed     `\BlogProcessFile'; and in its code,
+%% `\CopyLine'     is replaced by `\BlogProcessLine'. The purpose 
+%% of this is supporting 'blogexec.sty' that allows intercepting 
+%% certain commands in the line. We provide initial versions of 
+%% 'blogexec''s switching commands that allow invoking 'blogexec'
+%% ``on the fly": 
+\newcommand*{\ProvideBlogExec}{\RequirePackage{blogexec}}
+%% \CtanPkgRef{dowith}{dowith.sty} is used in the       %% 2012/01/06
+%% present package to reduce package code and documentation space:
+\RequirePackage{dowith}
+\setdo{\providecommand*#1{\ProvideBlogExec#1}}
+\DoDoWithAllOf{\BlogInterceptExecute \BlogInterceptEnvironments
+               \BlogInterceptExtra   \BlogInterceptHash        }
+%% %% <- Hash 2011/11/08
+%% |\BlogCopyLines| switches to the ``copy only" 
+%% (``compressing" empty lines) functionality of the original 
+%% `\BlogCopyFile':
+\newcommand*{\BlogCopyLines}{%
+%     \let\BlogProcessLine\CopyLine}
+    \def\BlogProcessLine{%          %% 2011/11/21, corr. 2012/03/14:
+        \WriteResult{\ProcessInputWith\BlogOutputJob}}}
+%% <- This is a preliminary support for ``ligatures"---see 
+%% \secref{ligs}. %%% --, not working inside braces. 
+%% |\NoBlogLigs| sets the default to mere copying:
+\newcommand*{\NoBlogLigs}{\def\BlogOutputJob{LEAVE}}
+\NoBlogLigs
+%% TODO more from `texblog.fdf' here, problems with `writings.fdf', 
+%% see its `makehtml.tex'
+%% %% 2011/11/06:
+%% % ... and this will be the setting with pure 'blog.sty':
+%%
+%% `\BlogCopyLines' %% 2011/11/21
+%% will be the setting with pure 'blog.sty':
+\BlogCopyLines
+%% OK, let's not remove |\BlogCopyFile| altogether, rebirth:
+\newcommand*{\BlogCopyFile}{\BlogCopyLines\BlogProcessFile}
+%% 
+%% === ``Ligatures" ===
+%% \label{sec:ligs}
+%% With v0.7, we introduce a preliminary method to use the 
+%% ``ligatures" `--' and `---' with pure expansion. 
+%% At this occasion, we also can support the notation 
+%% \code{\dots} for `\dots', as well as arrows 
+%% (as in `mdoccorr.cfg'). Note that this is somewhat 
+%% \strong{dangerous}, especially the source must not 
+%% contain ``explicit" \HTML\ comment, comments must use 
+%% 'blog.sty''s `\comment' or the `{commentlines}'
+%% environment. Therefore these ``ligatures" must be activated 
+%% explicitly by |\UseBlogLigs|: 
+\newcommand*{\UseBlogLigs}{\def\BlogOutputJob{BlogLIGs}}
+%% In order to work inside braces, the source file better should 
+%% be preprocessed in ``plain text mode."
+%% (TODO: Use `\ifBlogLigs', and in a group use 
+%%        `\ResultFile' for an intermediate `\htmljob.lig'.
+%% And TODO: Use `\let\BlogOutputJob'.)
+%% On the other hand, the present approach allows switching 
+%% while processing with `\EXECUTE'! Also, intercepted commands 
+%% could apply the replacements on their arguments---using 
+%% |\ParseLigs{<arg>}|:                                 %% 2011/11/27
+\newcommand*{\ParseLigs}[1]{\ProcessStringWith{#1}{BlogLIGs}}
+%% (`\ProcessStringWith' is from 'fifinddo'.)
+%% 
+%% The replacement chain follows (TODO move to `.cfg').
+%% As opposed to `mdoccorr.cfg' for 'makedoc.sty', 
+%% we are dealing with ``normal \TeX" code 
+%% (regarding category codes, 'fifinddo.sty' 
+%%  as of 2011/11/21 is needed for `\protect').
+%% Moreover, space tokens after patterns are already there 
+%% and need not be inserted after control sequences.
+\FDpseudoTilde
+\StartPrependingChain
+\PrependExpandableAllReplacer{blog...}{...}{\protect\dots}
+\PrependExpandableAllReplacer{blog--}{--}{\protect\endash}
+\PrependExpandableAllReplacer{blog---}{---}{\protect\emdash}
+%% <- Cf. thin surrounding spaces with 
+%% `\enpardash' ('texblog', maybe \meta{hair space} U+200A 
+%% instead of thin space), difficult at code line beginnings 
+%% or endings and when a paragraph starts with an emdash.
+%% I.e., perhaps better don't use it if you want to have 
+%% such spaces.---\qtd{`---'} must be replaced before \qtd{`--'}!
+\PrependExpandableAllReplacer{blog->}{->}{\protect\to}
+\PrependExpandableAllReplacer{blog<-}{<-}{\protect\gets}
+%% You also could set `\BlogOutputJob' to a later part of the chain, 
+%% or more globally change the following:
+\CopyFDconditionFromTo{blog<-}{BlogLIGs}
+%% % TODO: Seems to slow down processing by a major part of a second.
+%% % Reduce replacements? Maybe do all of this within source file!?
+%% 
+%% === \xmltagcode{p} from Empty Line, Package Option ===
+%% \label{sec:autopars}
+%% As in \TeX\ an empty line starts a new paragraph, 
+%% we might ``interpret" an empty source line as 
+%% \HTML\ tag \xmltagcode{p} for starting a new paragraph. 
+%% Empty source lines following some first empty source 
+%% line immediately are ignored 
+%% (``compression" of empty lines). 
+%% However, this sometimes has unwanted effects 
+%% (comment lines TODO),                        %% 2011/11/20
+%% so it must be required explicitly by |\BlogAutoPars|, 
+%% or by calling the package with option |[autopars]|.
+%% In the latter case, it can be turned off by 
+%% |\noBlogAutoPars|
+\newif\ifBlogAutoPars
+\newcommand*{\BlogAutoPars}{\BlogAutoParstrue}
+\newcommand*{\noBlogAutoPars}{\BlogAutoParsfalse}
+%% `\BlogAutoPars' is issued by package option          %% 2011/11/20
+%% |[autopars]|:
+\DeclareOption{autopars}{\BlogAutoPars}
+\ProcessOptions
+%% See \secref{p-br} for other ways of breaking paragraphs.
+%%
+%% == General \HTML\ Matters ==
+%% The following stuff is required for any web page 
+%% (or hardly evitable).
+%% === General Tagging ===
+%% %% $$ -> \[ ... 2011/10/10:
+%% \[|\TagSurr{<el-name>}{<attr>}{<content>}|\]
+%% (I hoped this way code would be more readable 
+%%  than with `\TagSurround' ...)
+%% and \[|\SimpleTagSurr{<el-name>}{<content>}|\]
+%% are used to avoid repeating element names <el-name> in 
+%% definitions of \TeX\ macros that refer to ``entire" 
+%% elements---as opposed to elements whose content often
+%% spans lines (as readable \HTML\ code). 
+%% We will handle the latter kind of elements 
+%% using \LaTeX's idea of ``environments."
+%% `\TagSurr' also inserts specifications of element
+%% \textbf{attributes}, 
+%% [TODO: 'wiki.sty' syntax would be so nice here]
+%% while `\SimpleTagSurr' is for elements used without 
+%% specifying attributes. |\STS| is an abbreviation for 
+%% `\SimpleTagSurr' that is useful as the `\SimpleTagSurr'
+%% function occurs so frequently: 
+\newcommand*{\SimpleTagSurr}[2]{<#1>#2</#1>}
+\newcommand*{\STS}{} \let\STS\SimpleTagSurr %% 2010/05/23
+\newcommand*{\TagSurr}[3]{<#1 #2>#3</#1>}
+%%
+%% === Attributes === %%% (General) %%% 
+%% Inspired by the common way to use `@' for referring 
+%% to element attributes---i.e., `@<attr>' refers to attribute
+%% `<attr>'---in \HTML/\acro{XML} documentation, we often use 
+%% \[`\@<attr>{<value>}' \qquad 
+%%   \mbox{to ``abbreviate"}\qquad  `<attr>="<value>"'\] 
+%% within the starting tag of an \HTML\ element.
+%% This does not really 
+%% make typing easier or improve readability, 
+%% it rather saves \TeX's memory by using a single token 
+%% for referring to an attribute.
+%% This ``abbreviation" is declared by 
+%% |\declareHTMLattrib{<attr>}|, even with a check 
+%% whether `\@<attr>' has been defined before: 
+\newcommand*{\declareHTMLattrib}[1]{%
+  \def\reserved@a{@#1}%
+  \@ifundefined{@#1}%
+               {\@namedef{@#1}##1{#1="##1"}}%
+                \@notdefinable}
+%% So after `\declareHTMLattrib{<attr>}', `\@<attr>' is a 
+%% \TeX\ macro expecting one parameter for the specification. 
+%%
+%% % |\declareHTMLattribs{{<attr>}<list>}| essentially issues 
+%% % \[`\declareHTMLattrib{<attr>}\declareHTMLattribs{<list>}'\]
+%% % while `\declareHTMLattribs{}' essentially does nothing---great, 
+%% % this is an explanation by recursion!
+%% % % \newcommand*{\declareHTMLattribs}{\DoWithAllOf\declareHTMLattrib}
+%% A few frequent attributes are declared this way here. 
+%% %% 2011/09/27:
+%% |@class|, |@id|, |@style|, |@title|, |@lang|, and |@dir|
+%% are the ones named on 
+%% \wikienref{HTML\#Attributes}{\meta{Wikipedia}}:
+\let\@class\relax     %% for tab/arr in latex.ltx
+\let\@title\relax     %% for \title in latex.ltx, %% 2011/04/26
+\DoWithAllOf\declareHTMLattrib{{class}{id}{style}{title}{lang}{dir}}
+%% |@type| is quite frequent too:               %% doc. 2011/09/27
+\declareHTMLattrib{type}
+%% |@href| is most important for that ``hyper-text:"
+\declareHTMLattrib{href} 
+%% ... and |@name| (among other uses) is needed for 
+%% hyper-text anchors: 
+\declareHTMLattrib{name}                        %% 2010/11/06
+%% |@content| appears with `\MetaTag' below:    %% 2011/11/05
+\declareHTMLattrib{content} 
+%% |@bgcolor| is used in tables as well as 
+%% for the appearance of the entire page:
+\declareHTMLattrib{bgcolor} 
+%% 
+%% %%% Attributes (Tables) %%%
+%% Of course, conflicts may occur, as the form 
+%% `\@<ASCII-chars>' of macro names is used for internal 
+%% (La)\TeX\ macros. 
+%% Indeed, `\@width' that we want to have for the |@width|
+%% attribute already ``abbreviates" 
+%% \TeX's ``keyword" (\TeX book p.~61) %% 2010/11/27
+%% `width' in \LaTeX\ 
+%% (for specifying the width of a `\hrule' or `\vrule' from \TeX; 
+%%  again just saving \TeX\ tokens rather than for readibility).
+\PackageWarning{blog}{Redefining \protect\@width}
+\let\@width\relax
+\declareHTMLattrib{width} 
+%% Same with |@height|:
+\PackageWarning{blog}{Redefining \protect\@height}
+\let\@height\relax
+\declareHTMLattrib{height}              %% 2010/07/24
+%% We can enumerate the specifications allowed for 
+%% |@align|:                            %% reimpl. 2011/04/24
+\newcommand*{\@align@c}{\@align{center}} 
+\newcommand*{\@align@l}{\@align{left}} 
+\newcommand*{\@align@r}{\@align{right}} 
+\newcommand*{\@align}[1]{align="#1"}
+%% |@valign@t|:
+\newcommand*{\@valign@t}{v\@align{top}} %% 2011/04/24
+%% Some other uses of `\declareHTMLattrib' essential for 
+%% \emph{tables:}                       %% emph 2011/04/24
+\declareHTMLattrib{border}              %% 2011/04/24
+\declareHTMLattrib{cellpadding}         %% 2010/07/18
+\declareHTMLattrib{cellspacing}         %% 2010/07/18
+\declareHTMLattrib{colspan}             %% 2010/07/17
+\declareHTMLattrib{frame}               %% 2010/07/24
+%% \textbf{Another problem} with this namespace idea is that 
+%% \emph{either} this reference to attributes cannot be used in 
+%% ``author" source files for generating HTML---\emph{or} `@' 
+%% cannot be used for ``private" (internal) macros. 
+%% % Cf. |\ContentAtt| for \xmltagcode{meta} tags ...
+%% % well, not so bad, as the main purpose of this namespace 
+%% % is saving tokens \emph{in macros.}
+%%
+%% === Hash Mark ===
+%% |#| is needed for numerical specifications in \HTML, 
+%% especially colours and Unicode symbols,
+%% while it plays a different (essential) role in our 
+%% definitions of \TeX\ macros here. 
+%% We redefine \LaTeX's |\#| 
+%% for a kind of ``quoting" `#' 
+%% (in macro definitions)                     %% (...) 2011/11/08 
+%% in order to refer to their \HTML\ meaning.%%%---I wonder
+%% %% <- rm. 2011/11/08 ->
+%% % what I had in mind with the |&| things here. 
+%% % I cannot find any use of |\AmpMark| in my code 
+%% % (including my web pages). There is no real problem 
+%% % with calling special \HTML\ symbols, `&' is simply 
+%% % made `other' already here for macros calling those symbols 
+%% % (below), and in processing source files, it is as well 
+%% % `other' by default. The symbols section, however, redefines |\&| 
+%% % for calling \HTML's ampersand symbol. 
+{ \MakeOther\# \gdef\#{#}                       %% \M... 2011/11/08
+% \catcode`\&=12 \gdef\AmpMark{&}               %%   rm. 2011/11/08
+}
+%% ... `\CompWordMark' etc.?
+%%
+%% === ``Escaping" \HTML\ Code for ``Verbatim" ===
+%% \label{sec:html-verb}                                %% 2011/11/23
+%% |\xmltagcode{<chars>}| yields \qtd{\xmltagcode{<chars>}}:
+\newcommand*{\xmltagcode}[1]{\code{\lt#1\gt}} 
+%% |\xmlentitycode{<name>}| yields the code \qtd{`&&<name>;'} for an 
+%% entity with name <name>:
+\newcommand*{\xmlentitycode}[1]{\code{\&#1;}}
+%%
+%% === Head ===
+%% |\head| produces the first two tags that an \HTML\ file must start: 
+\newcommand*{\head}{<html><head>}   %% ^^J rm 2010/10/10
+%% |\MetaTag{<inside>}| creates a \xmltagcode{meta} tag:
+\newcommand*{\MetaTag}[1]{\indenti<meta #1>}    %% \indenti 2011/11/05
+%% |\charset{<code-page>}|
+\newcommand*{\charset}[1]{%
+  \MetaTag{http-equiv="Content-Type" \@content{text/html; #1}}}
+%% TODO: \xmltagcode{meta \@name{description} \@content{<text>}} 
+%% %% <- 2011/11/05
+%% 
+%% |\robots{<instructions>}|: 
+\newcommand*{\robots}[1]{%% juergenf: index, follow, noarchive
+  \MetaTag{\@name{robots} \@content{#1}}}
+%% |\norobots| for privacy:                 %% 2011/03/16
+\newcommand*{\norobots}{\robots{noarchive,nofollow,noindex}}
+%% |\stylesheet{<media>}{<css>}| uses <css>`.css' for 
+%% `media="<media>"':
+\newcommand*{\stylesheet}[2]{%
+  \space\space                      %% 2010/09/10
+  <link rel="stylesheet" media="#1" 
+        \@type{text/css}            %% \@type 2011/10/05
+        \@href{#2.css}>}
+%% %% 2011/10/05:
+%% Alternatively, style declarations may occur in the 
+%% \xmltagcode{style} element. It can be accessed by the 
+%% |{style}| environment (cf. \secref{env}):
+\newenvironment*{style}[1]
+                {<style \@type{text/css} media="#1">}
+                {</style>}
+%% With |\title{<text>}|, <text> heads %% grammar? TODO 2010/04/08
+%% the browser window: 
+%% % \renewcommand*{\title}[1]{\space\space<title>#1</title>} 
+%% %% <- 2011/12/12 ->
+\renewcommand*{\title}{\space\space\SimpleTagSurr{title}} 
+%%
+%% === Body === 
+%% |\body| separates the `head' element from the `body' element 
+%% of the page.
+\newcommand*{\body}{</head><body>}
+%% |\topofpage| generates an anchor `top-of-page':
+\newcommand*{\topofpage}{\hanc{top-of-page}{}}
+%% |\finish| finishes the page, closing the `body' and `html'
+%% elements.
+\newcommand*{\finish}{</body></html>}
+%%
+%% === Comments ===
+%% |\comment{<comment>}| produces a one-line \HTML\ comment. 
+%% By contrast, there is an environment 
+%% |{commentlines}{<comment>}|
+%% for multi-line comments.           %% was mult-l... 2011/09/08
+%% It is convenient for ``commenting out" 
+%% code (unless the latter contains other \HTML\ comments ...)
+%% where <comment> is a \emph{comment} for explaining what is 
+%% commented out.                                   %% 2010/11/14
+\newcommand*{\comment}[1]{<!--#1-->}
+% \newcommand{\commentlines}[1]{\comment{^^J#1^^J}} %% 2010/05/07
+%   %% <- TODO bzw. \endlinechar=`\^^J 2010/05/09 back 2010/05/10
+\newenvironment{commentlines}[1]                    %% 2010/05/17
+  {<!--#1}
+  {-->}
+%%
+%% == Paragraphs and Line Breaks ==
+%% \label{sec:p-br}
+%% 2010/04/28:
+%% \xmltagcode{br} for manual line breaking 
+%% can be generated either by |\newline| or by |\\|: 
+\renewcommand*{\newline}{<br>}
+\let\\\newline
+%% Automatical insertion of \xmltagcode{p} tags 
+%% for starting new paragraphs according to 
+%% \secref{autopars} has been difficult, 
+%% especially comment lines so far insert unwanted 
+%% paragraph breaks (TODO 2011/11/20).
+%% So here are some ways to use \LaTeX/ Plain \TeX\ 
+%% commands---or ...:                                   %% 2011/11/23
+% \def\par{<p>} %% + empty lines !? 2010/04/26
+%% <- difficult with `\stop'; 2010/09/10:
+%% |\endgraf| produces \xmltagcode{/p}---TODO!?    %% todo 2011/11/23
+\renewcommand*{\endgraf}{</p>}
+%% %% 2011/11/23:
+%% However, I rather have decided for inserting a literal 
+%% \qtd{\xmltagcode{p}} using an editor (keyboard) shortcut.
+%% 
+%% |\rightpar{<text>}| places <text> flush right. 
+%% I have used this for \qtd{Last revised \dots} and for placing 
+%% navigation marks. 
+\newcommand*{\rightpar}{\TagSurr p\@align@r}  %% 2010/06/17
+%% %% 2011/04/29:
+%% Often I use `\rightpar' with \textit{italics}, 
+%% now there is |\rightitpar{<text>}| for this purpose:
+\newcommand*{\rightitpar}[1]{\rightpar{\textit{#1}}}
+%%
+%% == Fonts ==
+%% \label{sec:fonts}
+%% |\heading{<level>}{<text>}| prints <text> with size dependent 
+%% on <level>. The latter may be one out of 
+%% `1', `2', `3', `4', `5', `6'.                    %% 2011/05/12
+\newcommand*{\heading}[1]{\SimpleTagSurr{h#1}}
+%% ... I might use `\section' etc. one day, I made `\heading'
+%% when I could not control the sizes of the section titles 
+%% properly and decided first to experiment with the level numbers.
+%% %% <- TODO re-order alltogether, cf. SelfHTML       2011/05/12
+%%
+%% We ``re-use" some \LaTeX\ commands for specifying font attributes, 
+%% rather than (re)defining macros `\i', `\b', `\tt', ...
+%% \[|\textit{<text>}| \qquad 
+%%   \mbox{just expands to}\qquad 
+%%   \xmltagcode{i}<text>\xmltagcode{/i}\]
+\renewcommand*{\textit}{\SimpleTagSurr i}
+%% etc. for |\textbf|, |\texttt| ...:
+\renewcommand*{\textbf}{\SimpleTagSurr b}
+\renewcommand*{\texttt}{\SimpleTagSurr{tt}}         %% 2010/06/07
+%% |\textsf{<text>}| chooses some sans-serif:       %% 2011/10/20
+\renewcommand*{\textsf}{%
+    \TagSurr{span}{\@style{font-family:sans-serif}}}
+%% |\textcolor| is from \LaTeX's 'color' package 
+%% that we won't load for generating \HTML, 
+%% so it is ``new" here, it is just natural to use it 
+%% for coloured text.                               %% (2010/05/15):
+%% \xmltagcode{font} is deprecated, use             %% 2011/10/20
+%% \xmltagcode{span} instead:
+% \newcommand*{\textcolor}[1]{\TagSurr{font}{color="#1"}}
+\newcommand*{\textcolor}[1]{\TagSurr{span}{\@style{color:#1}}}
+%%
+%% == Logical Markup ==
+%% |\code{<text>}| marks <text> as ``code," 
+%% just accessing te \xmltagcode{code} element, 
+%% while standard \LaTeX\ does not provide a `\code' command:
+\newcommand*{\code}{\SimpleTagSurr{code}}   %% 2010/04/27
+%% |\emph{<text>}| is \LaTeX's command again, but somewhat abused, 
+%% expanding to \lq\xmltagcode{em}<text>\xmltagcode{/em}\rq:
+\renewcommand*{\emph}  {\SimpleTagSurr{em}}
+%% ... Note that \LaTeX's `\emph' feature of switching to `up' 
+%% when `\emph' appears in an italic context doesn't work here ...
+%% 
+%% |\strong{<text>}| again just calls an \HTML\ element. 
+%% It may behave like `\textbf{<text>}', or ... I don't know ...
+\newcommand*{\strong}{\SimpleTagSurr{strong}}
+%% %% 2011/03/09:
+%% |\var{<symbol(s)>}| accesses the \xmltagcode{var} element:
+\newcommand*{\var}{\SimpleTagSurr{var}}
+%% %% 2011/09/21, 2012/01/06:
+%% For tagging acronyms, 
+%% \HTML\ offers the \xmltagcode{acronym} element, 
+%% and the \httpref{ctan.org/pkg/tugboat}{\acro{TUG}boat macros} 
+%% provide |\acro{<chars>}|. I have used the latter for some 
+%% time in my package documentations anyway. For v0.7, %% 2012/01/06
+%% I add the latter here as an alias for |\acronym{<chars>}|
+%% (supporting both naming policies mentioned in Sec.~\ref{name-policy}):
+\newcommand*{\acronym}{\SimpleTagSurr{acronym}}
+\newcommand*{\acro}{}   \let\acro\acronym
+%% %% 2012/02/04:
+%% |\newacronym{<LETTERS>}| saves you from doubling the <LETTERS>
+%% when you want to create the shorthand macro `\<LETTERS>': 
+\newcommand*{\newacronym}[1]{%
+    \expandafter\newcommand\expandafter*\csname#1\endcsname{%
+        \acronym{#1}}}
+%%
+%% == Environments ==
+%% \label{sec:env}
+%% We reduce \LaTeX's |\begin| and |\end| to their most primitive 
+%% core.
+%% \begin{description}
+%% \cmdboxitem|\begin{<command>}| just executes the macro `\<command>', 
+%% and 
+%% \cmdboxitem|\end{<command>}| just executes the macro `\end<command>'.
+%% \end{description}
+%%
+%% They don't constitute a group with local settings. 
+%% Indeed, the present (2010/11/07) version of 'blog.sty'
+%% does not allow any assignments while ``copying" 
+%% the \TeX\ source into the `.htm'.
+%% There even is no check for proper nesting.
+%% `\begin' and `\end' just represent \HTML\ elements 
+%% (their starting/ending tags)
+%% that typically have ``long" content. 
+%% (We might ``intercept" `\begin' and `\end' before 
+%%  copying for executing some assignments in a future version.)
+\let\begin\@nameuse
+\def\end#1{\csname end#1\endcsname}
+%% ... moving |{english}| to `xmlprint.cfg' 
+%% 2010/05/22 ...%% doc 2010/11/06
+%%
+%% As formerly with 
+%% \hyperref[sec:fonts]{fonts},               %% \hyperref 2012/01/06
+%% we have \emph{two} policies for
+%% \label{name-policy}                                  %% 2012/01/06
+%% \textbf{choosing macro names}: 
+%% (i)~using an \emph{existing} \HTML\ element name, 
+%% (ii)~using a \LaTeX\ command name for accessing a somewhat 
+%% similar \HTML\ element having a \emph{different} name. 
+%% [\,2011/10/05: so what? TODO\,]
+%%
+%% New 2011/10/05:
+%% With |\useHTMLelement{<ltx-env>}{<html-el>}|, 
+%% you can access the \xmltagcode{<html-el>} element 
+%% by the `<ltx-env>' environment. 
+%% The ``starred" form is for ``list" environments 
+%% where I observed around 2011/10/01 that certain links 
+%% (with Mozilla Firefox) need \xmltagcode{/li}: 
+\newcommand*{\useHTMLelement}{%
+    \@ifstar{\@useHTMLelement[</li>]}{\@useHTMLelement}}
+\newcommand*{\@useHTMLelement}[3][]{%
+    \@namedef{#2}{<#3>}%
+    \@namedef{end#2}{#1\CLBrk</#3>}}        %% \CLBrk 2012/04/03
+%% Applications: 
+%%
+%% \acro{CARE:} |{small}| is an environment here, 
+%% it is not in \LaTeX:
+\useHTMLelement{small}{small}
+%% |{center}|: %% TODO von 2010/07/18, weiter oben
+% \renewenvironment*{center}{<p align="center">}{</p>}
+% \renewenvironment*{center}{<p \@align@c>}{</p>}
+\useHTMLelement{center}{center}
+%% The next definitions for |{enumerate}|, |{itemize}|, 
+%% `{verbatim}' follow policy~(ii):
+\useHTMLelement*{enumerate}{ol}
+\useHTMLelement*{itemize}  {ul}
+%% %% 2010/11/16:
+%% With 'blog.sty', |{verbatim}| really doesn't work much 
+%% like its original \LaTeX\ variant. \TeX\ macros inside 
+%% still are expanded, and you must care yourself for 
+%% wanted \dqtd{quoting}:
+\useHTMLelement{verbatim} {pre}
+%% |{quote}|:
+\useHTMLelement{quote}{blockquote}
+%% For list |\item|s, I tried to get readable \HTML\ code
+%% using `\indenti'. This fails with nested lists. 
+%% The indent could be increased for nested lists 
+%% if we supported assignments with `\begin' and `\end'.
+%% 2011/10/04 including \xmltagcode{</li>}, 
+%% repairs more links in \acro{DANTE} talk
+%% (missing again 2011/10/11!?):
+\renewcommand*{\item}{%
+    \indenti</li>\CLBrk                             %% 2011/10/11
+    \indenti<li>}
+%% \LaTeX's |{description}| environment redefines the 
+%% label format for the optional argument of `\item'.
+%% Again, \emph{we} cannot do this here 
+%% (we even cannot use optional arguments, 
+%%  at least not easily). 
+%% Instead we define a different |\ditem{<term>}| 
+%% having a \emph{mandatory} argument 
+%% (TODO star?). %% 2011/10/05
+\useHTMLelement{description}{dl} 
+\newcommand*{\ditem}[1]{\indenti<dt>\strong{#1}<dd>}
+%%
+%% == Links ==
+%% === Basic Link Macros ===
+%% %% doc. fixes + hyperref 2011/10/16:
+%% |\hanc{<name>}{<text>}| makes <text> an anchor with 
+%% \HTML\ label <name> like \ctanpkgref{hyperref}'s 
+%% |\hypertarget{<name>}{<text>}| 
+%% (that we actually provide as well, 
+%% towards printing from the same source): 
+\newcommand*{\hanc}[1]{\TagSurr a{\@name{#1}}}
+\@ifdefinable\hypertarget{\let\hypertarget\hanc}
+%% |\hancref{<name>}{<target>}{<text>}| makes <text> an anchor with 
+%% \HTML\ label <name> and at the same time a link to <target>: 
+\newcommand*{\hancref}[2]{\TagSurr a{\@name{#1} \@href{#2}}}
+%% |\href{<name>}{<text>}| makes <text> a link to <name> 
+%% (as with 'hyperref'): 
+\newcommand*{\href}[1]{\TagSurr a{\@href{#1}}}
+%%
+%% === Special cases of Basic Link Macros ===
+%% |\autanc{<text>}| creates an anchor where <text> is 
+%% the text and the internal label at the same time:
+\newcommand*{\autanc}[1]{\hanc{#1}{#1}}             %% 2010/07/04
+%% |\ancref{<name>}{<text>}| makes <text> a link to 
+%% an anchor <name> on the same web page.
+%% This is especially useful for a ``table of contents"---a 
+%% list of links to sections of the page. 
+%% It is just like 'hyperref''s |\hyperlink{<name>}{<text>}|:
+\newcommand*{\ancref}[1]{\href{\##1}}
+\@ifdefinable\hyperlink{\let\hyperlink\ancref}
+%% |\autref{<text>}| makes <text> a link to an anchor 
+%% named <text> itself: 
+\newcommand*{\autref}[1]{\ancref{#1}{#1}}           %% 2010/07/04
+%%
+%% === Italic Variants ===
+%% Some of the link macros get ``emphasized" or ``italic" 
+%% variants. Originally I used ``emphasized," later I decided 
+%% to replace it by ``italic," as I found that I had used 
+%% italics for another reason than emphasizing. 
+%% E.g., <text> may be \qtd{bug,} and I am not referring to 
+%% some bug, but to the Wikipedia article \textit{Bug.}
+%% This has been inspired by some Wikipedia typography convention 
+%% about referring to titles of books or movies. 
+%% (The `em'\,->\,`it' replacement has not been completed yet.)
+% \newcommand*{\emhref}[2]{\href{#1}{\emph{#2}}}
+\newcommand*{\ithref}[2]{\href{#1}{\textit{#2}}}
+\newcommand*{\itancref}[2]{\ancref{#1}{\textit{#2}}}%% 2010/05/30
+\newcommand*{\emancref}[2]{\ancref{#1}{\emph{#2}}}
+%%
+%% === Built Macros for Links to Local Files ===
+%% Originally, I wanted to refer to my web pages only, 
+%% using \[|\fileref{<filename-base>}|.\] I have used 
+%% extension `.htm' to avoid disturbing my Atari 
+%% editor 'xEDIT' or the the Atari emulator (Hatari). 
+%% %% rm. 2011/08/18:
+%% % I could switch to `.html' some time using symbolic links. 
+%% The extension I actually use is stored as macro 
+%% |\htext| in a more local file (e.g., `.cfg').---Later 
+%% I realized that I may want to refer to local files 
+%% other than web pages, and therefore I introduced a more
+%% %% mod. 2011/08/18:
+%% general `\FileRef{<filename>}|', overlooking 
+%% that it was the same as |\href|.
+% \newcommand*{\FileRef}[1]{\TagSurr a{\@href{#1}}}
+\newcommand*{\htext}{.htm}                              %% 2011/10/05
+\newcommand*{\fileref}[1]{\href{#1\htext}}
+% \newcommand*{\emfileref}[2]{\fileref{#1}{\emph{#2}}}
+\newcommand*{\itfileref}[2]{\fileref{#1}{\textit{#2}}}
+%% |\fileancref{<file>}{<anchor>}{<text>}| links to 
+%% %% <- `text' added 2011/03/19
+%% anchor <anchor> on web page <file>:
+\newcommand*{\fileancref}[2]{%
+  \TagSurr a{\@href{#1\htext\##2}}}
+% \newcommand*{\emfileancref}[3]{\fileancref{#1}{#2}{\emph{#3}}}
+%% <- 2010/05/31 ->
+\newcommand*{\itfileancref}[3]{\fileancref{#1}{#2}{\textit{#3}}}
+%%
+%% === Built Macros for Links to Remote Files ===
+%% 'blog.sty' currently (even 2011/01/24) implements my style 
+%% \emph{not} to open a new browser window or tab for \emph{local} 
+%% files but to open a new one for \emph{remote} files, i.e., 
+%% when a file is addressed by a full URL. 
+%% This may change (as with 'blogdot.sty', 2011/10/12, 
+%% or more generally with local non-\HTML\ files),
+%% so let us have a backbone 
+%% |\hnewref{<prot>}{<host-path[#frag]>}{<text>}| 
+%% that                                             %% 2011/10/21
+%% makes <text> a link to <prot><host-path[#frag]>:
+\newcommand*{\hnewref}[2]{%
+    \TagSurr a{\@href{#1#2" target="_blank}}}
+%% So \[|\httpref{<host-path[#frag]>}{<text>}|\] 
+%% makes <text> a link to \urlfmt{http://}<host-path[#frag]>:
+\newcommand*{\httpref}{\hnewref{http://}}
+%% With v0.4, macros based on `\httpref' are moved to 'texlinks.sty': 
+\RequirePackage[blog]{texlinks}[2011/02/10]
+%% Former |\urlref| appears as |\urlhttpref| there ...
+\newcommand \urlref {}      \let\urlref\urlhttpref
+%% ... and `\ctanref' has changed its meaning there as of 2011/10/21.
+%% %% 2011/02/07:
+%% 'texlinks' sometimes uses a ``permanent alias" 
+%% |\NormalHTTPref| of `\httpref':
+\@ifdefinable \NormalHTTPref {\let\NormalHTTPref\httpref}
+%% |\httpsref| is the analogue of `\httpref' for `https://':
+\newcommand*{\httpsref}{\hnewref{https://}}
+%%
+%% == Characters/Symbols ==             %% `Symbols' until 2011/09/25 
+%% === Basic Preliminaries ===
+%% |&| is made `other' for using it to call \HTML's 
+%% ``character entities."   %% dot inside 2011/02/25 
+\MakeOther\&
+%% Again we have the two policies about choosing macro names
+%% and respectively two new definition commands. 
+%% |\declareHTMLsymbol{<name>}| defines a macro `\<name>'
+%% expanding to `&<name>;'. Checking for prior definedness 
+%% hasn't been implemented yet. 
+%% (TODO; but sometimes redefining ...)         %% 2011/02/26
+\newcommand*{\declareHTMLsymbol}[1]{\@namedef{#1}{&#1;}}
+%% %% TODO replace \@namedef with \defcsname
+%% |\declareHTMLsymbols{{<name>}<list>}| essentially issues 
+%% \[`\declareHTMLsymbol{<attr>}\declareHTMLsymbols{<list>}'\]
+%% while `\declareHTMLsymbols{}' essentially does nothing---great, 
+%% this is an explanation by recursion!
+\newcommand*{\declareHTMLsymbols}{\DoWithAllOf\declareHTMLsymbol}
+%% |\renderHTMLsymbol{<macro>}{<name>}| \emph{redefines} 
+%% macro <macro> to expand to `&<name>;':
+\newcommand*{\renderHTMLsymbol} [2]{\renewcommand*{#1}{&#2;}}
+%% Redefinitions of |\&| and |\%| 
+%% (well, `\PercentChar' is 'fifinddo''s %% add. apostroph 2011/07/22
+%%  version of \LaTeX's `\@percentchar'):
+\renderHTMLsymbol{\&}{amp}
+\let\%\PercentChar 
+%%
+%% === Diacritics ===                           %% changed 2011/03/04
+%% For the difference between \dqtd{diacritic} and 
+%% \dqtd{accent,} see \wikienref{Diacritic}{\meta{Wikipedia.}}
+%% 
+%% %% replacing \ccedil 2011/11/23:
+%% %%|\ccedil|: %%%, |\eacute|, |\ocirc| (``r\^ole") 
+%% % \declareHTMLsymbol{ccedil} 
+%% %% 2011/03/04, added example results 2011/11/24:
+%% \HTML\ entities |&eacute;| (\'e), 
+%% |&ccedil| (\c{c}),                               %% 2011/11/23
+%% |&ocirc;| (\^o) etc. can be accessed 
+%% by \TeX's accent commands |\'|, |\c|, |\^|, |\`|, |\"|:
+% \declareHTMLsymbol{eacute}
+% \declareHTMLsymbol{ocirc}
+\renewcommand*{\'}[1]{&#1acute;}
+\renewcommand*{\c}[1]{&#1cedil;}
+\renewcommand*{\^}[1]{&#1circ;}
+\renewcommand*{\`}[1]{&#1grave;}
+\renewcommand*{\"}[1]{&#1uml;}
+%% %% 2012/05/13:
+%% former |\uml{<char>}| is obsolete, use |\"<char>| 
+%% (or `\"<char>') instead.
+%% % may have been overestimated:
+%% % (useful in macro definitions):                 %% 2010/11/13
+%% % \newcommand*     {\uml}[1]  {&#1uml;}             %% 2010/08/24
+%%
+%% === Greek ===                                        %% 2011/02/26
+\declareHTMLsymbols{{Alpha}{alpha}                      %% 2012/01/06
+    {Beta}{beta}{Gamma}{gamma}{Delta}{delta}{Epsilon}{epsilon} 
+    {Zeta}{zeta}{Eta}{eta}{Theta}{theta}{Iota}{iota}{Kappa}{kappa} 
+    {Lambda}{lambda}{My}{my}{Ny}{ny}{Xi}{xi}{Omikron}{omikron} 
+    {Pi}{pi}{Rho}{rho}{Sigma}{sigma}{sigmaf}{Tau}{tau} 
+    {Upsilon}{upsilon}{Phi}{phi}{Chi}{chi}{Psi}{psi}
+    {Omega}{omega}                    %% render -> declare 2011/02/26
+    {thetasym}{upsih}{piv} }
+%% 
+%% === Arrows ===
+%% Arrows: |\gets|, |\to|, |\uparrow|, |\downarrow| ...
+\renderHTMLsymbol {\gets}     {larr}
+\renderHTMLsymbol {\to}       {rarr}
+\renderHTMLsymbol {\uparrow}  {uarr}    %% 2010/09/15
+\renderHTMLsymbol {\downarrow}{darr}    %% 2010/09/15
+%% 
+%% === Dashes ===
+%% The ligatures `--' and `---' for en~dash and em~dash 
+%% don't work in our expanding mode. Now, \HTML's policy 
+%% for choosing names often prefers shorter names than 
+%% are recommended for (La)\TeX, so here I adopt a \emph{third}
+%% police besides (i) and (ii) earlier; cf. \LaTeX's
+%% `\textemdash' and `\textendash'.---`\newcommand' 
+%% does not accept macros whose names start with `end', so:
+%% |\endash|, |\emdash| ...
+\def         \endash  {&ndash;}         %% \end... illegal
+\newcommand*{\emdash} {&mdash;}
+%% 
+%% === Spaces ===
+%% ``Math" (not only!)\ spaces |\,|, |\enspace|, |\quad|, |\qquad|: 
+%% %% <- 2011/04/26
+\renderHTMLsymbol{\enspace}{ensp}
+\renderHTMLsymbol{\quad}   {emsp} 
+\renewcommand*   {\qquad}  {\quad\quad} 
+%% 2011/07/22: `&thinsp;' allows line breaks, 
+%% so we introduce |\thinsp| to access `&thinsp;', 
+%% while |\thinspace| and |\,| use Unicode ``Narrow No-Break Space" 
+%% (`U+202F', see \meta{Wikipedia \Wikienref{Space (punctuation)}}; 
+%%  browser support?):
+% \renderHTMLsymbol{\thinspace}{thinsp}
+% \renderHTMLsymbol{\,}        {thinsp}
+\declareHTMLsymbol{thinsp}
+\renderHTMLsymbol{\thinspace}{\#8239}
+\renderHTMLsymbol{\,}        {\#8239}
+%% |\figurespace|                                   %% 2011/09/25
+%% (U+2007, cf.~\wikienref{Figure space}{\meta{Wikipedia}}): 
+\newcommand*{\figurespace}{&\#8199;}
+%%
+%% === Quotes, Apostrophe, Prime ===
+%% \label{sec:quotes}
+%% |\lq|, |\rq| 
+\renderHTMLsymbol{\lq}    {lsquo}
+\renderHTMLsymbol{\rq}    {rsquo}
+%% In order to use the right single quote for the \HTML\ apostrophe, 
+%% we must save other uses before. 
+%% %% rm. \screenqtd 2011/11/08:
+%% % |\screentqtd{<text>}| is used for screen messages, and 
+%% |\urlapostr| is the version of the right single quote 
+%% for \acro{URL}s of Wikipedia articles:           %% 2011/08/31
+% \newcommand*{\screenqtd}[1]{`#1'}                 %% rm. 2011/11/08
+\newcommand*{\urlapostr}   {'}                      %% 2010/09/10
+%% The actual change of |'| is in `\BlogCodes' 
+%% (\secref{process}).
+%%
+%% |\bdquo|, |\ldquo|, |\rdquo|, |\sbquo|, |\prime|, |\Prime| ...
+\declareHTMLsymbol{bdquo}                           %% 2011/09/23
+\declareHTMLsymbol{ldquo}
+\declareHTMLsymbol{rdquo}
+\declareHTMLsymbol{sbquo}                           %% 2010/07/01 
+\renewcommand*{\prime}{&prime;}
+\declareHTMLsymbol{Prime}
+%% A special 'blog.sty' service is |\asciidq| for a ``straight" 
+%% double quotation mark. It is useful for \emph{typesetting code}
+%% and also can be used to get around automatical conversion 
+%% of straight into typographical quotation marks as with 
+%% `\catchdq':                                      %% 2011/12/21
+\newcommand*{\asciidq}{\string"}
+%% |\quot| accesses the same symbol in \HTML's terms
+%% (e.g., for displaying code):
+\declareHTMLsymbol{quot}                            %% 2012/01/21
+%% |\endqtd{<text>}| quotes in the English style using double quote 
+%% marks, |\enqtd{<text>}| uses single quote marks instead, 
+%% |\dedqtd{<text>}| quotes in German style,        %% 2011/12/21:
+%% and |\asciidqtd{<text>}| and |\quoted{<text>}|   %% 2012/01/21
+%% use straight double quotation marks:
+\def\endqtd#1{\ldquo#1\rdquo}       %% \newcommand: ``\end"
+\newcommand*\enqtd[1]{\lq#1\rq}     %% 2010/09/08, \new... 2010/11/08
+\newcommand*{\dedqtd}   [1]{\bdquo#1\ldquo}
+\newcommand*{\deqtd}    [1]{&sbquo;#1&lsquo;} %% corr. 2011/05/14
+\newcommand*{\asciidqtd}[1]{\asciidq#1\asciidq}     %% 2011/12/21
+\newcommand*{\quoted}   [1]{\quot#1\quot}           %% 2012/01/21
+%% |\squoted{<text>}| surrounds <text> with ``straight"
+%% single quotation marks, useful for other kinds 
+%% of quoting in computer code:
+\newcommand*{\squoted}[1]{\urlapostr#1\urlapostr}   %% 2012/01/21
+%% TODO `\glqq' from 'german.sty' etc.              %% 2011/09/22
+%%
+%% === Math ===
+%% %% doc. extended 2011/05/08:
+%% Because \verb+<+ and \verb+>+ are used for \HTML's
+%% element notation, we provide aliases |\gt|, |\lt| 
+%% for mathematical $\lt$ and $\gt$---and for reference 
+%% to \HTML\ (or just \acro{XML}) code                  %% 2011/11/23 
+%% (see \secref{html-verb}):
+\declareHTMLsymbols{{gt}{lt}}
+%% |\ge|, |\le|, and |\ne| for $\geq$, $\leq$, and $\neq$ resp.:
+\declareHTMLsymbols{{ge}{le}{ne}}
+%% We also provide their \TeX\ aliases 
+%% |\geq|, |\leq|, |\neq|:                              %% 2011/05/11
+\let\geq\ge     \let\leq\le     \let\neq\ne
+%% Angle braces |\langle| and |\rangle|:
+\renderHTMLsymbol{\langle}{lang}
+\renderHTMLsymbol{\rangle}{rang}
+%% The one-argument macro |\angled{<angled>}| 
+%% allows better readable code                  %% TODO:
+%% (\textcolor{red}{should be in a more general package}): 
+\newcommand*{\angled}[1]{\langle#1\rangle}
+%% Curly braces |\{| and |\}| \textcolor{red}{\dots}: 
+\begingroup
+    \Delimiters\[\] \gdef\{[{] \gdef\}[}]
+\endgroup
+%% \TeX's |\ast| corresponds to the ``lower" version 
+%% of the asterisk:
+\renderHTMLsymbol{\ast}{lowast}                     %% 2011/03/29
+%% Besides \TeX's |\subset| and |\subseteq|, 
+%% we provide short versions |\sub| and |\sube|     %% 2011/05/08
+%% inspired by \HTML:
+\declareHTMLsymbol{sub}                             %% 2011/04/04
+\let\subset\sub                                     %% 2011/05/08
+\declareHTMLsymbol{sube}                            %% 2011/03/29
+\let\subseteq\sube                                  %% 2011/05/08
+%% \TeX\ and \HTML\ agree on |\cap|, |\cup|,        %% 2011/05/08
+%% and |\times|:                                    %% 2011/04/04
+\declareHTMLsymbols{{cap}{cup}{times}}              %% 2012/01/06
+%% We stick to \TeX's |\emptyset|                   %% 2011/05/08
+\renderHTMLsymbol{\emptyset}{empty}                 %% 2011/04/14
+%% We need |\minus| since math mode switching is 
+%% not supported by 'blog':                         %% 2011/05/08
+\declareHTMLsymbol{minus}                           %% 2011/03/31
+%% We override \HTML's \lq`&circ;'\rq\       %% \lq\rq 2011/09/08 
+%% to get \TeX's \cs{circ} 
+%% (i.e., $\circ$;                                  %% 2011/05/08:
+%%  \textcolor{red}{but I cannot see it 
+%%                  on my own pages!?}):
+\renderHTMLsymbol{\circ}{\#x2218}                   %% 2011/04/28
+\renderHTMLsymbol{\cdot}{middot}                    %% 2011/05/07
+%% |\sdot| generates `&sdot,', a variant of of `&middot;'
+%% reserved for the \Wikienref{dot product} according to 
+%% the \wikideref{Malzeichen\#Skalarprodukt}
+%%               {German \meta{Wikipedia}}          %% 2011/09/08!
+\declareHTMLsymbol{sdot}                            %% 2011/05/08
+%% I provide |\degrees| for the degree symbol. 
+%% \LaTeX\ already has `\deg' as an operator, 
+%% therefore I do not want to use `\declareHTMLsymbol'
+%% here.
+\newcommand*{\degrees}{&deg;}
+%% 
+%% === Other ===
+%% The tilde |~| is used for its wonderful purpose, 
+%% by analogy to \TeX (TODO overridden by `\FDpseudoTilde'):
+\renderHTMLsymbol{~}{nbsp} 
+%% But now we need a replacement |\tilde| for URLs involving 
+%% home directories of institution members 
+%% (should better be |\tildechar| or `\TildeChar', 
+%%  cf.~'fifinddo'):                    %% 2011/04/29
+{ \MakeOther\~ \gdef\tilde{~} \gdef\tildechar{~}} 
+%% % <- more elegant macro                          %% 2011/05/18
+%% %    \newcommand*{\StoreOtherCharAs}[2]{%
+%% %                 \edef#2{\expandafter\@gobble\string#1}}
+%% Horizontal ellipsis: |\dots| ...
+\renderHTMLsymbol {\dots} {hellip}
+%% %% 2012/05/13:
+%% |\ss| from Plain~\TeX\ and \LaTeX\ is used for the ``s-z ligature", 
+%% the German ``\Wikienref{sharp s}":
+\renderHTMLsymbol{\ss}{szlig}
+%% |\copyright|:
+\renderHTMLsymbol{\copyright}{copy} 
+%% |\bullet|                                %% 2011/03/29
+\renderHTMLsymbol{\bullet}{bull}
+%% |\euro|:                                 %% 2011/05/09
+\declareHTMLsymbol{euro}
+%% \LaTeX's |\S| prints the \dqtd{\Wikienref{section sign}}
+%% \qtd{\S}. In \HTML, the latter accessed by `&sect;', 
+%% we \dqtd{redirect} `\S' to this:         %% 2011/05/18
+\renderHTMLsymbol{\S}{sect}
+%% |\dagger|, |\ddagger|:                   %% 2011/10/01
+\renderHTMLsymbol{\dagger}{dagger}
+\renderHTMLsymbol{\ddagger}{Dagger}
+%% Sometimes (due to certain local settings) the notations 
+%% \dqtd{`&&<characters>;'} or \dqtd{`&&&#<number>;'} 
+%% (for \Wikienref{Unicode}) may not be available. 
+%% We provide 
+%% \[|\htmlentity{<characters>}|\]
+%% as well as 
+%% \[|\unicodeentity{<decimal>}|\]
+%% and
+%% \[|\unicodehexentity{<hexadecimal>}|\]
+%% for such situations:
+\newcommand*{\htmlentity}[1]{&#1;}
+\newcommand*{\unicodeentity}[1]{&\##1;}
+\newcommand*{\unicodehexentity}[1]{&\#x#1;}
+%% 
+%% == \TeX-related ==                                   %% 2010/08/24
+%% Somebody actually using 'blog.sty' must have a need to put down 
+%% notes about \TeX\ for her own private purposes at least---I expect.
+%% === Logos ===
+%% ``Program" names might be typeset in a special font, 
+%% I once thought, and started tagging program names with 
+%% |\prg|. It could be `\texttt' or `\textsf' like in 
+%% documentations of \LaTeX\ packages. However, 
+%% sans-serif is of doubtable usefulness on web pages, 
+%% and typewriter imitations usually look terrible on 
+%% web pages. So I am waiting for a better idea and 
+%% let `\prg' just remove the braces. 
+\newcommand*{\prg}[1]{} \let\prg\@firstofone 
+\newcommand*{\BibTeX}{\prg{BibTeX}} %% 2010/09/13
+\renewcommand*{\TeX}{\prg{TeX}}
+\renewcommand*{\LaTeX}{\prg{LaTeX}}
+\newcommand*{\allTeX}{\prg{(La)TeX}}%% 2010/10/05
+\newcommand*{\LuaTeX}{\prg{LuaTeX}}
+\newcommand*{\pdfTeX}{\prg{pdfTeX}}
+\newcommand*{\XeTeX}{\prg{XeTeX}}   %% 2010/10/09
+\newcommand*{\TeXbook}{TeXbook}     %% 2010/09/13
+%%
+%% === Describing Macros ===
+%% With v0.4, \TeX-related \emph{links} are moved to 'texlinks.sty'.
+%%
+%% \leavevmode % \errorcontextlines=15       %% TODO 2011/11/05
+%% |\texcs{\<tex-cmd-name>}| or `\texcs\<tex-cmd-name>'
+%% (care for spacing yourself):
+\newcommand*{\texcs}[1]{\code{\string#1}}           %% 2010/11/13
+%% Good old |\cs{<tex-cmd-name>}| may be preferable: 
+\def\cs#1{\code{\BackslashChar#1}}                  %% 2011/03/06
+%% |\metavar{<name>}|:                              %% 2011/09/22
+\newcommand*{\metavar}[1]{\angled{\meta{#1}}}
+%%
+%% == Tables ==
+%% %% 2011/04/24: rm. remark on doubtful stability, ordered
+%% I am not so sure about this section ...
+%% === Indenting === 
+%% There are three levels of indenting:
+%% \[|\indenti|, \quad 
+%%   |\indentii|,\quad \mbox{and}\quad 
+%%   |\indentiii|.\] 
+%% The intention for these was to get readable \HTML\ code. Not sure ...
+{\catcode`\ =12%% 2010/05/19
+\gdef\indenti{  }\gdef\indentii{    }\gdef\indentiii{      }}
+%%
+%% === Starting/Ending Tables ===
+%% |\startTable{<attributes>}| and |\endTable| have been made 
+%% for appearing in different macros, such as in the two parts 
+%% of a `\newenvironment':
+%% %% 2010/07/17:
+\newcommand*{\startTable}[1]{<table #1>}
+\def\endTable{</table>}
+%% |\@frame@box| among the `\startTable' <attributes>
+%% draws a frame about the table, |\@frame@groups|
+%% separates ``groups" by rules: 
+\newcommand*{\@frame@box}{\@frame{box}}
+\newcommand*{\@frame@groups}{\@frame{groups}}
+%% |\begin{allrulestable}{<cell-padding>}{<width>}| 
+%% starts a table environment with all possible rules
+%% and some code cosmetic. <width> may be empty ...
+\newenvironment{allrulestable}[2]
+  {\startTable{\@cellpadding{#1} \@width{#2} 
+               \@frame@box\ rules="all"}\CLBrk  %% \ 2011/10/12
+   \ \tbody} %% <- tbody 2011/10/13, `\ ' 2011/11/09 ->
+  {\ \endtbody\CLBrk\endTable}
+%% \xmltagcode{tbody}...\xmltagcode{/tbody} seemed to be 
+%% better with `\HVspace' for 'blogdot.sty',    %% 2011/10/13
+%% so it gets an environment |{tbody}| 
+%% (i.e., macros |\tbody| and |\endtbody|):
+\useHTMLelement{tbody}{tbody}
+%% 
+%% === Rows ===
+%% I first thought it would be good for readability if 
+%% some \HTML\ comments explain nesting or briefly describe 
+%% the content of some column, row, or cell. 
+%% But this is troublesome when you want to comment out 
+%% an entire table ...
+%% 
+%% |\begin{TableRow}{<comment>}{<attributes>}|\\ starts an environment 
+%% producing an \HTML\ comment <comment> and a table row
+%% with attributes <attributes>, including code cosmetic. 
+\newenvironment*{TableRow}[2]{%% lesser indentation 2011/04/25
+  \ \comment{ #1 }\CLBrk
+  \indenti<tr #2>%
+  }{%
+  \indenti\endtr}                           %% \endtr 2011/11/08
+%% |\begin{tablecoloredrow}{<comment>}{<background-color>}|\\
+%% is a special case of `{TableRow}' where `@bgcolor' is the only 
+%% attribute:
+\newenvironment{tablecoloredrow}[2]
+  {\TableRow{#1}{\@bgcolor{#2}}}
+  {\endTableRow}
+%% |\begin{tablecoloredboldrow}{<comment>}{<background-color>}|\\
+%% is like `{tablecoloredrow}' except that content text is 
+%% rendered in boldface (TODO horizontal centering?):
+\newenvironment{tablecoloredboldrow}[2]         %% 2011/11/03/08
+  {\TableRow{#1}{\@bgcolor{#2} 
+                 \@style{font-weight:bold}}}
+  {\endTableRow}
+%% |\begin{tablerow}{<comment>}|    %% rm. {<b...>} 2011/12/19
+%% is a special case of `{TableRow}' where the only attribute 
+%% yields ``top" vertical alignment (TODO strange):
+%% %% ``top" 2010/05/18:
+\newenvironment{tablerow}[1]{\TableRow{#1}{\@valign@t}}
+                            {\endTableRow}
+%% |\starttr| and |\endtr| delimit a row; these commands again 
+%% have been made for appearing in different macros. 
+%% There is \emph{no} code indenting, probably for 
+%% heavy table nesting where indenting was rather useless 
+%% (? TODO only in 'texblog.fdf'? there indents would have 
+%%         been useful). 
+%% %% 2010/07/18:
+\newcommand*{\starttr}{<tr>} 
+\def\endtr{</tr>} 
+%%
+%% === Cells === 
+%% |simplecell{<content>}| produces the most \emph{simple} kind of 
+%% an \HTML\ table cell: 
+\newcommand*{\simplecell}{\SimpleTagSurr{td}}   %% 2010/07/18
+%% |\TableCell{<attributes>}{<content>}| produces the most
+%% \emph{general} kind of a cell, together with a code indent:
+%% % \newcommand*{\TableCell}[2]{\indentiii<td #1>#2</td>}
+%% % \newcommand*{\TableCell}[2]{\indentiii\TagSurr{td}{#1}{#2}}
+%% %% <- 2010/07/18 ->
+\newcommand*{\TableCell}[2]{\indentiii\startTd{#1}#2\endTd}
+%% |\colorwidthcell{<color>}{<width>}{<content>}| 
+%% uses just the `@bgcolor' and the `@width' attribute: 
+%% %% 2010/06/15:
+\newcommand*{\colorwidthcell}[2]{\TableCell{\@bgcolor{#1}\@width{#2}}}
+%% |\tablewidthcell{<color>}{<width>}{<content>}| 
+%% uses just the `@bgcolor' and the `@width' attribute: 
+\newcommand*{\tablewidthcell}[1]{\TableCell{\@width{#1}}}
+%% %% |\tablewidthcell{<color>}{<width>}{<content>}|   %% 2011/11/09
+%% %% uses just the `@bgcolor' and the `@width' attribute: 
+%% %\newcommand*{\tablecolorcell}[1]{\TableCell{\@bgcolor{#1}}}
+%% |\tablecell{<content>}| is like `\simplecell{<content>}', 
+%% except that it has a code indent:
+\newcommand*{\tablecell}{\TableCell{}}
+%% |\tableCell{<content>}| is like `\tablecell{<content>}', 
+%% except that the content <content> is horizontically centered. 
+%% The capital `C' in the name may be considered indicating 
+%% ``\strong{c}entered":
+\newcommand*{\tableCell}{\TableCell\@align@c}
+%% Idea: use closing star for environment variants!?
+%%
+%% |\begin{bigtablecell}{<comment>}| 
+%% starts an \emph{environment} yielding a table cell element
+%% without attributes, preceded by a \HTML\ comment
+%% <comment> unless <comment> is empty. At least the \HTML\ tags 
+%% are indented:
+%% %% 2010/05/19:
+\newenvironment{bigtablecell}[1]{\BigTableCell{#1}{}}
+                                {\endBigTableCell}
+%                {\ifx\\#1\\%             %% 2010/05/30
+%                   \indentii\ \comment{#1}\CLBrk
+%                 \fi
+%                 \indentiii<td>}
+%                {\indentii</td>}         %% !? 2010/05/23
+%% |\begin{BigTableCell}{<comment>}{<attributes>}|\\ 
+%% is like `\begin{bigtablecell{<comment>}}' except that it uses 
+%% attributes <attributes>:
+%% %% 2010/06/05:
+\newenvironment{BigTableCell}[2]
+    {\ifx\\#1\\\indentii\ \comment{#1}\CLBrk\fi
+     \indentiii\startTd{#2}}
+    {\indentii\endTd}           %% TODO indent? 2010/07/18
+%% |\startTd{<attributes>}| and |\endTd| delimit a cell element 
+%% and may appear in separate macros, e.g., in an environment 
+%% definition. There is no code cosmetic. And finally there is 
+%% |\StartTd| that yields less confusing code without attributes:
+%% %% 2010/07/18:
+\newcommand*{\startTd}[1]{<td #1>} 
+\newcommand*{\StartTd}{<td>}                    %% 2011/11/09
+\def\endTd{</td>} 
+%% |\emptycell| uses \xmltagcode{td /} instead of 
+%% \xmltagcode{td}\xmltagcode{/td} for an empty cell:
+\newcommand*{\emptycell}{<td />}                %% 2011/10/07
+%% 
+%% === ``Implicit" Attributes and a ``\TeX-like" Interface ===
+%% %% <- 2011/11/08 ->
+%% After some more experience, much musing, and trying new tricks, 
+%% I arrive at the following macros (v0.7). \ 
+%% (i)\enspace When a page or a site has many tables that use the same 
+%% attribute values, these should not be repeated for the single 
+%% tables, rather the values should be invoked by shorthand macros, 
+%% and the values should be determined at a single separate place. 
+%% We will have |\stdcellpadding|, %%% |\stdtableheadrow|, 
+%% |\stdtableheadcolor| and 
+%% |\stdtableheadstyle|. \
+%% (ii)\enspace As with \TeX, `\cr' should suffice to \emph{close} 
+%% a \emph{cell} and a \emph{row}, and then to \emph{open} another 
+%% \emph{row} and its first \emph{cell}. And there should be a 
+%% single command to close a cell within a row and open a next one.
+%%
+%% We use `\providecommand' so the user can determine the values 
+%% in a file for 'blog' where 'blogexec' is loaded later. 
+%% |\stdcellpadding| should correspond to the \CSS\ settings, 
+%% the value of `6' you find here is just what I used recently.
+\providecommand*{\stdcellpadding}{6}
+%% For |\stdtableheadcolor|, I provide a 
+%% % ``web-safe"                            %% very wrong 2012/05/13
+%% gray, `#EEEEEE', that the German Wikipedia uses for articles about 
+%% \Wikienref{networking protocol}s
+%% (unfortunately, it doesn't have a 
+%% \wikienref{Web colors\#X11_color_names}{%
+%% \CSS-3}\wikienref{X11 color names}{X11} color name):
+\providecommand*{\stdtableheadcolor}{\#EEEEEE}
+%% |\stdtableheadstyle| demands a boldface font. 
+%% In general, it is used for the `@style' attribute:
+\providecommand*{\stdtableheadstyle}{font-weight:bold}
+%% |\begin{stdallrulestable}| starts an `{allrulestable}'
+%% environment with ``standard" cell padding and empty width 
+%% attribute, then opens a ``standard" row element 
+%% with a ``standard" comment as well as a cell:
+\newenvironment{stdallrulestable}{%
+    \allrulestable{\stdcellpadding}{}\CLBrk
+      \TableRow{standard all-rules table}%
+               {\@bgcolor{\stdtableheadcolor}
+                \@style{\stdtableheadstyle}}\CLBrk
+        \indentii\StartTd
+%% `\end{stdallrulestable}' will provide closing of a cell
+%% and a row, including a code cosmetic:
+    }{\indenti\endTd\CLBrk\endTableRow\CLBrk
+    \endallrulestable}
+%% |\endcell| closes a cell and opens a new one. The idea behind 
+%% this is that an active character will invoke it. The name is 
+%% inspired by `\endgraf' and `\endline' from Plain \TeX\ and 
+%% \LaTeX\ (`\newcommand' does not work with `\end'\code{\dots}):
+\def\endcell{\endTd\StartTd}
+%% Plain \TeX's and \LaTeX's |\cr| and |\endline| are redefined 
+%% for closing and opening rows and cells, including code cosmetic:
+\renewcommand*{\cr}{\indentii\endTd\CLBrk\indenti\endtr\CLBrk
+                    \indenti\starttr\CLBrk\indentii\StartTd}
+\let\endline\cr
+%% TODO variants like `\CR' for special (colored, boldface?) cells 
+%% starting row
+%% 
+%% === Filling a Row with Dummy Cells ===
+%% These macros were made, e.g., for imitating a program window 
+%% with a title bar (spanning someting more complex below), 
+%% perhaps also for a Gantt chart. 
+%% |\FillRow{<span>}{<attributes>}| produces a cell without text, 
+%% spanning <span> columns, with additional attributes <attributes>. 
+%% %% Generalization 2010/06/28:
+%% % \newcommand*{\FillRow}[2]{%             %% broke line 2011/01/24
+%% %                   \indentiii\TagSurr{td}{\@colspan{#1} #2}{}} 
+%% %% <- 2010/07/18 ->
+\newcommand*{\FillRow}[2]{\indentiii\startTd{\@colspan{#1} #2}\endTd}
+%% |\fillrow{<span>}| instead only uses the `@colspan' attribute:
+\newcommand*{\fillrow}[1]{\FillRow{#1}{}}
+%% |\fillrowcolor{<span>}{<color>}| just uses the `@colspan'
+%% and the `@bgcolor' attributes:
+\newcommand*{\fillrowcolor}[2]{\FillRow{#1}{\@bgcolor{#2}}}
+%% === Skipping Tricks ===
+%% %% 2011/10/13
+%% |\HVspace{<text>}{<width>}{<height>}| may change, 
+%% needed for 'blogdot.sty' but also for |\vspace{<height>}|
+%% with 'texblog'. It is now here so I will be careful 
+%% when I want to change something. \xmltagcode{tbody}
+%% improved the function of `\HVspace' constructions 
+%% as link text with 'blogdot.sty'.
+\newcommand*{\HVspace}[3]{% 
+    \CLBrk
+    \startTable{\@width{#2} \@height{#3}
+                \@border{0} 
+                \@cellpadding{0} \@cellspacing{0}}%
+      \tbody
+       \CLBrk                                       %% 2011/10/14
+        \tablerow{HVspace}%                         %% 2011/10/13
+%% <- inserting text at top for 'blogdot' attempts---that 
+%%    finally did not help anything (2011/10/15) ->
+          \simplecell{#1}%
+        \endtablerow                                %% 2011/10/13
+       \CLBrk                                       %% 2011/10/14
+      \endtbody
+    \endTable
+    \CLBrk}
+%% |\hvspace{<width>}{<height>}| ...:
+\newcommand*{\hvspace}{\HVspace{}}
+%% |\vspace{<height>}| ... (TODO: `{0}'!?):
+\renewcommand*{\vspace}[1]{\hvspace{}{#1}}
+%%
+%% == Misc ==
+%% \TeX's |\hrule| (rather deprecated in \LaTeX) is redefined 
+%% to produce an \HTML\ horizontal line:
+\renewcommand*{\hrule}{<hr>}
+%% For references, there were 
+% \catcode`\^=\active
+% \def^#1{\SimpleTagSurr{sup}{#1}}
+%% and 
+% \newcommand*{\src}[1]{\SimpleTagSurr{sup}{[#1]}}
+%% as of 2010/05/01, inspired by the \xmltagcode{ref} element 
+%% of MediaWiki; moved to `xmlprint.tex' 2010/06/02. 
+%%
+%% == Leaving and HISTORY ==
+\endinput
+%%
+        VERSION HISTORY
+v0.1    2010/08/20  final version for DFG
+v0.2    2010/11/08  final documentation version before
+                    moving some functionality to 'fifinddo' 
+v0.3    2010/11/10  removed ^^J from \head
+        2010/11/11  moving stuff to fifinddo.sty; \BlogCopyFile
+        2010/11/12  date updated; broke too long code lines etc.;
+                    \CatCode replaced (implemented in niceverb only); 
+                    \ifBlogAutoPars etc. 
+        2010/11/13  doc: \uml useful in ...; \texcs
+        2010/11/14  doc: argument for {commentlines}, 
+                         referring to environments with curly braces, 
+                         more on \ditem
+        2010/11/15  TODO: usage, templates
+        2010/11/16  note on {verbatim}
+        2010/11/23  doc. corr. on \CtanPkgRef
+        2010/11/27  "keyword"; \CopyLine without `fd'
+        2010/12/03  \emhttpref -> \ithttpref
+        2010/12/23  `%' added to \texhaxpref
+        2011/01/23  more in \Provides...
+        2011/01/24  updated copyright; resolving `td' ("today")
+        JUST STORED as final version before texlinks.sty
+v0.4    2011/01/24  moving links to texlinks.sty
+v0.41   2011/02/07  \NormalHTTPref
+        2011/02/10  refined call of `texlinks'
+part of MOREHYPE RELEASE r0.3
+v0.5    2011/02/22  \BlogProvidesFile
+        2011/02/24  ... in \BlogCopyFile
+        2011/02/25  ordering symbols
+        2011/02/26  subsection Greek; note on \declareHTMLsymbol
+        2011/03/04  diacritics
+        2011/03/06  \cs
+        2011/03/09  \var
+        2011/03/16  \robots
+        2011/03/19  doc. \fileancref arg.s corr.
+        2011/03/29  \Sigma, ...
+        2011/03/31  \minus
+        2011/04/04  \times, \sub, \delta
+        2011/04/11  Greek completed
+        2011/04/14  \emptyset
+        2011/04/22  \deqtd
+        2011/04/24  doc.: folding, \stylesheet, ordered "tables"; 
+                    @border, @align, @valign
+        2011/04/25  lesser indentation with TableRow
+        2011/04/26  \,, \thinspace, \@title; doc. \@name
+        2011/04/28  [\circ] PROBLEM still 
+        2011/04/29  \rightitpar
+        2011/05/07  \cdot
+        2011/05/08  extended doc. on math symbols; \sdot; 
+                    \ast replaces \lowast; \subset, \subseteq; 
+                    \angled
+        2011/05/09  \euro
+        2011/05/11  |\geq| etc.; new section "logical markup"
+        2011/05/12  corr. doc. \heading
+        2011/05/14  right mark of \deqtd was rsquo instead of lsquo!
+        2011/05/18  \S and note on \StoreOtherCharAs
+        2011/06/27  \httpsref; doc: \acro
+        2011/07/22  \thinspace vs. \thinsp; 'fifinddo''s
+        2011/07/25  "todo" on \description
+        2011/08/18f.removing \FileRef, 0.42-> 0.5
+        2011/08/31  clarified use of \urlapostr
+part of MOREHYPE RELEASE r0.4
+v0.6    2011/09/08  doc. uses \HTML, \lq/\rq with &circ;, 
+                    doc. fix `mult-'; \degrees
+        2011/09/21  \acronym
+        2011/09/22  \metavar; TODO \glqq...
+        2011/09/23  \bdquo 
+        2011/09/25  doc. `Characters/Symbols'; \figurespace
+        2011/09/27  "universal" attributes completed, reworked doc.
+        2011/09/30  end lists with </li>
+        2011/10/01  \dagger, \ddagger
+        2011/10/04  \item includes </li> [2011/10/11: ???]
+        2011/10/05  {style}; doc. \acronym -> \acro, \pagebreak, 
+                    rm. \description; {center} accesses <center>, 
+                    \useHTMLenvironment replaces \declareHTMLelement
+                    and \renderHTMLelement, message "generating"
+        2011/10/07  \emptycell
+        2011/10/10  doc.: page breaks, $$->\[/\]
+part of MOREHYPE RELEASE r0.5
+v0.61   2011/10/11  </li> in \item again, \Provides... v wrong
+        2011/10/12  \hnewref, `\ ' in allrulestable
+        2011/10/14  \CLBrk's
+        2011/10/15  doc. note on \HVspace/blogdot
+part of MOREHYPE RELEASE r0.51
+v0.62   2011/10/16  \hyperlink, \hypertarget; doc. fixes there
+        2011/10/20  \textcolor by <span>, \textsf 
+        2011/10/21  \ctanref now in texlinks.sty; 
+                    doc.: grammar with `that'
+        2011/10/22  \BlogCopyFile message removed
+part of MOREHYPE RELEASE r0.52
+v0.7    2011/11/03  {tablecoloredboldrow}
+        2011/11/05  \ContentAtt -> \@content, 
+                    \BlogCopyFile -> \BlogProcessFile (blogexec),
+                    doc. different \pagebreak's
+        2011/11/06  run \BlogCopyLines, doc. \[...\]
+        2011/11/07  \ProvideBlogExec
+        2011/11/08  \endtr in \endTableRow, using \MakeOther,
+                    right quote change moves to \BlogCodes,
+                    \BlogInterceptHash; rm. \AmpMark & doc. about it, 
+                    mod. on #; doc. for tables; start doc. "implicit" 
+                    table attributes and "TeX-like" interface
+        2011/11/09  \tablecolorcell(?); cont. "implicit" etc.; 
+                    \StartTd
+        2011/11/20  \isotoday, \BlogProcessFinalFile, 
+                    catcodes of `<' `>' untouched; restructured, 
+                    structured processing, misc -> ordinary
+        2011/11/21  BlogLIGs
+        2011/11/23  \xmltagcode, \xmlentitycode, \c; 
+                    doc: <p>, \secref, \pagebreak
+        2011/11/24  doc: example results for diacritics
+        2011/11/27  \ParseLigs; doc. rm. \pagebreak
+        2011/12/12  \title uses \SimpleTagSurr
+        2011/12/19  doc. fix {tablerow}
+        2011/12/21  \asciidq, \asciidqtd
+        2012/01/06  \acro; using dowith.sty (\declareHTMLsymbols); 
+                    doc.: cross-referring for naming policies
+        2012/01/07  \MakeActiveDef\~ for \FDpseudoTilde
+        2012/01/11  (C)
+        2012/01/21  \quot, \quoted. \squoted
+        2012/02/04  \newacronym
+        2012/03/14  removed hidden and another comment with 
+                    \BlogCopyLines, fixed latter, TODO on \NoBlogLigs
+        2012/03/17  tweaked \@typeset@protect for \EXECUTE
+        2012/03/30  space in stdallrules... after @bgcolor
+        2012/04/03  \CLBrk in \@useHTMLelement
+        2012/04/09  \htmlentity, \unicodeentity
+        2012/05/13  \ss; better comment on \uml; 
+                    #EEEEEE not "web-safe"
+        2012/05/15  xEDIT folding in tables section

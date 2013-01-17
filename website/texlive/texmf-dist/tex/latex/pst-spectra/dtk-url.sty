@@ -1,0 +1,169 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{dtk-url}[2011/10/23 v1.0 Urls for DTK (HO)]
+
+\RequirePackage{url}[2006/04/12]
+
+% Konfiguration:
+\newcommand*{\DTK@UrlSetup}{\urlstyle{tt}}
+\newcommand*{\DTK@UrlCtanSetup}{}
+\newcommand*{\DTK@UrlEmailSetup}{}
+\newcommand*{\DTK@UrlCtanPrefix}{CTAN:}
+\newcommand*{\DTK@UrlCtanServerPrefix}{http://mirror.ctan.org/}
+\newcommand*{\DTK@UrlFile}{\jobname.urls}
+
+% Schalter \ifDTK@Url@ legt fest, wann die URLs aktiv sein sollen
+\newif\ifDTK@Url@
+\ifDTK@Draft@
+  \DTK@Url@true
+\fi
+\ifDTK@lineno@
+  \DTK@Url@true
+\fi
+
+% Markup-Befehle:
+\DeclareRobustCommand*{\url}{\DTK@Url}
+\DeclareRobustCommand*{\ctanurl}{\DTK@CtanUrl}
+\DeclareRobustCommand*{\Email}{\DTK@Email}
+\let\URL\url
+\let\CTANurl\ctanurl
+
+\DeclareUrlCommand\DTK@Url{%
+  \DTK@UrlSetup
+  \def\UrlLeft{}%
+  \def\UrlRight{}%
+  \def\DTK@UrlType{url}%
+}
+\DeclareUrlCommand\DTK@CtanUrl{%
+  \DTK@UrlSetup
+  \DTK@UrlCtanSetup
+  \let\UrlLeft\DTK@UrlCtanPrefix
+  \def\UrlRight{}%
+  \let\DTK@UrlLinkPrefix\DTK@UrlCtanServerPrefix
+  \def\DTK@UrlType{ctanurl}%
+}
+\DeclareUrlCommand\DTK@Email{%
+  \DTK@UrlSetup
+  \DTK@UrlEmailSetup
+  \def\UrlLeft{}%
+  \def\UrlRight{}%
+  \def\DTK@UrlLinkPrefix{mailto:}%
+  \def\DTK@UrlType{email}%
+}
+\def\DTK@UrlType{unknown}
+
+% Implementierung
+
+\RequirePackage{pdfescape}
+
+% Currently only pdfTeX/LuaTeX in PDF mode are supported
+\RequirePackage{ifpdf}
+\ifpdf
+\else
+  % Other engines then pdfTeX and LuaTeX in PDF mode
+  % are not supported
+  \DTK@Url@false
+\fi
+
+% Ensure that the needed primitives are enabled in LuaTeX
+\RequirePackage{ifluatex}
+\ifluatex
+  \directlua{tex.enableprimitives('',{'pdfstartlink','pdfendlink'})}%
+\fi
+
+\let\DTK@UrlLinkPrefix\@empty
+\ifDTK@Url@
+  \def\Url@HyperHook#1{%
+    \begingroup
+      \DTK@UrlPercent
+      \edef\#{\string##}%
+      \edef\DTK@Temp{\DTK@UrlLinkPrefix\Url@String\@empty}%
+      \@onelevel@sanitize\DTK@Temp
+      \edef\DTK@UrlRaw{\Url@String\@empty}%
+      \@onelevel@sanitize\DTK@UrlRaw
+      \edef\x{\endgroup
+        \noexpand\EdefEscapeString\noexpand\DTK@Temp{\DTK@Temp}%
+        \def\noexpand\DTK@Raw{\DTK@UrlRaw}%
+      }%
+    \x
+    \DTK@UrlWrite{\DTK@UrlType}{\DTK@Raw}%
+    \pdfstartlink attr{%
+      /H/I%
+      /C[1 0 0]% red
+      /Border[1 0 0]%
+      /BS<</S/U/W 1>>%
+    }%
+    user{%
+      /Subtype/Link
+      /A<<%
+        /Type/Action%
+        /S/URI%
+        /URI(\DTK@Temp)%
+      >>%
+    }%
+    #1%
+    \pdfendlink
+  }%
+
+  % Implement writing of file \DTK@UrlFile
+  \if@filesw
+    \RequirePackage{atveryend}%
+    \RequirePackage{embedfile}%
+    \newwrite\DTK@UrlHandle
+    \openout\DTK@UrlHandle=\DTK@UrlFile\relax
+    \begingroup
+      \count@\time
+      \divide\count@ by 60 %
+      \count2=-\count@
+      \multiply\count2 by 60 %
+      \advance\count2 \time
+      \edef\x{\endgroup
+        \write\DTK@UrlHandle{%
+          \@percentchar\space
+          \the\year-\two@digits\month-\two@digits\day
+          \space\two@digits\count@:\two@digits{\count2 }, %
+          format: <page> <type> <data>%
+        }%
+      }%
+    \x
+    \def\DTK@UrlWrite#1#2{%
+      \protected@write\DTK@UrlHandle{}{%
+        \thepage\space#1 #2%
+      }%
+    }%
+    \let\DTK@embedfilefinish\embedfilefinish
+    \let\embedfilefinish\relax
+    \AfterLastShipout{%
+      \immediate\closeout\DTK@UrlHandle
+      \embedfile[%
+        mimetype=text/plain,%
+        stringmethod=escape,%
+        desc={%
+          List of URLs found in %
+          \@backslashchar url and \@backslashchar ctanurl%
+        },%
+      ]{\DTK@UrlFile}%
+      \DTK@embedfilefinish
+    }%
+  \else
+    \let\DTK@UrlWrite\@gobbletwo
+  \fi
+\fi
+
+\begingroup
+  \lccode`\~=`\%
+\lowercase{\endgroup
+  \def\DTK@UrlPercent{\let~\DTK@UrlPercentCR}%
+}
+\begingroup
+  \lccode`\0=`\^^M
+\lowercase{\endgroup
+  \def\DTK@UrlPercentCR#1{%
+    \ifx0#1\@empty
+      \expandafter\@gobble
+    \else
+      \expandafter\@firstofone
+    \fi
+    {\@percentchar#1}%
+  }%
+}
+\endinput

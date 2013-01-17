@@ -1,0 +1,688 @@
+% Copyright 2011 by Alain Matthes
+%
+% This file may be distributed and/or modified
+%
+% 1. under the LaTeX Project Public License and/or
+% 2. under the GNU Public License.
+
+
+\def\fileversion{1.16 c}
+\def\filedate{2011/06/01}  
+
+
+
+% Objet :  outils mathématiques pour la géométrie euclideienne avec pgf/tikz
+% utilisable de préférence avec un repère orthonormé et le cm comme unité 
+% utile pour la compatibilité avec pgf 2
+%<--------------------------------------------------------------------------–>
+%<--------------------------------------------------------------------------–>
+%             Duplicate Length      à revoir pas de pt pas de global
+% ||v(CN)||= ||v(AB)|| et v(CN) colineaire à v(CD) 
+% A-->#1 B-->#2 C-->#3 D-->#4 N-->#5   ?????
+%<--------------------------------------------------------------------------–>
+\def\tkzDuplicateLen(#1,#2)(#3,#4){%
+\begingroup 
+    \tkzCalcLength(#1,#2)\tkzGetLength{tkz@firstlen}% 
+    \tkzCalcLength(#3,#4)\tkzGetLength{tkz@secondlen}%
+    \FPdiv\tkz@ratio{\tkz@firstlen}{\tkz@secondlen}%
+    \tkz@VecKCoLinear[\tkz@ratio](#3,#4,#3){tkzPointResult}%
+\endgroup 
+}
+\let\tkzDuplicateSegment\tkzDuplicateLen     %<--------------------------------------------------------------------------–>
+%                    Coordonnées d'un vecteur  (couple de points)  
+% Deux points A et B donc un vecteur on récupère les coordonnées de v(AB)
+% en cm 
+% tkzGetVecCoord en cm ou en pt ???
+%<--------------------------------------------------------------------------–>
+%result in #3x et #3y #1 et #2 sont les points  
+% passage en cm avec fp ? 
+\def\tkzGetVectxy(#1,#2)#3{%
+\begingroup 
+\pgfpointdiff{\pgfpointanchor{#1}{center}}%
+             {\pgfpointanchor{#2}{center}}%
+\pgfmathparse{\pgf@sys@tonumber{\pgf@x}/28.45274}%
+\global\let\tkzresultx\pgfmathresult
+\pgfmathparse{\pgf@sys@tonumber{\pgf@y}/28.45274}%
+\global\let\tkzresulty\pgfmathresult
+\global\expandafter\edef\csname #3x\endcsname{\tkzresultx}% 
+\global\expandafter\edef\csname #3y\endcsname{\tkzresulty}% 
+\endgroup
+}
+\let\tkzGetVecCoord\tkzGetVectxy
+%<--------------------------------------------------------------------------–>
+%<--------------------------------------------------------------------------–>
+\def\tkz@numv{0}
+\pgfkeys{/tkzdefv/.cd,
+K/.code      = {\pgfmathparse{#1}\global\def\tkz@ratio{\pgfmathresult}},
+colinear/.code     args = {at #1}{\global\def\tkz@numv{0}%
+                                  \global\def\tkz@frompoint{#1}},
+orthogonal/.code        = {\global\def\tkz@numv{1}},
+linear/.code            = {\global\def\tkz@numv{2}}\pgfmathparse{#1},
+normed orthogonal/.code = {\global\def\tkz@numv{3}},
+normed linear/.code     = {\global\def\tkz@numv{4}},
+} 
+\def\tkzDefVector[#1](#2,#3)#4{%
+\begingroup 
+\pgfkeys{/tkzdefv/.cd,K=1}
+\pgfqkeys{/tkzdefv}{#1}
+\ifcase\tkz@numv%
+ % first case 0
+ \tkzDefVectorfrom[\tkz@ratio](#2,#3){#4}
+  \or% 1
+  \tkz@VecKOrth[\tkz@ratio](#2,#3){#4} 
+  \or% 2
+  \tkz@VecK[\tkz@ratio](#2,#3){#4}
+  \or% 3
+  \tkz@VecKOrthNorm[\tkz@ratio](#2,#3){#4}
+  \or% 4
+  \tkz@VecKCoLinear[#1](#2,#3)#4
+  \fi    
+\endgroup
+} 
+
+\def\tkzDefVectorfrom[#1](#2,#3)#4{%    
+\begingroup    
+    \pgfpointdiff{\pgfpointanchor{#2}{center}}%
+                 {\pgfpointanchor{#3}{center}}%
+    \pgf@xa=\pgf@x%
+    \pgf@ya=\pgf@y%
+     \path[coordinate](\tkz@frompoint)--+(\tkz@ratio\pgf@xa,%
+                                          \tkz@ratio\pgf@ya) coordinate (#4);
+\endgroup
+} 
+%<--------------------------------------------------------------------------–>
+%         VecKCoLinear  CN = K x AB  #1 pt #2 pt #3 pt #4 nb #5 pt result   
+% il faut modifier cette macro : on supprime #3 pour la colinéarité
+% Il suffit d'utiliser Replicate ou Duplicate     coeff dans #1
+% v(CD)=#1 x v(AB) #1 le coeff; #2-->A #3-->B #4-->C  #5-->N
+%<--------------------------------------------------------------------------–>
+\def\tkzVecKCoLinear{\pgfutil@ifnextchar[{\tkz@VecKCoLinear}{\tkz@VecKCoLinear[1]}} 
+\def\tkz@VecKCoLinear[#1](#2,#3,#4)#5{% 
+\begingroup
+   \pgfpointdiff{\pgfpointanchor{#2}{center}}%
+                {\pgfpointanchor{#3}{center}}%
+   \pgf@xa=\pgf@x%
+   \pgf@ya=\pgf@y% 
+   \pgfmathparse{#1}\edef\tkz@coeff{\pgfmathresult}
+   \path[coordinate](#4)--+(\tkz@coeff\pgf@xa,\tkz@coeff\pgf@ya)%
+          coordinate (#5);%  
+\endgroup
+}%  
+%<--------------------------------------------------------------------------–>
+%         v(AN)=#1 x v(AB)     
+%   #1 le coeff; #2--> A #3--> B   #4-->N  tq    #4-#2 = #1*(#3-#2)                                 
+%<--------------------------------------------------------------------------–>
+\pgfkeys{
+  /tkzscalev/.cd,
+  ratio/.code      = {\pgfmathparse{#1}\global\edef\tkz@ratio{\pgfmathresult}}
+  }  
+\def\tkzScaleVector{\pgfutil@ifnextchar[{\tkz@ScaleVector}{%
+                                         \tkz@ScaleVector[]}} 
+\def\tkz@ScaleVector[#1](#2,#3)#4{% 
+\begingroup
+\pgfkeys{/tkzscalev/.cd,ratio=-1}
+\pgfqkeys{/tkzscalev}{#1}  
+   \pgfpointdiff{\pgfpointanchor{#2}{center}}%
+                {\pgfpointanchor{#3}{center}}%
+   \pgf@xa=\pgf@x%
+   \pgf@ya=\pgf@y% 
+    \path[coordinate](#2)--++(\pgf@xa *\tkz@ratio,\pgf@ya *\tkz@ratio)%
+          coordinate (#4);%   
+\endgroup
+}%          
+%<--------------------------------------------------------------------------–>
+%                 Outils pour les vecteurs
+%<--------------------------------------------------------------------------–>
+%  ce sont des outils élémentaires qui à partir de deux points en définissent 
+% un troisième 
+% #1 si c'est une option alors c'est un nombre réel
+% #2 et #3 sont deux points
+% #4 est le nom du point qui résulte de la transformation
+% exemple : \tkzVecKNorm (A,B){C} définit un point C tel que AC = 1 et C est %  %  un point de la droite (AC). #1 peut être négatif
+
+%<--------------------------------------------------------------------------–>
+%              VectorNormalised ou K*VectorNormalised
+% A-->#2 B-->#3 N-->#4      v(AB)  devient v(AN) tq ||v(AN)||=1 si #1=1  
+%  sinon ||v(AN)||=#1 
+%<--------------------------------------------------------------------------–>
+\def\tkzVecKNorm{\pgfutil@ifnextchar[{\tkz@VecKNorm}{\tkz@VecKNorm[1]}} 
+\def\tkz@VecKNorm[#1](#2,#3)#4{%
+\begingroup
+    \tkzpointnormalised{%
+    \pgfpointdiff{\pgfpointanchor{#2}{center}}
+                 {\pgfpointanchor{#3}{center}}}
+    \pgf@xa=\pgf@x\relax%
+    \pgf@ya=\pgf@y\relax% 
+    \pgfmathparse{#1}\edef\tkz@coeff{\pgfmathresult}
+    \FPmul\tkz@coeff{28.45274}{\tkz@coeff}
+    \FPmul\tkz@x{\tkz@coeff}{\pgf@sys@tonumber{\pgf@xa}}
+    \FPmul\tkz@y{\tkz@coeff}{\pgf@sys@tonumber{\pgf@ya}}
+    \path[coordinate](#2)--++(\tkz@x pt,\tkz@y pt)%
+          coordinate (#4);%
+\endgroup
+}%
+%<--------------------------------------------------------------------------–>
+%         v(AN)=#1 x v(AB)     
+%   #1 le coeff; #2--> A #3--> B   #4-->N  tq    #4-#2 = #1*(#3-#2)                                 
+%<--------------------------------------------------------------------------–>
+\def\tkzVecK{\pgfutil@ifnextchar[{\tkz@VecK}{\tkz@VecK[1]}} 
+\def\tkz@VecK[#1](#2,#3)#4{% 
+\begingroup 
+   \pgfpointdiff{\pgfpointanchor{#2}{center}}%
+                {\pgfpointanchor{#3}{center}}%
+   \pgf@xa=\pgf@x%
+   \pgf@ya=\pgf@y% 
+   \pgfmathparse{#1}\edef\tkz@coeff{\pgfmathresult}
+    \path[coordinate](#2)--++(\pgf@xa *\tkz@coeff,%
+                              \pgf@ya *\tkz@coeff)%
+          coordinate (#4);%   
+\endgroup
+}% 
+%<--------------------------------------------------------------------------–>
+%                   tkzVector K Orth   coeff dans #1
+%    v(AN) perp v(AB)  v(AB) v(AN) sens direct cercle trigo 
+% ||v(AN)||=||v(AB)||
+%<--------------------------------------------------------------------------–>
+\def\tkzVecKOrth{\pgfutil@ifnextchar[{\tkz@VecKOrth}{\tkz@VecKOrth[1]}}  
+\def\tkz@VecKOrth[#1](#2,#3)#4{%
+\begingroup
+    \pgfpointdiff{\pgfpointanchor{#2}{center}}%
+                 {\pgfpointanchor{#3}{center}}%
+    \pgf@xa=-\pgf@y%
+    \pgf@ya=\pgf@x%
+    \pgfmathparse{#1}\edef\tkz@coeff{\pgfmathresult}
+    \path[coordinate](#2)--++(\tkz@coeff\pgf@xa,\tkz@coeff\pgf@ya)%
+          coordinate (#4);%
+\endgroup
+}% 
+%<--------------------------------------------------------------------------–>
+%              tkzVecKOrthNorm   coeff dans #1
+%    v(AN) perp v(AB)  v(AB) v(AN) sens direct cercle trigo 
+% ||v(AN||=1 si #1 est vide ou =1 sinon ||v(AN||=K
+%<--------------------------------------------------------------------------–>
+\def\tkzVecKOrthNorm{\pgfutil@ifnextchar[{\tkz@VecKOrthNorm}%
+                                         {\tkz@VecKOrthNorm[1]}}
+\def\tkz@VecKOrthNorm[#1](#2,#3)#4{%    
+\begingroup
+ \tkzpointnormalised{\pgfpointdiff{\pgfpointanchor{#2}{center}}%
+                                  {\pgfpointanchor{#3}{center}}} 
+  \pgf@xa=-\pgf@y%
+  \pgf@ya=\pgf@x%
+  \FPmul\tkz@coeff{28.45274}{#1}
+  \FPmul\tkz@x{\tkz@coeff}{\pgf@sys@tonumber{\pgf@xa}}
+  \FPmul\tkz@y{\tkz@coeff}{\pgf@sys@tonumber{\pgf@ya}}
+  \path[coordinate](#2)--++(\tkz@x pt,\tkz@y pt)%
+          coordinate (#4);%    
+\endgroup
+}%      
+%<--------------------------------------------------------------------------–>
+%  \tkzpointnormalised    normalise un point A-->A' tq ||v(OA')=1||
+% équivalent de \pgfpointnormalised avec fp
+% example
+% \tkzpointnormalised{%
+% \pgfpointdiff{\pgfpointanchor{A}{center}}
+%              {\pgfpointanchor{B}{center}}}
+
+% or
+% \pgf@x=1 cm
+% \pgf@y=12 cm 
+% \tkzpointnormalised{} %<--------------------------------------------------------------------------–> 
+\def\tkzpointnormalised#1{%
+\pgf@process{#1}%
+\FPmul{\tkz@sx}{\pgf@sys@tonumber{\pgf@x}}{\pgf@sys@tonumber{\pgf@x}}
+\FPmul{\tkz@sy}{\pgf@sys@tonumber{\pgf@y}}{\pgf@sys@tonumber{\pgf@y}}
+\FPadd{\tkz@sxy}{\tkz@sx}{\tkz@sy}
+\FProot{\tkz@den}{\tkz@sxy}{2}
+\FPdiv{\tkz@coordx}{\pgf@sys@tonumber{\pgf@x}}{\tkz@den}
+\FPround{\tkz@coordx}{\tkz@coordx}{5}
+\FPdiv{\tkz@coordy}{\pgf@sys@tonumber{\pgf@y}}{\tkz@den}
+\FPround{\tkz@coordy}{\tkz@coordy}{5}
+\pgf@x = \tkz@coordx pt
+\pgf@y = \tkz@coordy pt
+}
+%<--------------------------------------------------------------------------–>
+% restaure and save length
+\def\tkz@save@length{%
+\global\let\tkz@temp@length\tkzLengthResult}%
+\def\tkz@restore@length{%
+ \global\let\tkzLengthResult\tkz@temp@length }% 
+%<--------------------------------------------------------------------------–>
+%<--------------------------------------------------------------------------–>
+%    \tkzCalcLength      Distance entre deux points en pt ou en cm  avec FP 
+% \veclen mais avec fp 
+%  option cm le résultat est en cm sinon en pt
+%<--------------------------------------------------------------------------–>
+
+\newif\iftkzLengthIncm
+\pgfkeys{
+DefVecLen/.cd,
+       cm/.is if         = tkzLengthIncm,
+       cm/.default       = true}   
+
+\def\tkzCalcLength{\pgfutil@ifnextchar[{\tkz@CalcLength}{\tkz@CalcLength[]}}  
+\def\tkz@CalcLength[#1](#2,#3){%
+\pgfkeys{DefVecLen/.cd, cm = false}
+\pgfqkeys{/DefVecLen}{#1}%   
+\begingroup
+\tkz@@CalcLength(#2,#3){tkzLengthResult}
+\iftkzLengthIncm  
+    \FPdiv\tkzFPMathLen{\tkzFPMathLen}{28.45274}
+   \FPround\tkzFPMathLen\tkzFPMathLen5\relax% 
+   \global\let\tkzLengthResult\tkzFPMathLen  
+\fi 
+\endgroup
+}%
+\def\tkz@@CalcLength(#1,#2)#3{%
+\pgfpointdiff{\pgfpointanchor{#1}{center}}%
+             {\pgfpointanchor{#2}{center}}%
+\pgf@xa=\pgf@x%
+\pgf@ya=\pgf@y%
+\FPeval\tkz@temp@a{\pgfmath@tonumber{\pgf@xa}}%
+\FPeval\tkz@temp@b{\pgfmath@tonumber{\pgf@ya}}%
+\FPeval\tkz@temp@sum{(\tkz@temp@a*\tkz@temp@a+\tkz@temp@b*\tkz@temp@b)}%
+\FProot{\tkzFPMathLen}{\tkz@temp@sum}{2}%
+\FPround\tkzFPMathLen\tkzFPMathLen5\relax
+\global\expandafter\edef\csname #3\endcsname{\tkzFPMathLen}
+}
+%<--------------------------------------------------------------------------–>
+\def\tkzGetLength#1{%
+\global\expandafter\edef\csname #1\endcsname{\tkzLengthResult}}  
+%<--------------------------------------------------------------------------–>
+%     \tkzpttocm  passage de pt à cm div par 28.45274
+%<--------------------------------------------------------------------------–>
+\def\tkzpttocm(#1)#2{%
+\begingroup  
+    \FPdiv\tkz@mathresult{#1}{28.45274}
+    \FPround\tkz@mathresult\tkz@mathresult5\relax%  
+     \global\let\tkz@mathresult\tkz@mathresult
+     \global\expandafter\edef\csname #2\endcsname{\tkz@mathresult}% 
+\endgroup
+}%
+%<--------------------------------------------------------------------------–>
+%     \tkzcmtopt  passage de cm à pt mul par 28.45274  %<--------------------------------------------------------------------------–
+\def\tkzcmtopt(#1)#2{%
+\begingroup 
+    \FPmul\tkz@mathresult{#1}{28.45274}
+    \FPround\tkz@mathresult\tkz@mathresult5\relax%  
+     \global\let\tkz@mathresult\tkz@mathresult
+\global\expandafter\edef\csname #2\endcsname{\tkz@mathresult}% 
+\endgroup  
+}% 
+%<--------------------------------------------------------------------------–>
+%                          Slope
+%<--------------------------------------------------------------------------–>
+\def\tkzFindSlope{\tkz@FindSlope}
+\def\tkz@FindSlope(#1,#2)#3{%
+    \begingroup
+ \tkzpointnormalised{\pgfpointdiff{\pgfpointanchor{#1}{center}}%
+                                  {\pgfpointanchor{#2}{center}}}    
+    \tkz@ax=\pgf@x\relax%
+    \tkz@ay=\pgf@y\relax%
+    \FPdiv{\tkz@Slope}{\pgfmath@tonumber{\tkz@ay}}{\pgfmath@tonumber{\tkz@ax}}
+    \FPround{\tkz@Slope}{\tkz@Slope}{5}
+    \global\expandafter\edef\csname #3\endcsname{\tkz@Slope}%  
+\endgroup
+}
+%<--------------------------------------------------------------------------–>
+%<----------------– for compatibility --------------------------------------–>
+%<--------------------------------------------------------------------------–>
+\def\tkzmathanglebetweenpoints#1#2{%
+\begingroup
+  \pgf@process{\pgfpointdiff{#1}{#2}}%
+  %
+  % First approximate the angle of the external point...
+  %
+  \pgf@xa\pgf@x%
+  \pgf@ya\pgf@y%
+  \pgf@xb\pgf@x%
+  \pgf@yb\pgf@y%
+  \ifdim\pgf@xa<0pt\relax%
+    \pgf@xa-\pgf@xa%
+  \fi
+  \ifdim\pgf@ya<0pt\relax%
+    \pgf@ya-\pgf@ya%
+  \fi
+  \ifdim\pgf@ya>\pgf@xa%
+    \pgf@x\pgf@xa%
+    \pgf@y\pgf@ya%
+  \else
+    \pgf@x\pgf@ya%
+    \pgf@y\pgf@xa%
+  \fi
+  \ifdim\pgf@y=0pt\relax%
+    \pgf@x0pt%
+  \else 
+  \FPdiv\pgfmathresult{1}{\pgfmath@tonumber{\pgf@y}}
+  \FPround\pgfmathresult\pgfmathresult5\relax% 
+    \pgf@x\pgfmathresult\pgf@x%
+  \fi
+  \multiply\pgf@x1000\relax%
+  \afterassignment\pgfmath@gobbletilpgfmath@%
+  \expandafter\c@pgf@counta\the\pgf@x\relax\pgfmath@%
+\expandafter\pgf@x\csname pgfmath@atan@\the\c@pgf@counta\endcsname pt\relax%
+    \ifdim\pgfmath@ya>\pgfmath@xa\relax%
+      \pgf@x-\pgf@x%
+      \advance\pgf@x90pt%
+    \fi
+    \ifdim\pgf@xb<0pt%
+      \ifdim\pgf@yb>0pt%
+        \pgf@x-\pgf@x%
+      \fi
+      \advance\pgf@x180pt\relax%
+    \else
+      \ifdim\pgf@yb<0pt%
+      \pgf@x-\pgf@x%
+      \advance\pgf@x360pt\relax%
+    \fi 
+    \fi
+    \ifdim\pgf@x>180pt%
+    \advance\pgf@x-360pt\relax%
+    \fi
+    \pgfmath@returnone\pgf@x%
+  \endgroup
+}
+
+% \tkzmathrotatepointaround
+%
+% Rotate point #1 about point #2 by #3 degrees.
+%
+\def\tkzmathrotatepointaround#1#2#3{%
+  \pgf@process{%
+    \pgf@process{#1}%
+    \pgf@xc=\pgf@x%
+    \pgf@yc=\pgf@y%
+    \pgf@process{#2}%
+    \pgf@xa\pgf@x%
+    \pgf@ya\pgf@y%
+    \pgf@xb\pgf@x%
+    \pgf@yb\pgf@y%
+    \pgf@x=\pgf@xc%
+    \pgf@y=\pgf@yc%
+    \advance\pgf@x-\pgf@xa%
+    \advance\pgf@y-\pgf@ya%
+    \pgfmathsetmacro\tkz@angle{#3}%
+    \pgfmathsin@{\tkz@angle}%
+    \let\sineangle\pgfmathresult%
+    \pgfmathcos@{\tkz@angle}%
+    \let\cosineangle\pgfmathresult%
+    \pgf@xa\cosineangle\pgf@x%
+    \advance\pgf@xa-\sineangle\pgf@y%
+    \pgf@ya\sineangle\pgf@x%
+    \advance\pgf@ya\cosineangle\pgf@y%
+    \pgf@x\pgf@xb%
+    \pgf@y\pgf@yb%
+    \advance\pgf@x\pgf@xa%
+    \advance\pgf@y\pgf@ya%
+  }%
+}
+
+
+% \tkzmathanglebetweenlines
+%
+% Calculate the clockwise angle between a line from point #1
+% to point #2 and a line from #3 to point #4.
+%
+\def\tkzmathanglebetweenlines#1#2#3#4{%
+  \begingroup
+    \tkzmathanglebetweenpoints{#1}{#2}%
+    \let\firstangle\pgfmathresult%
+    \tkzmathanglebetweenpoints{#3}{#4}%
+    \let\secondangle\pgfmathresult%
+    \ifdim\firstangle pt>\secondangle pt\relax%
+      \pgfmathadd@{\secondangle}{360}%
+      \let\secondangle\pgfmathresult%
+    \fi
+    \pgfmathsubtract@{\secondangle}{\firstangle}%
+    \pgfmath@smuggleone\pgfmathresult%
+  \endgroup
+} 
+% \pgfmathpointreflectalongaxis
+%
+% Reflects point #2 around an axis centered on #2 at an angle #3.
+%
+\def\tkzmathreflectpointalongaxis#1#2#3{%
+  \pgf@process{%
+    \pgfmathanglebetweenpoints{#2}{#1}%
+    \pgfmath@tempdima\pgfmathresult pt\relax%
+    \pgfmathparse{#3}%
+    \advance\pgfmath@tempdima-\pgfmathresult pt\relax%
+    \pgfmath@tempdima-2.0\pgfmath@tempdima%
+    \pgfmathrotatepointaround{#1}{#2}{\pgfmath@tonumber{\pgfmath@tempdima}}%
+  }%
+}
+
+
+% \pgfmathpointintersectionoflineandarc 
+%
+% A bit experimental at the moment:
+%
+% Locates the point where a line crosses an eliptical arc. If the line
+% does not cross the arc, a meaningless point will result.
+%
+% #1 the point of the line on the "convex" side of the arc.
+% #2 the point of the line on the "concave" side of the arc.
+% #3 the center of the eliptical arc.
+% #4 start angle of the arc.
+% #5 end angle of the arc.
+% #6 radii of the arc.
+%
+\def\tkzmathpointintersectionoflineandarc#1#2#3#4#5#6{%
+  \pgf@process{%
+    %
+    % Get the required angle.
+    %
+    \pgfmathanglebetweenpoints{#2}{#1}%
+    \let\x\pgfmathresult%
+    %
+    % Get the radii of the arc.
+    %
+    \pgfmath@in@{and }{#6}%
+    \ifpgfmath@in@%
+      \pgf@polar@#6\@@%
+    \else
+      \pgf@polar@#6 and #6\@@%
+    \fi
+    \edef\xarcradius{\the\pgf@x}%
+    \edef\yarcradius{\the\pgf@y}% 
+     %
+    % Get the start and end angles of the arc...
+    % 
+    \pgfmathsetmacro\s{#4}%
+    \pgfmathsetmacro\e{#5}%
+    %
+    % ...and also with rounding.
+    %
+    \pgfmathmod@{\s}{360}%
+    \ifdim\pgfmathresult pt<0pt\relax%
+      \pgfmathadd@{\pgfmathresult}{360}%
+    \fi
+    \let\ss\pgfmathresult%
+    \pgfmathmod@{\e}{360}%
+    \ifdim\pgfmathresult pt<0pt\relax%
+      \pgfmathadd@{\pgfmathresult}{360}%
+    \fi
+    \let\ee\pgfmathresult%
+    %
+    % Hackery for when arc straddles zero.
+    %
+    \ifdim\ee pt<\ss pt\relax%
+      \pgfmathadd@{\x}{180}%
+      \pgfmathmod@{\pgfmathresult}{360}%
+      \let\x\pgfmathresult%
+    \fi
+    \def\m{360}% Measure of nearness.
+    \pgfmathadd@{\s}{\e}%
+    \pgfmathdivide@{\pgfmathresult}{2}%
+    \let\n\pgfmathresult% The best estimate (default to middle of arc).
+    \pgfmathloop%
+      \pgfmathadd@{\s}{\e}%
+      \pgfmathdivide@{\pgfmathresult}{2}%
+      \let\p\pgfmathresult%
+      \ifdim\p pt=\s pt\relax% 
+      \else
+        \tkzmathanglebetweenpoints{#2}{%
+          \pgfpointadd{#3}{%
+            \pgf@x\xarcradius\relax%
+            \pgfmathcos@{\p}%
+            \pgf@x\pgfmathresult\pgf@x%
+            \pgf@y\yarcradius\relax%
+            \pgfmathsin@{\p}%
+            \pgf@y\pgfmathresult\pgf@y%
+          }%
+        }%
+        %
+        % Hackery for when arc straddles zero.
+        %
+        \ifdim\ee pt<\ss pt\relax%
+          \pgfmathadd@{\pgfmathresult}{180}%
+          \pgfmathmod@{\pgfmathresult}{360}%
+        \fi
+        \let\q\pgfmathresult%
+        %
+        % More hackery...
+        %
+        \ifdim\x pt>335pt\relax%
+          \ifdim\q pt<45pt\relax%
+            \pgfmathadd@{\q}{360}%
+            \let\q\pgfmathresult%
+          \fi
+        \fi
+        \ifdim\x pt=\q pt% Found it!
+            \pgfmathbreakloop% Breaks after current iteration is complete.
+          \else
+            \ifdim\x pt<\q pt\relax%
+              \let\e\p%
+            \else
+              \let\s\p%
+            \fi
+          \fi
+          \pgfmathsubtract@{\x}{\q}%
+          \pgfmathabs@{\pgfmathresult}%
+          %
+          % Save the estimate if it is better than any previous estimate.
+          %
+          \ifdim\pgfmathresult pt<\m pt\relax%
+            \let\m\pgfmathresult%
+            \let\n\p%
+          \fi        
+    \repeatpgfmathloop%
+    \pgfpointadd{#3}{\pgfpointpolar{\n}{\xarcradius and \yarcradius}}%
+  }%
+}
+
+% \tkzmathangleonellipse
+% 
+% Find the angle corresponding to a point on the border of an ellispe.
+%
+% #1 - the point on the border.
+% #2 - the radii of the ellipse.
+%
+\def\tkzmathangleonellipse#1#2{%
+  \begingroup
+    \pgfmath@in@{and }{#2}%
+    \ifpgfmath@in@%
+      \pgf@polar@#2\@@%
+    \else
+      \pgf@polar@#2 and #2\@@%
+    \fi
+    \pgf@xa\pgf@x%
+    \pgf@ya\pgf@y%
+    \pgf@process{#1}% 
+    \ifdim\pgf@x=0pt\relax%
+      \pgfutil@tempdima1pt\relax%
+    \else
+      \pgfutil@tempdima\pgf@x%
+%\pgfmathdivide@{\pgfmath@tonumber{\pgf@xa}}{\pgfmath@tonumber{\pgfutil@tempdima}}% 
+\FPdiv\pgfmathresult{\pgfmath@tonumber{\pgf@xa}}{\pgfmath@tonumber{\pgfutil@tempdima}} 
+\FPround\pgfmathresult\pgfmathresult5\relax%
+      \pgfutil@tempdima\pgfmathresult pt\relax%
+    \fi
+    \ifdim\pgf@y=0pt\relax%
+      \pgfutil@tempdima1pt\relax%
+    \else 
+     % \pgfmathdivide@{\pgfmath@tonumber{\pgf@y}}{\pgfmath@tonumber{\pgf@ya}}%
+      \FPdiv\pgfmathresult{\pgfmath@tonumber{\pgf@y}}{%
+                           \pgfmath@tonumber{\pgf@ya}}%
+      \FPround\pgfmathresult\pgfmathresult5\relax%
+      \pgfutil@tempdima\pgfmathresult\pgfutil@tempdima%
+      \pgfmathatan@{\pgfmath@tonumber{\pgfutil@tempdima}}%
+    \fi
+    %
+    \pgfutil@tempdima\pgfmathresult pt\relax%
+    \ifdim\pgfutil@tempdima<0pt\relax%
+      \advance\pgfutil@tempdima360pt\relax%
+    \fi
+    \ifdim\pgf@x<0pt\relax%
+      \ifdim\pgf@y=0pt\relax%
+        \pgfutil@tempdima180pt\relax%
+      \else
+        \ifdim\pgf@y<0pt\relax%
+          \advance\pgfutil@tempdima180pt\relax%
+        \else
+          \advance\pgfutil@tempdima-180pt\relax%
+        \fi
+      \fi
+    \else
+      \ifdim\pgf@x=0pt\relax%
+        \ifdim\pgf@y<0pt\relax%
+          \pgfutil@tempdima270pt\relax%
+        \else
+          \pgfutil@tempdima90pt\relax%
+        \fi
+      \else
+        \ifdim\pgf@y=0pt\relax%
+          \pgfutil@tempdima0pt\relax%
+        \fi
+      \fi        
+    \fi
+    \pgfmath@returnone\pgfutil@tempdima%
+  \endgroup
+} 
+
+\def\tkzpointborderellipse#1#2{%
+  \pgf@process{#2}%
+  \pgf@xa=\pgf@x%
+  \pgf@ya=\pgf@y%
+  \ifdim\pgf@xa=\pgf@ya% circle. that's easy!
+    \pgf@process{\pgfpointnormalised{#1}}%
+    \pgf@x=\pgf@sys@tonumber{\pgf@xa}\pgf@x%
+    \pgf@y=\pgf@sys@tonumber{\pgf@xa}\pgf@y%
+  \else
+    \ifdim\pgf@xa<\pgf@ya%
+      % Ok, first, let's compute x/y:
+      \c@pgf@countb=\pgf@ya%
+      \divide\c@pgf@countb by65536\relax%
+      \divide\pgf@x by\c@pgf@countb%
+      \divide\pgf@y by\c@pgf@countb%
+      \pgf@xc=\pgf@x%
+      \pgf@yc=8192pt%
+      \pgf@y=.125\pgf@y%
+      \c@pgf@countb=\pgf@y%
+      \divide\pgf@yc by\c@pgf@countb%
+      \pgf@process{#1}%
+      \pgf@y=\pgf@sys@tonumber{\pgf@yc}\pgf@y%
+      \pgf@y=\pgf@sys@tonumber{\pgf@xc}\pgf@y%
+      \pgf@process{\pgfpointnormalised{}}%
+      \pgf@x=\pgf@sys@tonumber{\pgf@xa}\pgf@x%
+      \pgf@y=\pgf@sys@tonumber{\pgf@ya}\pgf@y%
+    \else
+      % Ok, now let's compute y/x:
+      \c@pgf@countb=\pgf@xa%
+      \divide\c@pgf@countb by65536\relax%
+      \divide\pgf@x by\c@pgf@countb%
+      \divide\pgf@y by\c@pgf@countb%
+      \pgf@yc=\pgf@y%
+      \pgf@xc=8192pt%
+      \pgf@x=.125\pgf@x%
+      \c@pgf@countb=\pgf@x%
+      \divide\pgf@xc by\c@pgf@countb%
+      \pgf@process{#1}%
+      \pgf@x=\pgf@sys@tonumber{\pgf@yc}\pgf@x%
+      \pgf@x=\pgf@sys@tonumber{\pgf@xc}\pgf@x%
+      \pgf@process{\pgfpointnormalised{}}%
+      \pgf@x=\pgf@sys@tonumber{\pgf@xa}\pgf@x%
+      \pgf@y=\pgf@sys@tonumber{\pgf@ya}\pgf@y%
+    \fi  
+  \fi
+}    
+\endinput   

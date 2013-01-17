@@ -1,0 +1,288 @@
+%% dot2texi.sty
+%% Copyright (c) 2007-2008, Kjell Magne Fauske
+%%
+%% Author: Kjell Magne Fauske <km@fauskes.net>
+%%                             http://www.fauskes.net
+%%
+%% Defines the dot2tex environment for encapsulating graphs described
+%% using the Grahviz[1] DOT-language. The dot2tex[2] command line tool is
+%% used to convert output from Graphviz' graph layot tools to TikZ and
+%% PGF, or PSTricks code. The package will automate this process if
+%% shell-escape is enabled.
+%%
+%% This code is adapted from the packages dottex[3] and gnuplottex[4],
+%% written by Lars Kotthoff. The platform detection code is from the
+%% ifplatform[5] package.
+%%
+%% [1] http://www.graphviz.org/
+%% [2] http://www.fauskes.net/code/dot2tex/
+%% [3] http://http://www.ctan.org/tex-archive/help/Catalogue/entries/dottex.html
+%% [4] http://www.ctan.org/tex-archive/help/Catalogue/entries/gnuplottex.html
+%% [5] http://www.ctan.org/tex-archive/help/Catalogue/entries/ifplatform.html
+
+%% Copyright (c) 2005, Lars Kotthoff <metalhead@metalhead.ws>
+%%
+%% Large portions copied from pdftex,
+%% Copyright (c) 2001-3, Radhakrishnan CV <cvr@river-valley.com>
+%%                       Rajagopal CV <cvr3@river-valley.com>
+%%                       http://www.river-valley.com
+%%
+%% River Valley Technologies, Floor III, SJP Buildings, Cotton Hills
+%% Trivandrum, India 695014
+%%
+%% Tel: +91 471 233 7501
+%%
+%%                     Antoine Chambert-Loir
+%%                     <chambert@math.polytechnique.fr>
+%%                     http://www.math.polytechnique.fr/\protect \unhbox \voidb@x \penalty \@M \ {}chambert
+%%
+%% Ecole polytechnique, Palaiseau Cedex, France
+%%
+%% This program is free software; you can redistribute it and/or
+%% modify it under the terms of the GNU General Public License
+%% as published by the Free Software Foundation; either version 2
+%% of the License, or (at your option) any later version.
+%%
+%% This program is distributed in the hope that it will be useful,
+%% but WITHOUT ANY WARRANTY; without even the implied warranty of
+%% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%% GNU General Public License for more details.
+%%
+%% You should have received a copy of the GNU General Public License
+%% along with this program (gpl.txt); if not, write to the Free
+%% Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
+%% MA  02111-1307, USA.
+%%
+
+%% Copyright (C) 2007 by Will Robertson & Johannes Große
+
+\NeedsTeXFormat{LaTeX2e}[1999/12/01]
+\ProvidesPackage{dot2texi}[2008/05/07 v3.0p1 Run dot2tex from LaTeX]
+\RequirePackage{moreverb}
+\RequirePackage{xkeyval}[2005/02/22]
+
+%
+% fix for new moreverb according to the author of this file as state in
+%   https://groups.google.com/forum/?fromgroups#!topic/dot2tex-users/kbjZGRVT5SY
+% fix included by Norbert Preining, renamed the version to v3.0p1
+\@ifundefined{verbatim@out}{\newwrite\verbatim@out}{}%
+%
+\newif\ifdtt@ShellEscape
+%\newif\ifmiktex \miktexfalse
+\newif\ifdtt@ForceShellEscape \dtt@ForceShellEscapefalse
+\newif\ifdtt@debug \dtt@debugfalse
+\newif\ifdtt@autosize \dtt@autosizefalse
+% Options related to shell escape
+\DeclareOptionX{shell}{\dtt@ShellEscapetrue}
+\DeclareOptionX{noshell}{\dtt@ShellEscapefalse}
+\DeclareOptionX{forceshell}{\dtt@ForceShellEscapetrue\dtt@ShellEscapetrue}
+\DeclareOptionX{miktex}{} % dummy (for backwards compatability)
+
+% Options for setting output format
+\DeclareOptionX{pgf}{\def\dtt@format{-fpgf}}
+\DeclareOptionX{tikz}{\def\dtt@format{-ftikz}}
+\DeclareOptionX{pstricks}{\def\dtt@format{-fpstricks}}
+\def\dtt@format{-ftikz} % default output format
+
+
+\DeclareOptionX{autosize}{\def\dtt@autosizeopt{--autosize}}
+\def\dtt@autosizeopt{}
+
+% Options for setting the graph layout program
+\DeclareOptionX{dot}{\def\dtt@procprog{--prog=dot}}
+\DeclareOptionX{neato}{\def\dtt@procprog{--prog=neato}}
+\DeclareOptionX{circo}{\def\dtt@procprog{--prog=circo}}
+\DeclareOptionX{fdp}{\def\dtt@procprog{--prog=fdp}}
+\DeclareOptionX{twopi}{\def\dtt@procprog{--prog=twopi}}
+\def\dtt@procprog{}
+
+% Option for setting an output directory
+\DeclareOptionX{outputdir}[]{\def\dtt@outputdir{#1}}
+\def\dtt@outputdir{}
+\DeclareOptionX{debug}{\dtt@debugtrue}
+
+\newcommand\setoutputdir[1]{\def\dtt@outputdir{#1}}
+
+\ExecuteOptionsX{shell}
+
+\ProcessOptionsX\relax
+
+
+%% The platform detection code is copied from the ifplatform package
+%% avaialable from: http://tug.ctan.org/tex-archive/macros/latex/contrib/ifplatform/
+%% Copyright (C) 2007 by Will Robertson & Johannes Große
+\newif\ifdtt@ShellEscapeEnabled
+\newif\ifwindows
+\edef\ip@file{\jobname.w18}
+\edef\ip@sig{write18-test-\the\year\the\month\the\day\the\time}
+\edef\ip@win{'\ip@sig'}
+\def\ip@read@file{%
+  \newread\instream
+  \openin\instream=\ip@file
+  \@tempcnta=\endlinechar
+  \endlinechar=-1
+  \read\instream to\@tempa
+  \endlinechar=\@tempcnta
+  \closein\instream}
+\immediate\write18{echo \ip@win >"\ip@file"}
+\IfFileExists{\ip@file}{\dtt@ShellEscapeEnabledtrue}{\dtt@ShellEscapeEnabledfalse}
+\ifdtt@ShellEscapeEnabled
+    \ip@read@file
+    \ifx\@tempa\ip@sig
+    \windowsfalse
+    \else
+    \ifx\@tempa\ip@win
+        \windowstrue
+    \fi
+    \fi
+    \immediate\write18{\ifwindows del \else rm -- \fi "\ip@file"}
+\fi
+
+\ifdtt@ForceShellEscape
+    \PackageInfo{dot2texi}
+    {ForceShellEscape enabled}
+\fi
+
+\ifdtt@ShellEscapeEnabled
+    \PackageInfo{dot2texi}
+    {Automatically converting dot/neato files}
+\else
+    \PackageWarningNoLine{dot2texi}
+        {Shell escape not enabled.\MessageBreak
+        You'll need to convert the graphs yourself.}
+\fi
+\newcounter{dtt@fignum}
+\def\dtt@figname{\dtt@outputdir\jobname-dot2tex-fig\thedtt@fignum}
+
+
+%%%%%%%%%%%%%%%%% dot2tex code
+% Most of the code is from dottex.sty and gnuplottex.sty
+
+% Options
+\def\dtt@debugstr{}
+\ifdtt@debug
+    \PackageInfo{dot2texi}{Dot2tex debugging enabled}
+    \def\dtt@debugstr{--debug}
+\fi
+
+\define@choicekey*{dtt}{prog}[\progval\nr]{dot,neato,circo,fdp,twopi}[dot]{%
+    \def\dtt@procprog{--prog=\progval}}
+\define@choicekey*{dtt}{format}[\outputval\nr]{tikz,pgf,pstricks}[tikz]{%
+    \def\dtt@format{--format=\outputval}}
+\define@key{dtt}{options}[]{%
+    \def\dtt@options{#1}
+}
+\def\dtt@options{}
+
+\define@key{dtt}{outputdir}[]{%
+    \def\dtt@outputdir{#1}
+}
+\define@key{dtt}{file}[]{%
+    \def\dtt@figname{\dtt@outputdir#1}
+}
+
+\define@key{dtt}{shell}[]{\dtt@ShellEscapetrue}
+\define@key{dtt}{noshell}[]{\dtt@ShellEscapefalse}
+% graph layout
+\define@key{dtt}{dot}[]{\def\dtt@procprog{--prog=dot}}
+\define@key{dtt}{neato}[]{\def\dtt@procprog{--prog=neato}}
+\define@key{dtt}{circo}[]{\def\dtt@procprog{--prog=circo}}
+\define@key{dtt}{fdp}[]{\def\dtt@procprog{--prog=fdp}}
+\define@key{dtt}{twopi}[]{\def\dtt@procprog{--prog=twopi}}
+% output formats
+\define@key{dtt}{pgf}[]{\def\dtt@format{--format=pgf}}
+\define@key{dtt}{tikz}[]{\def\dtt@format{--format=tikz}}
+\define@key{dtt}{pstricks}[]{\def\dtt@format{--format=pstricks}}
+% command line shortcuts
+\define@key{dtt}{styleonly}[]{\def\dtt@styleonly{--styleonly}}
+\def\dtt@styleonly{}
+\define@key{dtt}{codeonly}[]{\def\dtt@output{--codeonly}}
+\def\dtt@output{--figonly}
+\define@key{dtt}{autosize}[]{\def\dtt@autosizeopt{--autosize}}
+\define@key{dtt}{noautosize}[]{\def\dtt@autosizeopt{}}
+
+\define@key{dtt}{straightedges}[]{\def\dtt@straightedges{--straightedges}}
+\def\dtt@straightedges{}
+\define@key{dtt}{tikzedgelabels}[]{\def\dtt@tikzedgelabels{--tikzedgelabels}}
+\def\dtt@tikzedgelabels{}
+
+\define@key{dtt}{mathmode}[]{\def\dtt@mathmode{-tmath}}
+\def\dtt@mathmode{}
+
+\define@key{dtt}{graphstyle}[]{\def\dtt@graphstyle{--graphstyle="#1"}}
+\def\dtt@graphstyle{}
+
+\define@key{dtt}{scale}[]{\def\dtt@graphstyle{--graphstyle="scale=#1,transform shape"}}
+
+\newif\ifdtt@writetofile \dtt@writetofiletrue
+
+\def\dottotexverbatimwrite#1{%
+    \def\BeforeStream{
+        \message{Opening dot2tex stream #1}%
+    }%
+    \@bsphack
+    \immediate\openout \verbatim@out #1
+    \BeforeStream%
+    \let\do\@makeother\dospecials
+    \catcode`\^^M\active
+    \def\verbatim@processline{%
+        \immediate\write\verbatim@out
+        {\the\verbatim@line}}%
+    \verbatim@start%
+}
+
+\def\enddottotexverbatimwrite{%
+    \immediate\closeout\verbatim@out
+    \@esphack
+        \catcode`\\0
+        \catcode`\{1
+        \catcode`\}2
+        \catcode`\$3
+        \catcode`\&4
+        \catcode`\^^M5
+        \catcode`\#6
+        \catcode`\^7
+        \catcode`\_8
+        \catcode`\~9% Added this one
+        \catcode`\ 10
+        \catcode`\%14}
+
+\newenvironment{dot2tex}[1][]{\stepcounter{dtt@fignum}%
+    \setkeys{dtt}{#1}
+    \ifdtt@ForceShellEscape
+        \dtt@ShellEscapetrue
+    \fi
+    \xdef\dottotexCutFile{\dtt@figname.dot}
+    \dottotexverbatimwrite{\dottotexCutFile}}
+    {\enddottotexverbatimwrite%
+    \dottotexgraphicsinclude}
+
+\long\gdef\dottotexgraphicsprocess{%
+    \ifdtt@ShellEscape
+        \IfFileExists{\dtt@figname.dot}{%
+            \immediate\write18{dot2tex \dtt@output\space
+                \dtt@format\space
+                \dtt@tikzedgelabels\space
+                \dtt@straightedges\space
+                \dtt@styleonly\space
+                \dtt@autosizeopt\space
+                \dtt@debugstr\space
+                \dtt@procprog\space
+                \dtt@mathmode\space
+                \dtt@graphstyle\space
+                -o \dtt@figname.tex \dtt@options\space \dtt@figname.dot}
+            \IfFileExists{\dtt@figname.tex}{%
+                \PackageInfo{dot2texo}{\dtt@figname.dot converted}
+            }
+            {\PackageWarningNoLine{dot2texi}
+                {Conversion of \dtt@figname.dot failed.}}}{}
+            \fi
+}
+
+\long\gdef\dottotexgraphicsinclude{\dottotexgraphicsprocess%
+    \IfFileExists{\dtt@figname.tex}{{\input{\dtt@figname}}}
+    {\PackageWarningNoLine{dot2texi}
+            {Please convert \dtt@figname.dot manually}}
+}
+
+\endinput

@@ -1,0 +1,178 @@
+% (C) 2006-2009 Josselin Noirel
+% 
+% Package cellspace: Ensuring a minimal spacing of table cells.
+%
+% This material is subject to the LaTeX Project Public License. See
+% http://www.ctan.org/tex-archive/help/Catalogue/licenses.lppl.html .
+%
+\def \@tempa $#1 #2 #3 #4 #5 #6 #7 ${%
+  \def \filedate    {#4}%
+  \def \fileversion {v#3}%
+}
+\@tempa $Id: cellspace.sty,v 1.6 2009/07/31 09:00:00 noirel Exp $
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{cellspace}%
+  [\filedate \space \fileversion \space Spacing table cells (JN)]
+
+\RequirePackage{ifthen} % \newboolean, \ifthenelse
+\RequirePackage{array}  % \newcolumntype, \@{start,end}pbox
+\RequirePackage{calc}   % \setlength{<dimen>}{<expression>}
+
+% 2. Check the definitions of \@startpbox and \@endpbox
+%    from array.sty
+
+\CheckCommand*{\@startpbox}[1]{%
+  \bgroup
+    \setlength\hsize{#1}%
+    \@arrayparboxrestore
+    \everypar{%
+      \vrule \@height \ht\@arstrutbox \@width \z@
+      \everypar{}%
+    }%
+}
+
+\CheckCommand*{\@endpbox}{\@finalstrut\@arstrutbox \egroup\hfil}
+
+% 3. Declare registers and other variables
+
+\newboolean{cellspace@lr} % Is it a LR column type ?
+\newboolean{cellspace@}   % Is it a paragraph column that needs to be
+                          % spaced out?
+\newboolean{cellspace@m}  % [math] option: matrices
+
+\@ifdefinable \cellspacetoplimit    {\newdimen \cellspacetoplimit}
+\@ifdefinable \cellspacebottomlimit {\newdimen \cellspacebottomlimit}
+\@ifdefinable \cellspace@firstht {\newdimen \cellspace@firstht} % Global
+\@ifdefinable \cellspace@lastdp {\newdimen \cellspace@lastdp}   % Global
+
+\setlength{\cellspacetoplimit}{1pt}
+\setlength{\cellspacebottomlimit}{1pt}
+
+% Options
+
+\DeclareOption{math}{\setboolean{cellspace@m}{true}}
+\DeclareOption{nomath}{\setboolean{cellspace@m}{false}}
+
+\ExecuteOptions{nomath}
+\ProcessOptions
+
+% 4. Redefinitions
+
+\renewcommand*{\@startpbox}[1]{%
+  \bgroup
+    \setbox \@tempboxa = \vtop \bgroup
+      \color@begingroup
+      \setlength{\hsize}{#1}%
+      \@arrayparboxrestore
+      % We need to test \ifcellspace@ within the \everypar
+      % because it is still not set correctly
+      \everypar{%
+        \unless \ifcellspace@
+          \vrule \@height \ht\@arstrutbox \@width \z@
+        \fi
+        \everypar{}%
+      }%
+}
+
+\renewcommand*{\@endpbox}{%
+      \unless \ifcellspace@
+        \@finalstrut \@arstrutbox
+      \fi
+      \par
+      % Save the depth of the last line
+      \global \cellspace@lastdp = \prevdepth
+      \color@endgroup
+      % \ifcellspace@ is only locally true, so we need to expand it before
+      % \egroup stops it action
+      \expandafter
+    \egroup
+    \ifcellspace@
+      % Save the height of the first line
+      \global \cellspace@firstht = \ht\@tempboxa
+      \setbox \@tempboxa = \vbox {%
+        \setlength{\@tempdima}{\ht\@arstrutbox - \cellspace@firstht}%
+        \ifthenelse{\lengthtest{\@tempdima<\cellspacetoplimit}}{%
+          \setlength{\@tempdima}{\cellspace@firstht + \cellspacetoplimit}%
+        }{%
+          \setlength{\@tempdima}{\ht\@arstrutbox}%
+        }%
+        \hbox{\vrule height \@tempdima width 0pt depth 0pt }%
+        \nointerlineskip
+        \vskip-\cellspace@firstht
+        \unvbox \@tempboxa
+        \setlength{\@tempdima}{\dp\@arstrutbox - \cellspace@lastdp}%
+        \ifthenelse{\lengthtest{\@tempdima<\cellspacebottomlimit}}{%
+          \setlength{\@tempdima}{\cellspace@lastdp + \cellspacebottomlimit}%
+        }{%
+          \setlength{\@tempdima}{\dp\@arstrutbox}%
+        }%
+        \vskip-\cellspace@lastdp
+        \nointerlineskip
+        \hbox{\vrule height 0pt depth \@tempdima width 0pt }%
+      }%
+    \fi
+    \unvbox \@tempboxa
+  \egroup
+  \hfil
+}
+
+\let \@@startpbox = \@startpbox
+\let \@@endpbox = \@endpbox
+
+% Make it work with matrices
+% 31 Jul 2009: suggested by Bastien Roucaries (for a long time)
+
+\ifcellspace@m
+  \RequirePackage{amsmath}%
+  \def \env@matrix {%
+    \hskip -\arraycolsep
+    \let \@ifnextchar \new@ifnextchar
+    \array{*{\c@MaxMatrixCols}{>{$}Sc<{$}}@{}}%
+  }
+\fi
+
+% 5. Defining a prefix
+
+\newcolumntype{S}[1]{>{\bcolumn #1\@nil}#1<{\ecolumn}}
+
+\newcommand*{\bcolumn}{}
+\def \bcolumn #1#2\@nil {%
+  \cellspace@lrtrue
+  \@expandtwoargs \in@{#1}{\cellspace@parcoltypes}%
+  \ifin@
+    \cellspace@lrfalse
+  \fi
+  \ifcellspace@lr
+    \begingroup \lrbox {\@tempboxa}%
+  \else
+    \setboolean{cellspace@}{true}%
+  \fi
+}
+
+\newcommand*{\ecolumn}{%
+  \ifcellspace@lr
+    \endlrbox \endgroup
+    \setlength{\@tempdima}{\ht\@arstrutbox - \ht\@tempboxa}%
+    \ifthenelse{\lengthtest{\@tempdima<\cellspacetoplimit}}{%
+      \setlength{\@tempdima}{\ht\@tempboxa + \cellspacetoplimit}%
+      \ht\@tempboxa = \@tempdima
+    }{}%
+    \setlength{\@tempdima}{\dp\@arstrutbox - \dp\@tempboxa}%
+    \ifthenelse{\lengthtest{\@tempdima<\cellspacebottomlimit}}{%
+      \setlength{\@tempdima}{\dp\@tempboxa + \cellspacebottomlimit}%
+      \dp\@tempboxa = \@tempdima
+    }{}%
+    \usebox{\@tempboxa}%
+  \fi
+}
+
+\newcommand*{\cellspace@parcoltypes}{pmb}
+
+\newcommand*{\addparagraphcolumntypes}[1]{%
+  \edef \cellspace@parcoltypes {\cellspace@parcoltypes #1}%
+}
+
+\@onlypreamble \addparagraphcolumntypes
+
+\endinput

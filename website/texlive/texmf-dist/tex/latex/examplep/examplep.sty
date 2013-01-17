@@ -1,0 +1,2418 @@
+%
+% examplep.sty -- typesetting verbatim TeX code and examples
+% by pts@fazekas.hu at Sat Sep 27 23:58:14 CEST 2003
+% -- Sun Sep 28 23:38:37 CEST 2003
+% ligatures broken -- Tue Sep 30 19:14:11 CEST 2003
+% examplep.sty at Fri Oct 24 10:25:27 CEST 2003
+% options and misc stuff at Fri Oct 24 22:23:06 CEST 2003
+% xalign=, yalign= fixes, *-test.tex at Wed Dec 24 02:33:24 CET 2003
+% baseline-grid=, fixes at Wed Feb 25 23:37:41 CET 2004
+%
+% This is a LaTeX package that provides following features:
+%
+% -- a robust \PVerb macro comparable to the LaTeX \verb macro
+% -- \begin{PSource} comparable to the LaTeX \begin{verbatim} environment
+% -- \begin{WSource} comparable to \begin{verbwrite} in sverb.sty
+%       and \begin{filecontents} of latex.ltx
+% -- \begin{PWSource} combining \begin{PSource} and \begin{WSource}
+% -- \begin{PexaMiniPage} comparable to the LaTeX \begin{minipage} environment
+% -- \PexaShowBoth that typesets LaTeX code, and also shows it verbatim;
+%    facing and page breaks enabled (!)
+% -- Package load options can be specified \usepacakge[...]{examplep}
+%
+% See samplewidth= in this file for the load option defaults. Use
+% \PexaDefaults{...} instead of \usepackage[...]{examplep} to specify
+% complicated options such as linenumberformat={...} (this is a LaTeX kernel
+% limitation.)
+%
+% !! func-tion better hyphenation point in \Q than functi-on
+% !! after \end{PSource} in pts_diploma.tex, don't require \noindent
+% !! option to emit tabs as spaces
+% !! allow wider Source if Sample is small enough
+% !! \ifnum0=`{\fi} and similar tricks for \halign?
+% !! magyarldf-doc.tex infinite bug
+% !! why is it called twice?
+%    \def\pexa@cverb@@verbatimfont{u\normalfont\ttfamily
+%      \hyphenpenalty10000 }
+% !! why doesn't \selectlanguage works inside \begin{PSource}[srcstyle=leftboth]
+% !! \PVerb{foo} mustn't insert $\lnot$ if foo is at EOL
+% !! \ifvmode testing for \PSource
+% !! \PVerb{...} inner unnested braces (\futurelet?)
+% !! \penalty in \PVerb
+% !! \pexa@ss@left etc. should work with \PexaShowBoth (not for measuring)
+% !! \@afterindenttrue etc.
+% !! ASCII tab (9) characters aren't supported properly
+% !! \begin{PSource} says 'Missing $ inserted.' in magyarldf-doc.tex:
+%    \begin{PSource}[srcstyle=leftboth]
+%    \grq~\glq~\glqq~\grqq~\flq~\frq~\flqq~\frqq\\  
+%    \textquoteright~\textquotedblright\\
+%    \textquoteleft~\textquotedblleft\\
+%    \end{PSource}
+% Dat: multiple spaces count inside \PVerb+...+, even at line break
+% Dat: it is impossible to indent the first line via \begin{WSource} etc.,
+%      because verbfwr.sty chops heading spaces
+% Dat: 5000..9999 lines of \halign containing only `(9999)\hfil\cr' will fill
+%      up TeX's memory (! TeX capacity exceeded, sorry [main memory size=263001].),
+%      so text fed to \PexaShowBoth shouldn't exceed 375 lines (with an
+%      average line length of 80 characters)
+% Imp: page breaks near \FBHLastDepth put a too tall \vrule on next page
+%
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{examplep}[2010/02/03 v0.04 Verbatim and typeset TeX code]
+
+\@ifundefined{XeTeXinputencoding}{}{\XeTeXinputencoding "cp1250" }
+
+\edef\pexa@@restorecat{\catcode\string``\the\catcode\string``\space}
+\catcode\string``12 % may have been changed by Babel
+\RequirePackage{verbfwr}
+
+% ---
+
+\def\pexa@@samplename{pexa-sam.tex}
+\def\pexa@@sourcename{pexa-src.tex}
+\let\pexa@@cursourcename\pexa@@samplename
+
+\def\pexa@dohex#1{%
+  \if\noexpand#1^%
+    \expandafter\pexa@dohex@lowa
+  \else\char"5E \expandafter#1\fi
+}
+
+\def\pexa@dohex@lowa#1#2{%
+       \if\noexpand#18\pexa@swaprelax{\pexa@dohex@lowc#28}%
+  \else\if\noexpand#19\pexa@swaprelax{\pexa@dohex@lowc#29}%
+  \else\if\noexpand#1a\pexa@swaprelax{\pexa@dohex@lowc#2A}%
+  \else\if\noexpand#1b\pexa@swaprelax{\pexa@dohex@lowc#2B}%
+  \else\if\noexpand#1c\pexa@swaprelax{\pexa@dohex@lowc#2C}%
+  \else\if\noexpand#1d\pexa@swaprelax{\pexa@dohex@lowc#2D}%
+  \else\if\noexpand#1e\pexa@swaprelax{\pexa@dohex@lowc#2E}%
+  \else\if\noexpand#1f\pexa@swaprelax{\pexa@dohex@lowc#2F}%
+  \else\if\noexpand#1I\pexa@swaprelax{\pexa@dohex@lowc90#2}% tab: \t; Imp: better !! no #2, neither in \char "5E
+  \else\char"5E \pexa@swaprelax{\pexa@dohex#1#2}%
+  \fi\fi\fi\fi\fi\fi\fi\fi\fi\relax
+}
+\def\pexa@dohex@lowb#1{%
+       \if\noexpand#1aA%
+  \else\if\noexpand#1bB%
+  \else\if\noexpand#1cC%
+  \else\if\noexpand#1dD%
+  \else\if\noexpand#1eE%
+  \else\if\noexpand#1fF%
+  \else#1\fi\fi\fi\fi\fi\fi
+}
+\def\pexa@dohex@lowc#1#2{%
+  \ifnum\catcode"#2\pexa@dohex@lowb#1=13{\lccode`\~="#2\pexa@dohex@lowb#1\lowercase{~}}%
+  \else{\lccode`\+="#2\pexa@dohex@lowb#1\lowercase{+}}\fi%
+}
+%** Usage: \begin{PWSource}[OPTIONS]...\end{PWSource}.  Writes everything (...)
+%** into file \pexa@@sourcename, and also typesets it with \PexaShowSource
+%** Dat: everything after \end{PWSource} in its line will be ignored
+%** Dat: ^^ab hex codes >=128 will be substituted in \input (by \pexa@dohex)
+%** Dat: ^^I etc. hex codes will be left alone
+%** Dat: spaces at EOL will be lost (this is a limitation of TeX's eyes), so
+%        will be contents of lines with spaces only. This limitation is true
+%        for all environments in this file.
+%** Dat: if `[OPTIONS]' is missing, then all spaces
+\def\PWSource{%
+  \let\pexa@@savepar\par
+  \catcode`\ =12 \let\par\relax \obeylines% ugly hack so \@ifnextchar won't gobble spaces or newlines
+  \@ifnextchar[\pexa@PWSource{\pexa@PWSource[]}}%]
+\def\pexa@PWSource[#1]{%
+  \def\pexa@@envopts{#1}%
+  \global\let\pexa@@cursourcename\pexa@@sourcename
+  \immediate\openout\verbfwr@writefile\pexa@@cursourcename\relax
+  \let\verbfwr@writecs\verbfwr@writefile
+  \let\verbfwr@actwriteline\verbfwr@writeline
+  \let\par\pexa@@savepar % so we won't get an infinite loop
+  \verbfwr@default@acts
+  \verbfwr@readenv\verbfwr@write
+  % Don't put anything else here!
+}
+\def\endPWSource{%
+  \immediate\closeout\verbfwr@writefile
+  \expandafter\PexaShowSource\expandafter{\pexa@@envopts}% use defaults
+}
+
+%** Writes its contents to file \pexa@@samplename and sets
+%** \pexa@@cursourcename to \pexa@@samplename
+%** Usage: \begin{WBoth}...\end{WBoth}. `...' is LaTeX source that can
+%** be typeset verbatim or later \input into the middle of the document. See
+%** the docs for \begin{PWSource} for more details.
+\def\WBoth{%
+  \global\let\pexa@@cursourcename\pexa@@samplename
+  \immediate\openout\verbfwr@writefile\pexa@@samplename\relax
+  \let\verbfwr@writecs\verbfwr@writefile
+  \let\verbfwr@actwriteline\verbfwr@writeline
+  \verbfwr@default@acts
+  \verbfwr@readenv\verbfwr@write% finish this \cs here
+}
+\def\endWBoth{\immediate\closeout\verbfwr@writefile}
+%** Similar to \begin{WBoth} (see docs there), but writes its contents to
+%** file \pexa@@samplename.
+\def\WSample{%
+  \immediate\openout\verbfwr@writefile\pexa@@samplename\relax
+  \let\verbfwr@writecs\verbfwr@writefile
+  \let\verbfwr@actwriteline\verbfwr@writeline
+  \verbfwr@default@acts
+  \verbfwr@readenv\verbfwr@write% finish this \cs here
+}
+\let\endWSample\endWBoth
+%** Similar to \begin{WBoth} (see docs there), but writes its contents to
+%** file \pexa@@sourcename (and sets \pexa@@cursourcename to it).
+\def\WSource{%
+  \global\let\pexa@@cursourcename\pexa@@sourcename
+  \immediate\openout\verbfwr@writefile\pexa@@sourcename\relax
+  \let\verbfwr@writecs\verbfwr@writefile
+  \let\verbfwr@actwriteline\verbfwr@writeline
+  \verbfwr@default@acts
+  \verbfwr@readenv\verbfwr@write% finish this \cs here
+}
+\let\endWSource\endWBoth
+
+%** Everything is ignored between \begin{PIgnore}...\end{PIgnore}. The trailing
+%** Everything in the line of \end{PIgnore} is ignored, even chars after it.
+%** `...' may contain unnested braces, groups or \ifs.
+\def\PIgnore{%
+  \verbfwr@default@acts
+  \let\verbfwr@actemitline\@gobble
+  \verbfwr@readenv\verbfwr@write% finish this \cs here
+}
+\let\endPIgnore\endWBoth
+
+%** Usage: \begin{PSource}[OPTIONS]...\end{PSource}. Same as \begin{PWSource},
+%** but doesn't write anything to a file, so it is a little faster. Also, a
+%** little more stable, since ^^ab hex codes aren't involved.
+\def\PSource{%
+  \catcode`\ =13 \let\par\@@par \obeylines% ugly hack so \@ifnextchar won't gobble spaces or newlines
+  \@ifnextchar[\pexa@PSource{\pexa@PSource[]}}%]
+\def\endPSource{\pexa@@undoyindent}
+%\def\verbfwr@readenv@ii#1\hfuzz{{\end.}{\end{#1}}}% !!
+\def\pexa@PSource[#1]{%
+  \pexa@doopts{#1}%
+  \expandafter\expandafter\expandafter\pexa@plines@start
+  \expandafter\verbfwr@readenv@i\@currenvir\hfuzz%
+}%
+\def\pexa@plines@notverbatim{%
+  %\catcode`~=13 %\def~{\nobreakspace{}}%
+  \catcode`\ =10 % restore to be space
+  \let\pexa@setupverb\relax% call this before \pexa@setupverb
+  \let\pexa@default@verbatimfont\relax
+  \def\verbfwr@read##1##2##3{\verbfwr@noter@read0}%
+}
+\def\pexa@plines@expandeach#1{%
+  \expandafter\def\expandafter\reserved@a\expandafter{%
+    \expandafter\relax
+    \pexa@@eachline{#1}\cr}%
+}
+%** @param #1  `\end{PSource}' in catcode 12
+%** @param #2 `\end {PSource}' with normal catcodes
+\def\pexa@plines@start#1#2{%
+  \def\pexa@@starthalign{}%
+  \def\pexa@@dohalign{}%
+  %** Must be fully expandable.
+  \let\pexa@@eachline\@firstofone
+  %%\show\pexa@default@srcstyle
+  \expandafter\ifx\csname pexa@ss@\pexa@default@srcstyle\endcsname\relax
+    \def\verbfwr@actemitlineone{% not called if there are no lines!
+      \let\verbfwr@actemitlineone\@empty
+      \pexa@starthalign% one @
+      \pexa@@beforefirstline
+      \noalign\bgroup
+    }%
+    \def\verbfwr@actemitline##1{% get line in \VerbFwrLines
+      %\edef\reserved@a{\def\noexpand\VerbFwrLines{\noexpand\pexa@@eachline{\VerbFwrLines}}}%
+      %\expandafter\egroup\reserved@a% \noalign, pass \VerbFwrLines inside the column
+      %\relax\VerbFwrLines\cr%\relax<.\VerbFwrLines.>\cr%
+      % vvv This solution makes it possible for \pexa@@eachline to contain `&'
+      % vvv Dat: a beginning \edef\reserved@a{\relax...} is necessary to prevent
+      %     TeX looking for \span, \omit etc.     
+      %\edef\reserved@a{\relax\expandafter\pexa@@eachline\expandafter{\VerbFwrLines}\cr}%
+      \expandafter\pexa@plines@expandeach\expandafter{\VerbFwrLines}%
+      \expandafter\egroup\reserved@a% \noalign, pass \VerbFwrLines inside the column
+      %
+      \noalign\bgroup
+    }%
+    \def\verbfwr@actemitdone{% called if there were no lines
+      \ifx\verbfwr@actemitlineone\@empty
+        \egroup% \noalign
+        \egroup% \halign
+      \fi
+    }%
+    \expandafter\let\expandafter\pexa@plines@@setup\csname pexa@sh@\pexa@default@srcstyle\endcsname% this sets up further \catcodes
+  \else
+    %\expandafter\pexa@setup@calcwidths\expandafter{\pexa@default@usewidth}%
+    % Dat: no need to save/restore \parindent here, becasuse we do \noindent
+    \def\verbfwr@actemitlineone{\let\verbfwr@actemitlineone\@empty}%
+    \let\verbfwr@actemitdone\@empty
+    \def\verbfwr@actemitline##1{\expandafter\pexa@plines@parpre\expandafter\pexa@@eachline\expandafter{\VerbFwrLines}\@@par}%
+    \expandafter\let\expandafter\pexa@plines@@setup\csname pexa@ss@\pexa@default@srcstyle\endcsname% this sets up further \catcodes
+    \everypar{}%
+    % Dat: too early to set \hsize now
+    \let\pexa@@dopars\@empty
+  \fi
+  %
+  % vvv Similar to \PexaShowSourceMany
+  %\leavevmode% for \@bsphack
+  %\@bsphack% don't have to save \spacefactor
+  \let\par\@@par% make \vskip work fine??
+  \expandafter\pexa@setup@calcwidths\expandafter{\pexa@default@usewidth}%
+  \begingroup
+    \pexa@@calcwidths% calculate leftmost \tabskip
+    \@tempdima\PexaWidth
+    \advance\@tempdima\tabskip
+    \edef\reserved@a{\def\noexpand\pexa@@tolinewidth{to\the\@tempdima}}%
+  \expandafter\endgroup\reserved@a
+  %\advance\linewidth\@totalleftma
+  %\def\pexa@@tolinewidth{to\linewidth}%
+  %
+  \pexa@xyindent\pexa@default@xindent\pexa@default@yindent
+  % \pexa@plines@notverbatim
+  \pexa@plines@@setup
+  % ^^^ calls \pexa@s?@..., which calls \pexa@show@pars or \pexa@show@halign,
+  %     which calls \pexa@setupverb and \pexa@@calcwidths, which modifies
+  %     \tabskip and \linewidth
+  \advance\leftskip-1\leftskip% keep stretch
+  \advance\rightskip-1\rightskip% keep stretch
+  %\leftskip\z@skip \rightskip\z@skip % Dat: needed by \begin{egysoros} -- why??
+  %\advance\hsize\rightskip
+  %\showthe\hsize
+  %\showthe\leftskip
+  %\showthe\rightskip
+  \let\par\@@par \obeylines
+  \verbfwr@read{#1}\@gobble{% read verbatim data line-by-line, call \verfwr@act... as callbacks
+    %\@esphack
+    #2%
+  }%
+  % Don't put anything else here, will be read by \verbfwr@read
+}
+% vvv Dat: \leavevmode would insert \indent and cancels \noindent
+% vvv Dat: \null is needed for empty lines with no \catcode change for ^^M
+\def\pexa@plines@parpre{\pexa@@vts\noindent\null
+  \kern\tabskip% !! added at Tue May 18 11:14:58 CEST 2004; for \begin{PSource} in \begin{description}; does it hurt lakk??
+  \pexa@@everyparr}%
+
+% --- Adding accents and breaking ligatures
+
+\edef\pexa@quoteleft {\relax\string`}
+\edef\pexa@quoteright{\relax\string'}
+\edef\pexa@hyphen    {\relax\string-\relax}%
+\edef\pexa@comma     {\relax\string,}
+\edef\pexa@less      {\relax\string<}
+\edef\pexa@greater   {\relax\string>}
+\let\pexa@@oldH\H% default
+\let\pexa@@olddot\.% default
+\def\pexa@@otone{OT1}
+\def\pexa@H#1{% \H accent missing from {OT1}{cmtt}
+  \ifx\f@encoding\pexa@@otone% Imp: don't hard-wire cmr??
+    \pexa@curprop\iftrue%
+      \pexa@@oldH#1%
+    \else%
+      \pexa@add@accentx{125}{\fontencoding{OT1}\fontfamily{cmr}\selectfont}#1% not expandable
+    \fi%
+  \else%
+    \pexa@@oldH#1% {T1}{cmtt} is OK
+  \fi%
+}%
+\def\pexa@dot#1{% \. accent missing from {OT1}{cmtt}
+  \ifx\f@encoding\pexa@@otone%
+    \pexa@curprop\iftrue%
+      \pexa@@dot#1%
+    \else%
+      \pexa@add@accentx{95}{\fontencoding{OT1}\fontfamily{cmr}\selectfont}#1% not expandable
+    \fi%
+  \else%
+    \pexa@@olddot#1% {T1}{cmtt} is OK
+  \fi%
+}%
+%** Derived from LaTeX \add@accent
+%** @param #1 0..255 code of the accent
+%** @param #2 commands to load the accent font
+%** @param #3 char to put the accent on
+\def\pexa@add@accentx#1#2#3{\hmode@bgroup
+  \let\hmode@start@before@group\@firstofone
+  \setbox\@tempboxa\hbox{%
+    #3\global\mathchardef\accent@spacefactor\spacefactor}%
+  \edef\@thefont{\the\font}%
+  #2% select font
+  \accent#1%
+  \@thefont#3%
+  \egroup\spacefactor\accent@spacefactor
+}
+
+\def\pexa@@zero{0}
+%** `\pexa@curprop\iftrue' behaves like `\iftrue' if the current font is
+%** proportional; or `\iffalse' if the current font is fixed-width.
+%** Cannot create an `\ifpexa@curprop' macro, since it won't be treated properly
+%** when skipped (only \let\ifpexa@curprop\iffalse and \let\ifpexa@curprop\iftrue
+%** is treated properly).
+%**   Ruins \reserved@a
+%** Imp: better in pexample.sty
+\def\pexa@curprop#1{%
+  \expandafter\let\expandafter\reserved@a\csname prop@\fontname\font\endcsname
+  \ifnum10>1\reserved@a% no ` %' here; calculate \reserved@a for the first time
+    \def\reserved@a{1}% \let\reserved@a0 won't work with `\ifnum'
+    \ifdim\fontdimen3\font=\z@
+      \ifdim\fontdimen4\font=\z@
+        \begingroup
+          \setbox0=\hbox{i}%
+          \setbox1=\hbox{W}%
+          \ifdim\wd0=\wd1 %
+            \aftergroup\let\aftergroup\reserved@a\aftergroup\pexa@@zero% found a fixed-width font
+          \fi
+        \endgroup
+      \fi
+    \fi
+    \expandafter\let\csname prop@\fontname\font\endcsname\reserved@a
+  \fi
+  \csname if\if\reserved@a0false\else true\fi\endcsname
+}%
+
+% ---
+
+%** Acts based on usewidth=
+%** @in  \linewidth already decreased by \@totalleftmargin and total_right margin
+%** @out \PexaWidth = source+rule+sample a dimen register or tokens ending
+%**      by space `1.2pt '; \PexaWidth doesn't contain left or right indentation
+%** @out \pexa@@calcwidths to set \tabskip to point to final left margin
+%**                        to decrease \linewidth by some margins
+%** Modifies \linewidth: decreases by \leftskip 
+%** @param #1 value of \pexa@default@usewidth: 0, 1 or 2
+\def\pexa@setup@calcwidths#1{%
+  \if#12% usewidth=skipwidth
+    \begingroup
+      \@tempdimb\linewidth
+      % Dat: we definitely mustn't do \advance\@tempdimb-\@totalleftmargin,
+      %      because \linewidth has never contained the value of \@totalleftmargin
+      \advance\@tempdimb-\rightskip \advance\@tempdimb-\leftskip
+      \edef\PexaWidth{\def\noexpand\PexaWidth{\the\@tempdimb\space}}%
+    \expandafter\endgroup\PexaWidth
+    % Dat: we really don't want to say \let\PexaWidth\@tempdimb here, because
+    %      \small in \pexa@defaut@verbatimfont will clobber it later
+    \def\pexa@@calcwidths{%
+      % vvv this is called in \pexa@show@halign to set the left margin properly
+      \tabskip\leftskip \advance\tabskip\@totalleftmargin
+      %\advance\linewidth-\@totalleftmargin% BUGFIX at Tue Dec 23 19:55:06 CET 2003 -- fixes \PexaShowBoth
+      %\advance\linewidth-\leftskip% Dat: enabling this makes \begin{egysoros} buggy (too narrow line). BUGFIX at Tue Mar 30 17:40:50 CEST 2004
+      %\advance\linewidth-\rightskip% !! is this used? and below? (two)
+    }%
+  \else\if#11% usewidth=linewidth
+    \let\PexaWidth\linewidth
+    \def\pexa@@calcwidths{\tabskip\@totalleftmargin
+      %!!\advance\linewidth-\@totalleftmargin% BUGFIX at Tue Dec 23 19:55:06 CET 2003 -- fixes \PexaShowBoth
+    }%
+  \else% usewidth=hsize
+    \let\PexaWidth\hsize
+    \def\pexa@@calcwidths{\tabskip\z@ \let\linewidth\hsize}%
+  \fi\fi
+}
+
+\def\PexaShowSample#1{%
+  \begingroup
+  \pexa@doopts{#1}%
+  % vvv Dat: may contain .45\PexaWidth
+  % \expandafter\@temptokena\expandafter{\pexa@default@samplewidth}%
+  % !! test this
+  \@tempdimb\PexaWidth\relax
+  \let\PexaWidth\@tempdimb
+  \@tempdima\pexa@default@samplewidth\relax% do arithmetic: .5\PexaWidth
+  \edef\PexaWidth{\the\@tempdimb\space}%
+  \edef\reserved@a{\noexpand\PexaShowSampleMany
+    {\the\@tempdima}% 1
+    {\pexa@default@boxstyle}% 2
+  }%
+  %%\show\reserved@a
+  \expandafter\endgroup\reserved@a
+}%
+
+%** Shows the Sample in lines on their own. Page breaks disallowed.
+%** @param #1 dimen: width of Sample (\hsize, paragraph width). Examples: .4\hsize >= .4\linewidth
+%** @param #2 boxing style of Sample:
+%**   `h': \hbox
+%**   `v': \vtop
+%**   'm': is minipage with \vtop
+%**   'p': is PexaMinipage with \vtop (recommended)
+%**   `V': \vbox
+%**   'M': is minipage with \vbox
+%**   'P': is PexaMinipage with \vbox
+%**   'G': no boxing, only \begingroup .. \endgroup
+\def\PexaShowSampleMany#1#2{%
+  \if#2G\else
+  \if#2h\else
+  \vskip\z@skip% leave horizontal mode
+  \fi\fi
+  \csname pexa@setsample@#2\endcsname{#1}%
+}
+
+% ---
+
+\def\pexa@@tolinewidth{to\PexaWidth}
+\def\pexa@@calcwidths{}
+%** Default: align left
+\def\pexa@@preamble{##\hfil\tabskip\z@ plus1fill}
+\def\pexa@@preamblecr{\cr}% or {\cr\noalign{\nobreak}}
+%** Don't allow a page break before Sample is over
+\def\pexa@preamblecr@keep{\cr\noalign{%
+  \ifdim-\pexa@@cnta\baselineskip<\@tempdima\nobreak\fi}}%
+%** Default
+\let\pexa@@beforehalign\@empty
+\let\pexa@@firstlinebeg\@empty
+\let\pexa@@beforefirstline\@empty
+\def\pexa@default@addlinenum{0}% start line numbering from \pexa@default@addlinenum+1
+\def\pexa@@cnta{0}%
+\let\pexa@@cntb\pexa@default@addlinenum% default
+%** Contains width of linenumbersep=, too
+\def\pexa@default@linenumberwidth{0pt}%
+%** Better than `~', because not affected by amsxtra.sty's redefinition.
+\def\pexa@default@space{\leavevmode\nobreak\ }%
+%** @example \enspace, \quad, \hbox{\space} etc.
+%** @example \def\pexa@default@linenumberwidth{\parindent} \def\pexa@default@linenumbersep{\enspace}%
+\def\pexa@default@linenumbersep{}%
+%** No effect, will be overridden later.
+\def\pexa@default@linenumberformat{}
+
+%** Clobbers \@tempcnta. \gdef#1
+%** @param #1 a macro \cs name expanding to a number
+\def\pexa@decr#1{\@tempcnta#1\advance\@tempcnta\m@ne\global\edef#1{\the\@tempcnta}}
+
+%** A tab is really more complicated than 8 spaces, but correct tabbing would
+%** be hard to implement here.
+\def\pexa@setuptab{%
+  \catcode9 13 \begingroup\lccode`~=9 \lowercase{\endgroup\def~}{\ \ \ \ \ \ \ \ }%
+}
+
+%** Called by \begin{PLines}, \PexaShowBoth, \PVerb etc.
+\def\pexa@setupverb{%
+  \ifnum\the\catcode`^=13 % already active, is \pexa@dohex
+    \let\do\@makeother \dospecials
+    \catcode`^=13
+  \else
+    \let\do\@makeother \dospecials% \catcode`\\=12 etc. (see latex.ltx for \dospecials)
+  \fi
+  % Dat: `latex --translate-file il1-t1' emits accented glyph to file as a single char
+  % ^^^ Dat: don't modify catcode of 127..255, so accents will come out right
+  \catcode`\ =13 \lccode`~=32 \lowercase{\let~\pexa@default@space}% make each space count, but not a visible space -- \@xobeysp defined in latex.ltx
+  % ^^^ Dat: former \let~\@xobeysp
+  % Common ligatures in monospaced fonts: `` '' ,,  -- -Z  << >>  !` ?`  (where Z has ASCII code 127)
+  % Dat: compare this code with \@noligs of latex.ltx -- this is more efficient
+  % vvv Dat: this has no effect on \pexa@cverb@outerc (and neither on inner
+  %     \PVerb), but that is hoped to have its \break{}s already separating.
+  \catcode``13 \lccode`~``\lowercase{\let~\pexa@quoteleft}% break Spanish ?` and !` ligatures in cmtt10.mf (and also the '' ligature in)
+  \catcode`-13 \lccode`~`-\lowercase{\let~\pexa@hyphen}% break ligatures --, --- and -Z (where Z has ascii code 127)
+  \catcode`'13 \lccode`~`'\lowercase{\let~\pexa@quoteright}% break ligature ''
+  \catcode`,13 \lccode`~`,\lowercase{\let~\pexa@comma}% break ligature ,,
+  \catcode`<13 \lccode`~`<\lowercase{\let~\pexa@less}% break ligature <<
+  \catcode`>13 \lccode`~`>\lowercase{\let~\pexa@greater}% break ligature >>
+  %
+  \let\pexa@@oldH\H  \let\H\pexa@H%
+  \let\pexa@@olddot\.\let\.\pexa@dot%
+}
+%** Not \pexa@default@verbatimfont. This is used by load options to
+%** examplep.sty
+\def\pexa@@verbatimfont{\verbatim@font}% in latex.ltx
+\def\pexa@setupverb@read{%
+  \catcode`\^13 \lccode`~`^\lowercase{\let~\pexa@dohex}% Dat: allow ^^e1 hex emulation (setting catcode=7 won't do good because of literal `^'s)
+}
+\def\pexa@starthalign{%
+  %\zzzzz\show\pexa@@tolinewidth\showthe\PexaWidth
+  \halign\pexa@@tolinewidth\bgroup
+    \pexa@@vts% run only once
+    \pexa@decr\pexa@@cnta
+    \pexa@decr\pexa@@cntb% must be \global because of \halign, but don't want to clobber \@tempcnt* \global{}ly
+    \span\pexa@@preamble % expand preamble right now: `##\hfil'
+    \cr% Dat: \pexa@@preamblecr isn't called _before_ the 1st line
+}%
+\def\pexa@@starthalign{\pexa@starthalign}%
+\def\pexa@@dohalign{%
+  \pexa@@beforefirstline% called after the \cr of the preamble, should contain \noalign{...}
+  %\relax\pexa@setupverb@read% Dat: already called
+  \relax\input\pexa@@cursourcename\space
+  % ^^^ Dat: \relax instead of \space would begin an extra line and demand
+  %     an extra \cr (at end)
+  \egroup% terminate \halign
+}%
+%** Call this inside \begingroup, from a macro
+%** Caller may set \pexa@@beforehalign,  \tabskip; should pexa@@
+\def\pexa@show@halign{%
+  \pexa@setupverb
+  \pexa@setuptab
+  \pexa@default@verbatimfont
+  \let\par\pexa@@preamblecr \obeylines% must set \par before this; so each ^^M will emit a \cr plus more
+  \def\pexa@@vts{%
+    \pexa@@firstlinebeg
+    %\vrule height\topskip width\z@ %!! try to do without this
+    \global\let\pexa@@vts\relax
+  }%
+  \pexa@@calcwidths
+  \pexa@@beforehalign
+  % Dat: \everypar{...} has no effect here (inside \halign)
+  \pexa@@starthalign
+  \pexa@@dohalign
+}
+\def\pexa@@dopars{% doesn't called by \begin{egysoros}, called by \begin{code}
+  \begingroup% Dat: don't do a \vbox, because it resets \parshape
+  \everypar{%
+    \setbox0\lastbox% remove \indent since \noindent is too late
+    \pexa@@vts\pexa@@everyparr}%
+  %\showthe\linewidth
+  %\showthe\leftskip
+  \hsize\linewidth
+  \advance\hsize\leftskip% !! already done by \pexa@show@pars?? -- maybe fixup after hook?
+  \advance\hsize\rightskip
+  \pexa@setupverb@read
+  \relax\input\pexa@@cursourcename\space
+  \endgroup
+}%
+\def\pexa@show@pars{% modelled after \pexa@ss@left
+  \pexa@setupverb% Dat: we still have normal catcodes for \dospecials before calling this
+  \pexa@setuptab
+  %\showthe\catcode9
+  %\show\pexa@default@verbatimfont
+  \pexa@default@verbatimfont
+  %\show\pexa@@calcwidths
+  \parfillskip\@flushglue
+  \parskip\z@skip
+  %
+  \pexa@@calcwidths% doesn't always change \linewidth; sets \tabskip
+  % Dat: now \tabskip is the left indentation and \linewidth is the desired
+  %      width of text. From that we calculate \leftskip and \hsize.
+  \leftskip\tabskip% as calculated by \pexa@@calcwidths
+  \hsize\linewidth% !! \PexaWidth?, respect \leftskip etc. (\pexa@setup@calcwidths)
+  \advance\hsize\leftskip
+  \advance\hsize\rightskip
+  %\leftskip0pt
+  %foo\par
+  %\show\leftskip \showthe\leftskip
+  %
+  % Dat: don't change and don't use \parindent
+  \def\par{\hskip\z@skip\@@par}% obey empty lines
+  \obeylines
+  \def\pexa@@vts{%
+    \pexa@@firstlinebeg
+    %\vrule height\topskip width\z@% superfluous, ruins \baselineskip
+    \global\let\pexa@@vts\relax
+  }%
+  %\show\leftskip \showthe\leftskip
+  \pexa@@showparshook % \raggedright etc.
+  % Dat: \pexa@@dopars is empty for \begin{egysoros}, not empty for \begin{code}
+  \pexa@@dopars
+}
+
+\def\pexa@@showparshook{}
+% Dat: used by source-par-align=
+% Dat: \centering, \raggedright and \raggedleft clobbers these:
+%      \\, \rightskip, \leftskip, \parindent, \parfillskip, \@rightskip.
+%      We ignore \\, \parindent and \@rightskip, we have to modifye (but not
+%      clobber) \rightskip, \leftskip and \parfillskip only. So we have our
+%      own macros.
+\def\pexa@paralign@center{% similar to \centering
+  \leftskip 1\leftskip  plus 1fil\relax
+  \rightskip1\rightskip plus 1fil\relax
+  \parfillskip\z@skip}
+\def\pexa@paralign@left{% similar to \raggedright
+  % Dat: \leftskip and \rightskip are cumulative
+  \leftskip 1\leftskip\relax
+  \rightskip1\rightskip plus 1fill\relax
+  \parfillskip\z@skip}%
+  %\parfillskip\@flushglue}% Imp: is \@flushglue better here for the line breaking algorithm?
+\def\pexa@paralign@right{% similar to \raggedleft
+  \leftskip 1\leftskip  plus 1fil\relax
+  \rightskip1\rightskip\relax
+  \parfillskip\z@skip}
+\def\pexa@paralign@justify{% last line left aligned, others justified
+  \leftskip 1\leftskip\relax
+  \rightskip1\rightskip\relax
+  \parfillskip\@flushglue}
+\def\pexa@paralign@justjust{% all lines justified => lot of Underfull \hbox{}es
+  \leftskip 1\leftskip\relax
+  \rightskip1\rightskip\relax
+  \parfillskip\z@skip}
+
+%** readded at Thu Dec 21 19:02:12 CET 2006
+%** @param #1 filename
+%** @param #2 options
+\def\PexaInputSource#1#2{%
+  \begingroup
+    \edef\pexa@@cursourcename{#1}%
+    \PexaShowSource{#2}%
+  \endgroup
+}
+
+%** @param #1 options
+%** Dat: not affected by samplewidth=
+\def\PexaShowSource#1{%
+  \clubpenalty\@clubpenalty % allow club lines after \paragraph{x}y\par
+  \begingroup
+  \pexa@doopts{#1}%
+  \edef\reserved@a{\noexpand\PexaShowSourceMany
+    {\pexa@default@srcstyle}% 1
+    {\pexa@default@usewidth}% 2
+    {\pexa@default@xindent}% 3
+    {\pexa@default@yindent}% 4
+  }%
+  \expandafter\endgroup\reserved@a
+}
+%** Show the source of the previous \begin{WSource} / \begin{WBoth},
+%** @param #1 source display style:
+%**   `left': aligned to the left margin
+%**   `center': center aligned (individual lines left aligned)
+%**   `right': right aligned (individual lines left aligned)
+%**   `leftnum': left aligned with left aligned line numbering
+%**   `leftnumcol': right flushed line numbering . left flushed source line
+%**   `leftnumhang': marginpar-hanging line numbering . left flushed source line
+%**   `leftboth': similar to \PexaShowBoth, but uses \PVerb (works only with \PSource)
+%**   `leftleft': two columns, left aligned with a \pexa@@vrule (works only with \PSource)
+%** @param #2 width selector: `0': use full \hsize, `1': use \linewidth only,
+%**   `2': use \linewidth-\leftskip-\rightskip (because of \narrower)
+%** @param #3 xindent: `none' | `deeper' | `narrower' | `deepright'
+%** @param #4 yindent: `none' | `deeper'
+\def\PexaShowSourceMany#1#2#3#4{%
+  \pexa@setup@calcwidths{#2}%
+  \begingroup
+  \pexa@xyindent{#3}{#4}%
+  % Dat: we don't need \pexa@@calcwidths now, it will be called later.
+  %\pexa@@calcwidths % \leftskip, \@totalleftmargin -> \tabskip
+  %\showthe\tabskip
+  \expandafter\ifx\csname pexa@ss@#1\endcsname\relax
+       \csname pexa@sh@#1\endcsname% do the actual \input
+  \else\csname pexa@ss@#1\endcsname\fi
+  \pexa@@undoyindent
+  \pexa@endparenvgroup
+}%
+
+\def\pexa@movedeeper{%
+  \ifnum\@listdepth=\z@ \leftmargin\z@ \rightmargin\z@ \fi% remove garbage
+  \edef\pexa@@restore@xmargins{%
+    \noexpand\leftmargin \the\leftmargin
+    \noexpand\rightmargin\the\rightmargin
+  }%
+  \ifnum \@listdepth >5\relax
+    \@toodeep
+  \else
+    %\showthe\@listdepth
+    \global\advance\@listdepth\@ne
+    \aftergroup\global\aftergroup\advance\aftergroup\@listdepth\aftergroup\m@ne
+  \fi
+  \rightmargin\z@
+  % vvv defined in size*.clo, sets \leftmargin, \rightmargin, \topsep, \parsep
+  %     \itemsep etc.
+  \csname @list\romannumeral\the\@listdepth\endcsname
+  \let\pexa@@oncedeeper\@empty
+}
+
+\let\pexa@@restore@xmargins\@empty
+
+% The \pexa@doxindent@... commands to the following:
+%
+% -- clobber \leftmargin and \rightmargin to an unused value
+% -- set \parshape\z@
+% -- decrease \linewidth by additional left and right margin
+% -- increase \@totalleftmargin by additional right margin
+% -- increase \leftskip  by more additional left margin
+% -- increase \rightskip by more additional right margin
+
+\def\pexa@doxindent@none{%
+  %\advance\@totalleftmargin 5pt
+  \parshape\z@
+}%
+\def\pexa@doxindent@deeper{%
+  \pexa@@oncedeeper
+  %\showthe\linewidth
+  %\showthe\rightmargin
+  %
+  % vvv do proper Overfull \hbox calculations
+  % vvv not done by \pexa@@oncedeeper, for \begin{egysoros} at Wed Jul  7 08:20:23 CEST 2004
+  \advance\linewidth -\rightmargin
+  \advance\linewidth -\leftmargin
+  %
+  \advance\@totalleftmargin \leftmargin % do indentation
+  %\advance\leftskip1em
+  \parshape\z@% \parshape unused, converted to \tabskip
+}
+%** deeppre: move deeper, but keep old \leftmargin and \rightmargin
+\def\pexa@doxindent@deeppre{%
+  \pexa@@oncedeeper
+  %\show\pexa@@restore@xmargins
+  \pexa@@restore@xmargins
+  % vvv Dat: removed for lakkbook at Fri Mar 26 17:24:23 CET 2004:
+  %     \linewidth and \@totalleftmargin has already been modified; and
+  %     \leftmargin and \rightmargin doesn't count
+  % !! make it indent with \begin{PSource} -- or =deeper?
+  \parshape\z@% \parshape unused, converted to \tabskip
+}
+\def\pexa@doxindent@narrower{\narrower}%
+\def\pexa@doxindent@deepright{%
+  \pexa@@oncedeeper
+  \rightmargin\leftmargin
+  \advance\linewidth -\rightmargin
+  \advance\linewidth -\leftmargin
+  \advance\@totalleftmargin \leftmargin
+  \parshape\z@% \parshape unused, converted to \tabskip
+}
+
+\def\pexa@@str@addvspace{\addvspace}
+\def\pexa@undo@nobreak{%
+  \if@nobreak
+    \@nobreakfalse
+    \ifnum\clubpenalty=\@M \clubpenalty\@clubpenalty \fi
+  \fi}
+\def\pexa@doyindent@none{\let\pexa@@undoyindent\@empty
+  \pexa@undo@nobreak
+  \@endpetrue\@doendpe % automatic \noindent for text coming -- if not separated by newline
+}%
+\def\pexa@doyindent@deeper{%
+  \edef\pexa@@restoreleftskip{\leftskip\the\leftskip\space}%
+  \@rightskip\rightskip
+  \pexa@@oncedeeper
+  \@trivlist % calculates \@topsepadd depending on \ifvmode
+  %\show\par
+  \global\@newlistfalse
+  \pexa@undo@nobreak
+  \let\makelabel\@firstofone
+  \let\@itemlabel\@empty
+  \pexa@@restoreleftskip \let\pexa@@restoreleftskip\@undefined
+  \def\pexa@@undoyindent{%
+    % Dat: now \pexa@default@addvspace shouldn't contain \addvspace itself. Brr.
+    %\ifx\pexa@default@addvspace\pexa@@str@addvspace\else
+    %  \let\addvspace\pexa@default@addvspace % used by \@endparenv called from \endtrivlist
+    %\fi
+    %\def\@endparenv{% original in latex.ltx
+    %  \addpenalty\@endparpenalty\addvspace\@topsepadd\@endpetrue}
+    \def\@endparenv{% original latex.ltx
+      \addpenalty\@endparpenalty
+      \pexa@default@addvspace@bottom\@topsepadd
+      \@endpetrue}
+    \global\@newlistfalse
+    \endtrivlist}%
+  %\showthe\@topsepadd
+  %\show\pexa@default@addvspace@top
+  %\pexa@default@addvspace@top\@topsepadd % as calculated by \@trivlist
+  \expandafter\pexa@default@addvspace@top\expandafter{\the\@topsepadd}% !! as calculated by \@trivlist
+}
+
+\def\pexa@sh@left{\pexa@show@halign}
+\def\pexa@ss@left{% \begin{egysoros}
+  \def\pexa@@everyparr{}%
+  \pexa@show@pars
+}
+\def\pexa@sh@center{%
+  \def\pexa@@beforehalign{\advance\tabskip\z@ plus1fill }%
+  \def\pexa@@preamble{####\hfil\tabskip\z@ plus1fill }%
+  \pexa@show@halign
+}
+\def\pexa@sh@right{%
+  \def\pexa@@preamble{####\hfil\tabskip\z@}%
+  \def\pexa@@beforehalign{\tabskip\z@ plus1fill }%
+  \pexa@show@halign
+}
+%** Similar to .dtx line numbering
+\def\pexa@sh@leftnum{%
+  \def\pexa@@preamble{{\pexa@default@linenumberformat}####\hfil\tabskip\z@ plus1fill }%
+  \let\pexa@@cntb\pexa@default@addlinenum
+  \pexa@show@halign
+}
+%
+%** Called from within an alignment (preamble).
+\def\pexa@pre@leftboth@do{%
+  % Dat: \@tempdima has been set by \pexa@@beforehalign to the available
+  %      width for the source
+  % Dat: \hb@xt@ will emit Overfull \hbox correctly
+  \if0\pexa@default@allowshrink\setbox0\hb@xt@\@tempdima\bgroup
+                          \else\setbox0\hbox\bgroup\fi
+    \expandafter\expandafter\expandafter\PVerbOpt
+    \expandafter\expandafter\expandafter,%
+    \expandafter\expandafter\expandafter{%
+    \expandafter\@gobble\reserved@a}%
+    \hfil
+  \egroup
+  \labelsep\FBHLastDepth% Dat: I hope that \labelsep isn't used in \reserved@a
+  \global\FBHLastDepth\dp0
+  \setbox1\hbox{\reserved@a}% just a measurement
+  \ifdim\FBHLastDepth<\dp1 \global\FBHLastDepth\dp1 \fi
+  %
+  % vvv let \vrules meet. Better than \strut
+  \ifdim\baselineskip>\labelsep
+    % Dat: safe to modify \@tempdimb here, because we're inside a group of an alignment
+    \@tempdimb\baselineskip \advance\@tempdimb-\labelsep
+    \vrule\@height\@tempdimb\@width\z@\space
+  \fi
+}
+\def\pexa@pre@leftboth@put{%
+  \advance\@tempdima-\wd0
+  %%\show\pexa@default@allowshrink
+  \if0\pexa@default@allowshrink\box0
+  \else
+    \unhbox0
+    \ifdim\@tempdima>\z@\if2\pexa@default@allowshrink\else
+      \kern\@tempdima
+      \null
+    \fi\fi
+  \fi
+}%
+\def\pexa@pre@leftboth@beforehalign{%
+  %\def~{;;}%\nobreakspace{}}%
+  \let\\\relax% ignore newlines in sample
+  \lineskiplimit\z@ \lineskip\z@% !! more liberal, accept negative
+  \newdimen\FBHLastDepth% for \global
+  \FBHLastDepth\baselineskip
+  %
+  %\show\PexaWidth
+  \@tempdimb\PexaWidth\relax
+  \let\PexaWidth\@tempdimb
+  \@tempdima-\pexa@default@samplewidth\relax% do arithmetic: .5\PexaWidth
+  \advance\@tempdima\PexaWidth
+  \edef\PexaWidth{\the\@tempdimb\space}%
+  %\@tempdima\PexaWidth
+  %\advance\@tempdima-\pexa@default@samplewidth
+  \setbox1\hbox{\pexa@@vrule{}}%
+  \advance\@tempdima-\wd1
+  %\hrule height 1pt width 10pt
+}%
+\def\pexa@sh@leftboth{%
+  \let\pexa@@beforehalign\pexa@pre@leftboth@beforehalign
+  \def\pexa@@eachline##1{##1&&##1}%
+  \def\pexa@@preamble{%
+    \def\reserved@a{####}%
+    %\show\reserved@a%
+    \pexa@pre@leftboth@do
+    \pexa@pre@leftboth@put
+    % ^^^ \@gobble removes \relax inserted by \pexa@plines@start
+    \hfil\tabskip\z@skip&
+    \pexa@@vrule{}####&% Dat: \copy2 wouldn't work by this time
+    {####}\tabskip\z@ plus1fill\hfil}% Dat: \selectlanguage inside #### needs an extra {group}
+  \pexa@plines@notverbatim
+  \pexa@show@halign
+}
+%
+\def\pexa@pre@leftleft@measure{%
+  % Dat: \@tempdima has been set by \pexa@@beforehalign to the available
+  %      width for the source
+  % Dat: \hb@xt@ will emit Overfull \hbox correctly
+  \setbox0\hbox{\reserved@a}% just a measurement
+  \ifdim\FBHLastDepth<\dp0 \global\FBHLastDepth\dp0 \fi
+}%
+\def\pexa@ampersand{&}%
+\def\pexa@sh@leftleft{%
+  \let\pexa@@beforehalign\pexa@pre@leftboth@beforehalign
+  \def\pexa@@preamble{%
+    \relax
+    \ifdim\baselineskip>\FBHLastDepth
+      % Dat: safe to modify \@tempdimb here, because we're inside a group of an alignment
+      \@tempdimb\baselineskip \advance\@tempdimb-\FBHLastDepth
+      \vrule\@height\@tempdimb\@width\z@\space
+    \fi
+    % vvv let \vrules meet. Better than \strut
+    \global\FBHLastDepth\z@
+    \def\reserved@a{####}%
+    \pexa@pre@leftleft@measure \pexa@pre@leftboth@put
+    \hfil\tabskip\z@skip&\pexa@@vrule{}\pexa@ampersand####&%
+    \def\reserved@a{####}%
+    \pexa@pre@leftleft@measure \unhbox0
+    \tabskip\z@ plus1fill\hfil}%
+  \pexa@plines@notverbatim
+  \pexa@show@halign
+}
+%
+\def\pexa@pre@numcol@eachrow{{\pexa@default@linenumberformat}&}%
+\def\pexa@sh@leftnumcol{%
+  \def\pexa@@preamble{\hfil\pexa@pre@numcol@eachrow####&####\hfil\tabskip\z@ plus1fill }%
+  \let\pexa@@cntb\pexa@default@addlinenum
+  \pexa@show@halign
+}
+%
+\def\pexa@sh@leftnumhang{%
+  \def\pexa@@preamble{\hb@xt@\pexa@default@linenumberwidth{\hss\pexa@default@linenumberformat}####\hfil\tabskip\z@ plus1fill }%
+  \let\pexa@@cntb\pexa@default@addlinenum
+  \pexa@show@halign
+}
+\def\pexa@ss@leftnumhang{%
+  \def\pexa@@everyparr{%
+    \pexa@decr\pexa@@cntb
+    \hb@xt@\pexa@default@linenumberwidth{\hss\pexa@default@linenumberformat}%
+  }
+  \let\pexa@@cntb\pexa@default@addlinenum
+  \pexa@show@pars
+}
+
+%** Default.
+%** @param #1 desired height; specified by horizontal neighbours if empty
+\def\pexa@@vrule#1{%
+  %\ifx\hfuzz#1\hfuzz
+  \kern\tabcolsep
+  \kern-.5\tabcolsep
+  \kern-.5\arrayrulewidth
+  \ifx\hfuzz#1\hfuzz
+    \vrule\@width\arrayrulewidth
+  \else
+    \vrule\@width\arrayrulewidth\@height#1\relax
+  \fi
+  \kern-\arrayrulewidth
+  \kern.5\arrayrulewidth
+  \kern.5\tabcolsep
+  %\else
+  %\fi
+}
+
+%** @param #1 to gobble a space token
+\def\pexa@doopt#1,{%
+  \if,\noexpand#1,% ignore multiple commas (#1 is empty)
+    \expandafter\pexa@doopt
+  \else
+    \csname fi\endcsname% don't count as `\fi' when being skipped
+    \pexa@doopt@low#1,=,%
+  \fi
+}
+\iftrue\csname fi\endcsname% \def\pexa@doopt@low contains `\fi'. Make it skippable.
+%** @param #1 is here for gobbling space tokens
+%** @param #4 \fi -- will be ignored
+\def\pexa@doopt@low#1#2=#3,#4\fi{%
+  % Dat: Normal case: #1#2 is key, #3 is value, #4 is `=,'
+  % Dat: MissingArg case: #1#2 is `key,', #3 is empty, #4 is empty
+  % Dat: Terminator case: #1#2 is `\hfuzz,', #3 is empty, #4 is empty
+  % Dat: OnlySpace case: #1 is `,', #2 is empty, #3 is empty, #4 is empty
+  \ifx\relax#4\relax% MissingArg or Terminator
+    \ifx#1\hfuzz% Terminator
+    \else
+      \if,\noexpand#1\else% OnlySpace case
+        \pexa@doopt@missingval#1#2% #2 already contains comma at end
+      \fi
+      \expandafter\expandafter\expandafter\pexa@doopt
+    \fi
+  \else% Normal
+    \expandafter\ifx\csname pexa@opt@@#1#2\endcsname\hfuzz
+      \expandafter\ifx\csname pexa@opt@@#1#2@#3\endcsname\relax
+        \PackageError{examplep}{Invalid arg for option: #1#2 = #3}\@ehc
+      \else
+        \csname pexa@opt@@#1#2@#3\endcsname
+      \fi
+    \else
+      \expandafter\ifx\csname pexa@opt@@#1#2\endcsname\relax
+        \PackageError{examplep}{Unknown option: #1#2 (= #3)}\@ehc
+      \else
+        \csname pexa@opt@@#1#2\endcsname{#3}%
+      \fi
+    \fi
+    \expandafter\pexa@doopt
+  \fi
+}
+\def\pexa@doopt@missingval#1,{%
+  \PackageError{examplep}{Value (=) missing for option: #1}\@ehc
+}
+%** Dat: Spaces and newlines at end of #1 are not ignored, so please prefix
+%**      them with a comma, e.g \pexa@doopts{foo=bar, }
+%** @param #1 comma-separated optoinname=value pairs
+\def\pexa@doopts#1{\pexa@doopt #1,\hfuzz,}%
+\let\PexaDefaults\pexa@doopts
+
+\def\pexa@opt@@samplewidth#1{\def\pexa@default@samplewidth{#1}}%
+\def\pexa@opt@@firstlinenum#1{%
+  \begingroup\@tempcnta\number-#1\relax
+  \advance\@tempcnta\@ne
+  \edef\reserved@a{\def\noexpand\pexa@default@addlinenum{\the\@tempcnta}}%
+  \expandafter\endgroup\reserved@a
+}
+%** A dimension. Depth that yalign=v should neglect at the bottom of the Sample.
+%** Should not be too much (i.e more than the depth of `g'), because a page
+%** break might occur just below the Sample, and too much text would be put
+%** below the bottom margin.
+\def\pexa@opt@@vextrabotdepth#1{\def\pexa@default@vextrabotdepth{#1}}
+\def\pexa@opt@@addlinenum#1{\def\pexa@default@addlinenum{\number-#1}}
+\def\pexa@opt@@linenumbersep#1{\def\pexa@default@linenumbersep{#1}}
+\def\pexa@opt@@linenumberformat#1{\def\pexa@default@linenumberformat{#1}}
+%** lb.sty overrides it: \def\pexa@default@addvspace{\lakkbook@vspace}
+\expandafter\def\csname pexa@opt@@addvspace-top\endcsname#1{\def\pexa@default@addvspace@top{#1}}
+\expandafter\def\csname pexa@opt@@addvspace-bottom\endcsname#1{\def\pexa@default@addvspace@bottom{#1}}
+%** Extra vertical distance for aligning top lines at yalign=v
+\def\pexa@opt@@vextravskip#1{\def\pexa@default@vextravskip{#1}}
+%** Maximum height of ``small'' sample at yalign=v
+\def\pexa@opt@@vsmallht#1{\def\pexa@default@vsmallht{#1}}
+\def\pexa@opt@@linenumberwidth#1{\def\pexa@default@linenumberwidth{#1}}
+\expandafter\def\csname pexa@opt@@pexaminipage-setuphook\endcsname#1{\def\pexa@@minipage@setuphook{#1}}
+\def\pexa@opt@@xalign@l{\def\pexa@default@xalign{l}}%
+\def\pexa@opt@@xalign@r{\def\pexa@default@xalign{r}}%
+\let\pexa@opt@@xalign\hfuzz
+%** These correspond to \pexa@sa@u and \pexa@sa@b
+\def\pexa@opt@@yalign@b{\def\pexa@default@yalign{b}}% align \vtop baselines
+\def\pexa@opt@@yalign@u{\def\pexa@default@yalign{u}}% align upper corners
+\def\pexa@opt@@yalign@v{\def\pexa@default@yalign{v}}% align upper corners, with baseline grid
+\let\pexa@opt@@yalign\hfuzz
+\def\pexa@opt@@xindent@none{\def\pexa@default@xindent{none}}%
+\def\pexa@opt@@xindent@deeper{\def\pexa@default@xindent{deeper}}%
+\def\pexa@opt@@xindent@deeppre{\def\pexa@default@xindent{deeppre}}%
+\def\pexa@opt@@xindent@narrower{\def\pexa@default@xindent{narrower}}%
+\def\pexa@opt@@xindent@deepright{\def\pexa@default@xindent{deepright}}%
+\let\pexa@opt@@xindent\hfuzz
+\def\pexa@opt@@yindent@none{\def\pexa@default@yindent{none}}%
+\def\pexa@opt@@yindent@deeper{\def\pexa@default@yindent{deeper}}%
+\let\pexa@opt@@yindent\hfuzz
+
+\def\pexa@opt@@Q@yes{\pexa@activate@Q}%
+\def\pexa@opt@@Q@unchanged{}%
+\let\pexa@opt@@Q\hfuzz
+\def\pexa@opt@@bsdiv@yes{\pexa@activate@bsdiv}%
+\def\pexa@opt@@bsdiv@unchanged{}%
+\let\pexa@opt@@bsdiv\hfuzz
+\def\pexa@opt@@div@yes{\pexa@activate@div}%
+\def\pexa@opt@@div@unchanged{}%
+\let\pexa@opt@@div\hfuzz
+\def\pexa@opt@@url@yes{\pexa@activate@url}%
+\def\pexa@opt@@url@unchanged{}%
+\let\pexa@opt@@url\hfuzz
+
+\def\pexa@opt@@boxstyle@h{\def\pexa@default@boxstyle{h}}%
+\def\pexa@opt@@boxstyle@v{\def\pexa@default@boxstyle{v}}%
+\def\pexa@opt@@boxstyle@m{\def\pexa@default@boxstyle{m}}%
+\def\pexa@opt@@boxstyle@p{\def\pexa@default@boxstyle{p}}%
+\def\pexa@opt@@boxstyle@V{\pexa@optboxstyle@noboth\def\pexa@default@boxstyle{V}}%
+\def\pexa@opt@@boxstyle@M{\pexa@optboxstyle@noboth\def\pexa@default@boxstyle{M}}%
+\def\pexa@opt@@boxstyle@P{\pexa@optboxstyle@noboth\def\pexa@default@boxstyle{P}}%
+\def\pexa@opt@@boxstyle@G{\pexa@optboxstyle@noboth\def\pexa@default@boxstyle{G}}%
+\let\pexa@opt@@boxstyle\hfuzz
+\let\pexa@optboxstyle@noboth\@empty
+\def\pexa@optboxstyle@inboth{\PackageError{pexample}{Arg unapplicable for boxstyle=}\@ehc}
+%** allowshrink=yesmin works only for \begin{PSource}[srcstyle=leftboth] and
+%**   [srcstyle=leftleft]
+\def\pexa@opt@@allowshrink@force{\def\pexa@default@allowshrink{2}}%
+\def\pexa@opt@@allowshrink@yes{\def\pexa@default@allowshrink{1}}%
+\def\pexa@opt@@allowshrink@no{\def\pexa@default@allowshrink{0}}%
+\let\pexa@opt@@allowshrink\hfuzz
+\def\pexa@opt@@allowbreak@yes{\def\pexa@default@allowbreak{1}}%
+\def\pexa@opt@@allowbreak@no{\def\pexa@default@allowbreak{0}}%
+\let\pexa@opt@@allowbreak\hfuzz
+\def\pexa@opt@@inlineprefix#1{%
+  % Imp: separate our (local) usage of \verbfwr$percent from other applications
+  % Dat: \if instead of \ifx because of \active:
+  \def\verbfwr@percent##1##2\relax{%
+    \ifx##1\relax\def\VerbFwrLines{}\else
+      \if\noexpand##1#1\relax\def\VerbFwrLines{##2}\else\def\VerbFwrLines{##1##2}\fi\fi}%
+}
+\def\pexa@opt@@srcstyle#1{%
+  \expandafter\ifx\csname pexa@sh@#1\endcsname\relax
+    \PackageError{examplep}{Unknown srcstyle: srcstyle = #1}\@ehc
+  \else\edef\pexa@default@srcstyle{#1}\fi%
+}
+%** usewidth=hsize: use full \hsize
+%** usewidth=linewidth: use only \linewidth (\hsize - \@totalleftmargin -
+%**   - total_right_margin)
+%** usewidth=skipwidth: use \linewidth - \leftskip - \rightskip
+\def\pexa@opt@@usewidth@skipwidth{\def\pexa@default@usewidth{2}}%
+\def\pexa@opt@@usewidth@linewidth{\def\pexa@default@usewidth{1}}%
+\def\pexa@opt@@usewidth@hsize    {\def\pexa@default@usewidth{0}}%
+\let\pexa@opt@@usewidth\hfuzz
+\expandafter\def\csname pexa@opt@@pverb-leftbreakmin@0\endcsname   {\def\pexa@default@pverbleftbreakmin{0}}%
+\expandafter\def\csname pexa@opt@@pverb-leftbreakmin@1\endcsname   {\def\pexa@default@pverbleftbreakmin{1}}%
+\expandafter\def\csname pexa@opt@@pverb-leftbreakmin@2\endcsname   {\def\pexa@default@pverbleftbreakmin{2}}% Dat: higher values not implemented
+\expandafter\let\csname pexa@opt@@pverb-leftbreakmin\endcsname\hfuzz
+%\def\pexa@@showparshook{}
+\expandafter\def\csname pexa@opt@@source-par-align@left\endcsname   {\def\pexa@@showparshook{\pexa@paralign@left}}
+\expandafter\def\csname pexa@opt@@source-par-align@right\endcsname  {\def\pexa@@showparshook{\pexa@paralign@right}}
+\expandafter\def\csname pexa@opt@@source-par-align@center\endcsname {\def\pexa@@showparshook{\pexa@paralign@center}}
+\expandafter\def\csname pexa@opt@@source-par-align@justify\endcsname{\def\pexa@@showparshook{\pexa@paralign@justify}}
+\expandafter\def\csname pexa@opt@@source-par-align@justjust\endcsname{\def\pexa@@showparshook{\pexa@paralign@justjust}}
+\expandafter\def\csname pexa@opt@@source-par-align@unchanged\endcsname{\def\pexa@@showparshook{}}
+\expandafter\let\csname pexa@opt@@source-par-align\endcsname\hfuzz
+\expandafter\def\csname pexa@opt@@source-space@invdisc\endcsname    {\def\pexa@default@space{\nobreak\discretionary{\char32}{}{\hbox{\ }}\nobreak\hskip\z@skip}}% breakable with discretionary
+\expandafter\def\csname pexa@opt@@source-space@invbreak\endcsname   {\def\pexa@default@space{\ }}% breakable
+\expandafter\def\csname pexa@opt@@source-space@invfixbreak\endcsname{\def\pexa@default@space{\ {\@tempdima\lastskip\unskip\hskip\@tempdima}}}% breakable
+\expandafter\def\csname pexa@opt@@source-space@invnobreak\endcsname {\def\pexa@default@space{\leavevmode\nobreak\ }}% nonbreakable
+\expandafter\def\csname pexa@opt@@source-space@visnobreak\endcsname {\def\pexa@default@space{\char32 }}% visible in \tt, nonbreakable
+\expandafter\def\csname pexa@opt@@source-space@visbreak\endcsname   {\def\pexa@default@space{\hskip\z@skip\char32 \hskip\z@skip}}% visible in \tt, breakable
+\expandafter\let\csname pexa@opt@@source-space\endcsname\hfuzz
+% vvv Dat: pverb-space=invbreak will break, but not stretch or shrink
+% vvv Dat: they need \pexa@cverb@skipbreak@i
+\expandafter\def\csname pexa@opt@@pverb-space@invbreak\endcsname  {\def\pexa@cverb@@space{\ \pexa@cverb@skipbreak@i}}% breakable
+\expandafter\def\csname pexa@opt@@pverb-space@invdisc\endcsname   {\def\pexa@cverb@@space{\nobreak\discretionary{\char32}{}{\hbox{\ }}\nobreak\hskip\z@skip \pexa@cverb@skipbreak@i}}% breakable with discretionary
+\expandafter\def\csname pexa@opt@@pverb-space@invbreakleft\endcsname{\def\pexa@cverb@@space{\ \nobreak\hskip0pt plus1fil\null\hskip0pt plus-1fil\pexa@cverb@skipbreak@i}}% breakable; SUXX: has infinite stretchability in the middle of a line(??)
+\expandafter\def\csname pexa@opt@@pverb-space@invnobreak\endcsname{\def\pexa@cverb@@space{\leavevmode\nobreak\ \pexa@cverb@skipbreak@i}}% nonbreakable
+\expandafter\def\csname pexa@opt@@pverb-space@visnobreak\endcsname{\def\pexa@cverb@@space{\char32 \pexa@cverb@skipbreak@i}}% visible in \tt, nonbreakable
+\expandafter\def\csname pexa@opt@@pverb-space@visbreak\endcsname  {\def\pexa@cverb@@space{\hskip\z@skip\char32 \hskip\z@skip\pexa@cverb@skipbreak@i}}% visible in \tt, breakable
+%
+\expandafter\let\csname pexa@opt@@pverb-space\endcsname\hfuzz
+\expandafter\def\csname pexa@opt@@pverb-hash@full\endcsname{\def\pexa@default@fullhash{1}}%
+\expandafter\def\csname pexa@opt@@pverb-hash@half\endcsname{\def\pexa@default@fullhash{0}}%
+\expandafter\let\csname pexa@opt@@pverb-hash\endcsname\hfuzz
+\expandafter\def\csname pexa@opt@@pverb-hyphenchar@char'30\endcsname   {\def\pexa@cverb@@hyphenchar{\hyphenchar\font=\string'30 }}% allow auto-hyphenation of words
+\expandafter\def\csname pexa@opt@@pverb-hyphenchar@hyphen\endcsname   {\def\pexa@cverb@@hyphenchar{\hyphenchar\font=\string`-}}% allow auto-hyphenation of words
+\expandafter\def\csname pexa@opt@@pverb-hyphenchar@none\endcsname     {\def\pexa@cverb@@hyphenchar{\hyphenchar\font=-1 }}% disallow auto-hyphenation of words
+\expandafter\def\csname pexa@opt@@pverb-hyphenchar@unchanged\endcsname{\def\pexa@cverb@@hyphenchar{}}% keep default \hyphenchar\font
+\expandafter\let\csname pexa@opt@@pverb-hyphenchar\endcsname\hfuzz
+\expandafter\def\csname pexa@opt@@pverb-verbatimfont@ttfamily\endcsname {\def\pexa@cverb@@verbatimfont{\ttfamily}}%
+\expandafter\def\csname pexa@opt@@pverb-verbatimfont@pexavf\endcsname   {\def\pexa@cverb@@verbatimfont{\pexa@@verbatimfont}}%
+\expandafter\def\csname pexa@opt@@pverb-verbatimfont@latexvf\endcsname  {\def\pexa@cverb@@verbatimfont{\verbatim@font}}%
+\expandafter\def\csname pexa@opt@@pverb-verbatimfont@unchanged\endcsname{\def\pexa@cverb@@verbatimfont{}}%
+\expandafter\let\csname pexa@opt@@pverb-verbatimfont\endcsname\hfuzz
+\expandafter\def\csname pexa@opt@@psource-verbatimfont@ttfamily\endcsname {\def\pexa@default@verbatimfont{\ttfamily}}%
+\expandafter\def\csname pexa@opt@@psource-verbatimfont@pexavf\endcsname   {\def\pexa@default@verbatimfont{\pexa@@verbatimfont}}%
+\expandafter\def\csname pexa@opt@@psource-verbatimfont@latexvf\endcsname  {\def\pexa@default@verbatimfont{\verbatim@font}}%
+\expandafter\def\csname pexa@opt@@psource-verbatimfont@unchanged\endcsname{\def\pexa@default@verbatimfont{}}%
+\expandafter\let\csname pexa@opt@@psource-verbatimfont\endcsname\hfuzz
+\expandafter\def\csname pexa@opt@@pverb-linebreak@char\endcsname{\def\pexa@cverb@@tbreak{\PexaAllowBreak}}%
+\expandafter\def\csname pexa@opt@@pverb-linebreak@yes\endcsname {\def\pexa@cverb@@tbreak{\allowbreak}}% allow silent line break
+\expandafter\def\csname pexa@opt@@pverb-linebreak@no\endcsname  {\def\pexa@cverb@@tbreak{}}% disallow line break
+\expandafter\let\csname pexa@opt@@pverb-linebreak\endcsname\hfuzz
+\expandafter\def\csname pexa@opt@@pverb-linebreakchar\endcsname#1{\def\pexa@cverb@@tbreakchar{#1}}%
+\expandafter\def\csname pexa@opt@@pverb-stretchshrink@unchanged\endcsname{\def\pexa@cverb@@stretchshrink{}}% keep default
+\expandafter\def\csname pexa@opt@@pverb-stretchshrink@yes\endcsname      {\def\pexa@cverb@@stretchshrink{\fontdimen3\font=0.166666666\fontdimen6\font\relax \fontdimen4\font=0.111111111\fontdimen6\font\relax}}% Dat: \fontdimen6 is quad
+\expandafter\def\csname pexa@opt@@pverb-stretchshrink@no\endcsname       {\def\pexa@cverb@@stretchshrink{\fontdimen3\font=\z@ \fontdimen4\font=\z@}}% disallow line break
+\expandafter\let\csname pexa@opt@@pverb-stretchshrink\endcsname\hfuzz
+\expandafter\def\csname pexa@opt@@baseline-grid@yes\endcsname      {\def\pexa@default@baselinegrid{1}}%
+\expandafter\def\csname pexa@opt@@baseline-grid@no\endcsname       {\def\pexa@default@baselinegrid{0}}%
+\expandafter\let\csname pexa@opt@@baseline-grid\endcsname\hfuzz
+\expandafter\def\csname pexa@opt@@mp-equation-reset@yes\endcsname      {\def\pexa@@equation{}}%
+\expandafter\def\csname pexa@opt@@mp-equation-reset@no\endcsname       {\def\pexa@@equation{equation}}%
+\expandafter\let\csname pexa@opt@@mp-equation-reset\endcsname\hfuzz
+% vvv reset auxilary \newcounter{vrcnt} defined by varioref.sty to zero? Recommended: no.
+\expandafter\def\csname pexa@opt@@mp-varioref-reset@yes\endcsname      {\def\pexa@@vrcnt{}}%
+\expandafter\def\csname pexa@opt@@mp-varioref-reset@no\endcsname       {\def\pexa@@vrcnt{vrcnt}}%
+\expandafter\let\csname pexa@opt@@mp-varioref-reset\endcsname\hfuzz
+
+% ---
+
+\def\PexaAllowBreak{%
+  \nobreak\hskip\z@skip
+  %\penalty\hyphenpenalty% Dat: this is completely wrong here, because it
+  % allows a line break at the \penalty. TeX will insert \hyphenpenalty or
+  % \exhyphenpenalty automatically.
+  \discretionary{\hbox{\pexa@cverb@@tbreakchar}}{}{}\nobreak\hskip\z@skip}
+
+%** `\begin{PSource}[srcstyle=leftboth]' is an alternative of
+%** `\begin{WBoth}...\PexaShowBoth'. The former allows page breaks between
+%** lines, but uses the non-\catcode-based \PVerb.
+\def\PexaShowBoth#1{%
+  \clubpenalty\@clubpenalty % allow club lines after \paragraph{x}y\par
+  \begingroup
+  \pexa@doopts{#1}%
+  \expandafter\@temptokena\expandafter{\pexa@default@samplewidth}%
+  \edef\reserved@a{\noexpand\PexaShowBothMany
+    {\the\@temptokena}% 1
+    {\pexa@default@xalign}% 2
+    {\pexa@default@yalign}% 3
+    {\pexa@default@boxstyle}% 4
+    {\pexa@default@allowshrink}% 5
+    {\pexa@default@allowbreak}% 6
+    {\pexa@default@srcstyle}% 7
+    {\pexa@default@usewidth}% 8
+    {{\pexa@default@xindent}{\pexa@default@yindent}}% 9
+  }%
+  %%\show\reserved@a
+  \expandafter\endgroup\reserved@a
+}%
+\def\pexa@xyindent#1#2{%
+  %\expandafter\show\csname pexa@doyindent@#2\endcsname
+  \let\pexa@@oncedeeper\pexa@movedeeper
+  \csname pexa@doyindent@#2\endcsname
+  \vskip\z@skip% do this after doyindent, so \@trivlist\ifvmode might decide about \@partopskip
+  \csname pexa@doxindent@#1\endcsname
+}
+
+%** Shows the Source (to the left) and the Sample (to the right), facing, in
+%** the specified style.
+%** @param #1 dimen: width of Sample (\hsize, paragraph width). Example: .4\hsize or .4\PexaWidth
+%** @param #2 Sample horizontal alignment: `l' is left; `r' is right. `r'
+%**   almost always makes sense only with #4=`h'
+%** @param #3 vertical alignment of Sample and Source: `b': align top
+%**   baselines. `u': align upper bounding box lines
+%** @param #4 boxing style of Sample: `h' is \hbox, `v' is \vbox (or \vtop,
+%**   respectively), `m' is minipage, `p' is PexaMinipage (recommended).
+%**   Capital letters disallowed.
+%** @param #5 `1': allow Sample to shrink if Source is too wide, `0': don't
+%** @param #6 `1': allow page break in Source, `0': don't
+%** @param #7 source display style, see possible values at \PexaShowSource
+%** @param #8 width selector, see docs at \PexaShowSource
+%** @param #9 {{xindent}{yindent}}
+%** Special one-pass case for #5=`1', #6='0' etc.
+\def\PexaShowBothMany#1#2#3#4#5#6#7#8#9{%
+  \begingroup
+  %\hrule%!!
+  \let\pexa@optboxstyle@noboth\pexa@optboxstyle@inboth
+    \csname pexa@opt@@boxstyle@#4\endcsname% verify correct usage
+  \pexa@setupverb@read% interpret ^ for measurements
+  % Dat: not late to test \ifvmode now
+  \pexa@xyindent#9%
+  % ^^^ do this early, so <measuring> will have a chance to measure correct width
+  % Now: We have \leftskip, \rightskip, \linewidth and \@totalleftmargin
+  %      set up. These won't affect the sample, because \pexa@setsample@...
+  %      calls \pexa@hsizesetup, which zero them all out.
+  \pexa@setup@calcwidths{#8}% sets \PexaWidth and possibly clobbers \@tempdimb
+  % Dat: \pexa@setup@calcwidths might have said \let\PexaWidth\@tempdimb,
+  %      which isn't safe, so we want to expand it
+  % Dat: safe to clobber \@tempdima and \@tempdimb, we're in \begingroup
+  \@tempdimb\PexaWidth\relax
+  \let\PexaWidth\@tempdimb
+  \@tempdima#1\relax% do arithmetic: .5\PexaWidth
+  \edef\PexaWidth{\the\@tempdimb\space}%
+  \expandafter\pexa@showbothmany@low\expandafter{\the\@tempdima}{#2}{#3}{#4}{#5}{#6}{#7}%
+}
+\def\pexa@showbothmany@low#1#2#3#4#5#6#7{%
+  % Dat: #1 might be .5\PexaWidth
+  \if#50% Don't allow the sample to shrink. Its width will be exactly #1.
+    \@tempdima#1\relax
+  \else% <measuring>
+    % #5 allows the Sample to shrink. Now we call \pexa@sh@#7 just to measure
+    % the width of the Source. From that we will be able to deduce the width of
+    % the Sample.
+    \@tempdima\PexaWidth
+    %\showthe\tabskip
+    % vvv This is the first time we call \pexa@default@verbatimfont
+    \setbox0\vtop{\leftskip\z@skip \@totalleftmargin\z@ \let\pexa@@tolinewidth\@empty \csname pexa@sh@#7\endcsname}%
+    %%\vbox{\hrule\copy0\hrule}%
+    \advance\@tempdima-\wd0 \setbox0\box\voidb@x
+    \setbox1\hbox{\pexa@@vrule{}}\advance\@tempdima-\wd1
+    \ifdim#1<\@tempdima \@tempdima#1\relax\fi
+    %%\@tempdima=200pt
+  \fi% </measuring>
+  % \advance\@tempdima\@totalleftmargin\advance\@tempdima\leftskip% !! Dat: a failed attempt to put the \vrule to the middle
+  %\edef\pexa@@samplewidth{\the\@tempdima}% superfluous
+  % Dat: now \@tempdima is actual Sample width
+  \if#60\def\pexa@@preamblecr{\cr\noalign{\nobreak}}% disallow page break in Source
+  \else\let\pexa@@preamblecr\pexa@preamblecr@keep\fi
+  \edef\reserved@a{\catcode`^7\relax% change \catcode back to superscript (undo \pexa@setupverb@read)
+    \setbox1\expandafter\noexpand\csname pexa@setsample@#4\endcsname{\the\@tempdima}}%
+  \edef\reserved@b{%
+    %\noexpand\pexa@xyindent#9%
+    % Dat: too late to \noexpand\verbfwr@default@acts
+    \noexpand\pexa@setupverb@read% do correct display
+    \noexpand\pexa@setup@savetabskip
+    %\def\no\pexa@default@verbatimfont{\bbbbb}%
+    \expandafter\noexpand\csname pexa@sa@#3\endcsname
+      {\if#2r\wd1\else\the\@tempdima\fi}% will expand \@tempdima early
+      \expandafter\noexpand\csname pexa@sh@#7\endcsname
+  }%
+  %\show\reserved@a% \catcode `^7\relax \setbox 1\pexa@setsample@p {184.9429pt}.
+  %\show\reserved@b% \pexa@setupverb@read \pexa@setup@savetabskip \pexa@sa@u {184.9429pt}\pexa@sh@leftnumhang
+  \expandafter\reserved@a\reserved@b
+  % ^^^ This \expandafter trick expands \@tempdima early
+  \pexa@@undoyindent
+  \pexa@endparenvgroup
+}
+%** \pexa@@undoyindent calls \endtrivlist, which sets \@endpetrue, and if we
+%** are in an environment (such as \begin{PWSource}), \end calls \@doendpe,
+%** which which sets up \par and \everypar, so an automatic \noindent can be
+%** forced.
+\def\pexa@endparenvgroup{%
+  \if@endpe\endgroup\@endpetrue\else\endgroup\@endpefalse\fi% see also \PexaShow
+}
+\def\pexa@setup@savetabskip{%
+  \begingroup
+    \pexa@@calcwidths
+    \edef\reserved@a{\def\noexpand\pexa@@savetabskip{\the\tabskip}}%
+  \expandafter\endgroup\reserved@a
+}
+\def\pexa@hsizesetup{%
+  % Imp: possibly zero out \@listdepth etc., but don't forget to set it back.
+  \leftskip\z@skip
+  \rightskip\z@skip
+  \textwidth\hsize
+  \linewidth\hsize
+  \columnwidth\hsize
+  \parshape\z@
+  \@totalleftmargin\z@
+  \@twocolumnfalse
+}
+\def\pexa@setsample@h#1{%
+  % Dat: _not_ \hbox to#1. But why??
+  \hbox{\hsize#1\relax\pexa@hsizesetup\input\pexa@@samplename\space\par}%
+}
+\def\pexa@setsample@v#1{%
+  \vtop{\hsize#1\relax\pexa@hsizesetup\input\pexa@@samplename\space\par}%
+}
+\def\pexa@setsample@V#1{%
+  \vbox{\hsize#1\relax\pexa@hsizesetup\input\pexa@@samplename\space\par}%
+}
+\def\pexa@setsample@m#1{%
+  \hbox{%
+    \noindent\begin{minipage}[t]{#1}%
+    \input\pexa@@samplename\space\par
+    \end{minipage}%
+  }%
+}
+\def\pexa@setsample@p#1{%
+  \hbox{%
+    \noindent\begin{PexaMinipage}[t]{#1}%
+    \pexa@hsizesetup
+    \input\pexa@@samplename\space\par
+    \end{PexaMinipage}%
+  }%
+}
+\def\pexa@setsample@M#1{%
+  \hbox{%
+    \noindent\begin{minipage}[b]{#1}%
+    \pexa@hsizesetup
+    \input\pexa@@samplename\space\par
+    \end{minipage}%
+  }%
+}
+\def\pexa@setsample@P#1{%
+  % \def\pexa@@bpmp{\begin{PexaMinipage}}
+  % \expandafter\pexa@@bpmp\input\pexa@@samplename\space % doesn't work :-(
+  \hbox{%
+    \noindent\begin{PexaMinipage}[b]{#1}%
+    \pexa@hsizesetup
+    \input\pexa@@samplename\space\par
+    \end{PexaMinipage}%
+  }%
+}
+\def\pexa@setsample@G#1{\begingroup\hsize#1\relax\pexa@hsizesetup\input\pexa@@samplename\space\endgroup}
+
+%** Dat: height of \pexa@@vrule only depends on the height of the sample
+%** @param #1 desired Sample width
+%** @param #2 one of \pexa@sh@...
+\def\pexa@sa@b#1#2{
+  %\leftskip\z@ \rightskip\z@ \parshape\z@% Wrong. Too Early.
+  \vskip\z@skip
+  \def\pexa@@cnta{0}%
+  \@tempdima\dp1 % not modified by \pexa@show@halign
+  \advance\@tempdima\baselineskip
+  \setbox0\hbox{\pexa@@vrule{}}%
+  \@tempdimc\PexaWidth \advance\@tempdimc-\wd0 \advance\@tempdimc-#1\relax %\advance\linewidth\tabskip
+  \edef\pexa@@savetabskip{\the\@tempdimc\space}%
+  \def\pexa@@firstlinebeg{%
+    \vadjust{\kern\dp1 \hrule\@height\z@\vskip-\dp1 }% ensure that figure fits
+    \vtop to\z@{\hb@xt@\z@{\kern\pexa@@savetabskip
+      \@tempdima\dp1 \advance\@tempdima\ht1
+      \lower\dp1\hbox{\expandafter\pexa@@vrule\expandafter{\the\@tempdima}}%
+      \box1 \hss}\vss}% Dat: \hb@xt@\z@ is needed
+    % ^^^ Dat: \@totalleftmargin and \leftskip takes place here (as part of initial \tabskip)
+  }%
+  #2% \pexa@show@halign etc.
+  \advance\@tempdima\pexa@@cnta\baselineskip
+  % vvv Dat: a little less than \baselineskip, because \vtop has less??
+  \advance\@tempdima-\baselineskip \advance\@tempdima\topskip
+  % vvv Dat: use \kern, not \vskip, so \unskip won't undo it
+  \ifdim\@tempdima>\z@ \kern\@tempdima\fi% display is longer than source
+  %%\message{Left=\pexa@@cnta}
+}
+%** \box1 already contains the Sample
+%** @param #1 desired Sample width
+%** @param #2 one of \pexa@sh@...
+\def\pexa@sa@u#1#2{%
+  %%\show\pexa@@tolinewidth \showthe\PexaWidth
+  %%\tracingcommands1 \tracingmacros1
+  \vskip\z@skip% go to vertical mode
+  \edef\pexa@@restore@prevdepth{\prevdepth\the\prevdepth}%
+  \def\pexa@@cnta{0}%
+  %\@tempdima\dp1 \advance\@tempdima10.54352pt \dp1\@tempdima
+  \@tempdima\dp1 \advance\@tempdima\ht1
+  \if1\pexa@default@baselinegrid
+    \ifdim\@tempdima<256\baselineskip\else \advance\@tempdima-256\baselineskip\fi
+    \ifdim\@tempdima<128\baselineskip\else \advance\@tempdima-128\baselineskip\fi
+    \ifdim\@tempdima <64\baselineskip\else \advance\@tempdima -64\baselineskip\fi
+    \loop\ifdim\@tempdima>\z@ \advance\@tempdima-\baselineskip\repeat
+    \@tempdima-\@tempdima
+    \advance\@tempdima\dp1 \dp1\@tempdima
+  \fi
+  \@tempdima\dp1 \advance\@tempdima\ht1
+  % !! sample might be too tall, try single-line samples: (??)
+  %    \begin{WBoth}Foo\end{WBoth}\PexaShowBoth{}\PexaShowBoth
+  \nointerlineskip\vbox to\z@{% This \vbox screws up \vskip{}s at page break
+    \setbox0\hbox{\pexa@@vrule{}}%
+    % Dat: now we \advance\PexaWidth, but this won't affect #2, because
+    %      advancement is inside a group
+    %\advance\PexaWidth-\wd0 \advance\PexaWidth-#1\relax
+    %\showthe\PexaWidth
+    \kern\baselineskip \kern-\topskip
+    \hbox{% implies \noindent
+      \kern\pexa@@savetabskip
+      \kern\PexaWidth \kern-\wd0 \kern-#1\relax
+      \@tempdima\dp1 \advance\@tempdima\ht1
+      \lower\dp1\hbox{\expandafter\pexa@@vrule\expandafter{\the\@tempdima}}%
+      %\pexa@@vrule
+      \box1% Dat: \box0 would emit a rule not tall enough
+    }%
+    \vss
+  }%
+  \pexa@@restore@prevdepth% let baselines align smoothly
+  \nobreak % disallow page break between Sample and Source
+  #2% \pexa@sh@..., which calls \pexa@show@halign etc.
+  % Dat: now \pexa@@cnta is -1 times nr of source lines printed
+  % vvv Dat: a little less than \baselineskip, because \vtop has less??
+  %     Imp: even less
+  \advance\@tempdima\pexa@@cnta\baselineskip
+  % vvv Dat: use \kern, not \vskip, so \unskip won't undo it
+  \ifdim\@tempdima>\z@ \kern\@tempdima\fi% Sample is longer than Source
+  %%\message{Left=\pexa@@cnta}
+}
+
+%** Similar to \vskip#1\relax, but adds #1 to \lastskip
+\def\PexaAddlastskip#1{%
+  \begingroup
+    % Imp: try \unpenalty somehow so \lastskip won't be 0pt after \vskip10pt\nobreak
+    \@tempskipa=#1\relax
+    \advance\@tempskipa\lastskip
+    \vskip-\lastskip
+    \vskip\@tempskipa
+  \endgroup% Dat: \lastskip survives
+}
+
+\def\pexa@default@vextravskip{\z@}
+\def\pexa@default@vsmallht{1pt}
+%** Like \pexa@sa@u, but works at a page break with baseline grid
+%** \box1 already contains the Sample.
+%** @param #1 desired Sample width
+%** @param #2 one of \pexa@sh@...
+\def\pexa@sa@v#1#2{%
+  %%\setbox1\hbox{\vrule\box1}%
+  %%\show\pexa@@tolinewidth \showthe\PexaWidth
+  %%\tracingcommands1 \tracingmacros1
+  \ifhmode\unskip\par\fi% go to vertical mode, keep \lastskip
+  %\show\pexa@default@vextravskip
+  \ifdim\prevdepth>-\@m\p@
+    \@tempdima\prevdepth \advance\@tempdima-\pexa@default@vextravskip\relax
+    \prevdepth\@tempdima
+    \vskip-\pexa@default@vextravskip\relax% !! \vspace etc.
+  \fi
+  \def\pexa@@cnta{0}%
+  %\@tempdima\dp1 \advance\@tempdima10.54352pt \dp1\@tempdima
+  \def\pexa@@thefirstline{}%
+  \setbox0\hbox{\pexa@@vrule{}}%
+  \@tempdimc\PexaWidth \advance\@tempdimc-\wd0 \advance\@tempdimc-#1\relax %\advance\linewidth\tabskip
+  \edef\pexa@@savetabskip{\the\@tempdimc\space}%
+  \def\pexa@@dohalign{%
+    \noalign\bgroup
+    %\pexa@@beforefirstline% called after the \cr of the preamble, should contain \noalign{...}
+    %\relax\pexa@setupverb@read% Dat: already called
+    % vvv Dat: \@@input is the original \input primitive, which we definitely
+    %     need here (and not a macro)
+    \expandafter\pexa@inputfirstline\@@input\pexa@@cursourcename\space
+    % ^^^ Dat: \relax instead of \space would begin an extra line and demand
+    %     an extra \cr (at end)
+    \egroup% terminate \halign
+  }%
+  \global\def\pexa@@vdepth{\z@}%
+  \global\let\pexa@@thefirstline\@empty
+  \def\pexa@@firstlinebeg{%
+    \setbox0=\hbox{\pexa@@thefirstline}% Source
+    \@tempdima\ht0
+    \advance\@tempdima\pexa@default@vextravskip\relax
+    \ifnum1<1%
+      \ifdim\ht1<\pexa@default@vsmallht\relax1% typical: \ht1 (Sample) is 0pt or 0.4pt
+      \else\ifdim\@tempdima<\ht1 1\fi\fi% Sample (\box1,\vtop) is a lot higher than Source.
+     \space
+      % Dat: now we raise Sample to the height of Source (should this be \strut??)
+      % Dat: in lb.sty: \ht0=7.14pt and \ht0=9.10pt
+      \advance\@tempdima-\ht1
+      % Dat: this example shows that \raise correctly shifts \ht and \dp
+      %  \setbox0=\hbox{\vrule height 30pt depth50pt}
+      %  \setbox0=\hbox{\raise6pt\box0}
+      %  \showthe\ht0 \showthe\dp0
+      \setbox1\hbox{\raise\@tempdima\box1}%\raise10pt\box1}%
+    \fi
+    % vvv Dat: save new \dp1, as \raise{}d above
+    % vvv Dat: we need \global because we are in a \halign
+    \global\edef\pexa@@vdepth{\the\dp1}%
+    % Dat: ne don't need \@tempdima anymore
+    %%\vrule height\ht0 depth\dp0 width1pt
+    \vadjust{\kern\dp1 \hrule\@height\z@\vskip-\dp1 }% ensure that Sample fits page
+    \vtop to\z@{\hb@xt@\z@{\kern\pexa@@savetabskip
+      \@tempdima\dp1 \advance\@tempdima\ht1
+      \lower\dp1\hbox{\expandafter\pexa@@vrule\expandafter{\the\@tempdima}}%
+      \box1 \hss}\vss}% Dat: \hb@xt@\z@ is needed
+    % ^^^ Dat: \@totalleftmargin and \leftskip takes place here (as part of initial \tabskip)
+    \global\let\pexa@@thefirstline\@empty
+  }
+  %%\hrule
+  #2% \pexa@sh@..., which calls \pexa@show@halign etc.
+  \ifx\pexa@@undoyindent\@empty
+    \@tempdimc\z@
+  \else
+    \@tempdimc\@topsepadd
+  \fi
+  \ifdim\@tempdimc>\pexa@default@vextrabotdepth\relax
+    \@tempdimc\pexa@default@vextrabotdepth\relax
+  \fi
+  % Dat: now \@tempdimc is the extra Sample depth that can be tolerated.
+  % This can be quite much (>50pt etc.)
+  \@tempdima\pexa@@vdepth\relax% depth of the Sample
+  % Dat: now \pexa@@cnta is -1 times nr of source lines printed
+  \if1\pexa@default@baselinegrid
+    \advance\@tempdima\pexa@@cnta\baselineskip
+    \advance\@tempdima\baselineskip% don't count the first line
+    \ifdim\@tempdima<\@tempdimc % Source is tall enough, no \vskip needed
+      \@tempdima\z@
+    \else
+      \ifdim\@tempdima<256\baselineskip\else \advance\@tempdima-256\baselineskip\fi
+      \ifdim\@tempdima<128\baselineskip\else \advance\@tempdima-128\baselineskip\fi
+      \ifdim\@tempdima <64\baselineskip\else \advance\@tempdima -64\baselineskip\fi
+      \loop\ifdim\@tempdima>\@tempdimc \advance\@tempdima-\baselineskip\repeat
+      \@tempdima-\@tempdima
+      \advance\@tempdima\pexa@@vdepth\relax
+      \advance\@tempdima\pexa@@cnta\baselineskip% BUGFIX at Fri Apr 16 00:56:52 CEST 2004
+      \advance\@tempdima\baselineskip
+    \fi
+    % vvv Dat: this would force a better page break, but might be dangerous
+    %\ifx\pexa@@undoyindent\@empty\else
+    %  \advance\@tempdima\@tempdimc
+    %  \advance\@topsepadd-\@tempdimc
+    %\fi
+  \else
+    % This usually has no effect, except only with a single-line \vtop Sample
+    \advance\@tempdima\pexa@@cnta\baselineskip% negative
+    \advance\@tempdima\baselineskip% don't count the first line
+    \advance\@tempdima-\@tempdimc
+    \ifdim\@tempdima<\z@ \@tempdima\z@\fi
+  \fi
+  % vvv Dat: this \vskip will be extended by \addvspace
+  % vvv Dat: reset \lastskip to zero if \@tempdima=0pt
+  \ifdim\@tempdima<\z@\else \nobreak\vskip\@tempdima\fi% Sample is longer than Source
+  \global\let\pexa@@thefirstline\@empty
+  \global\let\pexa@@vdepth\@empty
+  %%\message{Left=\pexa@@cnta}
+}
+\begingroup\lccode`~=`\^^M\lowercase{\endgroup\def\pexa@inputfirstline#1~}{%
+  \global\def\pexa@@thefirstline{#1}%
+  % ^^^ Dat: \global is needed, because we're in \halign
+  \egroup% \noalign
+  #1\par% Put it back so it will be typeset
+}
+
+% ---
+
+% Dat: superfluous macros
+%\def\PexaShowSourceLeft   {\PexaShowSource{left}}%
+%\def\PexaShowSourceCenter {\PexaShowSource{center}}%
+%\def\PexaShowSourceNumLeft{\PexaShowSource{leftnum}}%
+%\def\PexaShowSourceNumCol {\PexaShowSource{leftnumcol}}%
+%\def\PexaShowSourceNumHang{\PexaShowSource{leftnumhang}}%
+%\def\PexaShowPexaMinipage {\PexaShowSample{\hsize}{P}}%
+%\def\PexaShowSourceSampleLeft{\PexaShowBoth{#1}{l}{b}{v}{0}{1}{left}{2}}
+%\def\PexaShowSourceSampleRight{\PexaShowBoth{#1}{r}{b}{v}{0}{1}{left}{2}}
+%\def\PexaShowSourceSampleLeftPexaMinipage{\PexaShowBoth{#1}{l}{b}{p}{0}{1}{left}{2}}
+
+%** Shows the source and the sample, facing, both left flushed, top baselines
+%** aligned, disallowing page break, width of sample maximized so both source
+%** and sample fit.
+%**   Deprecated. Use \PexaShowBoth with #1 \hsize-..., #6=0
+%** @param #1 dimen: minimum width for the source (hint: specify 0pt)
+%** Uses \pexa@@vrule
+%** Imp: pre-calculate width of \pexa@@vrule
+%** Imp: typeset the source once
+%\def\PexaShowSourceSampleFit#1{%
+%  \vskip\z@skip
+%  \setbox0\vtop{\pexa@show@halign}%
+%  \ifdim\wd0<#1 \wd0=#1\fi
+%  \setbox1\vtop{%
+%    \advance\hsize-\wd0
+%    \setbox0\hbox{\pexa@@vrule{}}\advance\hsize-\wd0
+%    \input\pexa@@cursourcename\space
+%  }%
+%  \noindent\box0 \pexa@@vrule{}\relax\box1\par
+%}
+
+% --- \begin{PexaMinipage}
+
+\let\pexa@@restore\empty
+%** @param #1 something whose 1st token will be expanded once
+\def\pexa@restore@appendex#1{%
+  \expandafter\expandafter\expandafter\def
+  \expandafter\expandafter\expandafter\pexa@@restore
+  \expandafter\expandafter\expandafter{%
+  \expandafter\pexa@@restore#1}%
+}
+
+\def\pexa@@equation{equation}
+\def\pexa@@vrcnt{vrcnt}
+
+%** @param #1 counter name; e.g `section' means \c@section
+%** @param #2 true code
+%** @param #2 false code
+\def\pexa@ifignore#1#2#3{%
+  % Imp: multiple ignorable counters
+  \def\reserved@b{#1}%
+  \ifx\reserved@b\pexa@@equation#2%
+  \else\ifx\reserved@b\pexa@@vrcnt#2%
+  \else#3\fi\fi
+}
+
+%** Appends a counter restoration command to \reserved@a
+%** @param #1 counter name; e.g `section' means \c@section
+\def\pexa@elt#1{%
+  \pexa@ifignore{#1}{}{%
+    \edef\reserved@a{\noexpand\setcounter{#1}{\the\csname c@#1\endcsname}}%
+    \pexa@restore@appendex\reserved@a
+  }%
+}
+%** @param #1 counter name; e.g `section' means \c@section
+\def\pexa@resetcounter#1{%
+  \pexa@ifignore{#1}{}{%
+    \expandafter\global\csname c@#1\endcsname\z@
+  }%
+  %\begingroup% superfluous
+  %  \let\@elt\@stpelt
+  %  \csname cl@#1\endcsname
+  %\endgroup 
+}
+%\def\pexa@minipage@setcounter{% overrides latex.ltx
+%  \@ifundefined{c@#1}%
+%    {\@nocounterr{#1}}%
+%    {\pexa@elt{#1}\global\csname c@#1\endcsname#2\relax}}
+
+\long\def\pexa@kill@minipagefalse#1\@minipagefalse#2\hfuzz${#1}
+%** A dumb emulation of article.cls: displays the page footer.
+\def\pexa@finishpage{%
+  \begingroup
+    \expandafter\pexa@kill@minipagefalse\endminipage\hfuzz$%
+    % ^^^ stop after footnotes at \@minipagefalse
+    \let\relax\relax% elminate possible \global before \@minipagefalse
+  \endgroup
+  \ifhmode\unskip\par\fi %\vskip\z@skip
+  \pexa@@saved@newpage
+  \ifhmode\unskip\par\fi %\vskip\z@skip
+  \unpenalty\unskip
+  \stepcounter{page}% 0 -> 1
+  \ifx\@oddfoot\@empty\else% \pagestyle{empty} -> \let\oddfoot\@empty
+    \bigskip
+    \begingroup
+    \if@specialpage
+      \global\@specialpagefalse\@nameuse{ps@\@specialstyle}% define \@evenfoot
+    \fi
+    \hbox to\hsize{\if@twoside\ifodd \@oddfoot\else \@evenfoot\fi\else\@evenfoot\fi}%
+    \endgroup
+  \fi
+}
+\def\pexa@newpage{%
+  \pexa@finishpage
+  \global\let\pexa@@finishlastpage\pexa@finishpage
+  \smallskip\hrule\smallskip
+}
+
+\def\pexa@everydisplayfirst#1{%
+  \everydisplay{#1}%
+  \abovedisplayshortskip\z@skip \abovedisplayskip\z@skip
+  #1%
+}
+
+%** \begin{PexaMinipage} is similar to \begin{minipage} (and accepts the same
+%** args), but section etc.
+%** counters (including \thepage) will restart, and their previous values are
+%** restored at \end{PexaMinipage}. Also \mark and \@themark are restored.
+%** Footnotes are numbered normally. The first paragraph is set with \noindent,
+%** but subsequent ones are indented. Skips (including \belowdisplayskip) are
+%** canceled at the bottom of the page. \abovedisplayskip above the very first
+%** displayed formula is canceled; you can avoid this by saying \everydisplay{}
+%** before the formula.
+%**   A space after \end{PexaMinipage} (as with minipage) is significant.
+%**
+%** Usage: \begin{PexaMinipage}[vert-alignment]{width}, just like the minipage
+%** environment.
+%**
+%** Example:
+%** \begin{PexaMinipage}{99pt}
+%** \hrule\relax
+%** \selectlanguage{english}
+%** \section{mp-foo}
+%** Aword\footnote{a hello, world}
+%** Bword\footnote{b hello, world}
+%** \end{PexaMinipage}
+%** \hrule
+\def\PexaMinipage{%
+  \begingroup
+    \let\pexa@@restore\@empty
+    \let\@elt\pexa@elt \cl@@ckpt % append `\setcounter{equation}{42}' to \pexa@@restore
+    \let\c@footnote\c@mpfootnote% don't reset original \c@footnote; BUGFIX at Tue Dec 23 18:46:30 CET 2003
+    \let\c@footnote@ch\c@mpfootnote% don't reset footnote generation counter -- for magyar.ldf
+    \let\@elt\pexa@resetcounter \cl@@ckpt
+    \pexa@restore@appendex{\expandafter\gdef\expandafter\@themark\expandafter{\@themark}}%
+    \edef\reserved@a{\noexpand\global\if@specialpage\noexpand\@specialpagetrue\else\noexpand\@specialpagefalse\fi}\pexa@restore@appendex\reserved@a
+    \if@specialpage\edef\reserved@a{\gdef\noexpand\@specialstyle{\@specialstyle}}\pexa@restore@appendex\reserved@a\fi
+  \expandafter\endgroup\expandafter\def\expandafter\pexa@@restore\expandafter{\pexa@@restore}%
+  %\show\pexa@@restore
+  % Dat: \selectlanguage is restored automatically
+  % Dat: \c@mpfootnote is reset to zero each time
+  %\let\c@footnote\c@mpfootnote
+  \def\thempfootnote{\thefootnote}% show normal footnotes (`1') instead of `a'
+  \let\c@mpfootnote\c@footnote
+  \let\cl@mpfootnote\cl@footnote% magyar.ldf footnote renumbering compatibility
+  \pexa@elt{secnumdepth}%
+  \let\pexa@@saved@newpage\newpage
+  \let\newpage\pexa@newpage% override
+  \let\finishpage\pexa@finishpage% new command
+  \let\pexa@@finishlastpage\@empty
+  \let\addtocontents\@gobbletwo
+  % ^^^ Don't modifty the TOC etc. of the host document. \addcontentsline isn't
+  %     redefinied, because hyperref.pdf overrides the number of args
+  \expandafter\ifx\csname chapter\endcsname\relax
+    % Doesn't modify section numbering etc.
+    \let\chaptermark\@gobble
+    \let\p@chapter\@empty
+    \newcount\c@chapter%\newcounter{chapter}% \newcounter wouldn't allow redef
+    \def\chapter{\@startsection{chapter}{0}{\z@ }{-3.5ex \@plus -1ex \@minus -.2ex}{2.3ex \@plus .2ex}{\normalfont \Large \bfseries}}%
+    % ^^^ copied article.cls definition for section
+    \def\thechapter{\@Roman\c@chapter}%
+  \fi
+  %\aftergroup\pexa@@restore% no effect, because \pexa@@restore will have been changed back by \endgroup
+  % vvv Modify latex.ltx to avoid \parindent\z@
+  \def\@parboxrestore{%
+    \edef\reserved@a{\noexpand\@arrayparboxrestore\parindent\the\parindent\relax}%
+    \reserved@a \let\\\@normalcr}%
+  \def\@setminipage{%
+    \@minipagetrue
+    \everypar{%
+      {\setbox\z@\lastbox}% cancel \indent
+      \@minipagefalse\everypar{}%
+    }}%
+  \expandafter\everydisplay\expandafter{%
+    \expandafter\abovedisplayskip\expandafter\z@skip% for gridmath.sty
+    \expandafter\pexa@everydisplayfirst\expandafter{\the\everydisplay}}%
+  \@listdepth\z@ % Imp: put this into \PexaShowBoth etc.
+  \def\makelabel##1{%
+    \@latex@error{Lonely \string\item--perhaps a missing
+      list environment}\@ehc}%
+  % vvv with `Figure 1' (article)-style figure numbering
+  \def\figure{\pexa@mp@fakefloat{figure}}%
+  \let\endfigure\pexa@mp@endfloat
+  \def\table{\pexa@mp@fakefloat{table}}%
+  \@namedef{table*}{\table}\@namedef{endtable*}{\endtable}%
+  \@namedef{figure*}{\figure}\@namedef{endfigure*}{\endfigure}%
+  % ^^^ BUGFIX at Mon Apr 19 17:08:49 CEST 2004:
+  %     need to redefine \endtable*, too; problem caused by \marginpar in a
+  %     very different part of the document.
+  \let\endtable\pexa@mp@endfloat
+  \pexa@@minipage@setuphook
+  \minipage% accept args etc.
+}
+\def\endPexaMinipage{%
+  \pexa@@finishlastpage
+  \par\unskip% cancels \belowdisplay(short)skip and others
+  \unpenalty\unskip\unpenalty\unskip\unpenalty\unskip\unpenalty
+  % ^^^ Dat: `\unskip\unpenalty\unskip' cancels \bigskip
+  %
+  \let\c@mpfootnote\@tempcnta
+  \let\cl@footnote\@empty
+  \let\cl@mpfootnote\@empty
+  %\show\pexa@@restore
+  %\let\c@mpfootnote\c@secnumdepth% restoring of \cl@@ckpt will be overridden later
+  %\let\c@footnote\c@secnumdepth
+  %\showthe\count63
+  \pexa@@restore% will not reset original \c@footnote
+  %\global\c@footnote=77
+  %\setcounter{footnote}{77}
+  \expandafter\@temptokena\expandafter{\@themark}%
+  \mark{\the\@temptokena}% prevent double expansion of \@themark
+  \endminipage
+}
+
+\def\pexa@mp@fakefloat#1{\@ifnextchar[{\pexa@mp@begfloat{#1}}{\pexa@mp@begfloat{#1}[]}}
+\def\pexa@mp@begfloat#1[#2]{%
+  \def\@captype{#1}% figure or table
+  % vvv ripped from \@xfloat in latex.ltx
+  %\global \setbox\@currbox
+  \vskip\intextsep
+  \color@vbox
+    \normalcolor
+    \vbox \bgroup
+      \hsize\columnwidth
+      \@parboxrestore
+      \@floatboxreset
+}
+\def\pexa@mp@endfloat{\@endfloatbox\vskip\intextsep}%
+
+\let\pexa@@minipage@setuphook\@empty
+\def\pexa@mp@article{%
+  \@twosidefalse
+  \pagestyle{plain}%
+  \renewcommand\thepart         {\@Roman\c@part}%
+  \renewcommand\thesection      {\@arabic\c@section}%
+  \renewcommand\thesubsection   {\thesection.\@arabic\c@subsection}%
+  \renewcommand\thesubsubsection{\thesubsection .\@arabic\c@subsubsection}%
+  \renewcommand\theparagraph    {\thesubsubsection.\@arabic\c@paragraph}%
+  \renewcommand\thesubparagraph {\theparagraph.\@arabic\c@subparagraph}%
+}
+
+% --- \PVerb et al.
+
+%** \PVerb is a command that typesets its argument verbatim, in a typewriter
+%** font. It similar to the LaTeX \verb command, but has additional features:
+%** -- \PVerb{NESTED} is allowed (as well as \PVerb+TEXT+), where NESTED must
+%**    have braces properly nested, but no other constraints are given
+%** -- the only constraint on TEXT in \PVerb+TEXT+ is tht it cannot contain
+%**    the delimiter (+)
+%** -- \PVerb{NESTED} can be put inside macro command arguments, for example:
+%**    \fbox{\PVerb{\def\foo{\csname bar\endcsname}}}
+%** -- accented characters (with \usepackage[...]{inputenc}) work properly
+%** -- accents \H and \. work even in OT1 encoding (the font cmr is
+%**    substituted if necessary)
+%** -- customizable behaviour via options pverb-space=, pverb-hyphenchar=,
+%**    pverb-verbatimfont=, pverb-linebreak=, pverb-linebreakchar=,
+%**    pverb-stretchshrink=
+%** -- options can be specified as \PVerb[...] or \PexaDefaults{...}
+%** Some downsides:
+%** -- a newline inside the argument of \PVerb is converted to a space
+%** -- inner mode: comments are lost
+%** -- inner mode: line breaks are lost (converted to spaces)
+%** -- inner mode: multiple space tokens are condensed into one
+%** -- inner mode: exact layout of space tokens after \cs are lost
+%** -- inner mode: only \PVerb{NESTED} syntax is allowed
+%** -- inner mode: only \PVerb[pverb-hash=half] works inside \textrm
+%** -- inner mode: 
+%** Dat: \verb~...~ will work well, because it is forced to be outer.
+%** Suggested brace delimiters: {}
+%** Suggested other \dospecial delimiters: \ $ & # ^ _ % ~ 
+%** Suggested other delimiters: ` ! @ * - + = | : ; ' " < > , . / ? [] ()
+%** Dat: test: \showhyphens{\PVerb{kismocsok}}
+\DeclareRobustCommand\PVerb{}
+\expandafter\def\csname PVerb \endcsname{%
+  \relax\ifmmode\hbox\else\leavevmode%\null prevents break of 1st word
+  \fi\bgroup
+  {\pexa@cverb@@verbatimfont}% load .fd files with undisturbed \catcodes
+  \pexa@setupverb% sets \catcodes, similar to `\let\do\@makeother \dospecial\@noligs \@vobeyspaces'
+  \pexa@cverb@catcodes
+  \afterassignment\pexa@cverb@maybeopts\let\reserved@a= %
+}
+%** Same as \PVerb, but converts `##' to `#'.
+%** @example \textit{And type: \PVerbH{##ifdef}}
+\DeclareRobustCommand\PVerbH{\PVerb[pverb-hash=half]}
+%** Usage: \PVerbInner\PVerb{text} or \PVerbInner\PVerbH{text}
+\def\PVerbInner#1#2{#1{#2}}
+%** \item[\PVerb[pverb-space=visbreak]{foo}] doesn't work because of the nested
+%** `['. Use this instead: \item[\PVerbOpt{pverb-space=visbreak}{foo}], or:
+%** \item[{\PVerb[pverb-space=visbreak]{foo}}]
+\DeclareRobustCommand\PVerbOpt{}
+\expandafter\def\csname PVerbOpt \endcsname#1{%
+  \relax\ifmmode\hbox\else\leavevmode%\null prevents break of 1st word
+  \fi\bgroup
+  \pexa@doopts{#1}% in \begingroup, at last
+  {\pexa@cverb@@verbatimfont}% load .fd files with undisturbed \catcodes
+  \pexa@setupverb% sets \catcodes, similar to `\let\do\@makeother \dospecial\@noligs \@vobeyspaces'
+  \pexa@cverb@catcodes
+  \afterassignment\pexa@cverb@gottoken\let\reserved@a=
+  %\afterassignment\pexa@cverb@outerbrace\let\reserved@a= %
+}
+
+\def\pexa@cverb@catcodes{%
+  \let\do\pexa@cverb@makemathshift \dospecials \pexa@cverb@donormals
+  % ^^^ converts allowed delimiters to math-shift (\catcode 3)
+  %\@tempcnta127 \loop\ifnum\@tempcnta<256 \catcode\@tempcnta3 \advance\@tempcnta\@ne\repeat
+  % ^^^ also allows accented letters, such as \PVerb^^e1sz^^e1
+  \ifx\\\@tabularcr \catcode`\{1 \fi % is \realx with array.sty
+  \ifx\\\@arraycr   \catcode`\{1 \fi % with array.sty
+  % ^^^ disable outerbrace mode for \begin{tabular}, because braces must be
+  %     properly nested inside a \halign cell, so we are not allowed to swallow
+  %     a brace as math-shift. Unfortunately, this doesn't fix the problem for
+  %     pure \halign, for which `! Missing { inserted' will be shown.
+}
+
+% Sentinel sensible defaults -- overridden by \pexa@doopts above.
+\def\pexa@cverb@@space{\ }% breakable
+\def\pexa@cverb@@hyphenchar{\hyphenchar\font=-1 }% disallow auto-hyphenation of words
+\def\pexa@cverb@@verbatimfont{\pexa@@verbatimfont}%
+\def\pexa@cverb@@tbreak{\allowbreak}% allow silent line break
+\def\pexa@cverb@@stretchshrink{}% keep original
+
+%** Prepend a \do to every >=127 accented character.
+%** Iteration terminated by \vfuzz.
+%** Add \break statements if necessary
+\def\pexa@cverb@addacc#1{%
+  \ifx\vfuzz#1\else
+    \ifnum`#1>126 \ifnum\catcode`#1=13 \noexpand\do\fi#1\else% prepend \do to accented character
+    \ifnum`#1=32 \noexpand\pexa@cverb@@space\else%\ifnum`#1<127
+      \ifnum\catcode`#1=11 #1\else
+        % vvv Dat: add \break to both sides of any nonletter
+        \noexpand\break#1\noexpand\break\fi
+    \fi\fi
+    \expandafter\pexa@cverb@addacc
+  \fi
+}
+
+\def\pexa@cverb@removespace@v#1 #2{%
+  #1\ifx\hfuzz#2\else
+    \ifnum\catcode\string`#2=11 \reserved@a\fi% keep space iff letter follows
+    #2\expandafter\pexa@cverb@removespace@v
+  \fi
+}
+%** Similar to \EempVerbatimDef5 in eempost.sty
+%** Defines parameterless macro named #1 to expand to a verbatim
+%** representation of token list #2, with only catcode 10 (space) and
+%** catcode 12 (other).
+%** -- `%' won't appear in the output
+%** -- emits `\relax' as `\relax ', but `\<' as `\<' (without space)
+%** -- comments etc. have already been removed
+%** -- caller should end each line with `^^J%'
+%** -- \cs containing non-letter chars are printed without caution
+%** -- low (0..31) and high (127..256) chars will be emmited with ^^
+%** -- char 10 (^^J) will be emitted as newline
+%** -- ^^A (1) chars will be converted to spaces
+%** -- spaces in #1 are kept with catcode 12 (other possibilities: keep with
+%**    catcode 10; remove)
+%** -- trailing spaces of `\cs ' are
+%**    removed unless necessary (a letter follows it), keep with catcode 12
+\long\def\pexa@cverb@vdef#1#2{% \long: allow \par in #2
+  \begingroup
+  \@tempcnta0 \loop\ifnum\@tempcnta<256 \lccode\@tempcnta0 \advance\@tempcnta\@ne\repeat
+  \lccode\string`\ =1
+  \lowercase{\toks@{#2}}% convert space to ^^A
+  \edef\reserved@a{\the\toks@}% convert `#' to `##' (catcode 6)
+  %\edef\reserved@b##1>{}% macro:...->...
+  \edef\reserved@b{\expandafter\strip@prefix\meaning\reserved@a\string##\hfuzz}%
+  % ^^^ Dat: \meaning expands to ^^A with catcode 12, because it's charcode isn't 32
+  % vvv !! SUXX, removes changes 'a\#b' to `a\b', too
+  \edef\reserved@b{\expandafter\pexa@removehash\reserved@b}% convert `##' to `#' (catcode 12)
+  \lccode\string`\ =0 % keep spaces generated by `\cs...'
+  \lccode1=\string`\ %
+  \expandafter\lowercase\expandafter{\expandafter\edef\expandafter\reserved@b\expandafter{\reserved@b\space\hfuzz}}% convert `^^A' -> ` ' (catcode 12)
+  % Dat: now we have the space tokens in #1 with catcode 12, and spaces at the
+  % end of multi-letter `\cs ' with catcode 10 (space).
+  \lccode`\-=\string`\ \lowercase{\edef\reserved@a{-}}% Dat: assume catcode('-')==12
+  \edef\reserved@b{\def\noexpand#1{\expandafter\pexa@cverb@removespace@v\reserved@b}}%
+  % ^^^ Dat: it is safe to call \eemp@removespace@v, because there will be
+  %     no consecutive spaces in \reserved@b emitted by \meaning
+  \expandafter\endgroup\reserved@b
+}
+
+\def\pexa@swaprelax#1#2\relax{#2#1}
+%\def\pexa@swap#1#2{#2#1}% SUXX, doesn't evaluate \else correctly
+
+%** Cancel \break{}s in the beginning of \reserved@a, and also cancel break after
+%** the very first character.
+\def\pexa@cverb@skipbreak@ii#1#2{%
+  \ifx#1\break
+    \pexa@swaprelax{\pexa@cverb@skipbreak@ii#2}%
+    %\expandafter\pexa@cverb@skipbreak\expandafter#2%
+  \else
+    \ifx#2\break
+      \pexa@swaprelax{\pexa@cverb@skipbreakf@ii#1}%
+    \else
+      \pexa@swaprelax{#1#2}% Dat: don't insert \relax into `\do ^^f5' etc.
+    \fi%
+  \fi\relax
+}
+\def\pexa@cverb@skipbreakf@ii#1#2{%
+  \ifx#2\break
+    \pexa@swaprelax{\pexa@cverb@skipbreakf@ii#1}%
+  \else
+    \pexa@swaprelax{#1\relax#2}% Dat: \relax breaks ligatures
+  \fi\relax
+}
+%** Cancel \break{}s in the beginning of \reserved@a.
+%** (formerly \pexa@cverb@eatbreaks)
+\def\pexa@cverb@skipbreak@i#1{%
+  \ifx#1\break \expandafter\pexa@cverb@skipbreak@i
+  \else\expandafter#1\fi
+}
+%** Doesn't cancel \break.
+\let\pexa@cverb@skipbreak@\@empty
+%** Cancels break according to option pverb-leftbreakmin
+\def\pexa@cverb@skipbreak{%
+  \relax% break ligatures
+  \csname pexa@cverb@skipbreak@\romannumeral\pexa@default@pverbleftbreakmin\endcsname
+}
+
+%** Cancel a single break in the beginning of \reserved@a.
+%\def\pexa@cverb@skipbreak#1{%
+%  \ifx#1\break\else\expandafter#1\fi
+%}
+
+% Test.
+%\def\pexa@default@pverbleftbreakmin{2}% see defaults below
+%\edef\reserved@a{\pexa@cverb@skipbreak alma}
+%\show\reserved@a
+%\edef\reserved@a{\pexa@cverb@skipbreak\break\break alma}
+%\show\reserved@a
+%\tracingmacros1
+%\edef\reserved@a{\pexa@cverb@skipbreak\break a\break\break l\break ma}
+%\show\reserved@a
+%\tracingmacros0 \zzzz
+
+%** Typesets already verbatized contents of \reserved@a
+%** @example \begingroup\makeatletter\pexa@cverb@vdef\reserved@a{#1}\pexa@cverb@typeset\endgroup
+\def\pexa@cverb@typeset{%
+  \makeatother% make \@delfin@ablakban@ hyphenatable: \@ del-fin @ ab-lak-ban @
+  \edef\reserved@a{\expandafter\pexa@cverb@addacc\reserved@a\vfuzz\noexpand\@empty}%
+  \pexa@cverb@typeset@low
+}
+
+%** Also called by \pexa@nobackslash
+\def\pexa@cverb@typeset@low{%
+  % ^^^ Dat: \@empty is for ##1 of a possible \break
+  %\showthe\hyphenchar\font
+  %%\show\reserved@a
+  \def\break##1{%
+    \ifx##1\@empty\else \ifx##1\pexa@cverb@@space\else% Dat: \ifx is slow
+      % ^^^ don't allow break before a space
+      % ^^^ ignore trailing break (followed by \@empty)
+      \pexa@cverb@@tbreak
+    \fi\fi
+    \ifx##1\break\else\expandafter##1\fi% gobble next token if it's \break
+    % ^^^ Dat: \break is a macro, so \ifx may be slow
+    % ^^^ Dat: we never ever have \break\break\break in \reserved@a
+  }%
+  % Imp: cancel \break if \pexa@cverb@@tbreak is \@empty
+  %** @param ##1 accented, \active char with catcode 12
+  \def\do##1{\lccode`~`##1\lowercase{~}}%
+  %\pexa@cverb@@verbatimfont
+  %\pexa@cverb@@hyphenchar
+  %\showthe\hyphenchar\font
+  % vvv Restore modified font values at \egroup
+  % vvv Dat: it would be too early to restore \hyphenchar at the end of the
+  %     group, because \hyphenchar is examined by TeX when the paragraph has
+  %     to be broken to lines.
+  %       The only solution I can think of for changing \hyphenchar locally
+  %     is defining a font with a very similar size (see below). Unfortunately,
+  %     dvips(1) embeds two different fonts. 
+  %     \font\f=cmr10 at 10pt
+  %     \font\g=cmr10 at 10.00001pt
+  %     \hyphenchar\f=99
+  %\edef\reserved@b{\noexpand\pexa@aftergroup\noexpand\hyphenchar\the\font=\the\hyphenchar\font\relax\hfuzz}\reserved@b
+  \edef\reserved@b{\noexpand\pexa@aftergroup\noexpand\fontdimen3\the\font=\the\fontdimen3\font\relax\hfuzz}\reserved@b% normal stretch
+  \edef\reserved@b{\noexpand\pexa@aftergroup\noexpand\fontdimen4\the\font=\the\fontdimen4\font\relax\hfuzz}\reserved@b% normal shrink
+  %\show\pexa@cverb@@verbatimfont
+  %\showhyphens{irgumburgum id}%
+  \pexa@cverb@@verbatimfont
+  %\showhyphens{irgumburgum ie}%
+  \pexa@cverb@@hyphenchar
+  %\showhyphens{irgumburgum if}%
+  \pexa@cverb@@stretchshrink
+  %\showthe\hyphenchar\font
+  %\showhyphens{irgumburgum ig}%
+  %\showhyphens{\reserved@a}%
+  %\showhyphens{\tt\reserved@a}%
+  %\hyphenpenalty\z@
+  %\expandafter\MINUSCHECK\reserved@a......\hfuzz%
+  \expandafter\pexa@cverb@skipbreak\reserved@a\@empty\@empty% Dat: \@empty is sentinel
+}
+%\def\MINUSCHECK#1#2#3\hfuzz{%
+%  \edef\reserved@b{\meaning#1}\show\reserved@b
+%  \edef\reserved@b{\meaning#2}\show\reserved@b
+%  \edef\reserved@b{\meaning#3}\show\reserved@b
+%}
+
+%** Usage: \pexa@aftergroup TOKENS\hfuzz
+\def\pexa@aftergroup#1{%
+  \ifx#1\hfuzz
+  \else\aftergroup#1\expandafter\pexa@aftergroup\fi
+}
+\def\pexa@cverb@donormals{\do`\do!\do @\do*\do-\do+\do=\do|\do:\do;\do'\do"\do,\do.\do/\do?\do<\do>\do(\do)\do[\do]}%
+\def\pexa@cverb@makemathshift#1{\catcode`#13\relax}%
+%\def\pexa@afterelse#1\else#2\fi{\fi#1}%
+\def\pexa@cverb@maybeopts{%
+  \if\noexpand\reserved@a[%
+    %\catcode`]12
+    \egroup\bgroup% restore various catcodes
+    \expandafter\pexa@cverb@withopts
+  \else
+    \expandafter\pexa@cverb@gottoken
+  \fi
+}%
+\def\pexa@cverb@withopts#1]{%
+  \pexa@doopts{#1}% in \begingroup, at last
+  % vvv Dat: fonts already loaded
+  \pexa@setupverb% sets \catcodes, similar to `\let\do\@makeother \dospecial\@noligs \@vobeyspaces'
+  \pexa@cverb@catcodes
+  \afterassignment\pexa@cverb@gottoken\let\reserved@a= %
+}
+\def\pexa@cverb@mustbebrace#1{%
+  \PackageError{examplep}{\noexpand\PVerb inner delimiter must be brace,\MessageBreak not #1}\@ehc
+  \let\reserved@b\egroup
+}
+\def\pexa@cverb@mustntbe#1{%
+  \PackageError{examplep}{\noexpand\PVerb delimiter mustn't be #1}\@ehc
+  \let\reserved@b\egroup
+}
+%** Got token in \reserved@a
+\def\pexa@cverb@gottoken{%
+  \pexa@cverb@@verbatimfont
+  % ^^^ do this before we do too many \catcode changes to load the .fd file.
+  \let\reserved@b\pexa@cverb@outer
+  \ifcat\noexpand\reserved@a$% math-shift
+    \if\noexpand\reserved@a$\else
+    \if\noexpand\reserved@a\space\pexa@cverb@mustntbe{space}\else
+    \if\noexpand\reserved@a\expandafter\@gobble\string\{\let\reserved@b\pexa@cverb@outerbrace
+    \fi\fi\fi
+  \else\ifcat\noexpand\reserved@a\expandafter{\iffalse}\fi% open-brace
+    \let\reserved@b\pexa@cverb@innerbrace
+  \else\ifcat\noexpand\reserved@a\relax
+    % Dat: the \cs token name has been lost, we only have the meaning of \reserved@a
+    \pexa@cverb@mustbebrace{backslash or control sequence or active char}%
+  \else\ifcat\noexpand\reserved@a a% letter
+    \pexa@cverb@mustntbe{a letter,\MessageBreak but got \meaning\reserved@a\space}%
+    % Dat: the outer `\PVerb x' would try to delimit by space, not `x'
+    % Dat: it is possible to get an outer letter: `\expandafter\PVerb\@empty x'
+  \else\ifcat\noexpand\reserved@a,% other
+    \pexa@cverb@mustbebrace{\meaning\reserved@a\space}%
+    % Dat: impossbile to skip to \reserved@a, because I cannot convert it back
+    %      to a character token anymore
+    % Imp: write a slow loop
+  \else
+    \pexa@cverb@mustbebrace{\meaning\reserved@a\space(strange)}%
+    \let\reserved@b\egroup
+    %\let\reserved@b\pexa@cverb@inner
+  \fi\fi\fi\fi\fi
+  \reserved@b
+}
+
+% 1: begin-group character {
+% 2: end-group character }
+% 3: math shift character $
+% 4: alignment tab character &
+% 6: macro parameter character #
+% 7: superscript character ^
+% 8: subscript character _
+% 10: "blank space  "
+% 11: the letter b
+% 12: the character /
+% 13: macro:..., undefined, \hbox etc.
+% cs: macro:..., undefined, \hbox etc.
+\def\pexa@meaning@beg#1 #2 #3{{1}{#3}}%
+\def\pexa@meaning@end#1 #2 #3{{2}{#3}}%
+\def\pexa@meaning@mat#1 #2 #3 #4{{3}{#4}}%
+\def\pexa@meaning@ali#1 #2 #3 #4{{4}{#4}}%
+\def\pexa@meaning@mac#1 #2 #3 #4{{6}{#4}}%
+\def\pexa@meaning@sup#1 #2 #3{{7}{#3}}%
+\def\pexa@meaning@sub#1 #2 #3{{8}{#3}}%
+\def\pexa@meaning@bla#1 #2 #3 {{10}{\ }}%
+\def\pexa@meaning@the#1 #2#3 #4{{\if#2l11\else12\fi}{#4}}%
+\def\pexa@meaningiii#1#2#3{\csname pexa@meaning@#1#2#3\endcsname}%
+%** @param #1 a catcode (positive)
+%** @param #2 character token or `\ '
+\def\pexa@cverb@makeeg#1#2#3\vfuzz{%
+  \ifnum#1<1 \@latex@error{Invalid character token}\@ehc\fi
+  %\catcode`#22 % \catcode 2 == end-group
+  \catcode`#213 % \catcode 13 == active
+  \lccode`~`#2\lowercase{\def\reserved@a##1~{\pexa@cverb@outerc{##1}}}%
+}%
+
+\def\pexa@cverb@innerbrace{%
+  \catcode`\{1 %begin-group
+  \catcode`\}2 %end-group
+  \catcode`\ =12
+  % ^^^ These \catcode changes will become useful when argument of \PVerb has
+  %     only been partially seen by TeX's eyes, for example in:
+  %     \expandafter\PVerb{foo}
+  \expandafter\pexa@cverb@innerc\expandafter{\iffalse}\fi% put back the extra open-brace
+}
+\def\pexa@cverb@vdef@fullhash#1{\pexa@cverb@vdef\reserved@a{#1}}%
+\def\pexa@cverb@vdef@halfhash#1{%
+  \def\reserved@a{#1}% halves the hashes
+  \expandafter\pexa@cverb@vdef\expandafter\reserved@a\expandafter{\reserved@a}%
+}
+%** Takes an argument in braces.
+\def\pexa@cverb@innerc#1{%
+  \makeatletter% keep space in `\csname @foo'
+  \ifnum\pexa@default@fullhash>0 \expandafter\pexa@cverb@vdef@fullhash
+  \else                          \expandafter\pexa@cverb@vdef@halfhash\fi
+    {#1}%
+  \pexa@cverb@typeset
+  \egroup
+}
+%** Doesn't work inside \halign :-(
+\def\pexa@cverb@outerbrace{%
+  \catcode`\{1 %begin-group
+  \catcode`\}2 %end-group
+  \catcode`\ =12
+  \expandafter\pexa@cverb@outerc\expandafter{\iffalse}\fi% !! \halign
+}
+\def\pexa@cverb@outer{%
+  \catcode`\{12 %restore to other
+  \edef\reserved@b{\noexpand\pexa@cverb@makeeg\expandafter\pexa@meaningiii\meaning\reserved@a00\vfuzz}%
+  \reserved@b% equivalent to `\catcode\reserved@a=13 \def\reserved@a...'
+  \catcode`\ =12
+  \reserved@a
+  %\expandafter\pexa@cverb@outerc\expandafter{\iffalse}\fi
+  % ^^^ nice trick, but doesn't work inside a cell of \halign (! Missing { inserted)
+  % ^^^ why doesn't it work in \halign?? -- even the arg may contain open-brace
+}
+\begingroup\lccode\string`\+=\string`\#\lowercase{\toks@{%
+  %** `\pexa@removehash foo#Xbar#Yand#\hfuzz' expands to `fooXbarYand', if
+  %** # has catcode 12.
+  \def\pexa@noremovehash#1+\hfuzz{#1}%
+  \def\pexa@removehash#1+#2{#1\ifx\hfuzz#2\else#2\expandafter\pexa@removehash\fi}%
+}}\expandafter\endgroup\the\toks@
+\def\pexa@cverb@outerc#1{%
+  % Dat: #1 might contain begin-group and end-group tokens. Change them to other.
+  % vvv Dat: setting \lccode`a=0 will prevent \showhyphens from working
+  \@tempcnta0 \loop\ifnum\@tempcnta<256 \ifnum\lccode\@tempcnta=\@tempcnta\else \lccode\@tempcnta\z@\fi \advance\@tempcnta\@ne\repeat
+  \lccode`\ =1
+  %%\lccode`\ =32 \showhyphens{csukafogta b}%
+  \lowercase{\def\reserved@a{#1}}% don't convert `#' to `##' (catcode 6)
+  % ^^^ change space to '\001', so \meaning won't convert it to catcode 10
+  % Dat: don't expand \reserved@a now, because it might contain high accented tokens
+  \edef\reserved@b##1>{}% macro:...->...
+  \edef\reserved@b{\expandafter\reserved@b\meaning\reserved@a}%
+  \lccode\string`\ =0 % keep spaces generated by `\cs...'
+  \lccode1=\string`\ %
+  \ifnum\pexa@default@fullhash=0 % convert `##' to `#'
+    \edef\reserved@b{\expandafter\expandafter\expandafter\pexa@removehash\expandafter\reserved@b\string##\hfuzz}%
+  \fi
+  \expandafter\lowercase\expandafter{\expandafter\def\expandafter\reserved@b\expandafter{\reserved@b}}%
+  % ^^^ change '\001' back to space
+  %%\show\reserved@a
+  \let\reserved@a\reserved@b \pexa@cverb@typeset
+  \egroup
+}
+
+%** Dat: `\ X' doesn't work, the space will be gobbled :-(
+%** Dat: a space will be forced after `\W ' if W is a word
+\begingroup\lccode\string`*\string`\\\lowercase{\endgroup
+\def\pexa@cverb@nobackslash@lowa#1*\break#2}{%
+  % ^^^ Dat: \break is the \break following the backslash
+  #1\ifx#2\hfuzz\else
+    \ifx#2\break
+      \expandafter\expandafter\expandafter\pexa@cverb@nobackslash@more
+    \else
+      \if#2V\noexpand\char32\relax% visible, unbreakable
+      \else\if#2S\noexpand\pexa@cverb@@space% default space
+      \else\if#2B\noexpand\PexaAllowBreak
+      \else\if#2n\noexpand\hfil\noexpand\break
+      \else\noexpand#2\fi\fi\fi\fi% Dat: #2 is usually the \break preceding a non-letter char
+      \expandafter\expandafter\expandafter\pexa@cverb@nobackslash@lowa
+    \fi
+  \fi
+}
+\edef\pexa@cverb@nobackslash@more{\noexpand\pexa@cverb@nobackslash@lowa
+  \expandafter\@gobble\string\\\noexpand\break}%
+
+\def\pexa@cverb@removespace@vv#1 #2{%
+  #1\ifx\hfuzz#2\else
+    #2\expandafter\pexa@cverb@removespace@vv
+  \fi
+}
+\long\def\pexa@cverb@nobackslash#1{%
+  \begingroup
+  % vvv remove all spaces emitted by \meaning. Fine but ugly.
+  \let\pexa@cverb@removespace@v\pexa@cverb@removespace@vv
+  \let\pexa@removehash\pexa@noremovehash% don't remove \#. Ugly hack.
+  \pexa@cverb@vdef\reserved@a{#1}%
+  %\show\reserved@a
+  %\expandafter\expandafter\expandafter\show\expandafter\@gobble\reserved@a
+  \makeatother% make \@delfin@ablakban@ hyphenatable: \@ del-fin @ ab-lak-ban @
+  \edef\reserved@a{\expandafter\pexa@cverb@addacc\reserved@a\vfuzz
+    \noexpand\@empty\expandafter\@gobble\string\\\noexpand\break}%
+  % Dat: expandable constructs emitted by \pexa@cverb@addacc:
+  %      \do(unsave OK) \break \pexa@cverb@@space
+  \let\pexa@@save@pcs\pexa@cverb@@space
+  \let\pexa@@save@break\break
+  \let\pexa@cverb@@space\relax
+  \let\do\relax
+  \let\break\relax
+  \edef\reserved@a{\expandafter\pexa@cverb@nobackslash@lowa\reserved@a\hfuzz}%
+  \let\pexa@cverb@@space\pexa@@save@pcs
+  \let\break\pexa@@save@break
+  \pexa@cverb@typeset@low
+  \endgroup
+}
+
+% --- One-character verbatim environments
+%
+% !! translate this Hungarian text to English.
+%
+% -- A kis-verbatim \verb+...+ helyett \'irhat\'o az, hogy ^^f7...^^f7
+%    (az italic correction az\'ert kell el\'e, hogy ha parancs defin\'ici\'okn\'al
+%    italic-kal \'irunk egy opcion\'alis param\'etert, ne kelljen ut\'ana k\'ezzel
+%    korrig\'alni.) Mostm\'ar sorv\'ege jel is lehet benne, mert \PVerb-et haszn\'al
+%    (sorv\'ege==sz\'ok\"oz), de ha a k\"ovetkez\H{o} sor sz\'ok\"ozzel kezd\H{o}dik, akkor t\"obb
+%    sz\'ok\"oz lesz. Haszn\'alhat\'o \section-ben is, \'es (\'ovatosan) tabular-ban is,
+%    ha minden oszlop-ban a brace-ek balance-ol\'odnak. Lehet benne \'ekezetes
+%    bet\H{u}.
+%
+%    Legjobb emacsban azt \'irni, hogy
+%       sz\"oveg..... 
+%       %%%
+%       ^^f7aaa aaa aaa^^f7 sz\"oveg folytat\'asa ... 
+%    mert akkor a comment miatt nem t\"ori el a verbatimos sz\"oveget.
+%
+% -- \^^f7...^^f7 olyan, mint a ^^f7...^^f7, de minden speci\'alis karakter el\'e backslash
+%    kell. P\'eld\'aul: \^^f7\{\}\%\\^^f7. Ily m\'odon k\"onnyebben adhat\'o
+%    makr\'o-argumentumnak. \^^f7\V^^f7 egy l\'athat\'o sz\'ok\"ozt sz\'ur be, \^^f7\B^^f7
+%    \PexaAllowBreak-et (kis jellel sort\"or\'est enged\'elyez), \^^f7\S^^f7 ugyanaz,
+%    mint ^^f7 ^^f7. Ha minden el\'e gondosan kirakjuk a
+%    backslash-t, akkor haszn\'alhat\'o \section-ben is.
+%
+% -- \Q{...} \'es \Q. olyan, mint \^^f7...^^f7. Teh\'at l\'athat\'o sz\'ok\"oz: \Q\V
+%
+% -- !! ^^f7#^^f7 nem megy, de \Q\^^f7 igen
+%
+
+\begingroup \catcode`^^f7=13 \@firstofone{\endgroup
+\def\pexa@div@setcodes{\catcode`^^f7=13 % /divide-sign
+  \lccode`^^d7=0 \uccode`^^d7=0 % /multiply-sign isn't a lower-upper case variant (\OE?)
+  \lccode`^^f7=0 \uccode`^^f7=0 }
+%** Can be used in \section (as ``inner'' \PVerb), with limitations.
+%** !! parameters, as with ^^f7#^^f7
+\def\pexa@div{% Dat: not \long. File. ^^f7
+  \ifx\protect\@typeset@protect
+    \expandafter\pexa@overb@low
+  \else
+    \noexpand\pexa@div
+    %\expandafter\pexa@overb@ignore doesn't work :-((
+  \fi
+}
+
+%** Works in math mode, too. What about robustness?
+\def\pexa@overb@low{% ASCII 247
+  % Dat: would be too late for \catcode of `\PVerb^^f7' here
+  % Imp: check for innerness-outerness
+  \relax\ifmmode\hbox\else\leavevmode\/\fi
+  \bgroup
+  %\pexa@doopts{#1}% in \begingroup, at last
+  {\pexa@cverb@@verbatimfont}% load .fd files with undisturbed \catcodes
+  \pexa@setupverb
+  \pexa@cverb@catcodes
+  \catcode\string`\{12 % restore to other
+  \catcode\string`\ 12
+  \catcode`^^f7=13
+  \def\reserved@a##1^^f7{% Dat: define with current \catcode`^^f7
+    %\showthe\catcode`-% 3 (math-shift)
+    \pexa@cverb@outerc{##1}}% defined in examplep.sty
+  \reserved@a
+  %\expandafter\pexa@cverb@outerc\expandafter{\iffalse}\fi
+  % ^^^ nice trick, but doesn't work inside a cell of \halign (! Missing { inserted)
+  % ^^^ why doesn't it work in \halign?? -- even the arg may contain open-brace
+}
+
+\def\pexa@nomath{\relax\ifmmode\hbox\else\leavevmode\/\fi}
+
+%** Dat: we need \long for index generation of \Q{\par}
+\long\def\pexa@Q#1{\pexa@bsdiv#1^^f7}% \Q
+\long\def\pexa@bsdiv#1^^f7{% \^^f7
+  % An evil #1 may contain \fi here, so we have to be very careful.
+  \ifx\protect\@typeset@protect 
+    \expandafter\@gobble\fi\@thirdofthree\@firstoftwo
+    \pexa@nomath\pexa@overb@noe@a
+    {\pexa@cverb@nobackslash{#1}}%
+  %\ifx\protect\@typeset@protect \pexa@nomath{\pexa@cverb@nobackslash{#1}}%
+  %%\else \noexpand\^^f7#1\noexpand^^f7\fi % Undefined control sequence \V
+  %%\else \BackslashDivideIsFragile \fi
+  %\else \noexpand\^^f7\expandafter\pexa@overb@noexpand#1^^f7\fi
+}%
+\long\def\pexa@overb@noe@a#1{\pexa@overb@noe@b#1}%
+\long\def\pexa@overb@noe@b\pexa@cverb@nobackslash#1{%
+  \noexpand\^^f7\expandafter\pexa@overb@noexpand#1^^f7}
+\long\def\pexa@overb@noexpand#1{%
+  \noexpand#1%
+  \ifx#1^^f7\else\expandafter\pexa@overb@noexpand\fi
+}
+\def\pexa@activate@Q{\let\Q\pexa@Q}
+\def\pexa@activate@bsdiv{\pexa@div@setcodes \let\^^f7\pexa@bsdiv}
+\def\pexa@activate@div  {\pexa@div@setcodes \let^^f7\pexa@div}
+\def\pexa@activate@url  {\def\url{\PVerbOpt{}}}
+}% ^^f7 has catcode 13
+
+% ---
+
+%** Apply default options.
+\pexa@doopts{%
+  samplewidth=.5\PexaWidth,xalign=l,yalign=u,boxstyle=p,
+  allowshrink=yes,allowbreak=yes,srcstyle=left,usewidth=skipwidth,
+  xindent=none,yindent=none,source-space=invfixbreak,firstlinenum=1,
+  pexaminipage-setuphook={},addvspace-top=\addvspace,
+  addvspace-bottom={\vskip\z@skip\addvspace},% don't accumulate Sample>Source \vskip
+  vextravskip=\z@,vsmallht=1pt,
+  linenumbersep={},linenumberformat={{\normalfont\rmfamily\scriptsize\number-\pexa@@cntb}\pexa@default@linenumbersep},
+  pverb-space=invbreak,pverb-hyphenchar=hyphen,pverb-verbatimfont=pexavf,
+  pverb-linebreak=char,pverb-linebreakchar={$\lnot$},pverb-stretchshrink=yes,
+  pverb-hash=full,psource-verbatimfont=pexavf,baseline-grid=no,
+  vextrabotdepth=\z@,pverb-leftbreakmin=2,mp-equation-reset=yes,
+  mp-varioref-reset=no,Q=unchanged,bsdiv=unchanged,div=unchanged,url=unchanged,
+  source-par-align=left,
+  }
+% Dat: inlineprefix= is missing.
+
+\AtEndOfPackage{\let\@unprocessedoptions\relax}
+\expandafter\ifx\csname opt@\@currname.\@currext\endcsname\relax\else
+  \expandafter\expandafter\expandafter\pexa@doopts
+  \expandafter\expandafter\expandafter{%
+  \csname opt@\@currname.\@currext\endcsname}\fi
+%\edef\reserved@a{\noexpand\pexa@doopts{\@ptionlist{\@currname.\@currext}}}%
+%\reserved@a
+
+\pexa@@restorecat \let\pexa@@restorecat\@undefined
+\endinput% examplep.sty

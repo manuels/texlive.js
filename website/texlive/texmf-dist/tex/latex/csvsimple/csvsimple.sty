@@ -1,0 +1,444 @@
+%% The LaTeX package csvsimple - version 1.05 (2012/03/12)
+%% csvsimple.sty: Simple LaTeX CSV file processing
+%%
+%% -------------------------------------------------------------------------------------------
+%% Copyright (c) 2008-2011 by Prof. Dr. Dr. Thomas F. Sturm <thomas dot sturm at unibw dot de>
+%% -------------------------------------------------------------------------------------------
+%%
+%% This work may be distributed and/or modified under the
+%% conditions of the LaTeX Project Public License, either version 1.3
+%% of this license or (at your option) any later version.
+%% The latest version of this license is in
+%%   http://www.latex-project.org/lppl.txt
+%% and version 1.3 or later is part of all distributions of LaTeX
+%% version 2005/12/01 or later.
+%%
+%% This work has the LPPL maintenance status `author-maintained'.
+%%
+%% This work consists of all files listed in README
+%%
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{csvsimple}[2012/03/12 version 1.05 LaTeX CSV file processing]
+
+\RequirePackage{pgfkeys,ifthen}
+
+
+%---- general
+
+\def\csv@warning#1{\PackageWarning{csvsimple}{#1}}
+
+\newread\csv@file
+\newcounter{csvinputline}
+\newcounter{csvrow}
+\newcounter{csvcol}
+
+\def\csv@empty{}
+
+\def\csv@addto@macro#1#2{%
+  \begingroup%
+    \toks@\expandafter{#1#2}%
+    \xdef#1{\the\toks@}%
+  \endgroup%
+  }
+
+\long\def\csviffirstrow#1#2{%
+  \ifnum\c@csvrow=1%
+    \long\def\csviffirstrow@doit{#1}%
+  \else%
+    \long\def\csviffirstrow@doit{#2}%
+  \fi%
+  \csviffirstrow@doit%
+}
+
+\long\def\csvifoddrow#1#2{%
+  \ifodd\c@csvrow%
+    \long\def\csvifoddrow@doit{#1}%
+  \else%
+    \long\def\csvifoddrow@doit{#2}%
+  \fi%
+  \csvifoddrow@doit%
+}
+
+\def\csv@and{&}
+
+\def\csvlinetotablerow{%
+  \setcounter{csvcol}{0}%
+  \stepcounter{csvcol}\csv@current@col%
+  \whiledo{\thecsvcol<\csv@columncount}{\csv@and\stepcounter{csvcol}\csv@current@col}%
+}
+
+
+%---- breaking lines
+
+% This command removes leading and trailing spaces from <Token>. I found
+% the original code on the web. The original author was Michael Downes, who
+% provided the code as an answer to 'around the bend' question #15.
+\catcode`\Q=3
+\def\TrimSpaces#1{%
+  \begingroup%
+  \aftergroup\toks\aftergroup0\aftergroup{%
+  \expandafter\trimb\expandafter\noexpand#1Q Q}%
+  \global\edef#1{\the\toks0}%
+}
+\def\trimb#1 Q{\trimc#1Q}
+\def\trimc#1Q#2{\afterassignment\endgroup \vfuzz\the\vfuzz#1}
+\catcode`\Q=11
+
+% needs \csv@termination
+\def\csv@breakline#1,{%
+  \ifx\csv@termination#1\let\nextcol=\relax\else%
+    \let\nextcol=\csv@breakline%
+    \stepcounter{csvcol}%
+    \edef\csv@col@body{#1}\TrimSpaces\csv@col@body%
+    \expandafter\xdef\csname csvcol\roman{csvcol}\endcsname{\csv@col@body}%
+  \fi%
+  \nextcol%
+  }
+
+% adds \csv@termination
+\def\csv@scanline#1{%
+  \setcounter{csvcol}{0}%
+  \csv@breakline#1,\csv@termination,%
+  }
+
+% expands a CSV line and scans content
+\def\csv@escanline#1{%
+  \edef\@csv@scanline{\noexpand\csv@scanline{#1}}%
+  \@csv@scanline%
+  }
+
+
+% default preprocessor (no preprocessing)
+\def\csv@no@preprocessor#1#2{\let#2=#1\relax}
+
+
+%---- the loop
+
+\def\csv@AtEndLoop{\csv@addto@macro\@endloophook}
+\let\@endloophook\csv@empty
+
+\def\csv@current@col{\csname csvcol\roman{csvcol}\endcsname}
+
+% auto head names
+\def\set@csv@autohead{%
+  \toks0=\expandafter{\csname\csv@current@col\endcsname}%
+  \toks1=\expandafter{\csname csvcol\roman{csvcol}\endcsname}%
+  \edef\csv@temp{\noexpand\gdef\the\toks0{\the\toks1}\noexpand\csv@AtEndLoop{\noexpand\gdef\the\toks0{}}}%
+  \csv@temp%
+}
+
+
+% head names and numbers
+\def\set@csv@head{%
+  \toks0={\gdef##1}%
+  \toks1=\expandafter{\csname csvcol\roman{csvcol}\endcsname}%
+  \edef\csv@temp{\noexpand\pgfkeysdef{/csv head/\csv@current@col}{\the\toks0{\the\toks1}\noexpand\csv@AtEndLoop{\the\toks0{}}}}%
+  \csv@temp%
+  \edef\csv@temp{\noexpand\pgfkeysdef{/csv head/\thecsvcol}{\the\toks0{\the\toks1}\noexpand\csv@AtEndLoop{\the\toks0{}}}}%
+  \csv@temp%
+}
+
+% head line
+\def\csv@processheadline{%
+  \csvreadnext%
+  \csv@escanline{\csvline}%
+  \xdef\csv@columncount{\thecsvcol}%
+  \setcounter{csvcol}{0}%
+  \loop%
+    \stepcounter{csvcol}%
+    \csv@opt@headtocolumnames%
+    \set@csv@head%
+  \ifnum\thecsvcol<\csv@columncount\repeat%
+  \toks@=\expandafter{\csv@columnnames}%
+  \edef\csv@processkeys{\noexpand\pgfkeys{/csv head/.cd,\the\toks@}}%
+  \csv@processkeys%
+  \csv@posthead%
+}
+
+% head numbers for no head
+\def\set@csv@nohead{%
+  \toks0={\gdef##1}%
+  \toks1=\expandafter{\csname csvcol\roman{csvcol}\endcsname}%
+  \edef\csv@temp{\noexpand\pgfkeysdef{/csv head/\thecsvcol}{\the\toks0{\the\toks1}\noexpand\csv@AtEndLoop{\the\toks0{}}}}%
+  \csv@temp%
+}
+
+% no head line
+\def\csv@noheadline{%
+  \setcounter{csvcol}{0}%
+  \loop%
+    \stepcounter{csvcol}%
+    \set@csv@nohead%
+  \ifnum\thecsvcol<\csv@columncount\repeat%
+  \toks@=\expandafter{\csv@columnnames}%
+  \edef\csv@processkeys{\noexpand\pgfkeys{/csv head/.cd,\the\toks@}}%
+  \csv@processkeys%
+}
+
+% check filter
+\def\csv@checkfilter{%
+  \csv@prefiltercommand%
+  \csv@iffilter{%
+    \stepcounter{csvrow}%
+    \let\csv@usage=\csv@do@linecommand%
+  }{}%
+}
+
+\def\csv@truefilter#1#2{#1}
+
+\def\csv@falsefilter#1#2{#2}
+
+\def\csvfilteraccept{\global\let\csv@iffilter=\csv@truefilter}
+
+\def\csvfilterreject{\global\let\csv@iffilter=\csv@falsefilter}
+
+% check columns
+\def\csv@checkcolumncount{%
+  \ifnum\thecsvcol=\csv@columncount%
+    \csv@checkfilter%
+  \else
+    \csv@columncounterror%
+  \fi%
+}
+
+\def\csv@nocheckcolumncount{%
+  \csv@checkfilter%
+}
+
+% normal line
+\def\csv@do@linecommand{%
+  \csv@do@latepostline%
+  \csv@do@preline%
+  \csv@body%
+  \csv@do@postline%
+}
+
+\gdef\csvreadnext{%
+  \global\read\csv@file to\csvline%
+  \stepcounter{csvinputline}%
+}
+
+\let\csv@par=\par
+
+% reads and processes a CSV file
+\def\csvloop#1{%
+  % reset
+  \global\let\@endloophook\csv@empty%
+  % options
+  \csvset{default,every csv,#1}%
+  \csv@preprocessor\csv@filename\csv@ppfilename%
+  \csv@prereading%
+  \csv@table@begin%
+  \setcounter{csvinputline}{0}%
+  % start reading
+  \openin\csv@file=\csv@ppfilename\relax%
+  \ifeof\csv@file%
+    \csv@warning{File \csv@ppfilename\ not existent, not readable, or empty!}%
+  \else%
+    % the head line
+    \csv@opt@processheadline%
+  \fi%
+  %
+  \setcounter{csvrow}{0}%
+  \gdef\csv@do@preline{%
+    \csv@prefirstline%
+    \global\let\csv@do@preline=\csv@preline%
+  }%
+  \gdef\csv@do@postline{%
+    \csv@postfirstline%
+    \global\let\csv@do@postline=\csv@postline%
+  }%
+  \gdef\csv@do@@latepostline{%
+    \csv@latepostfirstline%
+    \global\let\csv@do@latepostline=\csv@latepostline%
+  }%
+  \gdef\csv@do@latepostline{%
+    \csv@lateposthead%
+    \global\let\csv@do@latepostline=\csv@do@@latepostline%
+  }%
+  % command for the reading loop
+  \gdef\csv@iterate{%
+    \let\csv@usage=\csv@empty%
+    \csvreadnext%
+    \ifeof\csv@file%
+      \global\let\csv@next=\csv@empty%
+    \else%
+      \global\let\csv@next=\csv@iterate%
+      \if\csv@par\csvline\relax%
+        \else%
+        \csv@escanline{\csvline}%
+        % check and decide
+        \csv@opt@checkcolumncount%
+      \fi%
+    \fi%
+    % do or do not
+    \csv@usage%
+    \csv@next}%
+  \ifeof\csv@file%
+    \global\let\csv@next=\csv@empty%
+  \else%
+    \global\let\csv@next=\csv@iterate%
+  \fi%
+  \csv@next%
+  \closein\csv@file%
+  \@endloophook%
+  \csv@latepostlastline%
+  \csv@table@end%
+  \csv@postreading%
+}
+
+% user command
+\long\def\csv@reader[#1]#2#3#4{%
+  \global\long\def\csv@@body{#4}%
+  \csvloop{#1,file={#2},column names={#3},command=\csv@@body}%
+}
+
+\def\csvreader{%
+  \@ifnextchar[{\csv@reader}{\csv@reader[]}}
+
+
+%---- keys
+
+\pgfkeys{/handlers/.gstore in/.code=\pgfkeysalso{\pgfkeyscurrentpath/.code=\gdef#1{##1}}}
+\pgfkeys{/csv/.is family}
+\pgfkeys{/csv head/.is family}
+
+\def\csvset{\pgfqkeys{/csv}}
+\def\csvheadset{\pgfqkeys{/csv head}}
+
+\csvset{%
+  file/.gstore in=\csv@filename,%
+  preprocessed file/.gstore in=\csv@ppfilename,%
+  preprocessor/.gstore in=\csv@preprocessor,%
+  no preprocessing/.style={preprocessor=\csv@no@preprocessor},
+  column names reset/.code={\gdef\csv@columnnames{}},%
+  column names/.code={%
+      \toks0=\expandafter{\csv@columnnames}%
+      \def\temp{#1}\toks1=\expandafter{\temp}%
+      \xdef\csv@columnnames{\the\toks0,\the\toks1}%
+     },
+  command/.gstore in=\csv@body,%
+  check column count/.code={\ifthenelse{\equal{#1}{true}}{%
+    \global\let\csv@opt@checkcolumncount=\csv@checkcolumncount}{%
+    \global\let\csv@opt@checkcolumncount=\csv@nocheckcolumncount}},
+  check column count/.default=true,%
+  on column count error/.gstore in=\csv@columncounterror,
+  head/.code={\ifthenelse{\equal{#1}{true}}{%
+    \global\let\csv@opt@processheadline=\csv@processheadline%
+    \pgfkeysalso{check column count}}{%
+      \global\let\csv@opt@processheadline=\csv@noheadline%
+    \pgfkeysalso{check column count=false,late after head=}}},
+  head/.default=true,%
+  head to column names/.code={\ifthenelse{\equal{#1}{true}}{%
+    \global\let\csv@opt@headtocolumnames=\set@csv@autohead}{%
+    \global\let\csv@opt@headtocolumnames=\csv@empty}},%
+  head to column names/.default=true,%
+  column count/.gstore in=\csv@columncount,%
+  filter/.code={%
+    \def\temp{#1}\toks@=\expandafter{\temp}%
+    \xdef\csv@iffilter{\noexpand\ifthenelse{\the\toks@}}},
+  no filter/.code={\csvfilteraccept},
+  filter reject all/.code={\csvfilterreject},
+  filter accept all/.code={\csvfilteraccept},
+  before filter/.gstore in=\csv@prefiltercommand,
+  before first line/.gstore in=\csv@prefirstline,
+  before line/.code={\gdef\csv@preline{#1}\pgfkeysalso{before first line=#1}},
+  after first line/.gstore in=\csv@postfirstline,
+  after line/.code={\gdef\csv@postline{#1}\pgfkeysalso{after first line=#1}},
+  late after first line/.gstore in=\csv@latepostfirstline,
+  late after last line/.gstore in=\csv@latepostlastline,
+  late after line/.code={\gdef\csv@latepostline{#1}\pgfkeysalso{late after first line=#1,late after last line=#1}},
+  after head/.gstore in=\csv@posthead,
+  late after head/.gstore in=\csv@lateposthead,
+  before reading/.gstore in=\csv@prereading,
+  after reading/.gstore in=\csv@postreading,
+  before table/.gstore in=\csv@pretable,
+  after table/.gstore in=\csv@posttable,
+  table head/.gstore in=\csv@tablehead,
+  table foot/.gstore in=\csv@tablefoot,
+  @table/.code 2 args={\gdef\csv@table@begin{#1}\gdef\csv@table@end{#2}},
+  no table/.style={@table={}{}},
+  %
+  % default for reset
+  default/.style={
+    file=unknown.csv,
+    no preprocessing,
+    command=\csvline,
+    column names reset,
+    head,
+    head to column names=false,
+    column count=10,
+    on column count error=,
+    no filter,
+    before filter=,
+    before line=,
+    after line=,
+    late after line=,
+    after head=,
+    late after head=,
+    before reading=,
+    after reading=,
+    before table=,
+    after table=,
+    table head=,
+    table foot=,
+    no table
+    },
+  default,
+  %
+  % styles
+  every csv/.style={},
+  no head/.style={head=false},
+  no check column count/.style={check column count=false},
+  warn on column count error/.style={on column count error={\csv@warning{>\thecsvcol< instead of >\csv@columncount< columns for input line >\thecsvinputline< of file >\csv@ppfilename<}}},
+  filter equal/.style 2 args={filter=\equal{#1}{#2}},
+  filter not equal/.style 2 args={filter=\not\equal{#1}{#2}},
+  tabular/.style={
+    @table={\csv@pretable\begin{tabular}{#1}\csv@tablehead}{\csv@tablefoot\end{tabular}\csv@posttable},
+    late after line=\\},
+  centered tabular/.style={
+    @table={\begin{center}\csv@pretable\begin{tabular}{#1}\csv@tablehead}{\csv@tablefoot\end{tabular}\csv@posttable\end{center}},
+    late after line=\\},
+  longtable/.style={
+    @table={\csv@pretable\begin{longtable}{#1}\csv@tablehead}{\csv@tablefoot\end{longtable}\csv@posttable},
+    late after line=\\},
+  tabbing/.style={
+    @table={\csv@pretable\begin{tabbing}\csv@tablehead}{\csv@tablefoot\end{tabbing}\csv@posttable},
+    late after line=\\,
+    late after last line=},
+  centered tabbing/.style={
+    @table={\begin{center}\csv@pretable\begin{tabbing}\csv@tablehead}{\csv@tablefoot\end{tabbing}\csv@posttable\end{center}},
+    late after line=\\,
+    late after last line=},
+  autotabular/.style={
+    file=#1,
+    after head=\csv@pretable\begin{tabular}{|*{\csv@columncount}{l|}}\csv@tablehead,
+    table head=\hline\csvlinetotablerow\\\hline,
+    late after line=\\,
+    table foot=\\\hline,
+    late after last line=\csv@tablefoot\end{tabular}\csv@posttable,
+    command=\csvlinetotablerow},
+  autolongtable/.style={
+    file=#1,
+    after head=\csv@pretable\begin{longtable}{|*{\csv@columncount}{l|}}\csv@tablehead,
+    table head=\hline\csvlinetotablerow\\\hline\endhead\hline\endfoot,
+    late after line=\\,
+    late after last line=\csv@tablefoot\end{longtable}\csv@posttable,
+    command=\csvlinetotablerow}
+}
+
+% deprecated keys
+\csvset{
+  nofilter/.style=no filter,
+  nohead/.style=no head,
+}
+
+
+\def\csvautotabular#1{\csvloop{autotabular={#1}}}
+
+\def\csvautolongtable#1{\csvloop{autolongtable={#1}}}
+
+\def\csvstyle#1#2{\csvset{#1/.style={#2}}}
+
+\def\csvnames#1#2{\csvset{#1/.style={column names={#2}}}}
+

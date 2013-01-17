@@ -1,0 +1,644 @@
+% This file is part of the Lecturer package.
+% Paul Isambert -- July 2010.
+% 
+% COLORS
+% No attributes here. Cool.
+%
+\def\newcolor#1#2{%
+  \ifnextnospace[{\ltr@newcolor{#1}{#2}}{\ltr@newcolor{#1}{#2}[]}%
+  }
+\def\ltr@newcolor#1#2[#3]#4{%
+  \ifcs{ltr@colormodel_#2}  
+       {\xdefcs{ltr@color_user:#1}{%
+          \usecs{ltr@colormodel_#2}#4\ltr@color_end
+          \ifemptystring{#3}{/ltr@opacity_1 gs }{/ltr@opacity_#3 gs }}%
+        \reverse\iffemptystring{#3}{\ltr@create_opacity{#3}}%
+        \xdefcs{ltr@jscolor_user:#1}{\usecs{ltr@jscolormodel_#2}#4\ltr@color_end}%
+        }%
+       {\ltr@error{Unknown color model `#2'. Color `#1' won't be defined}}%
+  }
+\def\ltr@create_opacity#1{%
+  \reverse\iffcs{ltr@opacity_#1}
+    {\immediate\pdfobj{<< /Type/ExtGState /CA #1 /ca #1 >>}%
+    \addgstate{ltr@opacity_#1}{\the\pdflastobj}%
+    \gdefcs{ltr@opacity_#1}{}}%
+  }
+
+\def\ltr@colormodel_grey#1\ltr@color_end{#1 g #1 G }
+\let\ltr@colormodel_gray\ltr@colormodel_grey
+\def\ltr@colormodel_rgb#1\ltr@color_end{#1 rg #1 RG }
+\def\ltr@colormodel_cmyk#1\ltr@color_end{#1 k #1 K }
+%
+\def\ltr@color_use#1{%
+  \ifcs{ltr@color_user:#1}
+       {\usecs{ltr@color_user:#1}}
+       {\ltr@color_analyze#1 0 0 0 0 \ltr@color_end}%
+  }
+\def\ltr@color_analyze#1 {%
+  \ifcs{ltr@color_usemodel:#1}
+       {\usecs{ltr@color_usemodel:#1}}%
+       {\ltr@use_defaultcolor}%
+  }
+%
+\defcs{ltr@color_usemodel:grey}#1 #2\ltr@color_end{#1 g #1 G }
+\letcstocs{ltr@color_usemodel:gray}{ltr@color_usemodel:grey}
+\defcs{ltr@color_usemodel:rgb}#1 #2 #3 #4\ltr@color_end{#1 #2 #3 rg #1 #2 #3 RG }
+\defcs{ltr@color_usemodel:cmyk}#1 #2 #3 #4 #5\ltr@color_end{#1 #2 #3 #4 k #1 #2 #3 #4 K }
+\def\ltr@use_defaultcolor#1\ltr@color_end{1 g 1 G }
+%
+% A simple macro for everybody.
+%
+\long\def\usecolor#1#2{%
+  \pdfcolorstack0 push {\ltr@color_use{#1}}%
+  #2%
+  \pdfcolorstack0 pop%
+  }
+%
+% And the same in JavaScript, just for the background in full screen. Ain't it nice?
+%
+\def\ltr@jscolormodel_grey#1\ltr@color_end{["G",#1]}
+\let\ltr@jscolormodel_gray\ltr@jscolormodel_grey
+\def\ltr@jscolormodel_rgb#1 #2 #3\ltr@color_end{["RGB",#1,#2,#3]}
+\def\ltr@jscolormodel_cmyk#1 #2 #3 #4\ltr@color_end{["CMYK",#1,#2,#3,#4]}
+%
+\def\ltr@jscolor_use#1#2#3{%
+  \ltr@ifattribute #1:#2;
+    {\ifcs{ltr@jscolor_user:\ltr@usevalueor#1:#2;{ltr@novalue}}
+          {\usecs{ltr@jscolor_user:\ltr@usevalue#1:#2;}}
+          {\ltr@passvaluenobraces{\ltr@jscolor_analyze{#3}}#1:#2; \ltr@color_end}}
+    {["G",#3]}%
+  }
+\def\ltr@jscolor_analyze#1#2 {%
+  \ifcs{ltr@jscolor_usemodel:#2}
+       {\usecs{ltr@jscolor_usemodel:#2}}%
+       {\ltr@jsuse_defaultcolor{#1}}%
+  }
+\defcs{ltr@jscolor_usemodel:grey}#1 \ltr@color_end{["G",#1]}
+\letcstocs{ltr@jscolor_usemodel:gray}{ltr@jscolor_usemodel:grey}
+\defcs{ltr@jscolor_usemodel:rgb}#1 #2 #3 \ltr@color_end{["RGB",#1,#2,#3]}
+\defcs{ltr@jscolor_usemodel:cmyk}#1 #2 #3 #4 \ltr@color_end{["CMYK",#1,#2,#3,#4]}
+\def\ltr@jsuse_defaultcolor#1#2\ltr@color_end{["G",#1]}
+
+\ltr@create_opacity{1}
+\newcolor{black}{grey}{0}
+\newcolor{white}{grey}{1}
+\newcolor{red}{rgb}{1 0 0}
+\newcolor{green}{rgb}{0 1 0}
+\newcolor{blue}{rgb}{0 0 1}
+\newcolor{cyan}{cmyk}{1 0 0 0}
+\newcolor{magenta}{cmyk}{0 1 0 0}
+\newcolor{yellow}{cmyk}{0 0 1 0}
+
+%
+%
+%
+%
+% SHADES
+%
+\def\ltr@newshade_do#1#2#3{%
+  \immediate\pdfobj stream attr {
+    /FunctionType 4
+    /Domain [0 1]
+    /Range  [#1]
+    }
+  {{\ltr@usevalueor ltr@inner_shade:speed;1 mul dup #3}}%
+  \edef\ltr@temp{\the\pdflastobj\spacecs}
+  \immediate\pdfobj{
+     <<
+     /ShadingType 2
+     /Coords[0 0 1 0]
+     /Extend [true true]
+     /ColorSpace /Device#2
+     /Function \ltr@temp 0 R
+    >>}
+  \edef\ltr@temp{\the\pdflastobj\spacecs}%
+  \addshading{ltr@shade_\ltr@usevalue ltr@inner_shade:name;}{\ltr@temp}
+  }
+\def\ltr@newshade_trig#1#2{%
+  \ltr@nopt{%
+    \dimexpr(\ltr@nopt{#1pt*71/4068}%
+      \dimexpr(#2\dimexpr(#2\dimexpr(#2\dimexpr(#2pt/72-1pt)\relax+42pt)\relax-840pt)\relax+5040pt)\relax/5040)\relax}%
+  }
+\def\ltr@newshade_sin#1{%
+  \ltr@newshade_trig{#1}{\ltr@nopt{\ltr@nopt{#1pt*71/4068}\dimexpr(#1pt*71/4068)}}%
+  }
+\def\ltr@newshade_cos#1{%
+  \ltr@newshade_trig{\ltr@nopt{90pt-#1pt}}{\ltr@nopt{\ltr@nopt{\ltr@nopt{90pt-#1pt}pt*71/4068}\dimexpr(\ltr@nopt{90pt-#1pt}pt*71/4068)}}%
+  }
+\def\ltr@newshade_removepoint#1.#2#3#4#5\ltr@end{#1#2#3#4}
+\def\ltr@newshade_removesign-{}%
+\def\ltr@newshade_doscale#1{%
+  \xdefcs{ltr@shade_user:\ltr@usevalue ltr@inner_shade:name;_scale}{\ltr@nopt{1000pt/\expandafter\ltr@newshade_removepoint#1000\ltr@end}}%
+  }
+\defactiveparameter ltr@inner_shade {%
+  \ltr@todim_loop{#1}{width height }%
+  \ifdim\ltr@usevalueor #1:angle;{90}pt>90pt
+    \ltr@error{A shade's angle can't be more than 90 [shade `\ltr@usevalue #1:name;']}%
+    \ltr@esetattribute #1:angle; = 90
+  \else
+    \ifdim\ltr@usevalueor #1:angle;{90}pt<-90pt
+      \ltr@error{A shade's angle can't be less than -90 [shade `\ltr@usevalue #1:name;']}%
+      \ltr@esetattribute #1:angle; = -90
+    \fi
+  \fi
+  \ifdim\ltr@usevalueor #1:angle;{90}pt<0pt
+    \ltr@esetattribute #1:angle; = \ltr@passvaluenobraces\ltr@newshade_removesign#1:angle;
+    \gdefcs{ltr@shade_user:\ltr@usevalue #1:name;}{reversed}%
+  \else
+    \gdefcs{ltr@shade_user:\ltr@usevalue #1:name;}{normal}%
+  \fi
+  \xdefcs{ltr@shade_user:\ltr@usevalue #1:name;_sin}{\ltr@newshade_sin{\ltr@usevalueor#1:angle;{90}}}%
+  \xdefcs{ltr@shade_user:\ltr@usevalue #1:name;_cos}{\ltr@newshade_cos{\ltr@usevalueor#1:angle;{90}}}%
+  \ifdim\ltr@usevalueor#1:angle;{90}pt<45pt
+    \passcs\ltr@newshade_doscale{ltr@shade_user:\ltr@usevalue #1:name;_cos}%
+  \else
+    \passcs\ltr@newshade_doscale{ltr@shade_user:\ltr@usevalue #1:name;_sin}%
+  \fi
+  \ltr@ifvalue #1:fixed; = true
+    {\gdefcs{ltr@shade_user:\ltr@usevalue #1:name;_fixed}{}
+%
+%     This would force fixed shades to have at least the slide's dimension,
+%     so it would never take the area's dimensions. But after all why forbid
+%     an option simply because I can't see the point of it?
+%
+%     \gdefcs{ltr@shade_user:\ltr@usevalue #1:name;_width}{\pdfpagewidth}
+%     \gdefcs{ltr@shade_user:\ltr@usevalue #1:name;_height}{\pdfpageheight}
+    }{}%
+  \ltr@passvalue{\gdefcs{ltr@shade_user:\ltr@usevalue #1:name;_width}}#1:width;%
+  \ltr@passvalue{\gdefcs{ltr@shade_user:\ltr@usevalue #1:name;_height}}#1:height;%
+  \ltr@ifcasevalue#1:model;
+    \val grey
+      \edef\ltr@from_grey{\ltr@usevalueor#1:from;0 }%
+      \edef\ltr@to_grey{\ltr@usevalueor#1:to;1 }%
+      \ltr@newshade_do{0 1}{Gray}{%
+        \ltr@newshade_setcolor{grey}}%
+    \val gray
+      \edef\ltr@from_grey{\ltr@usevalueor#1:from;0 }%
+      \edef\ltr@to_grey  {\ltr@usevalueor#1:to;0 }%
+      \ltr@newshade_do{0 1}{Gray}{%
+        \ltr@newshade_setcolor{grey}}%
+    \val rgb
+      \ltr@passvaluenobracesor{\ltr@newshade_getrgb{from}}#1:from;
+        {\def\ltr@from_red{0 }\def\ltr@from_green{0 }\def\ltr@from_black{0 }} %
+      \ltr@passvaluenobracesor{\ltr@newshade_getrgb{to}}#1:to; 
+        {\def\ltr@to_red{1 }\def\ltr@to_green{1 }\def\ltr@to_blue{1 }} %
+      \ltr@newshade_do{0 1 0 1 0 1}{RGB}{%
+        \ltr@newshade_setcolor{red}%
+        exch dup \ltr@newshade_setcolor{green}%
+        exch \ltr@newshade_setcolor{blue}}%
+    \val cmyk
+      \ltr@passvaluenobracesor{\ltr@newshade_getcmyk{from}}#1:from; 
+        {\def\ltr@from_cyan{0 }\def\ltr@from_magenta{0 }\def\ltr@from_yellow{ }\def\ltr@from_black{0 }} %
+      \ltr@passvaluenobraces{\ltr@newshade_getcmyk{to}}#1:to; 
+        {\def\ltr@to_cyan{1 }\def\ltr@to_magenta{1 }\def\ltr@to_yellow{1 }\def\ltr@to_black{1 }} %
+      \ltr@newshade_do{0 1 0 1 0 1 0 1}{CMYK}{%
+        \ltr@newshade_setcolor{cyan}%
+        exch dup \ltr@newshade_setcolor{magenta}%
+        exch dup \ltr@newshade_setcolor{yellow}%
+        exch \ltr@newshade_setcolor{black}%
+        }%
+    \elseval
+      \edef\ltr@from_grey{\ltr@usevalueor#1:from;0 }%
+      \edef\ltr@to_grey{\ltr@usevalueor#1:to;1 }%
+      \ltr@newshade_do{0 1}{Gray}{%
+        \ltr@newshade_setcolor{grey}}%
+  \endval
+  \ltr@deleteattribute#1:name;%
+  \ltr@deleteattribute#1:width;%
+  \ltr@deleteattribute#1:height;%
+  \ltr@deleteattribute#1:fixed;%
+  \ltr@deleteattribute#1:model;%
+  \ltr@deleteattribute#1:from;%
+  \ltr@deleteattribute#1:to;%
+  \ltr@deleteattribute#1:angle;%
+  \ltr@deleteattribute#1:speed;%
+  }
+\def\ltr@newshade_getrgb#1#2 #3 #4 {%
+  \defcs{ltr@#1_red}{#2 }\defcs{ltr@#1_green}{#3 }\defcs{ltr@#1_blue}{#4 }%
+  \skipspace{}%
+  }
+\def\ltr@newshade_getcmyk#1#2 #3 #4 #5 {%
+  \defcs{ltr@#1_cyan}{#2 }\defcs{ltr@#1_magenta}{#3 }\defcs{ltr@#1_yellow}{#4 }\defcs{ltr@#1_black}{#5 }%
+  \skipspace{}%
+  }
+\def\ltr@newshade_setcolor#1{%
+  \usecs{ltr@from_#1} \usecs{ltr@to_#1} sub mul \usecs{ltr@from_#1} exch sub 
+  }
+\restrictparameter ltr@inner_shade: name model from to angle speed width height fixed\par
+\ltr@boolean_attr{ltr@inner_shade:fixed}
+\ltr@restrictattribute ltr@inner_shade:model; grey gray rgb cmyk\par
+\def\newshade#1{%
+  \setparameter ltr@inner_shade:
+    name = {#1}
+  }
+
+%
+%
+%
+%
+% PAINTING
+%
+\def\ltr@paint_area#1#2#3#4#5{%
+  \ifcs{ltr@shade_user:#1}
+       {\ltr@point_convert{#2-\pdfhorigin}
+        \ltr@point_convert{\pdfvorigin-#3}
+        \ltr@point_convert{#4}
+        \ltr@point_convert{-#5} re W* n
+        \ltr@paint_shade{#1}}
+       {\ltr@paint_color{f}{#1}}
+       {#2}{#3}{#4}{#5}
+  }
+\def\ltr@paint_path#1#2#3#4#5{%
+  \ifcs{ltr@shade_user:\ltr@usevalueor#1:frame_color;{ltr@novalue}}
+    {\ltr@point_convert{#2-\dimexpr(\pdfhorigin+\ltr@usevalue #1:frame_width;)}
+     \ltr@point_convert{\dimexpr(\pdfvorigin+\ltr@usevalue #1:frame_width;)-#3}
+     \ltr@point_convert{#4+\dimexpr(\ltr@usevalue #1:frame_width;*2)}
+     \ltr@point_convert{-#5+\dimexpr(\ltr@usevalue #1:frame_width;*2)} re
+     \ltr@point_convert{#2-\pdfhorigin}
+     \ltr@point_convert{\pdfvorigin-#3}
+     \ltr@point_convert{#4}
+     \ltr@point_convert{-#5} re W* n
+     \ltr@passvalue\ltr@paint_shade #1:frame_color;
+         {\dimexpr(#2-\ltr@usevalue #1:frame_width;)\relax}
+         {\dimexpr(#3-\ltr@usevalue #1:frame_width;)\relax}
+         {#4+\dimexpr(\ltr@usevalue #1:frame_width;*2)}
+         {#5+\dimexpr(\ltr@usevalue #1:frame_width;*2)}}
+    {%
+     \ltr@point_convert{\ifdim\ltr@usevalue #1:frame_width;<0pt -\fi\ltr@usevalue #1:frame_width;} w
+     \ltr@ifcasevalue#1:frame_corner;
+       \val round 1
+       \val bevel 2
+       \elseval 0
+     \endval\spacecs j
+     \ltr@ifattribute#1:frame_dash;{[\ltr@usevalue#1:frame_dash;] 0 d }{}%
+     \ltr@passvalue{\ltr@paint_color{S}}#1:frame_color;
+       {\dimexpr(#2-\ltr@usevalue #1:frame_width;/2)}
+       {\dimexpr(#3-\ltr@usevalue #1:frame_width;/2)}
+       {\dimexpr(#4+\ltr@usevalue #1:frame_width;)}
+       {\dimexpr(#5+\ltr@usevalue #1:frame_width;)}}
+  }
+\def\ltr@paint_shade#1#2#3#4#5{%
+% Translation, and reversal of vertical dimension.
+  1 0 0 -1
+    \passexpandedcs\ifstring{ltr@shade_user:#1}{reversed}
+                          {\ifcs{ltr@shade_user:#1_fixed}
+                                {\ltr@point_convert{\pdfpagewidth-\pdfhorigin}}
+                                {\ltr@point_convert{\dimexpr(#4+#2)-\pdfhorigin}}}
+                          {\ifcs{ltr@shade_user:#1_fixed}
+                                {\ltr@point_convert{-\pdfhorigin}}
+                                {\ltr@point_convert{#2-\pdfhorigin}}}
+    \ifcs{ltr@shade_user:#1_fixed}{\ltr@point_convert{\pdfvorigin}}{\ltr@point_convert{\pdfvorigin-#3}} cm
+% Scaling.
+  \passexpandedcs\iffstring{ltr@shade_user:#1}{reversed}{-}%
+    \ifcs{ltr@shade_user:#1_width}
+         {\ltr@point_convert{\usecs{ltr@shade_user:#1_width}}}
+         {\ltr@point_convert{#4}}%
+  0 0
+  \ifcs{ltr@shade_user:#1_height}
+       {\ltr@point_convert{\usecs{ltr@shade_user:#1_height}}}
+       {\ltr@point_convert{#5}}%
+   0 0 cm
+% Rotation.
+  \usecs{ltr@shade_user:#1_cos} \usecs{ltr@shade_user:#1_sin} -\usecs{ltr@shade_user:#1_sin}
+    \usecs{ltr@shade_user:#1_cos} 0 0 cm
+% Scaling of rotated material top accommodate the new length (diagonal, not side).
+  \usecs{ltr@shade_user:#1_scale} 0 0 1 0 0 cm
+  /ltr@shade_#1 sh
+  }
+\def\ltr@paint_color#1#2#3#4#5#6{%
+  \ltr@color_use{#2}%
+  \ltr@point_convert{#3-\pdfhorigin} \ltr@point_convert{\pdfvorigin-#4}
+  \ltr@point_convert{#5} \ltr@point_convert{-#6} re #1
+  }
+
+%
+%
+%
+%
+% SYMBOLS
+%
+\def\ltr@draw_dim#1{%
+  \ltr@nopt{#1pt}%
+  }
+\newfornoempty\ltr@draw_loop{1}#2,{%
+  \passtrim{#2}{\ltr@draw_addspace{#1}}%
+  }[\ltr@draw_add{}{}{}{#1}]
+\def\ltr@draw_addspace#1#2{%
+  \reverse\iffemptystring{#2}{\ltr@draw_decide{#1}#2 }% SPACE!!!
+  }
+\def\ltr@draw_decide#1#2 {%
+  \ifcs{ltr@draw_#2}
+       {\usecs{ltr@draw_#2}{#1}}
+       {\ltr@draw_line{#1}#2 }%
+  }
+\def\ltr@draw_line#1#2 #3 {%
+  \ifstring{#2}{+}
+    {\ltr@draw_relativeline#3 }
+    {\ltr@draw_add{}{#2}{#3}{l}%
+    \passarguments{S}}%
+  }
+\def\ltr@draw_relativeline#1 #2 {%
+  \ltr@draw_add{}{\ltr@nopt{#1pt+\ltr@draw_x pt}}{\ltr@nopt{#2pt+\ltr@draw_y pt}}{l}%
+  \passarguments{S}
+  }
+\def\ltr@draw_move#1#2 #3 {%
+  \ifstring{#2}{+}
+    {\ltr@draw_relativemove{#1}#3 }
+    {\ltr@draw_add{#1}{#2}{#3}{m}%
+    \passarguments{}}%
+  }
+\def\ltr@draw_relativemove#1#2 #3 {%
+  \ltr@draw_add{#1}{\ltr@nopt{#2pt+\ltr@draw_x pt}}{\ltr@nopt{#3pt+\ltr@draw_y pt}}{m}%
+  \passarguments{}
+  }
+\def\ltr@draw_stroke#1{%
+  \ltr@draw_add{S}{\ltr@draw_x}{\ltr@draw_y}{m}%
+  \passarguments{}
+  }
+\def\ltr@draw_close#1{%
+  \ltr@draw_add{h}{\ltr@draw_x}{\ltr@draw_y}{m}%
+  \passarguments{S}
+  }
+\def\ltr@draw_fill#1{%
+  \ltr@draw_add{f*}{\ltr@draw_x}{\ltr@draw_y}{m}%
+  \passarguments{}
+  }
+\def\ltr@draw_paint#1{%
+  \ltr@draw_add{h B*}{\ltr@draw_x}{\ltr@draw_y}{m}%
+  \passarguments{}
+  }
+\def\ltr@draw_pen#1#2 {%
+  \ltr@draw_add{}{}{}{#2 w }%
+  \passarguments{}
+  }
+\def\ltr@draw_color#1#2 {%
+  \ifcs{ltr@color_user:#2}
+       {\ltr@draw_add{}{}{}{\usecs{ltr@color_user:#2}}}
+       {\usecs{ltr@draw_color#2}}%
+  }
+\def\ltr@draw_colorrgb#1 #2 #3 {%
+  \ltr@draw_add{}{}{}{#1 #2 #3 rg #1 #2 #3 RG }%
+  }
+\def\ltr@draw_colorcmyk#1 #2 #3 #4 {%
+  \ltr@draw_add{}{}{}{#1 #2 #3 #4 k #1 #2 #3 #4 K }%
+  }
+\def\ltr@draw_colorgrey#1 {%
+  \ltr@draw_add{}{}{}{#1 g #1 G }%
+  }
+\let\ltr@draw_colorgray\ltr@draw_colorgrey
+\def\ltr@draw_add#1#2#3#4{%
+  \eaddright\ltr@draw_temp{%
+    \reverse\iffemptystring{#1}{#1 }%
+    \reverse\iffemptystring{#2}{\ltr@draw_dim{#2} }%
+    \reverse\iffemptystring{#3}{\ltr@draw_dim{#3} }%
+    #4 }%
+  \reverse\iffemptystring{#2}
+    {\edef\ltr@draw_x{#2}%
+     \ifdim\ltr@draw_x pt>\ltr@draw_xmax pt \edef\ltr@draw_xmax{\ltr@draw_x}\fi
+     \ifdim\ltr@draw_x pt<\ltr@draw_xmin pt \edef\ltr@draw_xmin{\ltr@draw_x}\fi}%
+  \reverse\iffemptystring{#3}
+    {\edef\ltr@draw_y{#3}%
+     \ifdim\ltr@draw_y pt>\ltr@draw_ymax pt \edef\ltr@draw_ymax{\ltr@draw_y}\fi
+     \ifdim\ltr@draw_y pt<\ltr@draw_ymin pt \edef\ltr@draw_ymin{\ltr@draw_y}\fi}%
+  }
+\def\ltr@draw_circle#1#2 #3 {%
+  \usecs{ltr@draw_circle#2}{\ltr@draw_x}{\ltr@draw_y}{#3}%
+  \passarguments{S}
+  }
+\def\ltr@draw_kappa{5522847}
+\def\ltr@draw_circleur#1#2#3{%
+  \ltr@draw_addcircle{#1pt}{#2pt+.\ltr@draw_kappa\dimexpr(#3pt)}
+                     {#1pt+#3pt-.\ltr@draw_kappa\dimexpr(#3pt)}{#2pt+#3pt}
+                     {#1pt+#3pt}{#2pt+#3pt}{#3}{#3}%
+  }
+\def\ltr@draw_circledr#1#2#3{%
+  \ltr@draw_addcircle{#1pt}{#2pt-.\ltr@draw_kappa\dimexpr(#3pt)}
+                     {#1pt+#3pt-.\ltr@draw_kappa\dimexpr(#3pt)}{#2pt-#3pt}
+                     {#1pt+#3pt}{#2pt-#3pt}{#3}{-#3}%
+  }
+\def\ltr@draw_circleru#1#2#3{%
+  \ltr@draw_addcircle{#1pt+.\ltr@draw_kappa\dimexpr(#3pt)}{#2pt}
+                     {#1pt+#3pt}{#2pt+#3pt-.\ltr@draw_kappa\dimexpr(#3pt)}
+                     {#1pt+#3pt}{#2pt+#3pt}{#3}{#3}%
+  }
+\def\ltr@draw_circlerd#1#2#3{%
+  \ltr@draw_addcircle{#1pt+.\ltr@draw_kappa\dimexpr(#3pt)}{#2pt}
+                     {#1pt+#3pt}{#2pt-#3pt+.\ltr@draw_kappa\dimexpr(#3pt)}
+                     {#1pt+#3pt}{#2pt-#3pt}{#3}{-#3}%
+  }
+\def\ltr@draw_circleul#1#2#3{%
+  \ltr@draw_addcircle{#1pt}{#2pt+.\ltr@draw_kappa\dimexpr(#3pt)}
+                     {#1pt-#3pt+.\ltr@draw_kappa\dimexpr(#3pt)}{#2pt+#3pt}
+                     {#1pt-#3pt}{#2pt+#3pt}{-#3}{#3}%
+  }
+\def\ltr@draw_circledl#1#2#3{%
+  \ltr@draw_addcircle{#1pt}{#2pt-.\ltr@draw_kappa\dimexpr(#3pt)}
+                     {#1pt-#3pt+.\ltr@draw_kappa\dimexpr(#3pt)}{#2pt-#3pt}
+                     {#1pt-#3pt}{#2pt-#3pt}{-#3}{-#3}%
+  }
+\def\ltr@draw_circlelu#1#2#3{%
+  \ltr@draw_addcircle{#1pt-.\ltr@draw_kappa\dimexpr(#3pt)}{#2pt}
+                     {#1pt-#3pt}{#2pt+#3pt-.\ltr@draw_kappa\dimexpr(#3pt)}
+                     {#1pt-#3pt}{#2pt+#3pt}{-#3}{#3}%
+  }
+\def\ltr@draw_circleld#1#2#3{%
+  \ltr@draw_addcircle{#1pt-.\ltr@draw_kappa\dimexpr(#3pt)}{#2pt}
+                     {#1pt-#3pt}{#2pt-#3pt+.\ltr@draw_kappa\dimexpr(#3pt)}
+                     {#1pt-#3pt}{#2pt-#3pt}{-#3}{-#3}%
+  }
+\def\ltr@draw_addcircle#1#2#3#4#5#6#7#8{%
+  \eaddright\ltr@draw_temp{%
+    \ltr@nopt{#1} \ltr@nopt{#2}
+    \ltr@nopt{#3} \ltr@nopt{#4}
+    \ltr@nopt{#5} \ltr@nopt{#6} c
+    }%
+  \edef\ltr@draw_x{\ltr@nopt{\ltr@draw_x pt+#7pt}}%
+  \edef\ltr@draw_y{\ltr@nopt{\ltr@draw_y pt+#8pt}}%
+  \reverse\iffemptycommand\ltr@draw_x
+    {\ifdim\ltr@draw_x pt>\ltr@draw_xmax pt \edef\ltr@draw_xmax{\ltr@draw_x}\fi
+     \ifdim\ltr@draw_x pt<\ltr@draw_xmin pt \edef\ltr@draw_xmin{\ltr@draw_x}\fi}%
+  \reverse\iffemptycommand\ltr@draw_y
+    {\ifdim\ltr@draw_y pt>\ltr@draw_ymax pt \edef\ltr@draw_ymax{\ltr@draw_y}\fi
+     \ifdim\ltr@draw_y pt<\ltr@draw_ymin pt \edef\ltr@draw_ymin{\ltr@draw_y}\fi}%  
+  }
+
+\def\newsymbol#1{%
+  \ifnextnospace[{\ltr@newsymbol{#1}}{\ltr@newsymbol{#1}[1pt]}%
+  }
+\def\ltr@newsymbol#1[#2]#3{%
+  \def\ltr@draw_temp{}%
+  \def\ltr@draw_x{0}\def\ltr@draw_y{0}%
+  \def\ltr@draw_xmax{0}\def\ltr@draw_xmin{0}%
+  \def\ltr@draw_ymax{0}\def\ltr@draw_ymin{0}%
+  \def\ltr@draw_unit{1pt}%
+  \def\ltr@draw_leftpadding{1cm}\def\ltr@draw_rightpadding{1pt}%
+  \def\ltr@draw_toppadding{1pt}\def\ltr@draw_bottompadding{1pt}%
+  \ltr@option_launchloop{draw}{#2}%
+  \deftrim\ltr@temp{#3}%
+  \passexpanded{\ltr@draw_loop{}}{\ltr@temp,}%
+  \setbox\ltr@temp_box=\hbox{% Need the total width (not just positive) of the drawing.
+    % \ltr@draw_xmin is negative, hence the somewhat confusing signs.
+    \kern-\dimexpr(\ltr@point_convert{\ltr@draw_unit}\dimexpr(\ltr@draw_xmin pt)\relax-\ltr@draw_leftpadding)\relax
+    \pdfliteral{q \ltr@point_convert{\ltr@draw_unit} 0 0 \ltr@point_convert{\ltr@draw_unit} 0 0 cm 1 w 0 0 m \ltr@draw_temp Q}}%
+  \wd\ltr@temp_box=\dimexpr(\ltr@point_convert{\ltr@draw_unit}\dimexpr(\ltr@draw_xmax pt-\ltr@draw_xmin pt)\relax+\ltr@draw_leftpadding+\ltr@draw_rightpadding)\relax
+  \ht\ltr@temp_box=\dimexpr(\ltr@point_convert{\ltr@draw_unit}\dimexpr(\ltr@draw_ymax pt)\relax+\ltr@draw_toppadding)\relax
+  \dp\ltr@temp_box=-\dimexpr(\ltr@point_convert{\ltr@draw_unit}\dimexpr(\ltr@draw_ymin pt)\relax-\ltr@draw_bottompadding)\relax
+  \pdfxform resources {/ExtGState << \ltr@page_extgstate >>} \ltr@temp_box
+  \setbox\ltr@temp_box=\hbox{%
+    \kern\dimexpr(\ltr@point_convert{\ltr@draw_unit}\dimexpr(\ltr@draw_xmin pt)\relax-\ltr@draw_leftpadding)\relax
+    \pdfrefxform\the\pdflastxform}%
+  \xdefcs{ltr@\commandtoname#1@symbol_width}{\the\wd\ltr@temp_box}%
+  \xdefcs{ltr@\commandtoname#1@symbol_height}{\the\ht\ltr@temp_box}%
+  \xdefcs{ltr@\commandtoname#1@symbol_depth}{\the\dp\ltr@temp_box}%
+  \xdef#1{%
+    \hbox{%
+      \kern\dimexpr(\ltr@point_convert{\ltr@draw_unit}\dimexpr(\ltr@draw_xmin pt)\relax-\ltr@draw_leftpadding)\relax
+      \pdfrefxform\the\pdflastxform}%
+    }%
+  }
+\def\ltr@draw_usepair#1#2{%
+  \ifstring{#1}{padding}
+    {\def\ltr@draw_leftpadding{#2}%
+     \def\ltr@draw_rightpadding{#2}%
+     \def\ltr@draw_toppadding{#2}%
+     \def\ltr@draw_bottompadding{#2}}
+     {\ifcs{ltr@draw_#1padding}
+       {\defcs{ltr@draw_#1padding}{#2}}
+       {\ltr@error{Unknown option `#1' in \string\newsymbol}}}%
+  }
+\def\ltr@draw_useatom#1{%
+  \def\ltr@draw_unit{#1}%
+  }
+\def\symbolwidth#1{%
+  \ltr@symbol_dimensions{#1}{width}%
+  }
+\def\symbolheight#1{%
+  \ltr@symbol_dimensions{#1}{height}%
+  }
+\def\symboldepth#1{%
+  \ltr@symbol_dimensions{#1}{depth}%
+  }
+\def\ltr@symbol_dimensions#1#2{%
+  \ifcs{ltr@\commandtoname#1@symbol_#2}
+    {\usecs{ltr@\commandtoname#1@symbol_#2}}
+    {\ltr@error{\string#1 is not a symbol}}%
+  }
+%
+%
+% IMAGES
+%
+\def\newimage#1{%
+  \ifnextnospace[{\ltr@newimage{#1}}{\ltr@newimage{#1}[,]}%
+  }
+\def\ltr@newimage#1[#2,#3]#4{%
+  \pdfximage\reverse\iffemptystring{#2}{width \dimexpr(#2)\relax }
+            \reverse\iffemptystring{#3}{height \dimexpr(#3)\relax }
+            {#4}%
+  \xdefcs{ltr@image_user:#1}{%
+    \hbox{\pdfrefximage\the\pdflastximage}%
+    }%
+  \setbox\ltr@temp_box=\usecs{ltr@image_user:#1}%
+  \xdefcs{ltr@image_height:#1}{\the\ht\ltr@temp_box}%
+  }
+\def\useimage#1{%
+  \ifcs{ltr@image_user:#1}
+    {\usecs{ltr@image_user:#1}}
+    {\ltr@error{Unkown image `#1'. Declare it with \string\useimage}}%
+  }
+\def\ltr@image_use#1#2#3{%
+  \iffcs{ltr@image_user:#1}
+    {\kern\dimexpr(#3-\pdfvorigin)\relax
+     \moveright\dimexpr(#2-\pdfhorigin)\relax
+       \usecs{ltr@image_user:#1}
+     \kern-\dimexpr(#3+\usecs{ltr@image_height:#1}-\pdfvorigin)\relax
+     \prevdepth-1000pt}%
+  }%
+
+%
+% TRANSITIONS
+% Attributes : type, motion, direction, dimension, duration, scale.
+%
+\def\ltr@transition_restrictions{name type motion direction dimension duration scale}
+\passexpandednobraces{\restrictparameter ltr@inner_transition:}\ltr@transition_restrictions\par
+\ltr@restrictattribute ltr@inner_transition:type;
+   split Split blinds Blinds box Box wipe Wipe
+   dissolve Dissolve glitter Glitter fly Fly
+   push Push cover Cover uncover Uncover fade Fade\par
+\ltr@restrictattribute ltr@inner_transition:motion; inward outward\par
+\ltr@restrictattribute ltr@inner_transition:direction; lr bt rl tb dx\par
+\ltr@restrictattribute ltr@inner_transition:dimension; horizontal vertical\par
+\defactiveparameter ltr@inner_transition{%
+  \immediate\pdfobj{
+    << /Type/Trans
+    /S/%
+    \ltr@ifcasevalue #1:type;
+      \val split    Split
+      \val Split    Split
+      \val blinds   Blinds
+      \val Blinds   Blinds
+      \val box      Box
+      \val Box      Box
+      \val wipe     Wipe
+      \val Wipe     Wipe
+      \val dissolve Dissolve
+      \val Dissolve Dissolve
+      \val glitter  Glitter
+      \val Glitter  Glitter
+      \val fly      Fly
+      \val Fly      Fly
+      \val push     Push
+      \val Push     Push
+      \val cover    Cover
+      \val Cover    Cover
+      \val uncover  Uncover
+      \val Uncover  Uncover
+      \val fade     Fade
+      \val Fade     Fade
+      \elseval      R
+    \endval\spacecs
+    \ltr@ifcasevalue #1:motion;
+      \val inward  /M/I
+      \val outward /M/O      
+    \endval\spacecs
+    \ltr@ifcasevalue #1:direction;
+      \val lr /Di 0
+      \val bt /Di 90
+      \val rl /Di 180
+      \val tb /Di 270
+      \val dx /Di 315
+    \endval\spacecs
+    \ltr@ifcasevalue #1:dimension;
+      \val horizontal /Dm/H
+      \val vertical   /Dm/V
+    \endval\spacecs
+    \ltr@ifattribute #1:duration;{/D \ltr@usevalue #1:duration;}{}
+    \ltr@ifattribute #1:scale;{/SS \ltr@usevalue #1:scale;}{}
+    >>}%
+  \xdefcs{ltr@inner_transition:\ltr@usevalue #1:name;}{\the\pdflastobj\spacecs}%
+  \ltr@deleteattribute#1:name;%
+  \ltr@deleteattribute#1:type;%
+  \ltr@deleteattribute#1:motion;%
+  \ltr@deleteattribute#1:direction;%
+  \ltr@deleteattribute#1:dimension;%
+  \ltr@deleteattribute#1:duration;%
+  \ltr@deleteattribute#1:scale;%
+  }
+\def\newtransition#1{%
+  \restrictallattributes transition #1\par
+  \setparameter ltr@inner_transition:
+    name = {#1}
+  }
+\newtransition{split}    type = split\par
+\newtransition{blinds}   type = blinds\par
+\newtransition{box}      type = box\par
+\newtransition{wipe}     type = wipe\par
+\newtransition{dissolve} type = dissolve\par
+\newtransition{glitter}  type = glitter\par
+\newtransition{fly}      type = fly\par
+\newtransition{push}     type = push\par
+\newtransition{cover}    type = cover\par
+\newtransition{uncover}  type = uncover\par
+\newtransition{fade}     type = fade\par
+\restrictallattributes transition none\par
+
+\endinput

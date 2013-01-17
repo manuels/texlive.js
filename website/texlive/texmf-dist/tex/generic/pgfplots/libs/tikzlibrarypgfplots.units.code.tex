@@ -1,0 +1,224 @@
+%--------------------------------------------
+%
+% Package pgfplots
+%
+% Provides a user-friendly interface to create function plots (normal
+% plots, semi-logplots and double-logplots).
+% 
+% It is based on Till Tantau's PGF package.
+%
+% Copyright 2009 by Nick Papior Andersen.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%--------------------------------------------
+
+%
+% This file contains the implementation for using units in labels.
+%
+% Default the unit setting system isn't used, It is thus required to use the key "use units".
+% 
+% Programming Structure:
+%
+% 1. All associated keys are first set. This includes some prefix values of the unit system.
+% In example one can redefine prefix and postfix such that units are shown on a per-user setting.
+%
+% 2. The other main thing is scaling of the dimension. If one uses units one might not 
+% have scaled the data. For this the keys "scaled <axis> ticks" are used at a base 10.
+% Currently it is not provided to scale in other bases.
+% FIXME Adding of other bases.
+%
+% 3. Some predefined SI prefixes are specified which should minimize mistakes.
+% For example the key "change <axis> base,<axis> SI prefix=kilo" allows the 
+% <axis> to be rescaled according to the above at base 10 with a factor of -3 and sets the
+% unit prefix to "k".
+% FIXME Adding other basis systems than SI. For example the addition of CGS units.
+
+\newif\ifpgfplots@units@change@x@base
+\newif\ifpgfplots@units@change@y@base
+\newif\ifpgfplots@units@change@z@base
+
+%
+% Constants for writing the unit marking
+%
+\def\pgfplots@units@marking@pre{}
+\def\pgfplots@units@marking@post{}
+
+\pgfkeys{%
+    /pgfplots/use units/.is if=pgfplots@units@use,%
+    /pgfplots/use units=true,% So when called from \usepgfplotslibrary{units} it's automatically 'on'
+    %
+    % Setup basic x settings
+    % 
+    /pgfplots/x unit/.initial={},% 
+    /pgfplots/x unit prefix/.initial={},%
+    /pgfplots/change x base/.is if=pgfplots@units@change@x@base,%
+    /pgfplots/change x base=false,%
+    %
+    % Setup basic y settings
+    % 
+    /pgfplots/y unit/.initial={},%
+    /pgfplots/y unit prefix/.initial={},%
+    /pgfplots/change y base/.is if=pgfplots@units@change@y@base,%
+    /pgfplots/change y base=false,%
+    %
+    % Setup basic z settings
+    % 
+    /pgfplots/z unit/.initial={},%
+    /pgfplots/z unit prefix/.initial={},%
+    /pgfplots/change z base/.is if=pgfplots@units@change@z@base,%
+    /pgfplots/change z base=false,%
+    %
+    % default markings of units. I.e. the surroundings of the unit:
+    % [unit markings=curly braces] yields {<unit>}
+    % 
+    /pgfplots/unit marking pre/.store in={\pgfplots@units@marking@pre},%
+    /pgfplots/unit marking post/.store in={\pgfplots@units@marking@post},%
+    /pgfplots/unit markings/.is choice,%
+    /pgfplots/unit markings/parenthesis/.style={/pgfplots/unit marking pre={\left(},/pgfplots/unit marking post={\right)}},%
+    /pgfplots/unit markings/square braces/.style={/pgfplots/unit marking pre={\left[},/pgfplots/unit marking post={\right]}},%
+    /pgfplots/unit markings/curly braces/.style={/pgfplots/unit marking pre={\left\{},/pgfplots/unit marking post={\right\}}},%
+    /pgfplots/unit markings/slash space/.style={/pgfplots/unit marking pre={/$\space$},/pgfplots/unit marking post={\relax}},%
+    /pgfplots/unit markings=square braces,%
+    %
+    % The code used to type units, and the base change code.
+    % 
+    /pgfplots/unit code/.code 2 args={\mathrm{#1#2}},%
+    /pgfplots/axis base prefix/.code args={axis #1 base #2 prefix #3}{%
+        \csname ifpgfplots@units@change@#1@base\endcsname%
+        \pgfkeys{/pgfplots/#1\space unit prefix={#3},%
+            /pgfplots/scaled #1\space ticks={base 10:#2},%
+            /pgfplots/#1tick scale label code/.code={\relax}%
+        }%
+        \else%
+        \pgfkeys{/pgfplots/#1\space unit prefix={#3}}%
+        \fi%
+    },%
+    % 
+    % x SI prefixes
+    % 
+    /pgfplots/x SI prefix/.is choice,%
+    /pgfplots/x SI prefix/yocto/.style={/pgfplots/axis base prefix={axis x base 24 prefix y}},%
+    /pgfplots/x SI prefix/zepto/.style={/pgfplots/axis base prefix={axis x base 21 prefix z}},%
+    /pgfplots/x SI prefix/atto/.style={/pgfplots/axis base prefix={axis x base 18 prefix a}},%
+    /pgfplots/x SI prefix/femto/.style={/pgfplots/axis base prefix={axis x base 15 prefix f}},%
+    /pgfplots/x SI prefix/pico/.style={/pgfplots/axis base prefix={axis x base 12 prefix p}},%
+    /pgfplots/x SI prefix/nano/.style={/pgfplots/axis base prefix={axis x base 9 prefix n}},%
+    /pgfplots/x SI prefix/micro/.style={/pgfplots/axis base prefix={axis x base 6 prefix \mu}},%
+    /pgfplots/x SI prefix/milli/.style={/pgfplots/axis base prefix={axis x base 3 prefix m}},%
+    /pgfplots/x SI prefix/centi/.style={/pgfplots/axis base prefix={axis x base 2 prefix c}},%
+    /pgfplots/x SI prefix/deci/.style={/pgfplots/axis base prefix={axis x base 1 prefix d}},%
+    /pgfplots/x SI prefix/deca/.style={/pgfplots/axis base prefix={axis x base -1 prefix da}},%
+    /pgfplots/x SI prefix/hecto/.style={/pgfplots/axis base prefix={axis x base -2 prefix h}},%
+    /pgfplots/x SI prefix/kilo/.style={/pgfplots/axis base prefix={axis x base -3 prefix k}},%
+    /pgfplots/x SI prefix/mega/.style={/pgfplots/axis base prefix={axis x base -6 prefix M}},%
+    /pgfplots/x SI prefix/giga/.style={/pgfplots/axis base prefix={axis x base -9 prefix G}},%
+    /pgfplots/x SI prefix/tera/.style={/pgfplots/axis base prefix={axis x base -12 prefix T}},%
+    /pgfplots/x SI prefix/peta/.style={/pgfplots/axis base prefix={axis x base -15 prefix P}},%
+    /pgfplots/x SI prefix/exa/.style={/pgfplots/axis base prefix={axis x base -18 prefix E}},%
+    /pgfplots/x SI prefix/zetta/.style={/pgfplots/axis base prefix={axis x base -21 prefix Z}},%
+    /pgfplots/x SI prefix/yotta/.style={/pgfplots/axis base prefix={axis x base -24 prefix Y}},%
+    % 
+    % y SI prefixes
+    %
+    /pgfplots/y SI prefix/.is choice,%
+    /pgfplots/y SI prefix/yocto/.style={/pgfplots/axis base prefix={axis y base 24 prefix y}},%
+    /pgfplots/y SI prefix/zepto/.style={/pgfplots/axis base prefix={axis y base 21 prefix z}},%
+    /pgfplots/y SI prefix/atto/.style={/pgfplots/axis base prefix={axis y base 18 prefix a}},%
+    /pgfplots/y SI prefix/femto/.style={/pgfplots/axis base prefix={axis y base 15 prefix f}},%
+    /pgfplots/y SI prefix/pico/.style={/pgfplots/axis base prefix={axis y base 12 prefix p}},%
+    /pgfplots/y SI prefix/nano/.style={/pgfplots/axis base prefix={axis y base 9 prefix n}},%
+    /pgfplots/y SI prefix/micro/.style={/pgfplots/axis base prefix={axis y base 6 prefix \mu}},%
+    /pgfplots/y SI prefix/milli/.style={/pgfplots/axis base prefix={axis y base 3 prefix m}},%
+    /pgfplots/y SI prefix/centi/.style={/pgfplots/axis base prefix={axis y base 2 prefix c}},%
+    /pgfplots/y SI prefix/deci/.style={/pgfplots/axis base prefix={axis y base 1 prefix d}},%
+    /pgfplots/y SI prefix/deca/.style={/pgfplots/axis base prefix={axis y base -1 prefix da}},%
+    /pgfplots/y SI prefix/hecto/.style={/pgfplots/axis base prefix={axis y base -2 prefix h}},%
+    /pgfplots/y SI prefix/kilo/.style={/pgfplots/axis base prefix={axis y base -3 prefix k}},%
+    /pgfplots/y SI prefix/mega/.style={/pgfplots/axis base prefix={axis y base -6 prefix M}},%
+    /pgfplots/y SI prefix/giga/.style={/pgfplots/axis base prefix={axis y base -9 prefix G}},%
+    /pgfplots/y SI prefix/tera/.style={/pgfplots/axis base prefix={axis y base -12 prefix T}},%
+    /pgfplots/y SI prefix/peta/.style={/pgfplots/axis base prefix={axis y base -15 prefix P}},%
+    /pgfplots/y SI prefix/exa/.style={/pgfplots/axis base prefix={axis y base -18 prefix E}},%
+    /pgfplots/y SI prefix/zetta/.style={/pgfplots/axis base prefix={axis y base -21 prefix Z}},%
+    /pgfplots/y SI prefix/yotta/.style={/pgfplots/axis base prefix={axis y base -24 prefix Y}},%
+    % 
+    % z SI prefixes
+    %
+    /pgfplots/z SI prefix/.is choice,%
+    /pgfplots/z SI prefix/yocto/.style={/pgfplots/axis base prefix={axis z base 24 prefix y}},%
+    /pgfplots/z SI prefix/zepto/.style={/pgfplots/axis base prefix={axis z base 21 prefix z}},%
+    /pgfplots/z SI prefix/atto/.style={/pgfplots/axis base prefix={axis z base 18 prefix a}},%
+    /pgfplots/z SI prefix/femto/.style={/pgfplots/axis base prefix={axis z base 15 prefix f}},%
+    /pgfplots/z SI prefix/pico/.style={/pgfplots/axis base prefix={axis z base 12 prefix p}},%
+    /pgfplots/z SI prefix/nano/.style={/pgfplots/axis base prefix={axis z base 9 prefix n}},%
+    /pgfplots/z SI prefix/micro/.style={/pgfplots/axis base prefix={axis z base 6 prefix \mu}},%
+    /pgfplots/z SI prefix/milli/.style={/pgfplots/axis base prefix={axis z base 3 prefix m}},%
+    /pgfplots/z SI prefix/centi/.style={/pgfplots/axis base prefix={axis z base 2 prefix c}},%
+    /pgfplots/z SI prefix/deci/.style={/pgfplots/axis base prefix={axis z base 1 prefix d}},%
+    /pgfplots/z SI prefix/deca/.style={/pgfplots/axis base prefix={axis z base -1 prefix da}},%
+    /pgfplots/z SI prefix/hecto/.style={/pgfplots/axis base prefix={axis z base -2 prefix h}},%
+    /pgfplots/z SI prefix/kilo/.style={/pgfplots/axis base prefix={axis z base -3 prefix k}},%
+    /pgfplots/z SI prefix/mega/.style={/pgfplots/axis base prefix={axis z base -6 prefix M}},%
+    /pgfplots/z SI prefix/giga/.style={/pgfplots/axis base prefix={axis z base -9 prefix G}},%
+    /pgfplots/z SI prefix/tera/.style={/pgfplots/axis base prefix={axis z base -12 prefix T}},%
+    /pgfplots/z SI prefix/peta/.style={/pgfplots/axis base prefix={axis z base -15 prefix P}},%
+    /pgfplots/z SI prefix/exa/.style={/pgfplots/axis base prefix={axis z base -18 prefix E}},%
+    /pgfplots/z SI prefix/zetta/.style={/pgfplots/axis base prefix={axis z base -21 prefix Z}},%
+    /pgfplots/z SI prefix/yotta/.style={/pgfplots/axis base prefix={axis z base -24 prefix Y}}%
+}
+%
+% The initial insert of labels. It utilizes the same method of implementation as
+% the default label typesetting.
+%
+\def\pgfplots@label@units#1{%
+    \pgfkeysgetvalue{/pgfplots/#1label}{\pgfplots@loc@TMPa}%
+    \pgfplots@loc@TMPa\space\pgfplots@label@units@@{#1}%
+}
+
+%
+% The main macro for typesetting the units. In steps:
+%
+% 1. Save the unit prefix, unit and the unit code in macros.
+%
+% 2. If the unit isn't present then don't utilize any of the things.
+%   FIXME, should this also happen if the prefix is given? Currently it is not!
+%
+% 3. Defines \pgfplots@loc@TMPa as the real typeset label.
+% It inserts the <marking pre><unit prefix><unit><marking post>.
+% It is encapsulated within a $$ notation. Currently this is enough.
+%   FIXME, maybe this should be changed to \ensuremath?
+%
+\def\pgfplots@label@units@@#1{%
+    \pgfkeysgetvalue{/pgfplots/#1\space unit prefix}{\pgfplots@loc@TMPb}%
+    \pgfkeysgetvalue{/pgfplots/#1\space unit}{\pgfplots@loc@TMPc}%
+    \ifx\pgfplots@loc@TMPc\pgfutil@empty%
+      \pgfutil@empty%
+    \else%
+      \ifx\pgfplots@loc@TMPb\pgfutil@empty%
+        $
+         \pgfplots@units@marking@pre
+         \pgfplots@invoke@pgfkeyscode{/pgfplots/unit code/.@cmd}{{}{\pgfkeysvalueof{/pgfplots/#1\space unit}}}
+         \pgfplots@units@marking@post
+        $%
+      \else%
+        $
+         \pgfplots@units@marking@pre
+         \pgfplots@invoke@pgfkeyscode{/pgfplots/unit code/.@cmd}{{\pgfkeysvalueof{/pgfplots/#1\space unit prefix}}{\pgfkeysvalueof{/pgfplots/#1\space unit}}}
+         \pgfplots@units@marking@post
+        $%
+      \fi%
+    \fi%
+}
+\endinput

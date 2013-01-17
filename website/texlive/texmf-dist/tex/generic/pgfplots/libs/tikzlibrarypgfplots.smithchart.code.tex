@@ -1,0 +1,1761 @@
+%--------------------------------------------
+%
+% Package pgfplots, library for smith charts.
+%
+% Copyright 2010 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+% A smithchart maps the complex halfplane
+% 	H subset \C,
+% 	H := [0,infty] x [-infty,infty]
+%  =~ \{ z = a+ j *b | a >=0, b \in \R }
+%
+% to the unit circle.
+%
+% A number z = a+jb is mapped to r(z) = (z-1) / (z+1) which is, per
+% definition, in the 2d unit circle.
+%
+% Grid lines (i.e. a==const or b==const) are mapped on circles.
+%
+% In PGFPlots, the a=Re(z) is the x axis and b = Im(z) is the y axis.
+%
+% - CARTESIAN INPUT
+% - tick/grid coordinates are from 
+% - input coordinates can be either from H or (perhaps preferred) from
+%   the unit circle.
+%   this "preferred" needs to be discussed.
+% - the transformed data range is the unit circle (or a sequeezed variant)
+% - in order to compute limits etc., I should accept data in H. this
+%   should simplify the logic to determine ticks etc considerably.
+%   problem: this transformation appears to be quite difficult (?)
+%   	-> r(z) = (z-1)/(z+1)
+%   in complex arithmetics (but the G-tutorial.pdf says something
+%   about these circle equations!?)
+%
+%   www.amanogawa.com/archive/docs/G-tutorial.pdf
+%
+%
+% Idea: 
+%   - work on H
+%   - transform whereever necessary
+%   - implement all pgfplots wrinkles in analogy to polar axes
+%   - provide support for normalized input coords (combined with
+%   untransformed limits or something like that)
+
+\pgfplotsdefineaxistype{smithchart}{%
+	\pgfplots@smithchartaxis@activate
+}%
+
+\newif\ifpgfplotspointisinsmithchartCS
+\newif\ifpgfplots@smithchart@showorigin
+\newif\ifpgfplots@smithchart@mirrored
+
+\pgfplotsset{
+	/pgfplots/xgrid each nth passes y/.initial=,% format: CSV list, each entry of the form '<at> | <at> ':' <eachnth> | <at> 'if <' <xvalue> | <at> ':' <eachnth> 'if <' <xvalue>'
+	/pgfplots/xgrid each nth passes y start/.initial=0,
+	/pgfplots/ygrid each nth passes x/.initial=,
+	/pgfplots/ygrid each nth passes x start/.initial=0,
+	%
+	/pgfplots/xgrid stop at y/.initial=,% individual stop map of the form '<xpos> ':' <stopaty>', separated by white space
+	/pgfplots/ygrid stop at x/.initial=,
+	%
+	% FIXME : this is undocumented:
+	/pgfplots/smithchart mirrored/.is if=pgfplots@smithchart@mirrored,
+	/pgfplots/smithchart mirrored/.default=true,
+	%
+	% this boolean may only be used inside of \addplot. It will be
+	% ignored otherwise.
+	/pgfplots/is smithchart cs/.is if=pgfplotspointisinsmithchartCS,
+	/pgfplots/is smithchart cs/.default=true,
+	/pgfplots/show origin/.is if=pgfplots@smithchart@showorigin,
+	/pgfplots/show origin/.default=true,
+	/pgfplots/show origin code/.code={%
+		\path[draw=black,fill=white] (0pt,0pt) circle (2.5pt);
+		\path[fill=black] (0pt,0pt) circle (0.5pt);
+	},
+	/pgfplots/every smithchart axis/.style={
+		grid=both,
+		xmin=0,
+		xmax=16000,% FIXME : more is not possible because some code uses the \pgfplots@xmin@reg registers... (ticks)
+		ymin=-16000,ymax=16000,
+		scaled ticks=false, % never draw the \cdot 10^4 labels
+		major tick style={draw=black},
+		xtick align=center,
+		ytick align=center,
+		every axis title shift=1.2\baselineskip,
+		legend style={anchor=center},
+	},
+	/pgfplots/default smithchart xtick/.code=,
+	/pgfplots/default smithchart ytick/.code=,
+	/pgfplots/default smithchart xytick/.code=,
+	/pgfplots/smithchart ticks by size/.code 2 args={%
+		\ifdim#1<14cm
+			\pgfkeysalso{/pgfplots/few smithchart ticks}%
+		\else
+			\ifdim#1<20cm
+				\pgfkeysalso{/pgfplots/many smithchart ticks}%
+			\else
+				\pgfkeysalso{/pgfplots/dense smithchart ticks}%
+			\fi
+		\fi
+	},
+	/pgfplots/few smithchart ticks*/.style={
+		default smithchart xtick/.style={
+			xtick={0.2,0.5,1,2,5},
+		},
+		default smithchart ytick/.style={
+			ytick={%
+				0,%
+				 0.2, 0.5, 1, 2, 5,%
+				-0.2,-0.5,-1,-2,-5},
+		},
+		default smithchart xytick/.style={
+			xgrid each nth passes y={2},
+			ygrid each nth passes x={2},
+		},
+	},
+	/pgfplots/few smithchart ticks/.style={/pgfplots/few smithchart ticks*},
+	/pgfplots/few smithchart ticks*,% use it as initial config
+	/pgfplots/many smithchart ticks*/.style={
+		default smithchart xtick/.style={
+			xtick={
+				0.1,0.2,0.3,0.4,0.5,1,1.5,2,3,4,5,10,20%
+			},
+			minor xtick={0.6,0.7,0.8,0.9,1.1,1.2,1.3,1.4,1.6,1.7,1.8,1.9,2.2,2.4,2.6,2.8,3.2,3.4,3.6,3.8,4.5,6,7,8,9,50},
+		},
+		default smithchart ytick/.style={
+			ytick={%
+				0,%
+				0.1,0.2,...,1,1.5,2,3,4,5,10,20,%
+				-0.1,-0.2,...,-1,-1.5,-2,-3,-4,-5,-10,-20%
+			},
+			minor ytick={%
+				1.1,1.2,1.3,1.4,1.6,1.7,1.8,1.9,2.2,2.4,2.6,2.8,3.2,3.4,3.6,3.8,4.5,6,7,8,9,50,%
+				-1.1,-1.2,-1.3,-1.4,-1.6,-1.7,-1.8,-1.9,-2.2,-2.4,-2.6,-2.8,-3.2,-3.4,-3.6,-3.8,-4.5,-6,-7,-8,-9,-50%
+			},
+		},
+		default smithchart xytick/.style={
+			xgrid each nth passes y={1,2,4,5,10,20},
+			ygrid each nth passes x={1,2,3,5,10:3,20:3},
+		},
+	},
+	/pgfplots/many smithchart ticks/.style={
+		many smithchart ticks*,
+		every axis title shift=6pt,
+		yticklabel in circle,
+		show origin=true,
+	},
+	/pgfplots/dense smithchart ticks*/.style={
+		default smithchart xtick/.style={
+			%ygrid each nth passes x start=0,
+			xtick={
+				0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1,1.2,1.4,1.6,1.8,2,3,4,5,10,20%
+			},
+			minor xtick={%
+				0.01,0.02,0.03,0.04,0.05,0.06,0.07,0.08,0.09,0.11,0.12,0.13,0.14,0.15,0.16,0.17,0.18,0.19,%
+				0.22,0.24,0.26,0.28,0.32,0.34,0.36,0.38,0.42,0.44,0.46,0.48,%
+				0.52,%
+				0.55,0.65,0.75,0.85,0.95,%
+				%0.6,0.7,0.8,0.9,%
+				1.1,1.3,1.5,1.7,1.9,%
+				2.2,2.4,2.6,2.8,3.2,3.4,3.6,3.8,4.5,6,7,8,9,50},
+		},
+		default smithchart ytick/.style={
+			ytick={%
+				0,%
+				0.1,0.2,...,1,1.2,1.4,1.6,1.8,2,3,4,5,10,20,%
+				-0.1,-0.2,...,-1,-1.2,-1.4,-1.6,-1.8,-2,-3,-4,-5,-10,-20%
+			},
+			minor ytick={%
+				0.01,0.02,0.03,0.04,0.05,0.06,0.07,0.08,0.09,0.11,0.12,0.13,0.14,0.15,0.16,0.17,0.18,0.19,%
+				0.22,0.24,0.26,0.28,0.32,0.34,0.36,0.38,0.42,0.44,0.46,0.48,%
+				0.55,0.65,0.75,0.85,0.95,%
+				1.1,1.3,1.5,1.7,1.9,2.2,2.4,2.6,2.8,3.2,3.4,3.6,3.8,4.5,6,7,8,9,50,%
+				-0.01,-0.02,-0.03,-0.04,-0.05,-0.06,-0.07,-0.08,-0.09,-0.11,-0.12,-0.13,-0.14,-0.15,-0.16,-0.17,-0.18,-0.19,%
+				-0.22,-0.24,-0.26,-0.28,-0.32,-0.34,-0.36,-0.38,-0.42,-0.44,-0.46,-0.48,%
+				-0.55,-0.65,-0.75,-0.85,-0.95,%
+				-1.1,-1.3,-1.5,-1.7,-1.9,-2.2,-2.4,-2.6,-2.8,-3.2,-3.4,-3.6,-3.8,-4.5,-6,-7,-8,-9,-50%
+			},
+		},
+		default smithchart xytick/.style={
+			xgrid each nth passes y={0.2 if < 0.2001,0.5 if < 0.50001,1 if < 1.001,2,4,5,10,20},
+			ygrid each nth passes x={0.2 if < 0.2001,0.52 if < 0.52001,1 if < 1.001,2,3,5,10:3,20:3},
+		},
+	},
+	/pgfplots/dense smithchart ticks/.style={
+		yticklabel in circle,
+		every axis title shift=6pt,
+		dense smithchart ticks*,
+		show origin=true,
+		every major grid/.style={black!60},
+	},
+	/pgfplots/yticklabel in circle/.style={
+		ytick align=inside,
+		yticklabel style={
+			rotate=90,
+			sloped like y axis={%
+				execute for upside down={\tikzset{anchor=north east}},
+				%allow upside down,
+				reset nontranslations=false},
+			anchor=south west,
+			%font=\tiny,
+		}
+	},
+}
+
+\def\pgfplots@smithchartaxis@activate{%
+	\def\axisdefaultwidth{207pt}%
+	\def\axisdefaultheight{207pt}%
+	\let\pgfplotsqpointxy@cart=\pgfplotsqpointxy
+	\let\pgfplotsqpointxy=\pgfplotsqpointxy@smithchartaxis
+	\let\pgfplotsqpointxy@orthogonal=\pgfplotsqpointxy
+	\def\pgfplotsqpointxyz##1##2##3{\pgfplotsqpointxy{##1}{##2}}% FIXME
+	\let\pgfplotspointouternormalvectorofaxis@=\pgfplotspointouternormalvectorofaxis@smithchartaxis
+	\def\pgfplotspointouternormalvectorofaxis@ifdependson@v##1##2##3{##2}%
+	\def\pgfplots@drawticklines@INSTALLCLIP@onorientedsurf##1{}%
+	\let\pgfplots@drawgridlines@INSTALLCLIP@onorientedsurf=\pgfplots@drawgridlines@INSTALLCLIP@onorientedsurf@smithchartaxis
+	\def\pgfplots@visphase@notify@changeofcanvaslimits##1{}%
+	\def\pgfplots@avoid@empty@axis@range@for##1{}%
+	\def\pgfplotsaxisifcontainspoint##1##2{##1}%
+	\let\pgfplots@set@default@size@options=\pgfplots@set@default@size@options@smithchart%
+	%
+	\def\b@pgfplots@smithchart@defaultticks@x{0}%
+	\def\b@pgfplots@smithchart@defaultticks@y{0}%
+	\let\pgfplots@assign@default@tick@foraxis=\pgfplots@assign@default@tick@foraxis@smithchart
+	\def\pgfplots@checkisuniformLINEARtick##1##2{%
+		% don't do anything here. I suppose it is useless and is a
+		% waste of time for many ticks.
+		\global\pgfplots@isuniformtickfalse
+	}%
+	\let\pgfplots@clippath@prepare@for@axistype=\pgfplots@clippath@prepare@for@axistype@smithchartaxis
+	%
+	% invalid range: do not clear plots. simply assign default limits.
+	\let\pgfplots@handle@invalid@range@defaultlimits=\pgfplots@handle@invalid@range@defaultlimits@smithchart%
+	\def\pgfplots@handle@invalid@range{\pgfplots@handle@invalid@range@defaultlimits}%
+	%
+	\let\pgfplotspointonorientedsurfaceabwithbshift=\pgfplotspointonorientedsurfaceabwithbshift@smithchartaxis
+	\let\pgfplots@draw@axis@is@prepared=\pgfplots@draw@axis@is@prepared@smithchartaxis
+	\let\pgfplots@drawgridlines@onorientedsurf@fromto=\pgfplots@drawgridlines@onorientedsurf@fromto@smithchart
+	\let\pgfplots@drawaxis@innerlines@onorientedsurf=\pgfplots@drawaxis@innerlines@onorientedsurf@smithchart
+	\let\pgfplots@drawaxis@outerlines@separate@onorientedsurf=\pgfplots@drawaxis@outerlines@separate@onorientedsurf@smithchartaxis
+	\let\pgfplotspoint@initialisation@axes=\pgfplotspoint@initialisation@axes@smithchart%
+	\let\pgfplotspoint@initialisation@units=\pgfplotspoint@initialisation@units@smithchart
+	\expandafter\def\expandafter\pgfplots@create@axis@descriptions@\expandafter{%
+		\pgfplots@create@axis@descriptions@
+		\ifpgfplots@smithchart@showorigin
+			\pgfkeysvalueof{/pgfplots/show origin code/.@cmd}\pgfeov%
+		\fi
+	}%
+	\def\axisdefaultheight{\axisdefaultwidth}%
+	\let\pgfplots@initsizes=\pgfplots@initsizes@smithchart
+	%\let\pgfplots@limits@ready=\pgfplots@limits@ready@smithchart
+	%\let\pgfplots@show@ticklabel@=\pgfplots@show@ticklabel@@smithchart
+	%\def\pgfplots@xtick@disable@last@tick{0}%
+	\let\pgfplots@xtick@check@tickshow=\pgfplots@xtick@check@tickshow@smithchart%
+	\let\pgfplots@ytick@check@tickshow=\pgfplots@ytick@check@tickshow@smithchart%
+	\let\pgfplots@set@options@sanitize=\relax
+	\let\pgfplots@set@options@sanitizemode=\relax
+	\let\pgfplotscoordmathnotifydatascalesetfor=\pgfplotscoordmathnotifydatascalesetfor@smithchart
+	%
+	\expandafter\def\expandafter\pgfplots@notify@options@are@set\expandafter{%
+		\pgfplots@notify@options@are@set
+		\pgfplotsset{%
+			separate axis lines,%
+			is smithchart cs=false,%
+			xtick pos=left,
+			ytick pos=left,
+			axis x line*=center,
+			disabledatascaling,
+		}%
+		\def\pgfplots@xtickposnum{2}%
+		%
+		\ifx\pgfplots@xtick\pgfutil@empty
+			\def\b@pgfplots@smithchart@defaultticks@x{1}%
+		\fi
+		\ifx\pgfplots@ytick\pgfutil@empty
+			\def\b@pgfplots@smithchart@defaultticks@y{1}%
+		\fi
+		\pgfplotscoordmath{default}{parsenumber}{0.002}%
+		\let\pgfplots@almost@zero@thresh=\pgfmathresult
+	}%
+	\def\pgfplots@xticklabel@pos{}%
+	\def\pgfplots@yticklabel@pos{}%
+	\def\pgfplots@zticklabel@pos{}%
+	\def\pgfplots@init@ticklabelaxisspecfor##1##2{}%
+	\def\pgfplots@init@ticklabelaxisspec@twodim@for##1##2{}%
+	\def\pgfplotspointonorientedsurfaceabmatchaxisline@warn##1{}% clear warning. It works for smith charts.
+	\def\pgfplots@xticklabelaxisspec{v20}%
+	\def\pgfplots@yticklabelaxisspec{0v0}%
+	\def\pgfplots@zticklabelaxisspec{00v}%
+	%
+	% cartesian cs
+	\tikzdeclarecoordinatesystem{cartesian}{\edef\pgfplots@loc@TMPa{##1}\expandafter\pgfplotspointcartesian@\pgfplots@loc@TMPa\pgfplots@coord@end}%
+	%
+	%
+	% Special treatment for
+	% \pgfplots@prepare@tick@coordlists@for: make sure we don't need
+	% to use the register arithmetics in \pgfplots@xmin@reg and its
+	% variants! I want an UNRESTRICTED max data range!
+	\def\pgfplots@prepare@tick@coordlists@for@assign##1=##2{\edef##1{##2}}%
+	\def\pgfplots@prepare@tick@coordlists@for@advance##1by##2{%
+		% THIS IS NEVER USED (at the time of this writing).
+		\edef\pgfplots@loc@TMPa{##2}%
+		\pgfplotscoordmath{default}{parsenumber}{##1}%
+		\pgfplotscoordmath{default}{op}{add}{{\pgfmathresult}{\pgfplots@loc@TMPa}}%
+		\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+		\let##1=\pgfmathresult
+	}%
+	\def\pgfplots@prepare@tick@coordlists@for@tofixed##1{\edef\pgfmathresult{##1}}%
+	\def\pgfplots@prepare@tick@coordlists@for@handletolerance##1{}% does not apply to smithcharts.
+	\def\pgfplots@prepare@tick@coordlists@for@checktickmin##1{%
+		\pgfplotscoordmath{default}{parsenumber}{\pgfplots@tmpa}%
+		\let\pgfplots@loc@TMPa=\pgfmathresult
+		\pgfplotscoordmath{default}{parsenumber}{\csname pgfplots@##1tickmin\endcsname}%
+		\let\pgfplots@loc@TMPb=\pgfmathresult
+		\pgfplotscoordmath{default}{if less than}{\pgfplots@loc@TMPa}{\pgfplots@loc@TMPb}{%
+			\pgfplots@tickshowfalse
+		}{%
+		}%
+	}%
+	\def\pgfplots@prepare@tick@coordlists@for@checktickmax##1{%
+		\pgfplotscoordmath{default}{parsenumber}{\pgfplots@tmpa}%
+		\let\pgfplots@loc@TMPa=\pgfmathresult
+		\pgfplotscoordmath{default}{parsenumber}{\csname pgfplots@##1tickmin\endcsname}%
+		\let\pgfplots@loc@TMPb=\pgfmathresult
+		\pgfplotscoordmath{default}{if less than}{\pgfplots@loc@TMPb}{\pgfplots@loc@TMPa}{%
+			\pgfplots@tickshowfalse
+		}{%
+		}%
+	}%
+	\def\pgfplots@prepare@tick@coordlists@for@checkdatalimits##1{}% I won't do this here. Smithcharts are somewhat special.
+}%
+
+\def\pgfplotspointcartesian@#1,#2\pgfplots@coord@end{%
+	\pgfpointxy@orig{#1}{#2}%
+}%
+\def\pgfplotscoordmathnotifydatascalesetfor@smithchart#1{%
+	\def\pgfplotscoordmathnotifydatascalesetfor##1{}%
+	\edef\pgfplotscoordmathnotifydatascalesetfor@{#1}%
+	\def\pgfplotscoordmathnotifydatascalesetfor@@{x}%
+	\ifx\pgfplotscoordmathnotifydatascalesetfor@@\pgfplotscoordmathnotifydatascalesetfor@
+		\pgfplotscoordmath{#1}{datascaletrafo set params}{0}{0}%
+	\else
+		\def\pgfplotscoordmathnotifydatascalesetfor@@{y}%
+		\ifx\pgfplotscoordmathnotifydatascalesetfor@@\pgfplotscoordmathnotifydatascalesetfor@
+			\pgfplotscoordmath{#1}{datascaletrafo set shift}{0}%
+		\fi
+	\fi
+	\let\pgfplotscoordmathnotifydatascalesetfor=\pgfplotscoordmathnotifydatascalesetfor@smithchart
+}%
+
+% #1: the "a" value on the oriented surf
+% #2: the "b" value. 
+% #3: the shift along the normal.
+%
+\def\pgfplotspointonorientedsurfaceabwithbshift@smithchartaxis#1#2#3{%
+	% implement the shift in "b" direction explicitly:
+	\pgfpointadd
+		{\pgfplotspointonorientedsurfaceab{#1}{#2}}%
+		{%
+			\pgfplotspointonorientedsurfaceabtolinespec{v}{0}%
+			\afterassignment\pgfplots@gobble@until@relax
+			\pgf@xa=-#3\relax
+			\edef\pgfplots@shift@no@unit{\pgf@sys@tonumber\pgf@xa}%
+			\pgfqpointscale
+				{\pgfplots@shift@no@unit}
+				{\expandafter\pgfplotspointouternormalvectorofaxis\expandafter{\pgfplotsretval}}%
+		}%
+}
+
+
+% Computes the complex division
+% (A + j B) / (C + j D) = (A C + B D  + j (B C - A D) ) / (C^2 + D^2)
+% and assigns the result to \pgfmathresult and \pgfmathresultim . Here
+% 'j = sqrt{-1}' is the imaginary unit.
+%
+% #1 : A
+% #2 : B
+% #3 : C
+% #4 : D
+%
+% The arithmetics is performed in \pgfplotscoordmath{default} (which
+% uses the floating point unit in the initial configuration)
+%
+% Numbers are expected to be already parsed (i.e. you need to invoke 
+%  \pgfplotscoordmath{default}{parsenumber}{#1}%
+% 	\let\A=\pgfmathresult
+% before)
+\def\pgfplotscoordmathcomplexdivision#1#2#3#4{%
+	\begingroup
+	\edef\pgfplots@A{#1}%
+	\edef\pgfplots@B{#2}%
+	\edef\pgfplots@C{#3}%
+	\edef\pgfplots@D{#4}%
+	%
+	%
+	% ok, compute it:
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@A}{\pgfplots@C}}%
+	\let\pgfplots@AC=\pgfmathresult
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@A}{\pgfplots@D}}%
+	\let\pgfplots@AD=\pgfmathresult
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@B}{\pgfplots@D}}%
+	\let\pgfplots@BD=\pgfmathresult
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@B}{\pgfplots@C}}%
+	\let\pgfplots@BC=\pgfmathresult
+	%
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@C}{\pgfplots@C}}%
+	\let\pgfplots@CC=\pgfmathresult
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfplots@D}{\pgfplots@D}}%
+	\let\pgfplots@DD=\pgfmathresult
+	\pgfplotscoordmath{default}{op}{add}{{\pgfplots@CC}{\pgfplots@DD}}%
+	\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
+	\let\pgfplots@scale=\pgfmathresult
+	%
+	%
+	\pgfplotscoordmath{default}{op}{add}{{\pgfplots@AC}{\pgfplots@BD}}%
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\pgfplots@scale}}%
+	\let\pgfplots@x=\pgfmathresult
+	%
+	\pgfplotscoordmath{default}{op}{subtract}{{\pgfplots@BC}{\pgfplots@AD}}%
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\pgfplots@scale}}%
+	\let\pgfplots@y=\pgfmathresult
+	%
+	\xdef\pgfplots@glob@TMPa{%
+		\noexpand\def\noexpand\pgfmathresult{\pgfplots@x}%
+		\noexpand\def\noexpand\pgfmathresultim{\pgfplots@y}%
+	}%
+	\endgroup
+	\pgfplots@glob@TMPa
+}%
+
+\def\pgfplotsqpointxy@smithchartaxis#1#2{%
+	\pgf@process{%
+		\ifpgfplotspointisinsmithchartCS
+			\def\pgfplots@x{#1}%
+			\def\pgfplots@y{#2}%
+		\else
+			% compute rx + j* ry = (#1 + j * #2 -1) / (#1 + j*#2 + 1)
+			%
+			% I write
+			% #1 - 1 + j * #2 = A + j * B
+			% 1 + #1 + j * #2 = C + j * D
+			%
+			% -> rx + j * ry = (A + j B) / (C + j D) = (A C + B D  + j (B C - A D) ) / (C^2 + D^2)
+			\pgfplotscoordmath{default}{parsenumber}{#1}%
+			\let\pgfplots@x=\pgfmathresult
+			%
+			\pgfplotscoordmath{default}{parsenumber}{#2}%
+			\let\pgfplots@D=\pgfmathresult
+			%
+			\pgfplotscoordmath{default}{one}%
+			\let\pgfplots@one=\pgfmathresult
+			%
+			\pgfplotscoordmath{default}{op}{add}{{\pgfplots@one}{\pgfplots@x}}%
+			\let\pgfplots@C=\pgfmathresult
+			%
+			\pgfplotscoordmath{default}{op}{subtract}{{\pgfplots@x}{\pgfplots@one}}%
+			\let\pgfplots@A=\pgfmathresult
+			%
+			\let\pgfplots@B=\pgfplots@D
+			%
+			\pgfplotscoordmathcomplexdivision\pgfplots@A\pgfplots@B\pgfplots@C\pgfplots@D
+			\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+			\let\pgfplots@x=\pgfmathresult
+			\pgfplotscoordmath{default}{tofixed}{\pgfmathresultim}%
+			\let\pgfplots@y=\pgfmathresult
+		\fi
+		%
+		\pgfplotsqpointxy@smithchart@canvas\pgfplots@x\pgfplots@y
+%\message{pgfplotsqpointxy{#1}{#2} ---> (\pgfplots@x,\pgfplots@y) ---> (\the\pgf@x,\the\pgf@y)}%
+	}%
+}%
+
+\def\pgfplotsqpointxy@smithchart@canvas#1#2{%
+	\ifpgfplots@smithchart@mirrored
+		\pgfqpointxy@orig{-#1}{#2}%
+	\else
+		\pgfqpointxy@orig{#1}{#2}%
+	\fi
+}%
+
+\def\pgfplots@clippath@prepare@for@axistype@smithchartaxis{%
+	\def\pgfplots@clippath@install##1{%
+		\pgfpathellipse
+			{\pgfplotsqpointxy@smithchart@canvas{0}{0}}
+			{\pgfplotsqpointxy@smithchart@canvas{1}{0}}
+			{\pgfplotsqpointxy@smithchart@canvas{0}{1}}%
+		\pgfplots@clippath@use@{##1}%
+	}%
+}%
+
+\def\pgfplotspointouternormalvectorofaxis@smithchartaxis#1#2#3\relax{%
+	\if v#1%
+		\pgfqpoint{0pt}{1pt}%
+	\else
+		\if v#2%
+			\pgfplotspointouternormalvectorofaxisgetv{#1#2#3}%
+			\ifx\pgfplotsretval\pgfutil@empty
+				\def\pgfplotsretval{0}%
+			\fi
+			\pgfpointdiff
+				{\pgfplotsqpointxy@smithchart@canvas{0}{0}}%
+				{\pgfplotsqpointxy{0}{\pgfplotsretval}}%
+			\pgfpointnormalised{}%
+		\else
+			\pgfqpoint{0pt}{1pt}%
+		\fi
+	\fi
+	\pgf@process{}%
+	\endgroup
+}%
+
+\def\pgfplotspoint@initialisation@axes@smithchart{%
+	\begingroup
+	%\pgfplotsqpointxy{\pgfplots@xmin}{\pgfplots@ymin}%
+	\gdef\pgfplotspointminminmin{\pgfplotsqpointxy@smithchart@canvas{0}{0}}%
+	%
+	% the "x" axis is the diameter of the circle (for fixed y=0)
+	\pgf@x=2\pgf@xx
+	\pgf@y=0pt
+	\xdef\pgfplotspointxaxis{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+	\pgfmathveclen{\pgf@x}{\pgf@y}%
+	\xdef\pgfplotspointxaxislength{\pgfmathresult pt}%
+	%
+	\pgfplotsqpointxy{\pgfplots@xmax}{\pgfplots@ymax}%
+	\xdef\pgfplotspointyaxis{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+	%
+	% the length of the "y" axis is 2*pi*r (for fixed x=0, the outer
+	% circle).
+	% The radius is the length of (0,1) which is (0pt,\pgf@xx1):
+	\pgfmath@basic@multiply@{\pgf@sys@tonumber\pgf@xx}{1}%
+	\pgfmathmultiply@{\pgfmathresult}{6.28318530717959}% 2*pi * r
+	\xdef\pgfplotspointyaxislength{\pgfmathresult pt}%
+	%
+	\global\let\pgfplotspointzaxis=\pgfpointorigin
+	\gdef\pgfplotspointzaxislength{0pt}%
+	\endgroup
+	%
+	\edef\pgfplots@loc@TMPa{\pgf@sys@tonumber\pgf@xx}%
+	\pgfmathdivide@{16000}{\pgfplots@loc@TMPa}%
+	\let\pgfplots@smithchart@axis@max@xradius@for@ycircle=\pgfmathresult
+	%
+	\ifdim\pgf@xx=\pgf@yy
+		\def\pgfplots@smithchart@axis@ratioxy{1}%
+		\def\pgfplots@smithchart@axis@ratioyx{1}%
+		\let\pgfplots@smithchart@axis@max@yradius@for@ycircle=\pgfplots@smithchart@axis@max@xradius@for@ycircle
+	\else
+		\edef\pgfplots@loc@TMPb{\pgf@sys@tonumber\pgf@yy}%
+		\pgfmathdivide@\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+		\let\pgfplots@smithchart@axis@ratioxy=\pgfmathresult
+		\pgfmathdivide@\pgfplots@loc@TMPb\pgfplots@loc@TMPa
+		\let\pgfplots@smithchart@axis@ratioyx=\pgfmathresult
+		%
+		\pgfmathdivide@{16000}{\pgfplots@loc@TMPb}%
+		\let\pgfplots@smithchart@axis@max@yradius@for@ycircle=\pgfmathresult
+	\fi
+}
+\let\pgfplotspoint@initialisation@units@orig=\pgfplotspoint@initialisation@units
+\def\pgfplotspoint@initialisation@units@smithchart{%
+	\pgfplotspoint@initialisation@units@orig
+	\def\pgfplotspointunity{%
+		\pgfplotspointouternormalvectorofaxisgetv{0v0}% x=0 (outer circle) and v varies (the yticks)
+		\ifx\pgfplotsretval\pgfutil@empty
+			\def\pgfplotsretval{0}%
+		\fi
+		\pgfpointnormalised{\pgfplotsqpointxy{0}{\ifx\pgfplotsretval\pgfutil@empty 0\else\pgfplotsretval\fi}}%
+		\pgf@xa=-\pgf@y
+		\global\pgf@y=\pgf@x
+		\global\pgf@x=\pgf@xa
+	}%
+	\def\pgfplotsunitylength{1}%
+	\def\pgfplotsunityinvlength{1}%
+}%
+
+\def\pgfplots@drawgridlines@INSTALLCLIP@onorientedsurf@smithchartaxis#1{%
+	%\pgfplots@clippath@install{\pgfusepath{clip}}%
+}%
+
+% At this time, the minor/major tick lists are initialised.
+\def\pgfplots@draw@axis@is@prepared@smithchartaxis{%
+	\pgfplots@gridlines@init@grid@stop@points@for xy%
+	\pgfplots@gridlines@init@grid@stop@points@for yx%
+	%
+	% and finalize x:
+	\def\pgfplots@finalize@constraints{1}%
+	\pgfplots@gridlines@init@grid@stop@points@for@computethem{x}{y}{\pgfplots@finalize@constraints}%
+}%
+
+
+% Initialises the '#1grid each nth passes #2' and '#1grid stop at #2'
+% features. All it does is to prepare the
+% method \pgfplots@get@current@grid@stop@point. 
+%
+% The method is quite involved. Please refer to the manual for what it
+% is supposed to do, and refer to the code comments below for
+% implementational details.
+%
+% #1 either x or y
+% #2 either x or y
+\def\pgfplots@gridlines@init@grid@stop@points@for#1#2{%
+	%
+	\expandafter\let\csname pgfplots@#1grid@stop@points\endcsname=\relax
+	%
+	\pgfkeysgetvalue{/pgfplots/#1grid each nth passes #2}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+	\else
+		% we have no "xticknum -> xtickpos" lookup table yet.
+		\expandafter\def\csname b@pgfplots@#2ticknum@to@pos@lookup\endcsname{0}%
+		%
+		\pgfplotslistnewempty\pgfplots@loc@TMPd
+		% normalise the argument for 'ygrid each nth passes x': each list element
+		% should be of the form '<xtickpos>:<n>' where <n> means that each
+		% <n>th arc can pass.
+		\expandafter\pgfplotsutilforeachcommasep\pgfplots@loc@TMPa\as\entry{%
+			\expandafter\pgfplots@gridlines@init@grid@stop@points@for@normalise\entry\relax#1#2%
+			\expandafter\pgfplotslistpushback\entry\to\pgfplots@loc@TMPd
+		}%
+		\expandafter\let\csname pgfplots@#1grid@stop@points\endcsname=\pgfplots@loc@TMPd
+		%
+		% Ok. 
+		%
+		% Now, the 'ygrid each nth passes x' feature relies *crucially* on grid line
+		% indices (for the 'each nth' feature).
+		%
+		% I sort the arcs according to their absolute magnitude and assign
+		% indices into the resulting arrays to normalize that stuff.
+		%
+		% The array is of the form 
+		%   A[i] = entry of \pgfplots@prepared@tick@positions@*
+		% and contains *both*, major and minor grid lines.
+		\pgfplotsarraynewempty\pgfplots@gridlines
+		\pgfplotscoordmath{default}{zero}%
+		\edef\elem{{-1}{\pgfmathresult}}% require 0 to be zero for symmetry even if there is no such tick pos
+		\expandafter\pgfplotsarraypushback\elem\to\pgfplots@gridlines
+		\pgfplots@if{pgfplots@#1majorgrids}{%
+			% insert all major tick positions, using their absolute value.
+			\expandafter
+			\pgfplotslistforeachungrouped\csname pgfplots@prepared@tick@positions@major@#1\endcsname\as\elem{%
+				\expandafter\pgfplots@prepared@tick@pos@unpack\elem
+				\pgfplotscoordmath{default}{parsenumber}{\pgfplots@tick}%
+				\pgfplotscoordmath{default}{op}{abs}{{\pgfmathresult}}%
+				\edef\elem{{\pgfplots@ticknum}{\pgfmathresult}}%
+				\expandafter\pgfplotsarraypushback\elem\to\pgfplots@gridlines
+			}%
+		}{}%
+		\pgfplots@if{pgfplots@#1minorgrids}{%
+			% now the same for minor grid positions:
+			\expandafter
+			\pgfplotslistforeachungrouped\csname pgfplots@prepared@tick@positions@minor@#1\endcsname\as\elem{%
+				\expandafter\pgfplots@prepared@tick@pos@unpack\elem
+				\pgfplotscoordmath{default}{parsenumber}{\pgfplots@tick}%
+				\pgfplotscoordmath{default}{op}{abs}{{\pgfmathresult}}%
+				\edef\elem{{\pgfplots@ticknum}{\pgfmathresult}}%
+				\expandafter\pgfplotsarraypushback\elem\to\pgfplots@gridlines
+			}%
+		}{}%
+		% sort the array!
+		\pgfkeysgetvalue{/pgfplots/smithchart@sortlt/.@cmd}\pgfplots@loc@TMPa
+		\pgfkeyslet{/pgfplots/iflessthan/.@cmd}\pgfplots@loc@TMPa
+		\pgfplotsarraysort\pgfplots@gridlines
+		%
+		% ok. Now it is sorted. 
+		%
+		% I finally need a lookup 
+		%   \pgfplots@ticknum --> sort index.
+		% If the associated values have the same absolute value, the same
+		% sort index should be assigned.
+		%
+		% For example, the array might be associated to the following tick
+		% positions, sorted by absolute value:
+		% 0.0, 1.0, -1.0, 3.0, -3.0, 4.0, -4.0, 5.0, -5.0
+		% What I want is that 
+		% 0.0 gets sort index 0
+		% 1.0 and -1.0 get sort index 1
+		% 3.0 and -3.0 get sort index 2
+		% 4.0 and -4.0 get sort index 3
+		% and so on. The array contains only absolute values, so that's
+		% not too difficult to check.
+		%
+		% Since each of the tick positions can be (uniquely) identified by
+		% its associated \pgfplots@ticknum value, I map \pgfplots@ticknum
+		% to the sort index.
+		\countdef\c@sortindex=\c@pgf@counta
+		\c@sortindex=\pgfkeysvalueof{/pgfplots/#1grid each nth passes #2 start} % this is assigned to the '0.0' gridline (if any)
+		\def\pgfplots@lasttickpos{}%
+		\pgfplotsarrayforeachungrouped\pgfplots@gridlines\as\elem{%
+			\expandafter\pgfplots@prepared@tick@pos@unpack\elem
+			\ifx\pgfplots@lasttickpos\pgfutil@empty
+			\else
+				\ifx\pgfplots@lasttickpos\pgfplots@tick
+				\else
+					\advance\c@sortindex by1
+				\fi
+			\fi
+			\expandafter\edef\csname pgfplots@#1tickpos@to@sortidx@\pgfplots@ticknum\endcsname{\the\c@sortindex}%
+%\message{\pgfplots@ticknum\space(abs(tickpos) = \pgfplots@tick)---> sort index \csname pgfplots@#1tickpos@to@sortidx@\pgfplots@ticknum\endcsname^^J}%
+			\let\pgfplots@lasttickpos=\pgfplots@tick
+		}%
+		%
+		% unfortunately, I can't free the \pgfplots@gridlines array
+		% without extensive overhead :-(
+	\fi
+	%
+	\expandafter\let\csname b@pgfplots@#1gridline@stopmap\endcsname\relax
+	\pgfkeysgetvalue{/pgfplots/#1grid stop at #2}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+	\else
+		\edef\pgfplots@loc@TMPa{\pgfplots@loc@TMPa,}% this inserts the final comma and handles any active ':' sign (for french babel)
+		\def\pgfplots@loc@TMPb{\pgfplots@gridlines@init@stop@maps #1#2}%
+		\expandafter\pgfplots@loc@TMPb\pgfplots@loc@TMPa\pgfplots@EOI%
+	\fi
+	%
+	%
+	% Now, compute all final stop positions. Also prepare the cross
+	% dependencies between x grids and y grids here (such that there
+	% is no grid line stopping in white space)
+	%
+	\if#1x%
+		\def\pgfplots@finalize@constraints{0}% we have to wait until y stop points are known.
+	\else
+		\def\pgfplots@finalize@constraints{1}%
+	\fi
+	\pgfplots@gridlines@init@grid@stop@points@for@computethem{#1}{#2}{\pgfplots@finalize@constraints}%
+}%
+% #1,#2,#3 the arguments for
+% \pgfplots@gridlines@preparation@get@current@grid@stop@point
+\def\pgfplots@gridlines@init@grid@stop@points@for@computethem#1#2#3{%
+	%
+	\expandafter\pgfplotslistforeachungrouped\csname pgfplots@prepared@tick@positions@major@#1\endcsname\as\elem{%
+		\expandafter\pgfplots@prepared@tick@pos@unpack\elem
+		\pgfplotscoordmath{default}{parsenumber}{\pgfplots@tick}\let\pgfplots@tick=\pgfmathresult
+		\pgfplots@gridlines@preparation@get@current@grid@stop@point{#1}{#2}{\pgfplots@tick}{#3}%
+		\if1#3%
+			\pgfplots@gridlines@let{#1}{\pgfplots@tick@prepared}=\pgfplotsretval
+		\fi
+	}%
+	\expandafter\pgfplotslistforeachungrouped\csname pgfplots@prepared@tick@positions@minor@#1\endcsname\as\elem{%
+		\expandafter\pgfplots@prepared@tick@pos@unpack\elem
+		\pgfplotscoordmath{default}{parsenumber}{\pgfplots@tick}\let\pgfplots@tick=\pgfmathresult
+		\pgfplots@gridlines@preparation@get@current@grid@stop@point{#1}{#2}{\pgfplots@tick}{#3}%
+		\if1#3%
+			\pgfplots@gridlines@let{#1}{\pgfplots@tick@prepared}=\pgfplotsretval
+		\fi
+	}%
+	\expandafter\def\csname b@pgfplots@#1gridline@stopmap\endcsname{1}%
+}
+
+\def\pgfplots@gridlines@init@stop@maps#1#2{%
+	\pgfutil@ifnextchar\pgfplots@EOI{%
+		\pgfutil@gobble
+	}{%
+		\pgfutil@ifnextchar,{%
+			\pgfplots@gridlines@init@stop@maps@next@@#1#2%
+		}{%
+			\pgfplots@gridlines@init@stop@maps@next#1#2%
+		}%
+	}%
+}%
+\def\pgfplots@gridlines@init@stop@maps@next#1#2#3:#4,{%
+	\pgfplotscoordmath{default}{parsenumber}{#4}%
+	\let\pgfplots@loc@TMPa=\pgfmathresult
+	\pgfplots@gridlines@stopmap@prepare{#3}%
+	\pgfplots@gridlines@let{#1}{\pgfmathresult}=\pgfplots@loc@TMPa
+	\expandafter\def\csname b@pgfplots@#1gridline@stopmap\endcsname{1}%
+	%
+	\pgfplots@gridlines@init@stop@maps #1#2%
+}
+% just eat one empty comma:
+\def\pgfplots@gridlines@init@stop@maps@next@@#1#2,{\pgfplots@gridlines@init@stop@maps #1#2}%
+\def\pgfplots@gridlines@let#1#2=#3{%
+	\expandafter\let\csname pgfplots@#1gridline@stopmap@#2\endcsname=#3%
+	\if#1y%
+		% support symmetry:
+		% add -\pgfmathresult to the map.
+		% To disable this symmetry, use 'ygrid stop at x={0.2:4 -0.2:5}
+		% you can also use an empty value '-0.2:{}', that's also ok.
+		\expandafter\let\csname pgfplots@#1gridline@stopmap@-#2\endcsname=#3%
+	\fi
+}%
+
+\def\pgfplots@gridlines@stopmap@prepare@digits{2}%
+\def\pgfplots@gridlines@stopmap@prepare#1{%
+	\begingroup
+	\pgfmathfloatparsenumber{#1}%
+	\let\pgfmathfloat@round@precision=\pgfplots@gridlines@stopmap@prepare@digits%
+	\pgfmathfloatroundzerofill\pgfmathresult
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+}%
+\def\pgfplots@gridlines@stopmap@trunc@#1.#2#3#4\relax{%
+	\def\pgfmathresult{#1.#2#3}%
+}%
+
+\pgfkeysdefargs{/pgfplots/smithchart@sortlt}{#1#2#3#4}{%
+	\expandafter\pgfplots@prepared@tick@pos@unpack#1%
+	\let\pgfplots@A=\pgfplots@tick
+	\expandafter\pgfplots@prepared@tick@pos@unpack#2%
+	\let\pgfplots@B=\pgfplots@tick
+	\pgfplotscoordmath{default}{if less than}{\pgfplots@A}{\pgfplots@B}{#3}{#4}%
+}%
+
+% initialise a lookuptable from ticknumber -> tick position (sort
+% of an array)
+%
+% This is only invoked if it is needed (if 'arc
+% limits={[index]4,[index]2}' or something like that is used, see the
+% manual).
+%
+% #1 either x or y
+% #2 either x or y
+\def\pgfplots@gridlines@init@grid@stop@points@for@init@ticknum@lookup#1#2{%
+	\c@pgf@counta=0
+	\pgfplots@if{pgfplots@#1majorgrids}{%
+		\expandafter
+		\pgfplotslistforeachungrouped\csname pgfplots@prepared@tick@positions@major@#2\endcsname\as\elem{%
+			\expandafter\pgfplots@prepared@tick@pos@unpack\elem
+			\expandafter\let\csname pgfplots@#2tick@num@to@pos@\the\c@pgf@counta\endcsname=\pgfplots@tick
+			\advance\c@pgf@counta by1
+		}%
+	}{}%
+	\pgfplots@if{pgfplots@#1minorgrids}{%
+		\expandafter
+		\pgfplotslistforeachungrouped\csname pgfplots@prepared@tick@positions@minor@#2\endcsname\as\elem{%
+			\expandafter\pgfplots@prepared@tick@pos@unpack\elem
+			\expandafter\let\csname pgfplots@#2tick@num@to@pos@\the\c@pgf@counta\endcsname=\pgfplots@tick
+			\advance\c@pgf@counta by1
+		}%
+	}{}%
+	\expandafter\def\csname b@pgfplots@#2ticknum@to@pos@lookup\endcsname{1}%
+}%
+\def\pgfplots@gridlines@init@grid@stop@points@for@normalise#1\relax#2#3{%
+	\def\b@pgfplots@haslt{0}%
+	%
+	\pgfutil@in@{if <}{#1}%
+	\ifpgfutil@in@
+		% strip the white space between 'if' and '<':
+		\def\pgfplots@loc@TMPa##1if <##2\relax{\edef\entry{##1if<##2}}%
+		\expandafter\pgfplots@loc@TMPa\entry\relax
+		\def\b@pgfplots@haslt{1}%
+	\fi
+	%
+	\pgfutil@in@{if<}{#1}%
+	\ifpgfutil@in@
+		\def\b@pgfplots@haslt{1}%
+	\fi
+	%
+	\pgfutil@in@:{#1}%
+	\ifpgfutil@in@
+		\def\b@pgfplots@hascolon{1}%
+	\else
+		\def\b@pgfplots@hascolon{0}%
+	\fi
+	%
+	\if1\b@pgfplots@hascolon
+		\edef\entry{\entry\if0\b@pgfplots@haslt if<\fi}%
+	\else
+		\if1\b@pgfplots@haslt
+			\expandafter\pgfplots@gridlines@stop@at@unpack@@@\entry\relax
+			\edef\entry{\pgfplots@grid@stop@at:2if<\pgfplots@grid@stop@at@iflt}%
+		\else
+			\edef\entry{\entry:2if<}%
+		\fi%
+	\fi%
+	%
+	\pgfutil@in@{[index]}{#1}%
+	\ifpgfutil@in@
+		\if0\csname b@pgfplots@#3ticknum@to@pos@lookup\endcsname
+			\pgfplots@gridlines@init@grid@stop@points@for@init@ticknum@lookup#2#3%
+		\fi
+		\expandafter\pgfplots@gridlines@stop@at@unpack\entry\relax
+		\pgfutil@ifundefined{pgfplots@#3tick@num@to@pos@\pgfplots@grid@stop@at}{%
+			\pgfplots@warning{There is no #3tick with index '\pgfplots@grid@stop@at'. Skipping it.}%
+			\let\entry=\pgfutil@empty
+		}{%
+			\edef\entry{\csname pgfplots@#3tick@num@to@pos@\pgfplots@grid@stop@at\endcsname:\pgfplots@grid@stop@at@eachnth}%
+		}%
+	\fi
+	%
+	\expandafter\pgfplots@gridlines@stop@at@unpack\entry\relax
+	\pgfplotscoordmath{default}{parsenumber}\pgfplots@grid@stop@at
+	\let\pgfplots@grid@stop@at=\pgfmathresult
+	\ifx\pgfplots@grid@stop@at@iflt\pgfutil@empty
+	\else
+		\pgfplotscoordmath{default}{parsenumber}\pgfplots@grid@stop@at@iflt
+		\let\pgfplots@grid@stop@at@iflt=\pgfmathresult
+	\fi
+	\edef\entry{\pgfplots@grid@stop@at:\pgfplots@grid@stop@at@eachnth if<\pgfplots@grid@stop@at@iflt}%
+}%
+\def\pgfplots@gridlines@stop@at@unpack@@@#1if<#2\relax{%
+	\def\pgfplots@grid@stop@at{#1}%
+	\def\pgfplots@grid@stop@at@iflt{#2}%
+}%
+\def\pgfplots@gridlines@stop@at@unpack#1:#2if<#3\relax{%
+	\def\pgfplots@grid@stop@at{#1}%
+	\def\pgfplots@grid@stop@at@eachnth{#2}%
+	\def\pgfplots@grid@stop@at@iflt{#3}%
+}%
+
+% Returns the xtick position which should end the current arc.
+%
+% This is an INTERNAL preparation method. See
+% \pgfplots@get@current@grid@stop@point for the final one.
+%
+% Note that arcs correspond to ygrid lines.
+%
+% #1 either x or y
+% #2 either x or y
+% #3 the value of the current grid line
+% #4 a boolean which expands either to 0 or to 1.
+% The \pgfplots@get@current@grid@stop@point@handle@constraints method
+% will be invoked if and only if #4=1
+%
+% @POSTCONDITION On output, 
+% - \pgfplotsretval will be filled with the
+% result. If the result is empty, no restriction is imposed.
+% Otherwise, it contains the #2tick value at which the current #1grid shall end.
+% The result is already processed with
+% \pgfplotscoordmath{default}{parsenumber}{<value>}
+% - \pgfplots@tick@prepared contains a rounded representation of #3.
+%
+% The method relies on the 'ygrid each nth passes x' feature, more specifically the
+% stuff prepared by \pgfplots@gridlines@init@grid@stop@points@for
+\def\pgfplots@gridlines@preparation@get@current@grid@stop@point#1#2#3#4{%
+	\def\pgfplotsretval{}%
+	%
+	\pgfplots@gridlines@stopmap@prepare{#3}%
+	\let\pgfplots@tick@prepared=\pgfmathresult
+	\pgfmathfloatabs@\pgfplots@tick@prepared
+	\let\pgfplots@tick@prepared@abs=\pgfmathresult
+	%
+	\pgfplotscoordmath{default}{op}{abs}{{#3}}%
+	\let\pgfplots@tick@abs=\pgfmathresult
+	%
+	% first: check the '#1grid stop at #2':
+	\expandafter\ifx\csname b@pgfplots@#1gridline@stopmap\endcsname\relax%
+		% ok. there is no such thing.
+	\else
+		% ah - process it!
+		\pgfutil@ifundefined{pgfplots@#1gridline@stopmap@\pgfplots@tick@prepared}{%
+		}{%
+			\edef\pgfplotsretval{\csname pgfplots@#1gridline@stopmap@\pgfplots@tick@prepared\endcsname}%
+		}%
+	\fi
+	%
+	\ifx\pgfplotsretval\pgfutil@empty
+		% the individual map failed. Ok, then check for the '#1grid each nth passes #2'
+		\expandafter\ifx\csname pgfplots@#1grid@stop@points\endcsname\relax
+		\else
+			% \pgfplots@ticknum is defined in this context here.
+			\pgfutil@ifundefined{pgfplots@#1tickpos@to@sortidx@\pgfplots@ticknum}{%
+				\pgfplots@warning{Sorry, I can't get the current arc limit for #1grid no \#\pgfplots@ticknum\space(value \pgfplots@tick). This seems like an internal error!?}%
+			}{%
+				% get the sort index for the current tick (which is
+				% uniquely identified by its \pgfplots@ticknum)
+				\expandafter\let\expandafter\pgfplots@k\csname pgfplots@#1tickpos@to@sortidx@\pgfplots@ticknum\endcsname
+				%
+				\expandafter\pgfplotslistforeachungrouped\csname pgfplots@#1grid@stop@points\endcsname\as\pgfplots@loc@TMPa{%
+					\ifx\pgfplotsretval\pgfutil@empty
+						% we found no final limit so far. proceed.
+						\expandafter\pgfplots@gridlines@stop@at@unpack\pgfplots@loc@TMPa\relax
+						\ifx\pgfplots@grid@stop@at@iflt\pgfutil@empty
+							\pgfplots@loop@CONTINUEtrue
+						\else
+							\pgfplotscoordmath{default}{if less than}{\pgfplots@tick@abs}{\pgfplots@grid@stop@at@iflt}{%
+								\pgfplots@loop@CONTINUEtrue
+							}{%
+								\pgfplots@loop@CONTINUEfalse
+							}%
+						\fi
+						%
+						\ifpgfplots@loop@CONTINUE
+							\pgfplotsmathmodint\pgfplots@k\pgfplots@grid@stop@at@eachnth
+							\ifnum\pgfmathresult=0
+								\c@pgf@counta=\pgfplots@k
+								\divide\c@pgf@counta by\pgfplots@grid@stop@at@eachnth\relax
+								\edef\pgfplots@k{\the\c@pgf@counta}%
+							\else
+								% found the final limit. 
+								%
+								% Now, check the constraints which couple
+								% X and Y.
+								\let\pgfplotsretval=\pgfplots@grid@stop@at
+								\if1#4%
+									\pgfplots@get@current@grid@stop@point@handle@constraints #1#2{#3}%
+								\fi
+							\fi
+						\fi
+					\fi
+				}%
+			}%
+		\fi
+	\fi
+	\ifx\pgfplotsretval\pgfutil@empty
+	\else
+		\expandafter\let\csname pgfplots@final@stop@point@for@#1tick@\pgfplots@tick@prepared\endcsname=\pgfplotsretval
+%\message{#1 grid line: storing end value for '#3' END[\pgfplots@tick@prepared] = \pgfplotsretval.^^J}%
+	\fi
+}%
+
+% PRECONDITION
+%   \pgfplotsretval contains a non-zero constraint for the ygrid at #1.
+%
+% POSTCONDITION
+% 	either \pgfplotsretval is unchanged, or it is reset to
+% 	\pgfutil@empty if constraints are violated.
+%
+% The constraints are ONLY effective if BOTH, incomplete x- and y grid
+% lines are in effect. In that case, it should never happen that a
+% single  grid line ends in a dead-end somewhere in white space.
+%
+% I enforce two constraints which apply only to ygrid to fix this
+% issue (this may be improved later).
+%
+% The idea is simple:
+%  1. suppose the grid line 'x=1' stops at 'y=5'.
+%     Suppose further that the y grid line 'y=0.95' should stop at 'x=1'.
+%     Is that acceptable? Yes, because |y| < 5.
+%     Now, suppose an y grid line with |y| > 5 should stop at 'x=1'.
+%     Is this allowed? NO! Because it would become a dead end since
+%     the 'x=1' line ends at 'y=5'!
+%
+%     So, whenever we consider ygrids and stop point candidates "x=X",
+%     acquire the value Q where the x (!) grid line "x=X" stops.
+%     If |y| > Q, the candidate "x=X" is rejected.
+%
+%  2. There might still be the case that x grid lines have dead-ends.
+%  	  The current solution applies the idea first to all y grid lines,
+%  	  and once the y grid lines are ready, it applies the same idea to
+%  	  x grid lines.
+%
+% Uncomment the routine(s) and run the test cases to see what happens.
+\def\pgfplots@get@current@grid@stop@point@handle@constraints#1#2#3{%
+	\ifx\pgfplotsretval\pgfutil@empty
+	\else
+		\pgfplots@gridlines@stopmap@prepare{\pgfplotsretval}%
+		\let\pgfplots@loc@TMPa=\pgfmathresult
+		%
+%\message{checking ending '#1=#3' at '#2=\pgfplotsretval'. '#2=\pgfplots@loc@TMPa' stops}%
+		\pgfutil@ifundefined{pgfplots@final@stop@point@for@#2tick@\pgfplots@loc@TMPa}{%
+		% no constraint. Ok.
+%\message{ nowhere. No constraint.^^J}%
+		}{%
+%\message{ at \pgfplots@loc@TMPa. Feasible: }%
+			% Oh, a constraint. That means
+			% further work.
+			\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@final@stop@point@for@#2tick@\pgfmathresult\endcsname
+			\pgfplotscoordmath{default}{op}{abs}{{#3}}%
+			\pgfplotscoordmath{default}{if less than}{\pgfmathresult}{\pgfplots@loc@TMPa}{%
+				% ok, we can use the found
+				% stop value.
+%\message{YES.^^J}%
+			}{%
+%\message{NO.^^J}%
+				% no, the stop value is
+				% invalid; it would stop in
+				% white space!
+				\let\pgfplotsretval=\pgfutil@empty
+			}%
+		}%
+	\fi
+}%
+
+% Returns the xtick position which should end the current arc.
+%
+% Note that arcs correspond to ygrid lines.
+%
+% #1 either x or y
+% #2 either x or y
+% #3 the value of the current grid line
+%
+% @POSTCONDITION On output, \pgfplotsretval will be filled with the
+% result. If the result is empty, no restriction is imposed.
+% Otherwise, it contains the #2tick value at which the current #1grid shall end.
+% The result is already processed with
+% \pgfplotscoordmath{default}{parsenumber}{<value>}
+%
+% The method relies on the 'ygrid each nth passes x' feature, more specifically the
+% stuff prepared by \pgfplots@gridlines@init@grid@stop@points@for
+%
+% Note that all work has already been done by
+% \pgfplots@gridlines@init@grid@stop@points@for. We only need to query
+% the result at this point.
+% @see \pgfplots@gridlines@init@grid@stop@points@for
+% @see \pgfplots@gridlines@preparation@get@current@grid@stop@point
+\def\pgfplots@get@current@grid@stop@point#1#2#3{%
+	\def\pgfplotsretval{}%
+	%
+	% check the '#1grid stop at #2':
+	\expandafter\ifx\csname b@pgfplots@#1gridline@stopmap\endcsname\relax%
+		% ok. there is no such thing.
+	\else
+		%
+		\pgfplots@gridlines@stopmap@prepare{#3}%
+		\let\pgfplots@tick@prepared=\pgfmathresult
+		\pgfmathfloatabs@\pgfplots@tick@prepared
+		\let\pgfplots@tick@prepared@abs=\pgfmathresult
+		%
+		% ah - process it!
+		\pgfutil@ifundefined{pgfplots@#1gridline@stopmap@\pgfplots@tick@prepared}{%
+			\let\pgfplotsretval\pgfutil@empty
+		}{%
+			\edef\pgfplotsretval{\csname pgfplots@#1gridline@stopmap@\pgfplots@tick@prepared\endcsname}%
+		}%
+	\fi
+	%
+}%
+
+
+\def\pgfplots@smithchart@draw@xcircle#1{%
+	\pgfplotscoordmath{default}{one}%
+	\let\pgfplots@loc@TMPa=\pgfmathresult
+	%
+	\pgfplotscoordmath{default}{parsenumber}{#1}%
+	\let\pgfplots@x=\pgfmathresult
+	%
+	\pgfplotscoordmath{default}{op}{add}{{\pgfplots@loc@TMPa}{\pgfplots@x}}%
+	\let\pgfplots@radius@inverse=\pgfmathresult
+	\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfmathresult}}%
+	\let\pgfplots@radius=\pgfmathresult
+	\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\pgfplots@x}}%
+	\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+	\let\pgfplots@center=\pgfmathresult
+	%
+	\pgfplotscoordmath{default}{tofixed}{\pgfplots@radius}%
+	\let\pgfplots@radius=\pgfmathresult
+	%
+	\pgfplotscoordmath{default}{tofixed}{\pgfplots@radius@inverse}%
+	\let\pgfplots@radius@inverse=\pgfmathresult
+	%
+	% This here would suffice in case 'xgrid each nth passes y={}':
+%	\pgfpathellipse
+%		{\pgfplotsqpointxy@smithchart@canvas{\pgfplots@center}{0}}
+%		{\pgfplotsqpointxy@smithchart@canvas{\pgfplots@radius}{0}}
+%		{\pgfplotsqpointxy@smithchart@canvas{0}{\pgfplots@radius}}%
+	%
+	% but we also check for the 'xgrid each nth passes y' feature:
+	\pgfplots@get@current@grid@stop@point xy{\pgfplots@x}%
+	\let\pgfplots@arc@ends@at@y@arc@value\pgfplotsretval%
+	%
+	\ifx\pgfplots@arc@ends@at@y@arc@value\pgfutil@empty
+		% Ok. There is no specific end point -- simply use the
+		% (1,0) point (i.e. draw the full circle).
+		%
+		\pgfmathadd@{\pgfplots@center}{\pgfplots@radius}%
+		\let\pgfplots@start=\pgfmathresult%
+		\def\pgfplots@startim{0}%
+		\def\pgfplots@startangle{0}%
+		\let\pgfplots@end=\pgfplots@start
+		\let\pgfplots@endim=\pgfplots@startim
+		\def\pgfplots@endangle{360}%
+	\else
+		% Ok. The arc should end before it reaches the (1,0)
+		% point. Determine the exact position and the
+		% corresponding arc end angle.
+		%
+		% In general, the intersection between the circle for
+		% fixed x=A and fixed y=B is given by
+		%
+		% p + j * q = (A + j * B -1 ) / ( A + j*B +1)
+		% see http://www.siart.de/lehre/tutorien.xhtml#smishort
+		\pgfplotscoordmath{default}{one}%
+		\let\pgfplots@one=\pgfmathresult
+		\pgfplotscoordmath{default}{parsenumber}{-1}%
+		\let\pgfplots@mone=\pgfmathresult
+		\pgfplotscoordmath{default}{op}{add}{{\pgfplots@x}{\pgfplots@mone}}%
+		\let\pgfplots@A@mone=\pgfmathresult
+		\pgfplotscoordmath{default}{op}{add}{{\pgfplots@x}{\pgfplots@one}}%
+		\let\pgfplots@A@one=\pgfmathresult
+		% oh - we should only draw a partial arc.
+		% Well, then compute its end point and the
+		% corresponding end angle.
+		\pgfplotscoordmathcomplexdivision
+			{\pgfplots@A@mone}{\pgfplots@arc@ends@at@y@arc@value}%
+			{\pgfplots@A@one}{\pgfplots@arc@ends@at@y@arc@value}%
+		\let\pgfplots@start=\pgfmathresult
+		\let\pgfplots@startim=\pgfmathresultim
+		\pgfplotscoordmath{default}{tofixed}{\pgfplots@start}%
+		\let\pgfplots@start=\pgfmathresult
+		\pgfplotscoordmath{default}{tofixed}{\pgfplots@startim}%
+		\let\pgfplots@startim=\pgfmathresult
+		%
+		\pgfplots@compute@angle@of@point@in@circle\pgfplots@start\pgfplots@startim{\pgfplots@center}{\pgfplots@radius}{\pgfplots@radius@inverse}%
+		\let\pgfplots@startangle=\pgfmathresult
+		\pgfmathsubtract@{360}{\pgfplots@startangle}%
+		\let\pgfplots@endangle=\pgfmathresult
+		\let\pgfplots@end=\pgfplots@start
+		\edef\pgfplots@endim{-\pgfplots@startim}%
+		\ifdim\pgfplots@startangle pt>\pgfplots@endangle pt
+			\let\pgfplots@loc@TMPa=\pgfplots@startangle
+			\let\pgfplots@startangle=\pgfplots@endangle
+			\let\pgfplots@endangle=\pgfplots@loc@TMPa
+		\fi
+	\fi
+	% 
+%\message{X grid line \#\csname pgfplots@ticknum\endcsname \space at '#1': center = (\pgfplots@center,0);  radius = \pgfplots@radius\space(start angle \pgfplots@startangle, end angle = \pgfplots@endangle; stops at y = \pgfplots@arc@ends@at@y@arc@value).^^J}%
+	%
+	% Now, compute the arc.
+	%
+	% first, compute the absolute x/y radii:
+	\pgf@xa=\pgfplots@radius\pgf@xx
+	\pgf@xb=\pgfplots@radius\pgf@yy
+	\edef\pgfplots@mirror@sign{\ifpgfplots@smithchart@mirrored -\fi}%
+	\pgfpathmoveto{\pgfplotsqpointxy@smithchart@canvas{\pgfplots@start}{\pgfplots@startim}}%
+	% note that the case startangle > endangle is
+	% automatically correct; patharc handles that.
+	%\edef\pgfplots@loc@TMPa{{\pgfplots@startangle}{\pgfplots@endangle}{\pgfplots@mirror@sign\the\pgf@xa\space and \the\pgf@xb}}%
+	%\expandafter\pgfpatharc\pgfplots@loc@TMPa
+	%
+	% prefer \pgfpatharctoprecomputed. It is faster and more accurate
+	\edef\pgfplots@loc@TMPa{%
+		{\noexpand\pgfplotsqpointxy@smithchart@canvas{\pgfplots@center}{0}}%
+		{\pgfplots@startangle}%
+		{\pgfplots@endangle}%
+		{\noexpand\pgfplotsqpointxy@smithchart@canvas{\pgfplots@end}{\pgfplots@endim}}%
+		{\pgfplots@mirror@sign\the\pgf@xa}%
+		{\the\pgf@xb}%
+		{\pgfplots@mirror@sign\pgfplots@smithchart@axis@ratioxy}%
+		{\pgfplots@mirror@sign\pgfplots@smithchart@axis@ratioyx}%
+	}%
+	\expandafter\pgfpatharctoprecomputed\pgfplots@loc@TMPa
+}
+
+\def\pgfplots@smithchart@draw@yarc#1{%
+	\pgfplotscoordmath{default}{parsenumber}{#1}%
+	\let\pgfplots@y\pgfmathresult
+	\pgfplotscoordmath{default}{op}{abs}{{\pgfplots@y}}%
+	\pgfplotscoordmath{default}{if less than}{\pgfmathresult}{\pgfplots@almost@zero@thresh}{%
+		\pgfpathmoveto{\pgfplotsqpointxy@smithchart@canvas{-1}{0}}%
+		\pgfpathlineto{\pgfplotsqpointxy@smithchart@canvas{1}{0}}%
+	}{%
+		\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfplots@y}}%
+		\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}%
+		\let\pgfplots@signedradius=\pgfmathresult
+		%
+		\pgfplotscoordmath{default}{tofixed}{\pgfplots@y}%
+		\ifdim\pgfplots@signedradius pt<0pt
+			\def\pgfplots@radius@sign{-}%
+			\edef\pgfplots@radius@inverse{-\pgfmathresult}%
+			\edef\pgfplots@radius{-\pgfplots@signedradius}%
+		\else
+			\def\pgfplots@radius@sign{}%
+			\edef\pgfplots@radius@inverse{\pgfmathresult}%
+			\let\pgfplots@radius=\pgfplots@signedradius
+		\fi
+		% this here is the correct, complete circle -- together
+		% with a clip path, you get what you want:
+		%\pgfpathellipse
+		%	{\pgfplotsqpointxy@smithchart@canvas{1}{\pgfplots@signedradius}}
+		%	{\pgfplotsqpointxy@smithchart@canvas{\pgfplots@signedradius}{0}}
+		%	{\pgfplotsqpointxy@smithchart@canvas{0}{\pgfplots@signedradius}}%
+		% But I only want the arc (probably stopped earlier to
+		% improve qualtity of the chart)
+		%
+		% compute start point for the arc.
+		%
+		% To do so, we need to compute the intersection between
+		% the circle for fixed x=0  and the circle for y=#1.
+		%
+		% In general, the intersection between the circle for
+		% fixed x=A and fixed y=B is given by
+		%
+		% p + j * q = (A + j * B -1 ) / ( A + j*B +1)
+		% see http://www.siart.de/lehre/tutorien.xhtml#smishort
+		%
+		% inserting A = 0 and B = #1 yields the result
+		% p=\pgfplots@start
+		% q=\pgfplots@startim
+		% as follows:
+		\pgfplotscoordmath{default}{one}%
+		\let\pgfplots@one=\pgfmathresult
+		\pgfplotscoordmath{default}{parsenumber}{-1}%
+		\let\pgfplots@mone=\pgfmathresult
+		\pgfplotscoordmathcomplexdivision{\pgfplots@mone}{\pgfplots@y}{\pgfplots@one}{\pgfplots@y}%
+		\let\pgfplots@start=\pgfmathresult
+		\let\pgfplots@startim=\pgfmathresultim
+		\pgfplotscoordmath{default}{tofixed}{\pgfplots@start}%
+		\let\pgfplots@start=\pgfmathresult
+		\pgfplotscoordmath{default}{tofixed}{\pgfplots@startim}%
+		\let\pgfplots@startim=\pgfmathresult
+		%
+		\pgfplots@compute@angle@of@point@in@circle\pgfplots@start\pgfplots@startim{1}{\pgfplots@signedradius}{\pgfplots@radius@inverse}%
+		\let\pgfplots@startangle=\pgfmathresult
+		%
+		%
+		% compute end angle.
+		\pgfplots@get@current@grid@stop@point yx{\pgfplots@y}%
+		\let\pgfplots@arc@ends@at@x@circle@value\pgfplotsretval%
+		%
+		\ifx\pgfplots@arc@ends@at@x@circle@value\pgfutil@empty
+			% Ok. There is no specific end point -- simply use the
+			% (1,0) point (i.e. draw the full arc).
+			%
+			% The "0 degree" angle in my circles is in the direction
+			% of (1,0) .
+			\ifdim\pgfplots@startim pt>0pt
+				% ok; this arc belongs to the upper hemisphere.
+				\def\pgfplots@endangle{270}%
+			\else
+				% ok; this arc belongs to the lower hemisphere.
+				\def\pgfplots@endangle{90}%
+			\fi
+			\def\pgfplots@end{1}%
+			\def\pgfplots@endim{0}%
+		\else
+			% Ok. The arc should end before it reaches the (1,0)
+			% point. Determine the exact position and the
+			% corresponding arc end angle.
+			\pgfplotscoordmath{default}{op}{add}{{\pgfplots@arc@ends@at@x@circle@value}{\pgfplots@mone}}%
+			\let\pgfplots@A@mone=\pgfmathresult
+			\pgfplotscoordmath{default}{op}{add}{{\pgfplots@arc@ends@at@x@circle@value}{\pgfplots@one}}%
+			\let\pgfplots@A@one=\pgfmathresult
+			% oh - we should only draw a partial arc.
+			% Well, then compute its end point and the
+			% corresponding end angle.
+			\pgfplotscoordmathcomplexdivision{\pgfplots@A@mone}{\pgfplots@y}{\pgfplots@A@one}{\pgfplots@y}%
+			\let\pgfplots@end=\pgfmathresult
+			\let\pgfplots@endim=\pgfmathresultim
+			\pgfplotscoordmath{default}{tofixed}{\pgfplots@end}%
+			\let\pgfplots@end=\pgfmathresult
+			\pgfplotscoordmath{default}{tofixed}{\pgfplots@endim}%
+			\let\pgfplots@endim=\pgfmathresult
+			%
+			\pgfplots@compute@angle@of@point@in@circle\pgfplots@end\pgfplots@endim{1}{\pgfplots@signedradius}{\pgfplots@radius@inverse}%
+			\let\pgfplots@endangle=\pgfmathresult
+		\fi
+		% 
+		%
+		%
+		% Now, compute the arc.
+		%
+		% first, compute the absolute x/y radii:
+		%
+		% Note that for small y (like y=0.01), the arc is almost a
+		% straight line. Consequently, the ellipsis radius will be much larger
+		% than 16000, violating TeX's number range.
+		%
+		% To avoid that, I clip it to the highest allowed value.
+		% The final radius is
+		%   \pgfplots@radius * \pgf@xx  and \pgfplots@radius * \pgf@yy.
+		% the clipped value thus needs to respect the magnitude of \pgf@xx and \pgf@yy.
+		\ifdim\pgfplots@radius pt<\pgfplots@smithchart@axis@max@xradius@for@ycircle pt
+			\let\pgfplots@radius@x\pgfplots@radius
+		\else
+			\let\pgfplots@radius@x=\pgfplots@smithchart@axis@max@xradius@for@ycircle
+		\fi
+		\ifdim\pgfplots@radius pt<\pgfplots@smithchart@axis@max@yradius@for@ycircle pt
+			\let\pgfplots@radius@y\pgfplots@radius
+		\else
+			\let\pgfplots@radius@y=\pgfplots@smithchart@axis@max@yradius@for@ycircle
+		\fi
+%\message{Y grid line  \#\csname pgfplots@ticknum\endcsname\space at '#1': center = (1,\pgfplots@signedradius); signedradius = \pgfplots@signedradius\space clipped radii = \pgfplots@radius@x*\the\pgf@xx\space and \pgfplots@radius@y*\the\pgf@yy\space ( start angle \pgfplots@startangle, end angle \pgfplots@endangle,  arc limit: \ifx\pgfplots@arc@ends@at@x@circle@value\pgfutil@empty NONE\else \pgfplots@arc@ends@at@x@circle@value\fi)^^J}%
+		\pgf@xa=\pgfplots@radius@x\pgf@xx
+		\pgf@xb=\pgfplots@radius@y\pgf@yy
+		\edef\pgfplots@mirror@sign{\ifpgfplots@smithchart@mirrored -\fi}%
+		\pgfpathmoveto{\pgfplotsqpointxy@smithchart@canvas{\pgfplots@start}{\pgfplots@startim}}%
+		% note that the case startangle > endangle is
+		% automatically correct; patharc handles that.
+		%\edef\pgfplots@loc@TMPa{{\pgfplots@startangle}{\pgfplots@endangle}{\pgfplots@mirror@sign\the\pgf@xa\space and \the\pgf@xb}}%
+		%\expandafter\pgfpatharc\pgfplots@loc@TMPa
+		%
+		% prefer \pgfpatharctoprecomputed. It is faster and more accurate
+		\ifdim\pgfplots@startangle pt>\pgfplots@endangle pt
+			\let\pgfplots@loc@TMPa=\pgfplots@startangle
+%			\let\pgfplots@startangle=\pgfplots@endangle
+%			\let\pgfplots@endangle=\pgfplots@loc@TMPa
+		\fi
+		\edef\pgfplots@loc@TMPa{%
+			{\noexpand\pgfplotsqpointxy@smithchart@canvas{1}{\pgfplots@radius@sign\pgfplots@radius@y}}%
+			{\pgfplots@startangle}%
+			{\pgfplots@endangle}%
+			{\noexpand\pgfplotsqpointxy@smithchart@canvas{\pgfplots@end}{\pgfplots@endim}}%
+			{\pgfplots@mirror@sign\the\pgf@xa}%
+			{\the\pgf@xb}%
+			{\pgfplots@mirror@sign\pgfplots@smithchart@axis@ratioxy}%
+			{\pgfplots@mirror@sign\pgfplots@smithchart@axis@ratioyx}%
+		}%
+		\expandafter\pgfpatharctoprecomputed\pgfplots@loc@TMPa
+	}%
+}
+
+\def\pgfplots@drawgridlines@onorientedsurf@fromto@smithchart#1{%
+	\if x\pgfplotspointonorientedsurfaceA
+		\pgfplots@smithchart@draw@xcircle{#1}%
+	\else
+		\pgfplots@smithchart@draw@yarc{#1}%
+	\fi
+}%
+
+% Given a circle with center point (#3,#4), we search for the angle
+% of the point (#1,#2). The point is expected to be on the circle.
+% The resulting angle is returned in \pgfmathresult
+%
+% #1  x coordinate of the point for which an angle is searched
+% #2  y coordinate of the point for which an angle is searched
+% #3  x coordinate of the circle's center point
+% #4  y coordinate of the circle's center point
+% #5  is either empty or it is expected to contain the inverse radius, 1/r
+% this information is available in my context, so I don't recompute
+% it.
+%
+% All coordinates are expected in standard TeX precision (numbers
+% without unit)
+\def\pgfplots@compute@angle@of@point@in@circle#1#2#3#4#5{%
+	%
+	% 1. compute diff vector from center=(1,\pgfplots@signedradius) to start:
+	\pgfmathsubtract@{#1}{#3}%
+	\let\pgfplots@D\pgfmathresult
+	\pgfmathsubtract@{#2}{#4}%
+	\let\pgfplots@Dim\pgfmathresult
+	%
+	% 2. compute the start angle.
+	% It is related to the angle between the point (1,0) and
+	% diff, which, in turn is given by
+	%  < (1,0), (D,Dim) > = cos(alpha) ||(D,Dim)||
+	%  < (1,0), (D,Dim) > = D
+	% 
+	% Note that ||(D,Dim)|| = r, the radius of the involved circle
+	% around (#3,#4). If 1/r is already available, use it! Saves a lot
+	% of time.
+	%
+	\def\pgfplots@loc@TMPa{#5}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\pgfmathveclen\pgfplots@D\pgfplots@Dim
+		\let\pgfplots@veclen=\pgfmathresult
+		\pgfmathreciprocal@\pgfplots@veclen
+		\let\pgfplots@inverseveclen=\pgfmathresult
+	\else
+		% oh, good -- we already have 1/||(D,Dim)||. Use it.
+		\def\pgfplots@inverseveclen{#5}%
+%\message{using already available inverseveclen '#5'  }%
+	\fi
+	\pgfmathmultiply@{\pgfplots@D}{\pgfplots@inverseveclen}%
+%\message{D= (\pgfplots@D,\pgfplots@Dim).. acos(\pgfplots@D * \pgfplots@inverseveclen) = acos(\pgfmathresult)}%
+	\pgfmathacos@{\pgfmathresult}% the '-' comes from D<0 .
+%\message{= \pgfmathresult^^J}%
+	\let\pgfplots@tmpangle\pgfmathresult%
+	% ok. tmpangle is per definition less than 180; it is the
+	% smaller angle between (1,0) and (D,Dim).
+	%
+	% compute the angle relative to (1,0):
+	\ifdim\pgfplots@Dim pt<0pt
+		\pgfmathsubtract@{360}{\pgfplots@tmpangle}%
+	\fi
+}%
+
+\def\pgfplots@drawaxis@innerlines@onorientedsurf@smithchart#1#2#3{%
+	\if2\csname pgfplots@#1axislinesnum\endcsname
+		\draw[/pgfplots/every inner #1 axis line,%
+			decorate,%
+			#1discont,%
+			decoration={pre length=\csname #1disstart\endcsname, post length=\csname #1disend\endcsname}]
+		\pgfextra
+		\csname pgfplotspointonorientedsurfaceabsetupforset#3\endcsname{\csname pgfplots@logical@ZERO@#3\endcsname}{2}%
+		\if#1x%
+			\pgfplotspointonorientedsurfaceabsetupfor{#2}{#1}{\pgfplotspointonorientedsurfaceN}%
+			\pgfplots@drawgridlines@onorientedsurf@fromto{0}%
+		\else
+			\pgfpathmoveto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1min\endcsname}{\csname pgfplots@logical@ZERO@#2\endcsname}}%
+			\pgfpathlineto{\pgfplotspointonorientedsurfaceab{\csname pgfplots@#1max\endcsname}{\csname pgfplots@logical@ZERO@#2\endcsname}}%
+		\fi
+		\endpgfextra
+		;
+	\fi
+}%
+\def\pgfplots@drawaxis@outerlines@separate@onorientedsurf@smithchartaxis#1#2{%
+	\if2\csname pgfplots@#1axislinesnum\endcsname
+		% centered axis lines handled elsewhere.
+	\else
+	\scope[/pgfplots/every outer #1 axis line,
+		#1discont,decoration={pre length=\csname #1disstart\endcsname, post length=\csname #1disend\endcsname}]
+		\if#1x
+			\draw decorate {
+				\pgfextra
+				% exchange roles of A <-> B axes:
+				\pgfplotspointonorientedsurfaceabsetupfor{#2}{#1}{\pgfplotspointonorientedsurfaceN}%
+				\pgfplots@drawgridlines@onorientedsurf@fromto{0}%
+				\endpgfextra 
+				};
+		\else
+			\pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn{0}{%
+				\draw decorate {
+					\pgfextra
+					% exchange roles of A <-> B axes:
+					\pgfplotspointonorientedsurfaceabsetupfor{#2}{#1}{\pgfplotspointonorientedsurfaceN}%
+					\pgfplots@drawgridlines@onorientedsurf@fromto{\csname pgfplots@#2min\endcsname}%
+					\endpgfextra 
+					};
+			}{}%
+			%--------------------------------------------------
+			% \pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn{1}{%
+			% 	\draw decorate {
+			% 		\pgfextra
+			% 		% exchange roles of A <-> B axes:
+			% 		\pgfplotspointonorientedsurfaceabsetupfor{#2}{#1}{\pgfplotspointonorientedsurfaceN}%
+			% 		\pgfplots@drawgridlines@onorientedsurf@fromto{\csname pgfplots@#2max\endcsname}%
+			% 		\endpgfextra 
+			% 		};
+			% }{}%
+			%-------------------------------------------------- 
+		\fi
+	\endscope
+	\fi
+}%
+
+\def\pgfplots@initsizes@smithchart{%
+	% I copy-pasted most of this code, up to just one position where
+	% I introduced the modified scaling for smithchart axes
+	%----------------------------------
+	% INIT.
+	%
+	%
+	\def\pgfplots@minmax@reg@forbidden{\pgfplots@error{Sorry, an internal logic error occured during smithchart processing (a routine tried to access \string\pgfplots@xmin@reg\space or its variants). Please report this as bug, sorry}}%
+	\iffalse
+		\pgfplots@xmin@reg=\pgfplots@xmin pt %
+		\pgfplots@xmax@reg=\pgfplots@xmax pt %
+		\pgfplots@ymin@reg=\pgfplots@ymin pt %
+		\pgfplots@ymax@reg=\pgfplots@ymax pt %
+		\ifpgfplots@threedim
+			\pgfplots@zmin@reg=\pgfplots@zmin pt %
+			\pgfplots@zmax@reg=\pgfplots@zmax pt %
+		\fi
+	\else
+		\let\pgfplots@xmin@reg=\pgfplots@minmax@reg@forbidden
+		\let\pgfplots@xmax@reg=\pgfplots@minmax@reg@forbidden
+		\let\pgfplots@ymin@reg=\pgfplots@minmax@reg@forbidden
+		\let\pgfplots@ymax@reg=\pgfplots@minmax@reg@forbidden
+		\let\pgfplots@zmin@reg=\pgfplots@minmax@reg@forbidden
+		\let\pgfplots@zmax@reg=\pgfplots@minmax@reg@forbidden
+	\fi
+	%
+	%
+	%-----------------------------------------
+	% PROCESS THE 'width' and 'height' options
+	%-----------------------------------------
+	%
+	%
+	\pgfkeysgetvalue{/pgfplots/view/az}{\pgfplots@view@az}%
+	\pgfkeysgetvalue{/pgfplots/view/el}{\pgfplots@view@el}%
+	\ifpgfplots@threedim
+		\def\pgfplots@tmpZscale{1pt}%
+	\else
+		\def\pgfplots@tmpZscale{0pt}%
+		\let\pgfplots@view@el=\pgfutil@empty
+		\let\pgfplots@view@az=\pgfutil@empty
+	\fi
+	\ifx\pgfplots@view@az\pgfutil@empty
+		%\let\pgfplots@rectangle@width=\pgfutil@empty
+		%\let\pgfplots@rectangle@height=\pgfutil@empty
+		\def\pgfplots@view@dir@threedim@x{0}%
+		\def\pgfplots@view@dir@threedim@y{0}%
+		\def\pgfplots@view@dir@threedim@z{1}%
+		%
+		% FIXME HERE COMES THE smithchart MODIFICATION
+		%--------------------------------------------------
+		% \pgfpointdiff
+		% 	{\pgfplotsqpointxy{\pgfplots@xmin}{\pgfplots@ymin}}
+		% 	{\pgfplotsqpointxy{\pgfplots@xmax}{\pgfplots@ymax}}%
+		%-------------------------------------------------- 
+		% instead of scaling from (min) (max), we only need the UPPER
+		% bound -- in both, x and y directions (since we have a cycle.
+		% Furthermore, we need it twice since we are interested in the
+		% diameter, not the radius.
+		\global\pgf@x=2 pt % radius
+		\global\pgf@y=\pgf@x            % same for y
+		%
+		% only used temporarily in this macro to compute the correct
+		% length for unit vectors:
+		\edef\pgfplots@initsizes@axisdiag@x{\the\pgf@x}%
+		\edef\pgfplots@initsizes@axisdiag@y{\the\pgf@y}%
+		%
+		\ifx\pgfplots@x\pgfutil@empty
+			\ifx\pgfplots@width\pgfutil@empty
+				\pgfplots@error{INTERNAL LOGIC ERROR! WIDTH NOT SET}%
+			\fi
+			\pgfplots@initsizes@getXscale\pgfplots@initsizes@axisdiag@x\into\pgfplots@tmpXscale
+			%\ifpgfplots@scale@only@axis
+			%	\let\pgfplots@rectangle@width=\pgfplots@width
+			%\fi
+		\else
+			\def\pgfplots@tmpXscale{1}%
+		\fi
+		%
+		\ifx\pgfplots@y\pgfutil@empty
+			\ifx\pgfplots@height\pgfutil@empty
+				\pgfplots@error{INTERNAL LOGIC ERROR! HEIGHT NOT SET}%
+			\fi
+			\pgfplots@initsizes@getYscale\pgfplots@initsizes@axisdiag@y\into\pgfplots@tmpYscale
+			%\ifpgfplots@scale@only@axis
+			%	\let\pgfplots@rectangle@height=\pgfplots@height
+			%\fi
+		\else
+			\def\pgfplots@tmpYscale{1}%
+		\fi
+		%
+		\edef\pgfplots@tmpXscale{\pgfplots@tmpXscale pt}%
+		\edef\pgfplots@tmpYscale{\pgfplots@tmpYscale pt}%
+		%
+		\pgfplots@initsizes@setunitvector{x}{0}{\pgfplots@tmpXscale}{\pgfplots@tmp@xisaxisparallel}%
+		\pgfplots@initsizes@setunitvector{y}{1}{\pgfplots@tmpYscale}{\pgfplots@tmp@yisaxisparallel}%
+		\pgfplots@initsizes@setunitvector{z}{2}{\pgfplots@tmpZscale}{\pgfplots@loc@TMPc}%
+	\else
+		% 3D case is currently always initialised by `view':
+		\let\pgfplots@x=\pgfutil@empty
+		\let\pgfplots@y=\pgfutil@empty
+		\let\pgfplots@z=\pgfutil@empty
+		\pgfplotssetaxesfromazel{\pgfplots@view@az}{\pgfplots@view@el}{\pgfplots@tmp@xisaxisparallel}%
+		\if1\pgfplots@tmp@xisaxisparallel%
+			\def\pgfplots@tmp@yisaxisparallel{1}%
+		\fi
+	\fi
+%\message{Pgfplots debug: initialised unit vectors to x=(\the\pgf@xx,\the\pgf@xy), y=(\the\pgf@yx,\the\pgf@yy), z=(\the\pgf@zx,\the\pgf@zy). }%
+	%
+	\let\pgfplotsmathfloatviewdepthxyz@=\pgfplotsmathfloatviewdepthxyz@infigure
+	\let\pgfplotsmathviewdepthxyz@=\pgfplotsmathviewdepthxyz@infigure
+	%
+	\pgfplotsmath@ifzero{\pgfplots@x@veclength}{\pgfplots@hide@xtrue\pgfplots@shownothingof@xtrue}{}%
+	\pgfplotsmath@ifzero{\pgfplots@y@veclength}{\pgfplots@hide@ytrue\pgfplots@shownothingof@ytrue}{}%
+	\ifpgfplots@threedim
+		\pgfplotsmath@ifzero{\pgfplots@z@veclength}{\pgfplots@hide@ztrue\pgfplots@shownothingof@ztrue}{}%
+	\else
+		\if1\pgfplots@tmp@xisaxisparallel%
+			\if1\pgfplots@tmp@yisaxisparallel%
+				% Optimize for axis-parallel case!
+				% puh. Did not make any measureable difference!? Ok...
+				\let\pgfplotsqpointxy=\pgfplotsqpointxy@orthogonal
+			\fi
+		\fi
+	\fi
+	% 
+	% FIXME : unit vector ratio / axis equal
+	%
+}
+
+\def\pgfplots@handle@invalid@range@defaultlimits@smithchart{%
+	\pgfplotscoordmath{x}{parsenumber}{0}%
+	\global\let\pgfplots@xmin=\pgfmathresult
+	\pgfplotscoordmath{x}{parsenumber}{16000}%
+	\global\let\pgfplots@xmax=\pgfmathresult
+	\global\let\pgfplots@data@xmin=\pgfplots@xmin
+	\global\let\pgfplots@data@xmax=\pgfplots@xmax
+	%
+	\pgfplotscoordmath{y}{parsenumber}{0}%
+	\global\let\pgfplots@ymin=\pgfmathresult
+	\pgfplotscoordmath{y}{parsenumber}{16000}%
+	\global\let\pgfplots@ymax=\pgfmathresult
+	\global\let\pgfplots@data@ymin=\pgfplots@ymin
+	\global\let\pgfplots@data@ymax=\pgfplots@ymax
+	\pgfplotsset{enlargelimits=false}%
+}
+
+\let\pgfplots@set@default@size@options@standard=\pgfplots@set@default@size@options
+\def\pgfplots@set@default@size@options@smithchart{%
+	\pgfplots@set@default@size@options@standard
+	\pgfplotsset{smithchart ticks by size={\pgfkeysvalueof{/pgfplots/width}}{\pgfkeysvalueof{/pgfplots/height}}}%
+	%
+	\if1\b@pgfplots@smithchart@defaultticks@x
+		\if1\b@pgfplots@smithchart@defaultticks@y
+			\pgfplotsset{default smithchart xytick}%
+		\fi
+	\fi
+}
+\def\pgfplots@assign@default@tick@foraxis@smithchart#1{%
+	% do nothing here. I don't know the algorithm yet... but for 
+	% smithcharts, it may be sufficient to simply predefine several
+	% sets of ticks, depending on the final size.
+	%
+	% This is realized in 
+	% \pgfplots@set@default@size@options@smithchart (which is invoked
+	% before the ticks are processed).
+	\pgfplots@determinedefaultvalues@needs@check@uniformtickfalse
+	\expandafter\let\csname pgfplots@tick@distance@#1\endcsname=\pgfutil@empty
+	%
+	\pgfplotsset{default smithchart #1tick}%
+	% ok, I expect the '#1tick' key to be set now. Process it.
+	% Note that the earlier processing of pgfplots has been bypassed
+	% at this point -- we need to preprocess the tick list *here*:
+	\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@#1tick\endcsname
+	\expandafter\pgfplots@assign@default@tick@foraxis@smithchart@\expandafter{\pgfplots@loc@TMPa}%
+	\expandafter\let\csname pgfplots@#1tick\endcsname=\pgfplotsretval
+	%
+	\pgfkeysgetvalue{/pgfplots/minor #1tick}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+	\else
+		\expandafter\pgfplots@assign@default@tick@foraxis@smithchart@\expandafter{\pgfplots@loc@TMPa}%
+		\pgfkeyslet{/pgfplots/minor #1tick}\pgfplotsretval
+	\fi
+	%
+}%
+% #1: a \foreach list
+% on output, \pgfplotsretval contains a parsed list of positions
+\def\pgfplots@assign@default@tick@foraxis@smithchart@#1{%
+	\pgfplotsapplistXXglobalnewempty
+	\gdef\pgfplots@loc@TMPd{1}%
+	\foreach \pgfplots@loc@TMPb in {#1} {%
+		\ifx\pgfplots@loc@TMPb\pgfutil@empty
+		\else
+			\pgfplotscoordmath{default}{parsenumber}{\pgfplots@loc@TMPb}%
+			\pgfplotscoordmath{default}{tofixed}{\pgfmathresult}% per convention...
+			\edef\pgfmathresult{\if0\pgfplots@loc@TMPd,\fi\pgfmathresult}%
+			\gdef\pgfplots@loc@TMPd{0}%
+			\expandafter\pgfplotsapplistXXglobalpushback\expandafter{\pgfmathresult}%
+		\fi
+	}%
+	\pgfplotsapplistXXgloballet\pgfplotsretval
+	\pgfplotsapplistXXglobalclear
+}%
+
+\let\pgfplots@show@ticklabel@@orig=\pgfplots@show@ticklabel@
+\def\pgfplots@show@ticklabel@@smithchart#1#2{%
+	\def\pgfmathresult{#2}%
+	\if#1x%
+		\ifdim#2pt>360pt
+			\pgfmath@basic@mod@{#2}{360}%
+		\fi
+	\fi
+	\def\pgfplots@loc@TMPa{\pgfplots@show@ticklabel@@orig{#1}}%
+	\expandafter\pgfplots@loc@TMPa\expandafter{\pgfmathresult}%
+}%
+
+\def\pgfplots@xtick@check@tickshow@smithchart{%
+	\pgfplots@tickshowtrue
+}
+\def\pgfplots@ytick@check@tickshow@smithchart{%
+	\pgfplots@tickshowtrue
+}
+
+\let\pgfplots@limits@ready@orig=\pgfplots@limits@ready
+\def\pgfplots@limits@ready@smithchart{%
+	\pgfplots@limits@ready@orig
+	%
+	% Avoid tick labels at upper *and* lower angle range if both are the
+	% same:
+	\pgfmath@basic@sin@{\pgfplots@xmin}%
+	\let\pgfplots@loc@TMPa=\pgfmathresult
+	\pgfmath@basic@sin@{\pgfplots@xmax}%
+	\pgfplotsmath@ifapproxequal@dim
+		{\pgfmathresult pt}{\pgfplots@loc@TMPa pt}%
+		{0.002pt}
+		{%
+			\def\pgfplots@xtick@disable@last@tick{1}%
+		}{%
+		}%
+}%
+
+\def\smithchart{\smithchartaxis}
+\def\endsmithchart{\endsmithchartaxis}
+
+\def\startsmithchart{\smithchart}%
+\def\stopsmithchart{\endsmithchart}%
+\endinput

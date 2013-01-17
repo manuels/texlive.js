@@ -1,0 +1,319 @@
+%%
+%% This is file `chletter.cls',
+%% generated with the docstrip utility.
+%%
+%% The original source files were:
+%%
+%% chletter.dtx  (with options: `chletter.cls')
+%% 
+%% Copyright 2008, 2009, 2010 by Boris Oriet <http://boris.oriet.net>
+%% 
+%% This file may be distributed and/or modified under the conditions of
+%% the LaTeX Project Public License, either version 1.3c of this license
+%% or (at your option) any later version.  The latest version of this
+%% license is in:
+%% 
+%%    http://www.latex-project.org/lppl.txt
+%% 
+%% and version 1.3c or later is part of all distributions of LaTeX version
+%% 2008/05/04 or later.
+%% 
+%% This file has the LPPL maintenance status "author-maintained".
+%% 
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesClass{chletter}[2010/10/10 v2.0 Swiss letter document class]
+\DeclareOption{a4paper}{\paperheight297mm\paperwidth210mm}
+\DeclareOption{a5paper}{\paperheight210mm\paperwidth148mm}
+\DeclareOption{b5paper}{\paperheight250mm\paperwidth176mm}
+\DeclareOption{letterpaper}{\paperheight11in\paperwidth8.5in}
+\DeclareOption{legalpaper}{\paperheight14in\paperwidth8.5in}
+\DeclareOption{executivepaper}{\paperheight10.5in\paperwidth7.25in}
+\DeclareOption{landscape}
+{\@tempdima\paperheight\paperheight\paperwidth\paperwidth\@tempdima}
+\DeclareOption{10pt}{\def\@ptsize{0}}
+\DeclareOption{11pt}{\def\@ptsize{1}}
+\DeclareOption{12pt}{\def\@ptsize{2}}
+\DeclareOption{oneside}{\@twosidefalse\@mparswitchfalse}
+\DeclareOption{twoside}{\@twosidetrue\@mparswitchtrue}
+\DeclareOption{draft}{\overfullrule5\p@}
+\DeclareOption{final}{\overfullrule\z@}
+\DeclareOption{leqno}{\input{leqno.clo}}
+\DeclareOption{fleqn}{\input{fleqn.clo}}
+\DeclareOption{onecolumn}{\@twocolumnfalse\@leftsigfalse}
+\DeclareOption{twocolumn}{\@twocolumntrue\@leftsigtrue}
+\DeclareOption{leftwin}{\@leftwintrue}
+\DeclareOption{leftsig}{\@leftsigtrue}
+\DeclareOption{foldmark}{\@foldmarktrue}
+\DeclareOption{footfill}{\@footfilltrue}
+\newif\if@leftwin
+\newif\if@leftsig
+\newif\if@foldmark
+\newif\if@footfill
+\ExecuteOptions{a4paper,10pt}
+\ProcessOptions\relax
+\input{size1\@ptsize.clo}
+\newcounter{letter}
+\newdimen\titlehead
+\newdimen\titletopheight
+\newdimen\titlemidheight
+\newdimen\titlebotheight
+\newdimen\titlemargin
+\newdimen\titlewidth
+\newdimen\addressmargin
+\newdimen\addresswidth
+\newdimen\longindentation
+\newdimen\indentedwidth
+\parskip9\p@
+\parindent18\p@
+\normallineskip\z@
+\headheight12\p@
+\headsep24\p@
+\footskip36\p@
+\textwidth\paperwidth
+\advance\textwidth-9536004sp
+\titlewidth\textwidth
+\advance\textwidth-36\p@
+\textheight\paperheight
+\advance\textheight-14093310sp
+\oddsidemargin36\p@
+\evensidemargin\z@
+\marginparwidth48\p@
+\marginparsep6\p@
+\marginparpush6\p@
+\topmargin\z@
+\footnotesep12\p@
+\skip\footins12\p@
+\titlehead12\p@
+\titletopheight72\p@
+\titlemidheight72\p@
+\titlebotheight72\p@
+\addresswidth190\p@
+\def\ps@plain%
+{\let\@oddhead\@empty
+ \let\@evenhead\@empty
+ \def\@oddfoot{\footnotesize\hfil\pagename~\thepage}
+ \def\@evenfoot{\footnotesize\pagename~\thepage\hfil}}
+\def\ps@firstpage%
+{\let\@oddhead\@empty
+ \let\@evenhead\@empty
+ \def\@oddfoot{\footnotesize\leftmark\hfil\rightmark}
+ \def\@evenfoot{\footnotesize\rightmark\hfil\leftmark}}
+\def\ps@headings%
+{\def\@oddhead{\footnotesize\headtoname~\toname\hfil\pagename~\thepage}
+ \def\@evenhead{\footnotesize\pagename~\thepage\hfil}
+ \def\@oddfoot{\footnotesize\leftmark\hfil\rightmark}
+ \def\@evenfoot{\footnotesize\rightmark\hfil\leftmark}}
+\def\ps@myheadings%
+{\def\@oddhead{\footnotesize\leftmark\hfil\rightmark}
+ \def\@evenhead{\footnotesize\rightmark\hfil\leftmark}
+ \def\@oddfoot{\footnotesize\hfil\pagename~\thepage}
+ \def\@evenfoot{\footnotesize\pagename~\thepage\hfil}}
+\long\def\name#1{\def\fromname{#1}}
+\long\def\signature#1{\def\fromsig{#1}}
+\long\def\location#1{\def\fromlocation{#1}}
+\long\def\address#1{\def\fromaddress{#1}}
+\long\def\telephone#1{\def\telephonenum{\vtop{\footnotesize#1}}}
+\long\def\return#1{\def\returnaddress{\underbar{\textsuperscript{#1}}}}
+\def\makelabels%
+{\def\startlabels%
+ {\let\titletopmatter\@empty
+  \let\titlebotmatter\@empty
+  \let\foldmark\@empty}}
+\def\maketitle%
+{\ifdim\addressmargin=\z@
+  \addressmargin\titlewidth
+  \advance\addressmargin-\addresswidth
+ \else
+  \addresswidth\titlewidth
+  \advance\addresswidth-\addressmargin\fi
+ \longindentation\titlemargin
+ \advance\longindentation-\oddsidemargin
+ \clearpage
+ \if@twoside\ifodd\c@page
+ \else\thispagestyle{empty}\hb@xt@\z@{}\clearpage\fi\fi
+ \if@twocolumn\twocolumn[\@maketitle\leavevmode\vskip-\topskip]
+ \else\vbox{\@parboxrestore\@maketitle}\vskip-\parskip\fi
+ \advance\longindentation\addressmargin
+ \indentedwidth\textwidth
+ \advance\indentedwidth-\longindentation}
+\def\@maketitle%
+{\vskip-\topmargin\vskip-\baselineskip
+ \vskip\titlehead\vskip-\headheight\vskip-\headsep
+ \leftskip\longindentation\rightskip\textwidth
+ \advance\rightskip-\paperwidth
+ \advance\rightskip-\titlemargin
+ \parbox[t][\titletopheight]{\titlewidth}
+ {\hb@xt@\z@{}\titletopmatter\strut}\par
+ \parbox[t][\titlemidheight]{\titlewidth}
+ {\hb@xt@\z@{}\titlemidmatter\strut}\par
+ \parbox[t][\titlebotheight]{\titlewidth}
+ {\hb@xt@\z@{}\titlebotmatter\strut}\par
+ \leftskip-\oddsidemargin\advance\leftskip-1in
+ \parbox[b][\z@]{\paperwidth}{\foldmark}\par}
+\def\letter{\futurelet\@let@token\ch@let}\def\ch@let%
+{\ifx\@let@token[\expandafter\@letter\else\expandafter\ch@lea\fi}
+\long\def\ch@lea#1 {\@letter[n]{#1} }
+\long\def\@letter[#1]#2
+{\ifx#1n\parindent\z@\fi\ifx\@null#2\else\@processto#2\\@@@
+  \ifx\@empty\toaddress\else\@processto#2@@@\fi\fi
+ \maketitle\thispagestyle{firstpage}
+ \global\c@page\@ne\global\c@footnote\z@\global\advance\c@letter\@ne}
+\long\def\@processto#1\\#2@@@{\def\toname{#1}\def\toaddress{#2}}
+\def\endletter{\removelastskip\ifx\startlabels\undefined\else%
+ \startlabels\maketitle\thispagestyle{empty}\fi\clearpage}
+\def\stopbreaks{\interlinepenalty\@M\def\par{\@@par\nobreak}}
+\def\startbreaks{\interlinepenalty100\def\par{\@@par}}
+\def\opening{\futurelet\@let@token\ch@ope}\def\ch@ope%
+{\ifx\@let@token\bgroup\expandafter\ch@opa\else\expandafter\@opening\fi}
+\def\ch@opa#1{\ifx\@null#1\else\def\salutation{#1}\fi\@opening}
+\def\@opening{\par\salutation\par\medskip}
+\def\closing{\futurelet\@let@token\ch@clo}\def\ch@clo%
+{\ifx\@let@token\bgroup\expandafter\ch@cla\else\expandafter\@closing\fi}
+\def\ch@cla#1{\ifx\@null#1\else\def\valediction{#1}\fi\@closing}
+\def\@closing{\par\medskip\stopbreaks\valediction
+ \samepage\par\closingmatter\par\startbreaks}
+\def\object{\futurelet\@let@token\ch@obj}\def\ch@obj%
+{\ifx\@let@token\bgroup\expandafter\ch@oba\else\expandafter\@object\fi}
+\def\ch@oba#1{\ifx\@null#1\else\title{#1}\fi\@object}
+\def\@object{\noindent\@title\par\bigskip}
+\long\def\ps#1#2{\begin{list}{}{}\item[#1]#2\end{list}}
+\long\def\cc#1{\ps{\ccname}{#1}}
+\long\def\encl#1{\ps{\enclname}{#1}}
+\long\def\subparagraph#1{\par\textbf{#1}\hskip\labelsep}
+\long\def\paragraph#1{\par\noindent\textbf{#1}\hskip\labelsep}
+\long\def\subsubsection#1{\par\noindent\textbf{#1}\par\nobreak}
+\long\def\subsection#1{\smallskip\subsubsection{#1}}
+\long\def\section#1{\medskip\subsubsection{#1}}
+\def\description
+{\list{}
+ {\labelwidth\z@
+  \itemindent-\leftmargin
+  \let\makelabel\descriptionlabel}}\def\enddescription{\endlist}
+\def\descriptionlabel#1{\hskip\labelsep\textbf{#1}}
+\def\verse
+{\let\\\@centercr
+ \list{}
+ {\itemsep\z@
+  \itemindent-\parindent
+  \listparindent\itemindent
+  \rightmargin\leftmargin
+  \advance\leftmargin\parindent}
+ \item\relax}\def\endverse{\endlist}
+\def\quotation
+{\list{}
+ {\listparindent\parindent
+  \itemindent\listparindent
+  \rightmargin\leftmargin}
+ \item\relax}\def\endquotation{\endlist}
+\def\quote
+{\list{}
+ {\rightmargin\leftmargin}
+ \item\relax}\def\endquote{\endlist}
+\def\@listI{}
+\let\@listi\@listI
+\let\@listii\@listI
+\let\@listiii\@listI
+\let\@listiv\@listI
+\def\theenumi{\@arabic\c@enumi}
+\def\theenumii{\@alph\c@enumii}
+\def\theenumiii{\@roman\c@enumiii}
+\def\theenumiv{\@Alph\c@enumiv}
+\def\labelenumi{\theenumi.}
+\def\labelenumii{(\theenumii)}
+\def\labelenumiii{\theenumiii.}
+\def\labelenumiv{\theenumiv.}
+\def\p@enumii{\theenumi}
+\def\p@enumiii{\theenumi(\theenumii)}
+\def\p@enumiv{\p@enumiii\theenumiii}
+\def\labelitemi{\textbullet}
+\def\labelitemii{\textbf{\textendash}}
+\def\labelitemiii{\textasteriskcentered}
+\def\labelitemiv{\textperiodcentered}
+\labelsep6\p@\labelwidth12\p@\leftmargin18\p@
+\topsep\z@\partopsep3\p@\itemsep\z@\parsep3\p@
+\arraycolsep5\p@
+\tabcolsep6\p@
+\arrayrulewidth.4\p@
+\doublerulesep2\p@
+\tabbingsep\labelsep
+\skip\@mpfootins=\skip\footins
+\def\theequation{\@arabic\c@equation}
+\fboxsep3\p@
+\fboxrule.4\p@
+\long\def\@makefntext#1{\noindent\hb@xt@\z@{\hss\@makefnmark}#1}
+\def\fromname{\@author}
+\def\fromsig{\@author}
+\let\fromlocation\@empty
+\let\fromaddress\@empty
+\let\telephonenum\@empty
+\def\returnaddress{\null}
+\let\toname\@empty
+\let\toaddress\@empty
+\let\salutation\@empty
+\let\valediction\@empty
+\def\ccname{cc}
+\def\enclname{encl}
+\def\pagename{Page}
+\def\headtoname{To}
+\def\today
+{\ifcase\month\or
+ January\or February\or March\or April\or May\or June\or
+ July\or August\or September\or October\or November\or December\fi
+ \space\number\day, \number\year}
+\columnsep36\p@
+\pagestyle{plain}
+\pagenumbering{arabic}
+\if@leftwin
+ \def\titletopmatter%
+ {\splitfield
+  {}{\fromlocation\par\fromname\par\fromaddress\par\telephonenum}}
+ \def\titlemidmatter%
+ {\returnaddress\par\toname\par\toaddress}
+ \def\titlebotmatter%
+ {\splitfield
+  {}{\@date}}
+\else
+ \def\titletopmatter%
+ {\splitfield
+  {\fromlocation\par\fromname\par\fromaddress\par\telephonenum}{\@date}}
+ \def\titlemidmatter%
+ {\splitfield
+  {}{\returnaddress\par\toname\par\toaddress}}
+ \def\titlebotmatter%
+ {}\fi
+\long\def\splitfield#1#2%
+{\parbox[b][\baselineskip][t]{\addressmargin}{\hb@xt@\z@{}{#1}\strut}%
+ \parbox[b][\baselineskip][t]{\addresswidth}{\hb@xt@\z@{}{#2}\strut}}
+\if@leftsig
+ \def\closingmatter%
+ {\leftmargin2\parindent
+  \vskip4\bigskipamount
+  \ps{}{\fromsig}
+  \vskip2\bigskipamount plus\footfill
+  \labelwidth3\labelwidth
+  \advance\labelwidth-\labelsep}
+\else
+ \def\closingmatter%
+ {\leftmargin\longindentation
+  \vskip4\bigskipamount
+  \ps{}{\fromsig}
+  \vskip2\bigskipamount plus\footfill
+  \leftmargin2\parindent
+  \labelwidth3\labelwidth
+  \advance\labelwidth-\labelsep}\fi
+\if@foldmark\def\foldmark{\hrule\@width6\fboxsep\@height\fboxrule}
+\else\let\foldmark\@empty\fi
+\if@footfill\def\footfill{1fill}
+\else\let\footfill\z@\fi
+\if@twocolumn\twocolumn\sloppy
+\else\onecolumn\reversemarginpar\fi
+\DeclareOldFontCommand{\rm}{\normalfont\rmfamily}{\mathrm}
+\DeclareOldFontCommand{\sf}{\normalfont\sffamily}{\mathsf}
+\DeclareOldFontCommand{\tt}{\normalfont\ttfamily}{\mathtt}
+\DeclareOldFontCommand{\bf}{\normalfont\bfseries}{\mathbf}
+\DeclareOldFontCommand{\it}{\normalfont\itshape}{\mathit}
+\DeclareOldFontCommand{\sl}{\normalfont\slshape}{\relax}
+\DeclareOldFontCommand{\sc}{\normalfont\scshape}{\relax}
+\endinput
+%%
+%% End of file `chletter.cls'.

@@ -1,0 +1,580 @@
+% $StyleId: footnpag.doc,v 2.6 1995/11/10 18:21:26 schrod Exp $
+%----------------------------------------------------------------------
+% Written by Joachim Schrod <schrod@iti.informatik.th-darmstadt.de>.
+% Copyright conditions see below.
+
+%
+% LaTeX package footnpag
+% numbers footnotes subsequently per page
+%
+% [LaTeX in MAKEPROG]
+% (history at end)
+
+% If you have received this style file without the user manual (in the
+% file footnpag-user.tex or the respective DVI file), it's incomplete and
+% near to useless. If it was given to you as something that you shall
+% use as an author -- complain bitterly to your provider. You need the
+% documentation and you have a right on it! (Below you can find info
+% where to get the reference version.)
+
+
+
+
+%%%%
+%%%%
+%%%% These TeX macros were documented with the documentation system
+%%%% MAKEPROG and automatically converted to the current form.
+%%%% If you have MAKEPROG available you may transform it back to
+%%%% the original input: Remove every occurence of three percents
+%%%% and one optional blank from the beginning of a line and remove
+%%%% every line which starts with four percents.  The following lex
+%%%% program will do this:
+%%%%
+%%%%	%%
+%%%%
+%%%%	^%%%\ ?   ;
+%%%%	^%%%%.*\n ;
+%%%%
+%%%%	If you just want to print the documentation you may fetch
+%%%% the archive print-makeprog.tar.Z from ftp.th-darmstadt.de (directory
+%%%% pub/tex/latex). It contains *all* used styles -- but beware, they
+%%%% may not be in a documented form...
+%%%%
+%%%%
+%%% \documentclass{progltx}
+
+%%% \usepackage{footnpag-doc}		% document-specific markup
+%%% \usepackage{fullpage}
+
+
+%%% \nofiles				% no cross references
+
+
+%%% \RCS $StyleDate: 1995/11/10 18:21:26 $
+
+
+%%% \begin{document}
+
+
+%%% \title{The \texttt{footnpag} Package\\
+%%%     {\large (Implementation)}%
+%%%     }
+%%% \author{%			% LaTeX does not discard unnecessary glue...
+%%%     Joachim Schrod%
+%%%     \thanks{%
+%%% 	\protect\raggedright
+%%% 	TU~Darmstadt, Computer Science Department, WG Systems Programming,
+%%% 	Alexanderstr.~10, D-64283~Darmstadt, Germany.
+%%% 	Email: \texttt{schrod@iti.informatik.th-darmstadt.de}.%
+%%% 	}%
+%%%     }
+%%% \date{%
+%%%     Revision \RCSStyleRevision\\
+%%%     (as of \RCSStyleDate)%
+%%%     }
+
+%%% \maketitle
+
+
+%%% % doesn't work with progltx yet
+%%% %\tableofcontents
+
+
+
+%%% % ------------------------------------------------------------
+%%% %
+%%% % subdocument: The user interface of footnpag.sty
+%%% %
+
+%%% \input{footnpag-user}
+
+%%% %
+%%% % ------------------------------------------------------------
+%%% %
+%%% % subdocument: The internal interface
+%%% %
+
+%%% %\input{footnpag-conf}
+
+%%% %
+%%% % ------------------------------------------------------------
+
+
+
+%%% \chap Implementation.
+
+%%% Please note, that this package was originally written for plain
+%%% \TeX{}. The original version is still available. This version will
+%%% evolve, and will finally be full \LaTeX{} code.
+
+%%% This module reserves the namespace |fnpp|. Due to the age of the code
+%%% it does not obey the namespace throughout, this has to be changed in a
+%%% future revision.
+
+%%% \beginprog
+\ifx \fnpp@loaded\undefined
+    \def\fnpp@loaded{$StyleRevision: 2.6 $}
+\else
+    \PackageWarningNoLine{footnpag}%
+        {Some other package already uses namespace `fnpp'}
+\fi
+%%% \endprog
+
+
+%%% \sect Let's identify this package.
+
+%%% The code below is explained in the implementation documentation of the
+%%% |rcs| package.
+
+%%% \beginprog
+\begingroup
+    \def\RCSPackage#1#2 $#3: #4 #5\endRCS $#6: #7 #8\endRCS{%
+	\def\date{#4}\def\id{v#7}%
+	\ProvidesPackage{#1}[\date\space\id\space #2]%
+	}
+
+  \RCSPackage{footnpag}{numbering footnotes per page}
+  $StyleDate: 1995/11/10 18:21:26 $: 9999/00/00 \endRCS
+  $StyleRevision: 2.6 $: 0.0 \endRCS
+\endgroup
+%%% \endprog
+
+
+%%% \sect This module is supported. Send bug reports, comments and
+%%% repairs.
+
+%%% The reference version may be retrieved via anonymous ftp from
+%%% |ftp.th-darmstadt.de| [130.83.47.112], directory |pub/tex/latex|. It's
+%%% placed there as a gzipped tar file. (The information on the IP~number
+%%% is dated August~3,~1995.
+%%% It might have changed, although this is very unlikely. Use your
+%%% friendly nameserver.)
+
+
+%%% \sect This is freely distributable software; you can redistribute it
+%%% and/or modify it under the terms of the GNU General Public License as
+%%% published by the Free Software Foundation; either version~2 of the
+%%% License, or (at your option) any later version.
+
+%%% This software is distributed in the hope that it will be useful, but
+%%% \textbf{without any warranty}; without even the implied warranty of
+%%% \textbf{merchantability} or \textbf{fitness for a particular purpose}.
+%%% See the GNU General Public License for more details.
+
+%%% You should have received a copy of the GNU General Public License in
+%%% the file |License| along with this package; if not, write to the Free
+%%% Software Foundation, Inc., 675~Mass Ave, Cambridge, MA~02139,~USA.
+
+
+%%% \sect Before we start we declare some shorthands for category codes.
+%%% By declaring the underscore~`(|_|)' as letter we can use it in our
+%%% macros. (I agree with \textsc{D.~Knuth} that
+%%% |\identifier_several_words_long| is more readable than
+%%% |\IdentifierSeveralWordsLong| and in every case better than |\p@@@s|.)
+
+%%% As this is a \LaTeX{} module the at sign is a letter anyhow; so
+%%% we can use the ``private'' \LaTeX{} macros; and with the underscore we
+%%% can make our own macros more readable.  But as we have to restore this
+%%% category code at the end of this macro file we store its former value
+%%% in the control sequence |\CatUsCode|. This method is better than to
+%%% use a group because not all macros have to be defined global this way.
+
+%%% Since somebody might use more modules from me, this cseqs might be
+%%% defined already.
+
+%%% \beginprog
+\ifx \CatEscape\undefined
+    \chardef\CatEscape=0
+    \chardef\CatOpen=1
+    \chardef\CatClose=2
+    \chardef\CatIgnore=9
+    \chardef\CatLetter=11
+    \chardef\CatOther=12
+    \chardef\CatActive=13		% is defined in Plain already
+
+    \chardef\CatUsCode=\catcode`\_
+\fi
+
+\catcode`\_=\CatLetter			% top level macro file
+%%% \endprog
+
+
+%%% \sect Let's regard the implementation strategy. Because
+%%% the contents of one page is determined at (nearly) random places
+%%% with an asynchronous invogation of the output routine, we can not
+%%% give numbers to every footnote subsequently between output and
+%%% output: a footnote at the top of a page will perhaps get a number
+%%% before the output is triggered and there is no way to change this
+%%% number. The problem is like forward references to text places and it
+%%% is solved in a similar fashion. We need two \TeX{} runs to get the
+%%% numbering right but this is acceptable (who's got a finished text
+%%% after one run?!). In the first run we gather up in a file the
+%%% information where the footnotes are standing and in the second run
+%%% we use this information.
+
+%%% We must identify all footnotes if we write their numbers to the
+%%% footnote file, so each footnote gets an unary name built with the
+%%% counter |\foot_name_no|. The name is `|f@|\<nameno>', where \<nameno>
+%%% is the footnote name number. This name building scheme has several
+%%% disadvantages, e.g.\ the insertion of a new footnote destroys the
+%%% knowledge of the former run about the following footnotes. If we would
+%%% have some knowledge about the document type we are using and the macro
+%%% set which is in effect we could insert other counters (e.g.\ the
+%%% chapter numbers) as well.
+
+
+
+%%% \chap Determing the footnote numbers.
+
+%%% Let's start with the initialization of the macro
+%%% set. We need a file descriptor, |\foot_file|, which we use for the
+%%% file interaction. The name of the file is built from the job name and
+%%% the suffix `|.fot|' (I hope that no macro package uses this suffix).
+%%% The |\init_footnote| macro reads the contents
+%%% of the footnote file if it exists (|\ifeof| returns true if the file
+%%% doesn't exist). The description of the reading of this file
+%%% (|\read_foot_file|) is deferred until we know the structure of the
+%%% contents. After reading, the file is closed and we can open it for
+%%% writing. For security, i.e.\ to have a defined minimal contents, we
+%%% immediately write |\relax| to the file. In the end the macro defines
+%%% itself to |\relax| to allow calling it again.
+
+%%% \beginprog
+\newread\old_foot_file
+\newwrite\foot_file
+\def\foot_file_name{\jobname.fot\relax}
+\def\init_footnote{%
+   \openin\old_foot_file\foot_file_name
+   \ifeof\old_foot_file  \closein\old_foot_file
+   \else  \closein\old_foot_file
+      \read_foot_file
+   \fi
+   \immediate\openout\foot_file\foot_file_name
+   \immediate\write\foot_file{\relax}%
+   \global\let\init_footnote\relax
+   }
+%%% \endprog
+
+
+%%% \sect Remember, that we use |\foot_name_no| for the generation of a
+%%% name for each footnote.  The actual number of the footnote mark is
+%%% stored in |\c@footnote|, the \LaTeX{} footnote counter.
+
+%%% In the beginning of every footnote |\init_footnote| is called to
+%%% guarantee that the handling is initialized (this especially means
+%%% that the footnote numbers are read in by the first footnote).
+
+%%% \beginprog
+\newcount\foot_name_no  % for generating footnote mark names
+%%% \endprog
+
+
+%%% \sect It remains an open problem how to get the numbers there. The
+%%% footnote numbering must be initialized to zero in the output routine
+%%% and every footnote must increment this footnote number. The only
+%%% thing that is expanded during the output process is the output
+%%% routine itself and the |\write|'s, but the expanded tokens of
+%%% |\write| are written out, not interpreted. Well, the idea is simple:
+%%% We defer the counting to the second run and write the instructions
+%%% that do this to the file. The counting is then done while reading
+%%% the footnote file.
+
+%%% \noindent That means that the output routine adds entries like
+%%% %
+%%% \begin{quote}
+%%% |\c@footnote = 0|
+%%% \end{quote}
+%%% %
+%%% and every footnote adds an entry that looks like
+%%% %
+%%% \begin{quote}
+%%% |\advance\c@footnote by 1|\\
+%%% |\xdef\csname f@|\<nameno> |\endcsname{\number\c@footnote}|
+%%% \end{quote}
+%%% %
+%%% where \<nameno> is replaced by the current footnote name number.
+
+
+%%% \sect The macro |\fnpp_next_footnote| determines the next footnote
+%%% number and stores it in |\c@footnote|, the official \LaTeX{} footnote
+%%% counter. This counter is used since |\footnotetext| constructs the
+%%% mark in the footnote text from it. One can say that
+%%% |\fnpp_next_footnote| is a non-typical way to step this counter, it's
+%%% a series iterator instead of an incrementer like |\stepcounter|.
+
+%%% The expansion of |\foot_name_no| must not be postponed until |\output|
+%%% time because there may be more footnotes coming on this page that'll
+%%% increase this number.
+%%% Therefore we first define the macro |\do_write| which contains the
+%%% |\write| and the expanded tokens which are to be put out. Every token
+%%% that should not be expanded is prefixed by |\string| (resulting in
+%%% character tokens that represent the token name). A |\space| must be
+%%% inserted to separate |\csname| from |f|. The |\xdef| in the (written)
+%%% definition code of |f@|\<nameno> is needed because the footnote file
+%%% will be read in within a group.
+
+%%% After writing the entry to the footnote file the number for this
+%%% footnote is set to~0 if it is not already defined (from a previous
+%%% run).
+
+%%% \beginprog
+\def\fnpp_next_footnote{%
+    \init_footnote
+    \global\advance\foot_name_no\@ne
+    \edef\do_write{%
+	\write\foot_file{%
+	    \string\advance\c@footnote\@ne
+	    \string\expandafter\xdef
+			\string\csname\space f@\number\foot_name_no \endcsname{%
+		\string\number\c@footnote
+		}%
+	    }%
+	}%
+    \do_write
+    \global\c@footnote 0\csname f@\number\foot_name_no \endcsname \relax
+    }
+%%% \endprog
+
+
+%%% \sect It remains the reading of the footnote file. We have to read in
+%%% macros with names containing `|@|' characters. This will be done in
+%%% horizontal mode, so we ignore lineends to discard undesired spaces.
+
+%%% \beginprog
+\def\read_foot_file{%
+   \begingroup
+      \catcode`\@\CatLetter \catcode`\^^M\CatIgnore
+      \input \foot_file_name
+   \endgroup
+   }
+%%% \endprog
+
+
+
+
+%%% \chap Connection to the output routine.
+
+%%% We must write the footnote number reset code at the start of each new
+%%% page. The most easy way to do this is to add an |\immediate\write|
+%%% to the output routine.
+
+%%% The output routine has no associated hook. (It should, of course. This
+%%% is no exotic wish.)  So we have to add our code to it by redefining
+%%% some cseq. In a former version we really rebound |\output|, but that
+%%% was a leftover from the plain \TeX{} version. Then we had to check for
+%%% special |\output| invocations, which column we're in, etc. Now we rely
+%%% on some internals of \LaTeX{}: |\@outputpage| does the real ship out,
+%%% we just prepend our write to the front.
+
+%%% The reset code must not be written when no footnote was given by now.
+%%% We can check for the binding of |\init_footnote| to detect this, it's
+%%% |\relax| after the first footnote.
+
+%%% \beginprog
+\let\fnpp_orig_outputpage=\@outputpage
+\def\@outputpage{%
+    \ifx \init_footnote\relax
+	\immediate\write\foot_file{\c@footnote\z@}%
+    \fi
+    \fnpp_orig_outputpage
+    }
+%%% \endprog
+
+
+
+
+%%% \chap The user interface.
+
+%%% Footnotes may be produced by |\footnote|, or by |\footnotemark| and
+%%% |\footnotetext| (the former creates the mark, the latter the text with
+%%% the last mark). All these tags have an optional argument, a number
+%%% that shall be used to create the mark for this specific invocation.
+
+%%% We redefine only the handling of macro invocations without optional
+%%% arguments. The original bindings are made available in the protected
+%%% interface, in case footnotes are used for unusual things. (See the
+%%% chunk on title matters below, for an example.)
+
+%%% \beginprog
+\let\FnppOrigFootnote=\footnote		% save original bindings
+\let\FnppOrigFootnotemark=\footnotemark
+
+\def\footnote{%
+    \@ifnextchar[%			% ] (Emacs)
+	\@xfootnote
+	{\fnpp_next_footnote \@xfootnote[\the\c@footnote]}%
+    }
+\def\footnotemark{%
+    \@ifnextchar[%			% ] (Emacs)
+	\@xfootnotemark
+	{\fnpp_next_footnote \@xfootnotemark[\the\c@footnote]}%
+    }
+%%% \endprog
+
+
+%%% \sect Footnote tags in minipages behave a bit differently: There
+%%% |\footnote| and |\footnotetext| create minipage-local footnotes,
+%%% whereas |\footnotemark| creates a `global' footnote mark. I.e., if one
+%%% wants to make a footnote in a minipage that shall go on the page, one
+%%% has to specify |\footnotemark| in the minipage and |\footnotetext|
+%%% thereafter. |\footnotetext| uses the current value of the footnote
+%%% counter, since we set it by |\fnpp_next_footnote|, everything will
+%%% work.
+
+%%% \LaTeX{} makes a hook available to setup the minipage enviroment. But
+%%% the hook is initialized in a way that their own hook-enhancement
+%%% function does not work, we have to repair it first. No comment\,\dots
+
+%%% \beginprog
+\ifx \@minipagerestore\relax
+    \let\@minipagerestore\@empty
+\fi
+
+\g@addto@macro\@minipagerestore{%
+    \let\footnote\FnppOrigFootnote
+    }
+%%% \endprog
+
+
+%%% \sect But footnotes are used for other things, too. E.g., to mention
+%%% affiliation or acknowledgements in title matters. This is done by
+%%% |\thanks| that uses |\footnotemark| to construct the respective marks.
+%%% The expansion of |\thanks| is done by |\maketitle| that resets the
+%%% footnote counter afterwards. But that reset does not work with this
+%%% package, as the footnote counter value is not used to determine the
+%%% next one.
+
+%%% The most simple solution is to reset |\footnotemark| during the
+%%% evaluation of |\maketitle|. We can do that in a group since all
+%%% side-effects of |\maketitle| should be global anyhow.
+
+%%% \beginprog
+\let\fnpp_orig_maketitle=\maketitle
+\def\maketitle{%
+    \begingroup
+    	\let\footnotemark\FnppOrigFootnotemark
+	\fnpp_orig_maketitle
+    \endgroup
+    }
+%%% \endprog
+
+
+
+
+
+%%% \chap The end.
+
+%%% Well, after all we're finished with this module. We must not forget to
+%%% restore the underscore catcode.
+
+%%% \beginprog
+\catcode`\_=\CatUsCode
+
+\endinput
+%%% \endprog
+
+
+%%% \sect I would like to thank those who helped me to improve this style.
+%%% % In particular, XXX provided XXXsubstantial parts of the code.
+
+%%% \textsc{Chris Thompson} sent change proposals that made the code more
+%%% robust.
+
+%%% \textsc{Frank Mittelbach} gave the impulse to make real \LaTeX{}
+%%% code out of the former plain \TeX{} code. (Actually, that's not as
+%%% drastic as it sounds. I threw half the code away and used stuff
+%%% already supplied by the \LaTeX{} kernel, then I added a few lines to
+%%% take care of minipages and front matter.)
+
+%%% \textsc{John Lu},
+%%% \textsc{Sebastian Rahtz},
+%%% and
+%%% \textsc{Frank Thomas}
+%%% provided error and problem reports.
+
+
+%%% 
+%%% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%% \vskip\PltxPreSectSkip
+
+%%% \begin{rcslog}
+%%% $StyleLog: footnpag.doc,v $
+%%% \Revision 2.6 1995/11/10 18:21:26 schrod
+%%%     Make |\footnotetext| usable in |minipage| environment, again.\\
+%%% Problem reported by Sebastian Rahtz \path|<s.rahtz@elsevier.co.uk>|.
+
+%%% \Revision 2.5 1995/08/04 00:18:34 schrod
+%%% Made a \LaTeXe{} package from this style option.
+
+%%% User manual is a separate document now, that's better for
+%%% installation. Started to change the distribution into one that
+%%% conforms to the `supported bundle guidelines.'
+
+%%% \Revision 2.4 1995/01/01 18:54:00 schrod
+%%% Optional arguments are supported now, |\footnotemark| may be used,
+%%% footnotes in minipages and title matter are handled correctly.\\
+%%% (Enhancements requested by Frank Mittelbach
+%%% \path|<mittelbach@mzdmza.zdv.uni-mainz.de>|.)
+
+%%% Started rewrite to a \LaTeXe{} package. Rearranged the code, used
+%%% \LaTeX{} internals. In particular, |\@outputpage| is now redefined,
+%%% instead of |\output|. I can throw away all checks for special output
+%%% invocations, which column we're in, etc., this way. Still,
+%%% documentation changes and some minor details are missing for the next
+%%% official release.
+
+%%% \Revision 2.3  1994/12/31  13:26:31  schrod
+%%% Spurious messages were produced on pages without footnotes before the
+%%% first footnote. I had to check if the footnote handling is initialized.\\
+%%% (Bug reported at 25 Dec 93 by Frank Thomas \path|<frank@glocke.robin.de>|.
+%%% Actually repaired at 14 Jan 94, but change was not committed until now.)
+
+%%% \Revision 2.2  1993/02/02  11:04:18  schrod
+%%% If the first footnote was within a group, the footnote mechanism
+%%% was initialized a second time by the first footnote outside the group.
+%%% With this second initialization all information about previous
+%%% footnotes was discarded.\\
+%%% (Bug reported on 01 Feb 93 by John Lu \path|<luj@ecn.purdue.edu>|.)
+
+%%% \Revision 2.1  1991/11/07  19:58:34  schrod
+%%% Set up for a new distribution, documentation is now in LaTeX.
+%%% Added first chapter where user interface and problems are explained.
+
+%%% \Revision 1.2  1989/04/21  00:00:00  schrod
+%%% Advances the usability in LaTeX (|\twocolumn|),
+%%% uses an own stream for reading,
+%%% resets the counter with |\immediate\write|.
+%%% (Improvements pointed out by Chris Thompson [CET].)
+
+%%% \end{rcslog}
+
+
+%%% \bigskip
+
+%%% \noindent \textsl{Pre-RCS version history}.
+
+%%% \medskip
+
+%%% \noindent Version 1.1 removed a |\begingroup| (88-10-20).
+
+%%% \smallskip
+
+%%% \noindent Version 1.0 was released in August, 1987. Actually, it was a
+%%% posting to \TeX{}hax.
+
+
+
+%%% \end{document}
+
+
+%%% 
+%%% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Local Variables:
+%%% mode: LaTeX
+%%% TeX-brace-indent-level: 4
+%%% indent-tabs-mode: t
+%%% TeX-auto-untabify: nil
+%%% TeX-auto-regexp-list: LaTeX-auto-regexp-list
+%%% compile-command: "make footnpag.sty"
+%%% End:

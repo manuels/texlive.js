@@ -1,0 +1,156 @@
+% This is the colour change package.
+% By Seamus Bradley 2011.
+% tex@seamusbradley.net
+% Licensed under GPLv3.
+% http://www.gnu.org/licenses/gpl-3.0.html
+
+%%
+\ProvidesPackage{colourchange}[2011/03/15 v1.22]
+\RequirePackage{etoolbox}
+\RequirePackage{calc}
+
+% Some new ifs I use
+
+\newif\ifclch@defaultstyle
+\newif\ifclch@slidechange
+\newif\ifclch@framechange
+\newif\ifclch@draft
+\newif\ifclch@final
+
+% The default behaviour is "do nothing"
+
+\DeclareOption{defaultstyle}{%
+\clch@defaultstyletrue%
+}
+
+\DeclareOption{slidechange}{
+\clch@slidechangetrue
+\clch@framechangefalse
+}
+
+\DeclareOption{framechange}{
+\clch@framechangetrue
+\clch@slidechangefalse
+}
+
+\DeclareOption{draft}{
+\clch@drafttrue
+}
+
+\DeclareOption{final}{
+\clch@finaltrue
+}
+
+\ProcessOptions\relax
+
+% Default option
+
+\ifclch@defaultstyle
+\useoutertheme[footline=authorinstitutetitle]{miniframes}
+\useinnertheme{rectangles}
+\fi
+
+
+% This chunky command basically makes sure that all the colours are set each time the structure colour changes.
+
+\newcommand\setcolours{%
+\setbeamercolor*{palette primary}{use=structure,fg=white,bg=structure.fg}
+\setbeamercolor*{palette secondary}{use=structure,fg=white,bg=structure.fg!75!black}
+\setbeamercolor*{palette tertiary}{use=structure,fg=white,bg=structure.fg!50!black}
+\setbeamercolor*{palette quaternary}{fg=white,bg=structure.fg!80!black}
+\setbeamercolor*{sidebar}{use=structure,bg=structure.fg}
+\setbeamercolor*{palette sidebar primary}{use=structure,fg=structure.fg!10}
+\setbeamercolor*{palette sidebar secondary}{fg=white}
+\setbeamercolor*{palette sidebar tertiary}{use=structure,fg=structure.fg!50}
+\setbeamercolor*{palette sidebar quaternary}{fg=white}
+\setbeamercolor*{titlelike}{parent=palette primary}
+\setbeamercolor{itemize item}{bg=structure}
+\setbeamercolor*{block title}{bg=structure.fg,fg=white}
+\setbeamercolor*{block body}{bg=structure.fg!50!white}
+}
+
+%------------------------------
+% Manual change command
+%------------------------------
+
+\newcommand\selectmanualcolour[1]{%
+  \setbeamercolor{structure}{fg=#1}%
+  \setcolours
+}
+
+\let\selectmanualcolor\selectmanualcolour
+
+% All the work is bascially done by a few counters
+% Some are for with the slidechange option, and some for the frame change option
+% I'll let you guess which are which.
+
+\newcounter{clch@slidefrac}
+\newcounter{clch@slidetot}
+\newcounter{clch@currslide}
+\setcounter{clch@currslide}{1}
+
+\newcounter{clch@framefrac}
+\newcounter{clch@frametot}
+\newcounter{clch@currframe}
+\setcounter{clch@currframe}{1}
+
+% At the start of each slide, step the counter, and set the fraction counter
+% Only if the draft mode is off.
+\ifclch@draft
+\renewcommand\selectmanualcolour[1]{}
+\renewcommand\selectmanualcolor[1]{}
+\else
+\ifclch@slidechange
+
+  \newcommand\fractionate{
+    \setcounter{clch@slidetot}{\inserttotalslidenumber}
+    \setcounter{clch@slidefrac}{100 * \value{clch@currslide} / \value{clch@slidetot}}
+  }
+  
+  \def\beamer@checkframetitle{\stepcounter{clch@currslide}%
+    \fractionate%
+    \@ifnextchar\bgroup\beamer@inlineframetitle{}}
+  
+  \fi
+
+  \ifclch@framechange
+    \newcommand\fractionate{
+      \setcounter{clch@slidetot}{\inserttotalframenumber}
+      \setcounter{clch@slidefrac}{100 * \insertframenumber / \value{clch@slidetot}}
+    }
+
+    \preto\frame{\fractionate\setcolours}
+  \fi
+\fi
+
+% This command sets the fraction counter for the above command.
+% Why do I have to set clch@slidetot here too? Well, if I put it in \AtBeginDocument, it seems to break...
+% \inserttotalslidenumber is defined at the end (lines 61 et seq.)
+
+% The colour setting commands don't like having counter names in them directly, so this workaround is necessary...
+
+\definecolor{dred}{rgb}{0.9,0.15,0.15}
+\def\first@colour{blue}
+\def\second@colour{dred}
+\newcommand\setstruccol[1]{%
+  \setbeamercolor*{structure}{fg=\second@colour!#1!\first@colour}
+}
+
+\newcommand\setstruccolx{\setstruccol{\the\value{clch@slidefrac}}}
+
+\newcommand\selectcolourchanges[2]{%
+  \def\first@colour{#1}%
+  \def\second@colour{#2}}
+\let\selectcolorchanges\selectcolourchanges
+
+% At the beginning of the document, we need to set the colours up for the first time...
+
+\AtBeginDocument{\setstruccolx  \setcolours}
+
+% We need to know how many slides there are, so I just ripped off the way beamer defines \inserttotalframenumber 
+
+\def\inserttotalslidenumber{1}
+\AtEndDocument{
+      \immediate\write\@auxout{\string\@writefile{nav}%
+        {\noexpand\headcommand{\noexpand\def\noexpand\inserttotalslidenumber{\the\value{clch@currslide}}}}}
+}

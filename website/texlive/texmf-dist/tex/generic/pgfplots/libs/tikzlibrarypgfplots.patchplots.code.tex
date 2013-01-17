@@ -1,0 +1,1835 @@
+%--------------------------------------------
+%
+% Package pgfplots, library for higher order patch plots.
+% It contains advanced patch plots like quadratic triangles,
+% biquadratic quadrilaterals, coons patches and others.
+% The basic implementation for patches supports already line, triangle
+% and rectangle (=2 triangles) patches.
+%
+% Copyright 2007/2008/2009 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%--------------------------------------------
+	
+	% NOTES:
+	% In general, a Bezier spline C:[0,1] -> \R of order n fulfills
+	% C'(0) = n ( P_1 - P_0 ),
+	% C'(1) = n ( P_n - P_{n-1} ).
+	% For n=3 and given P_0 and P_3, I can directly compute P_1 and P_2 once I know
+	% the derivatives at t=0 and t=1.
+	%
+	%
+	% 
+%--------------------------------------------------
+% 4-point Lagrange interpolation on {0,1/3,2/3,1}:
+% C(x) = 
+% a * (1/3 - x)/(1/3) * (2/3-x)/(2/3) * (1-x) +
+% b * (0   - x)/(0 - 1/3) * (2/3-x)/(2/3-1/3)  * (1-x)/(1-1/3) +
+% c * (0   - x)/(0 - 2/3) * (1/3-x)/(1/3-2/3) *  (1-x)/(1-2/3) +
+% d * (0   - x)/(0 - 1)   * (1/3-x)/(1/3-1)   *  (2/3-x) /(2/3-1)
+% 
+% 
+% Derivative:
+% 
+% (-9*c + 2*d + 72*c*x - 18*d*x - 81*c*x^2 + 27*d*x^2 + 
+%   a*(-11 + 36*x - 27*x^2) + 9*b*(2 - 10*x + 9*x^2))/2
+% 
+% bezier control points are
+% P1 = (-5*a)/6 + 3*b - (3*c)/2 + d/3
+% 	=  -0.833333 a + 3. b - 1.5 c + 0.333333 d
+% 
+% P2 =  0.333333 (0.5 (2. a - 9. b + 18. c - 11. d) + 3. d)
+%   =  0.333333 a - 1.5 b + 3. c - 0.833333 d
+%-------------------------------------------------- 
+
+
+
+\pgfplotsdeclarepatchclass{quadratic spline}{%
+	allow matrix=0,
+	uses view depth=0,
+	new=\def\pgfplotspatchclass@qspline@no{A},
+	set next vertex={%
+		% EXPECTED ORDERING: first 2 corners, then 1 mid nodes
+		% (interpolatory).
+		% defines \pgfplotspatchclass@qspline@A ... \pgfplotspatchclass@qspline@C (3 points)
+		\expandafter\edef\csname pgfplotspatchclass@qspline@\pgfplotspatchclass@qspline@no\endcsname{#1}%
+		\if C\pgfplotspatchclass@qspline@no
+			\def\pgfplotspatchclass@qspline@no{A}%
+			\pgfplotspatchready
+		\else
+			\expandafter\let\expandafter\pgfplotspatchclass@qspline@no\csname pgfpptchindexnext@\pgfplotspatchclass@qspline@no\endcsname
+		\fi
+	},
+	first vertex=\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qspline@A\endvertex,
+	foreach vertex={%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qspline@A\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qspline@B\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qspline@C\endvertex #1%
+	},
+	fill path={%
+		\begingroup
+		% Draw the patch boundary using a bezier curves.
+		%
+		% Since I have lagrange points to describe the patch (i.e.
+		% points the patch passes through), I have to convert the
+		% lagrange representation to bezier.
+		%
+		% Furthermore, I convert to *cubic* bezier since pdf only
+		% supports cubic curves.
+		%
+		% See the docs for 'biquadratic::fill path' for more details,
+		% in does the same.
+		\def\pgfplots@edge{%
+			\ifx\pgfplotspatchclass@qspline@A\PA
+				\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\PA\endvertex}%
+			\fi
+			\pgfpathcurveto	{%
+				\pgfpointadd
+					{\pgfqpointscale{1.333333}{\expandafter\pgfplotspointpatchvertex\PB\endvertex}}%
+					{\pgfqpointscale{-0.333333}{\expandafter\pgfplotspointpatchvertex\PC\endvertex}}%
+			}{%
+				\pgfpointadd
+					{\pgfqpointscale{1.333333}{\expandafter\pgfplotspointpatchvertex\PB\endvertex}}%
+					{\pgfqpointscale{-0.333333}{\expandafter\pgfplotspointpatchvertex\PA\endvertex}}%
+			}{%
+				\expandafter\pgfplotspointpatchvertex\PC\endvertex
+			}%
+		}%
+		\let\PA=\pgfplotspatchclass@qspline@A
+		\let\PB=\pgfplotspatchclass@qspline@C
+		\let\PC=\pgfplotspatchclass@qspline@B
+		\pgfplots@edge
+		\endgroup
+	},
+	triangulate class=line,
+	triangulate={%
+		\let\pgfplotsplothandlermesh@patchclass@=\pgfplotsplothandlermesh@patchclass
+		\def\pgfplotsplothandlermesh@patchclass{line}%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{new}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qspline@A}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qspline@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qspline@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qspline@B}%
+		\let\pgfplotsplothandlermesh@patchclass=\pgfplotsplothandlermesh@patchclass@
+	},%
+	recursive refine@={%
+		\pgfplotspatchclass{\pgfplotspatchclassname}{new}%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qspline@A\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qspline@B\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qspline@C\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qspline@AC
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qspline@A}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qspline@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qspline@AC}%
+		#1%
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qspline@A\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qspline@B\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qspline@C\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qspline@CB
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qspline@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qspline@B}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qspline@CB}%
+		#1%
+		%
+	},%
+	get pdf shading type=0,
+	get num vertices=3,
+}%
+
+\pgfplotsdeclarepatchclass{cubic spline}{%
+	allow matrix=0,
+	uses view depth=0,
+	new=\def\pgfplotspatchclass@cspline@no{A},
+	set next vertex={%
+		% EXPECTED ORDERING: first 2 corners, then 1 mid nodes
+		% (interpolatory).
+		% defines \pgfplotspatchclass@cspline@A ... \pgfplotspatchclass@cspline@D (4 points)
+		\expandafter\edef\csname pgfplotspatchclass@cspline@\pgfplotspatchclass@cspline@no\endcsname{#1}%
+		\if D\pgfplotspatchclass@cspline@no
+			\def\pgfplotspatchclass@cspline@no{A}%
+			\pgfplotspatchready
+		\else
+			\expandafter\let\expandafter\pgfplotspatchclass@cspline@no\csname pgfpptchindexnext@\pgfplotspatchclass@cspline@no\endcsname
+		\fi
+	},
+	first vertex=\expandafter\pgfplotspatchvertex\pgfplotspatchclass@cspline@A\endvertex,
+	foreach vertex={%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@cspline@A\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@cspline@B\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@cspline@C\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@cspline@D\endvertex #1%
+	},
+	fill path={%
+		% Draw the patch boundary using a bezier curve.
+		\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@cspline@A\endvertex}%
+		% switch basis from lagrange to bezier (see formular on top of
+		% this file)
+		\pgfpathcurveto	{%
+			\begingroup
+			\pgfplotspatchvertexaccumstart
+			\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@cspline@A\times{-0.833333}%
+			\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@cspline@C\times{3}%
+			\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@cspline@D\times{-1.5}%
+			\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@cspline@B\times{0.3333333}%
+			\pgfplotspatchvertexfinish\pgfplots@loc@TMPa
+			\expandafter\pgfplotspointpatchvertex\pgfplots@loc@TMPa\endvertex
+			\endgroup
+		}{%
+			\begingroup
+			\pgfplotspatchvertexaccumstart
+			\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@cspline@A\times{0.333333}%
+			\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@cspline@C\times{-1.5}%
+			\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@cspline@D\times{3}%
+			\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@cspline@B\times{-0.833333}%
+			\pgfplotspatchvertexfinish\pgfplots@loc@TMPa
+			\expandafter\pgfplotspointpatchvertex\pgfplots@loc@TMPa\endvertex
+			\endgroup
+		}{%
+			\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@cspline@B\endvertex
+		}%
+	},
+	triangulate class=line,
+	triangulate={%
+		\let\pgfplotsplothandlermesh@patchclass@=\pgfplotsplothandlermesh@patchclass
+		\def\pgfplotsplothandlermesh@patchclass{line}%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{new}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@A}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@D}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@D}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@B}%
+		\let\pgfplotsplothandlermesh@patchclass=\pgfplotsplothandlermesh@patchclass@
+	},%
+	recursive refine@={%
+		% The 4-point lagrangian interpolation formular is shown on
+		% the top of this page. What I do here is simply to evaluate 
+		% C(i*1/9) for i =0,...,9:
+		% 0
+		% 0.493827 A +0.740741 C -0.296296 D +0.0617284 B
+		% 0.17284 A +1.03704 C -0.259259 D +0.0493827 B
+		% 1/3
+		% -0.0617284 A +0.740741 C +0.37037 D -0.0493827 B
+		% -0.0493827 A +0.37037 C +0.740741 D -0.0617284 B
+		% 2/3
+		% 0.0493827 A -0.259259 C +1.03704 D +0.17284 B
+		% 0.0617284 A -0.296296 C +0.740741 D +0.493827 B
+		% 1
+		\pgfplotspatchclass{\pgfplotspatchclassname}{new}%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@A\times{0.493827}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@B\times{0.0617284}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@C\times{0.740741}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@D\times{-0.296296}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@cspline@AA
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@A\times{0.17284}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@B\times{0.0493827}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@C\times{1.03704}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@D\times{-0.259259}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@cspline@AB
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@A}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@AA}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@AB}%
+		#1%
+		%
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@A\times{-0.0617284}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@B\times{-0.0493827}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@C\times{0.740741}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@D\times{0.37037}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@cspline@AA
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@A\times{-0.0493827}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@B\times{-0.0617284}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@C\times{0.37037}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@D\times{0.740741}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@cspline@AB
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@D}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@AA}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@AB}%
+		#1%
+		%
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@A\times{0.0493827}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@B\times{0.17284}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@C\times{-0.259259}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@D\times{+1.03704}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@cspline@AA
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@A\times{0.0617284}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@B\times{0.493827}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@C\times{-0.296296}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@cspline@D\times{0.740741}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@cspline@AB
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@D}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@B}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@AA}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@cspline@AB}%
+		#1%
+	},
+	get pdf shading type=0,
+	get num vertices=4,
+}%
+
+% make a linearized sequence around the edge of the quad.triangle.
+% note the ordering: first 3 corners, then 3 mid nodes:
+\def\pgfplots@qtri@next@A{D}%
+\def\pgfplots@qtri@next@B{E}%
+\def\pgfplots@qtri@next@C{F}%
+\def\pgfplots@qtri@next@D{B}%
+\def\pgfplots@qtri@next@E{C}%
+\def\pgfplots@qtri@next@F{A}%
+
+\def\pgfplots@qtri@rnext@A{F}%
+\def\pgfplots@qtri@rnext@B{D}%
+\def\pgfplots@qtri@rnext@C{E}%
+\def\pgfplots@qtri@rnext@D{A}%
+\def\pgfplots@qtri@rnext@E{B}%
+\def\pgfplots@qtri@rnext@F{C}%
+
+\def\pgfplotspatchclass@qtri@recursiverefine@newnames{%
+	\let\pgfplotspatchclass@qtri@A@=\pgfplotspatchclass@qtri@A%
+	\let\pgfplotspatchclass@qtri@B@=\pgfplotspatchclass@qtri@B%
+	\let\pgfplotspatchclass@qtri@C@=\pgfplotspatchclass@qtri@C%
+	\let\pgfplotspatchclass@qtri@D@=\pgfplotspatchclass@qtri@D%
+	\let\pgfplotspatchclass@qtri@E@=\pgfplotspatchclass@qtri@E%
+	\let\pgfplotspatchclass@qtri@F@=\pgfplotspatchclass@qtri@F%
+}%
+
+
+% A 3-point interpolatory patch which draws quadratic polynomial
+% splines (functions f(x), x 1d).
+\pgfplotsdeclarepatchclass{triangle quadr}{%
+	allow matrix=0,
+	uses view depth=1,
+	new=\def\pgfplotspatchclass@qtri@no{A}\let\pgfplotspatchclass@qtrie@AB\relax,
+	set next vertex={%
+		% EXPECTED ORDERING: first 3 corners, then 3 mid nodes.
+		% defines \pgfplotspatchclass@qtri@A ... \pgfplotspatchclass@qtri@F (6 points)
+		\expandafter\edef\csname pgfplotspatchclass@qtri@\pgfplotspatchclass@qtri@no\endcsname{#1}%
+		\if F\pgfplotspatchclass@qtri@no
+			\def\pgfplotspatchclass@qtri@no{A}%
+			\pgfplotspatchready
+		\else
+			\expandafter\let\expandafter\pgfplotspatchclass@qtri@no\csname pgfpptchindexnext@\pgfplotspatchclass@qtri@no\endcsname
+		\fi
+	},
+	first vertex=\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qtri@A\endvertex,
+	foreach vertex={%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qtri@A\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qtri@B\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qtri@C\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qtri@D\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qtri@E\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qtri@F\endvertex #1%
+	},
+	fill path={%
+		\begingroup
+		% Draw the patch boundary using three bezier curves.
+		%
+		% Since I have lagrange points to describe the patch (i.e.
+		% points the patch passes through), I have to convert the
+		% lagrange representation to bezier.
+		%
+		% Furthermore, I convert to *cubic* bezier since pdf only
+		% supports cubic curves.
+		%
+		% See the docs for 'biquadratic::fill path' for more details,
+		% in does the same.
+		\def\pgfplots@edge{%
+			\ifx\pgfplotspatchclass@qtri@A\PA
+				\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\PA\endvertex}%
+			\fi
+			\pgfpathcurveto	{%
+				\pgfpointadd
+					{\pgfqpointscale{1.333333}{\expandafter\pgfplotspointpatchvertex\PB\endvertex}}%
+					{\pgfqpointscale{-0.333333}{\expandafter\pgfplotspointpatchvertex\PC\endvertex}}%
+			}{%
+				\pgfpointadd
+					{\pgfqpointscale{1.333333}{\expandafter\pgfplotspointpatchvertex\PB\endvertex}}%
+					{\pgfqpointscale{-0.333333}{\expandafter\pgfplotspointpatchvertex\PA\endvertex}}%
+			}{%
+				\expandafter\pgfplotspointpatchvertex\PC\endvertex
+			}%
+		}%
+		\let\PA=\pgfplotspatchclass@qtri@A
+		\let\PB=\pgfplotspatchclass@qtri@D
+		\let\PC=\pgfplotspatchclass@qtri@B
+		\pgfplots@edge
+		%
+		\let\PA=\pgfplotspatchclass@qtri@B
+		\let\PB=\pgfplotspatchclass@qtri@E
+		\let\PC=\pgfplotspatchclass@qtri@C
+		\pgfplots@edge
+		%
+		\let\PA=\pgfplotspatchclass@qtri@C
+		\let\PB=\pgfplotspatchclass@qtri@F
+		\let\PC=\pgfplotspatchclass@qtri@A
+		\pgfplots@edge
+		\endgroup
+		\pgfpathclose
+	},
+	%--------------------------------------------------
+	% stroke path={%
+	% 	\ifx\pgfplotspatchclass@qtrie@AB\relax
+	% 		\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@qtri@A\endvertex}%
+	% 		\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@qtri@B\endvertex}%
+	% 		\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@qtri@C\endvertex}%
+	% 		\pgfpathclose
+	% 	\else
+	% 		\if1\pgfplotspatchclass@qtrie@AB
+	% 			\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@qtri@A\endvertex}%
+	% 			\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@qtri@B\endvertex}%
+	% 		\fi
+	% 		\if1\pgfplotspatchclass@qtrie@BC
+	% 			\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@qtri@B\endvertex}%
+	% 			\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@qtri@C\endvertex}%
+	% 		\fi
+	% 		\if1\pgfplotspatchclass@qtrie@CA
+	% 			\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@qtri@C\endvertex}%
+	% 			\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@qtri@A\endvertex}%
+	% 		\fi
+	% 	\fi
+	% },
+	%-------------------------------------------------- 
+	stream to shader={%
+		% create a degenerate coons patch:
+		\begingroup
+%\message{EDGE INIT^^J}%
+		% this defines \Pcur and \Pnextseq :
+		\pgfplotspatchclass@tri@to@coonspatch@findshadingsequence@for@depth
+		%
+		\pgfutil@namelet{Pstart}{pgfplotspatchclass@qtri@\Pcur}%
+		%
+		% see the docus for "fill path" about these 1.33333 and -0.33333 factors
+		\def\pgfplots@coonsedge{%
+%\message{EDGE \Pcur^^J}%
+			\expandafter\let\expandafter\PA\csname pgfplotspatchclass@qtri@\Pcur\endcsname
+			\edef\Pcur{\csname pgfplots@qtri@\Pnextseq next@\Pcur\endcsname}%
+%\message{---> \Pcur^^J}%
+			\expandafter\let\expandafter\PB\csname pgfplotspatchclass@qtri@\Pcur\endcsname
+			\edef\Pcur{\csname pgfplots@qtri@\Pnextseq next@\Pcur\endcsname}%
+%\message{---> \Pcur^^J}%
+			\expandafter\let\expandafter\PC\csname pgfplotspatchclass@qtri@\Pcur\endcsname
+			\ifx\PA\Pstart
+				\expandafter\pgfplotspatchvertex\PA\endvertex
+					\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
+					\pgfplotsaxisvisphasetransformpointmeta
+				\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
+				% degenerate: the "edge" \PA -- \PA collabses into one
+				% point.
+				% Per construction, the "edge" is the FOREGROUND. 
+%\message{STREAMING COLLAPSED EDGE AT START POINT^^J}%
+				\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
+				\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
+				\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
+			\fi
+			\pgfplotslibrarysurfstreamcoord{%
+				\pgfpointadd
+					{\pgfqpointscale{1.333333}{\expandafter\pgfplotspointpatchvertex\PB\endvertex}}%
+					{\pgfqpointscale{-0.333333}{\expandafter\pgfplotspointpatchvertex\PC\endvertex}}%
+			}{}%
+			\pgfplotslibrarysurfstreamcoord{%
+				\pgfpointadd
+					{\pgfqpointscale{1.333333}{\expandafter\pgfplotspointpatchvertex\PB\endvertex}}%
+					{\pgfqpointscale{-0.333333}{\expandafter\pgfplotspointpatchvertex\PA\endvertex}}%
+			}{}%
+			\ifx\PC\Pstart
+			\else
+				\expandafter\pgfplotspatchvertex\PC\endvertex
+					\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
+					\pgfplotsaxisvisphasetransformpointmeta
+				\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
+			\fi
+		}%
+		\pgfplots@coonsedge
+		%
+		\pgfplots@coonsedge
+		%
+		\pgfplots@coonsedge
+		%
+		%
+		\endgroup
+	},%
+	triangulate={%
+		\let\pgfplotsplothandlermesh@patchclass@=\pgfplotsplothandlermesh@patchclass
+		\def\pgfplotsplothandlermesh@patchclass{triangle}%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{new}%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set edge visible}01%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set edge visible}11%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set edge visible}20%
+		% Ok. Now create 4 triangles. The ordering is not arbitrary
+		% (unless z buffer=sort is in effect). Let's assume that the
+		% AB edge is BACKGROUND and the CD edge is FOREGROUND. Then
+		% this sequence here should have approximately the same depth
+		% ordering:
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@F}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@A}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@D}%
+		%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set edge visible}00%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set edge visible}10%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@F}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@D}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@E}%
+		%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set edge visible}01%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set edge visible}11%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@D}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@B}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@E}%
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@E}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@F}%
+		\let\pgfplotsplothandlermesh@patchclass=\pgfplotsplothandlermesh@patchclass@
+	},%
+	set edge visible={%
+		\ifcase#1
+			\edef\pgfplotspatchclass@qtrie@AB{#2}%
+		\or
+			\edef\pgfplotspatchclass@qtrie@BC{#2}%
+		\or
+			\edef\pgfplotspatchclass@qtrie@CA{#2}%
+		\fi
+	},
+	serialize except vertices={%
+		\ifx\pgfplotspatchclass@qtrie@AB\relax
+			\let\pgfplotsretval\pgfutil@empty%
+		\else
+			\edef\pgfplotsretval{%
+				\noexpand\def\noexpand\pgfplotspatchclass@qtrie@AB{\pgfplotspatchclass@qtrie@AB}%
+				\noexpand\def\noexpand\pgfplotspatchclass@qtrie@BC{\pgfplotspatchclass@qtrie@BC}%
+				\noexpand\def\noexpand\pgfplotspatchclass@qtrie@CA{\pgfplotspatchclass@qtrie@CA}%
+			}%
+		\fi
+	},%
+	deserialize except vertices=%
+		\let\pgfplotspatchclass@qtrie@AB\relax
+		#1,
+	recursive refine@={%
+		\pgfplotspatchclass@qtri@recursiverefine@newnames
+		%
+		\pgfplotspatchclass{\pgfplotspatchclassname}{new}%
+		%--------------------------------------------------
+		% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}01%
+		% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}11%
+		% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}20%
+		%-------------------------------------------------- 
+		% The ordering is not arbitrary
+		% (unless z buffer=sort is in effect). Let's assume that the
+		% AB edge is BACKGROUND and the CD edge is FOREGROUND. Then
+		% this sequence here should have approximately the same depth
+		% ordering:
+		%
+		% I used the reference triangle and shape functions as listed in
+		% http://www.colorado.edu/engineering/CAS/courses.d/IFEM.d/
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@AD
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.5}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.25}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.5}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@DF
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@AF
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@F@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@A@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@D@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@AF}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@AD}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@DF}%
+		%
+		#1\pgfplotspatchclass@qtri@recursiverefine@newnames
+		%
+		%
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.5}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.25}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.5}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@DF
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.5}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.5}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.25}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@DE
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.25}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.5}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.5}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@EF
+		%
+		%
+		%--------------------------------------------------
+		% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}00%
+		% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}10%
+		%-------------------------------------------------- 
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@F@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@D@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@E@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@DF}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@DE}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@EF}%
+		% %
+		% %--------------------------------------------------
+		% % \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}01%
+		% % \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}11%
+		% %-------------------------------------------------- 
+		#1\pgfplotspatchclass@qtri@recursiverefine@newnames
+		%
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@DB
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.5}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.5}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.25}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@DE
+		%
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@BE
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@D@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@B@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@E@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@DB}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@BE}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@DE}%
+		%
+		#1\pgfplotspatchclass@qtri@recursiverefine@newnames
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@EC
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@B\times{-.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@D\times{0.25}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@E\times{0.5}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.5}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@EF
+		%
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@A\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@C\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@qtri@F\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@qtri@CF
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@E@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@C@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@F@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@EC}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@CF}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@qtri@EF}%
+		%
+		#1%
+		%
+	},%
+	get pdf shading type=6,
+	get num vertices=6,
+}%
+
+
+% see
+% \pgfplotspatchclass@rect@to@coonspatch@findshadingsequence@for@depth
+% and its documentation.
+%
+% POSTCONDITION:
+% 	\Pcur and \Pnextseq are defined.
+\def\pgfplotspatchclass@tri@to@coonspatch@findshadingsequence@for@depth{%
+	\def\Pcur{A}%
+	\def\Pnextseq{}%
+	%
+	\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qtri@A\endvertex
+	\ifx\pgfplotspatchvertexdepth\pgfutil@empty
+	\else
+		% ah. We have view depth. Use it!
+		% The idea here is as follows.
+		% According to pdf standard, the COONS Shading is
+		% generated in the unit cube and then mapped to the
+		% shading. If u,v in [0,1] are the coordinates in the unit
+		% cube, pixel values for v=1 overwrite values for v=0.
+		% If pixel values have the same v, u=1 overwrites u=0.
+		% In other words, the loop is
+		% for v= 0 to Nv
+		% 	for u = 0 to Nu
+		% 	   shade pixel for (u,v)
+		%
+		% BB-------CC   <--v=1
+		%  |        |
+		%  |        |
+		%  |        |
+		% AA-------DD   <--v=0
+		%  |        |
+		%  u=0      u=1
+		%
+		%
+		% IDEA: re-order the sequence of vertices such that z
+		% buffering is obtained.
+		%
+		% APPROACH:
+		%  the edge BB--CC collapses into just one point, namely
+		%  the FOREGROUND point (i.e. it is drawn on top of
+		%  everything else).
+		%
+		%  The AA point is the second nearest foreground point.
+		%  The sequence is chosen such that AA,BB is the first
+		%  edge.
+		%
+		%  What is to do (besides determining the vertices for AA
+		%  and BB)? Well, make sure, that we can arrange them in
+		%  the desired order. This involves a periodic "next vertex"
+		%  algorithm which might either go forward
+		%  or backward.
+		%
+		% sort according to depth.
+		% To do so, prepare macros \PA,\PB,\PC for use in
+		% \pgfplotsutilsortthree. FORMAT:
+		% \PA={<sortkey>pt <originalindex>}
+		\edef\PA{\pgfplotspatchvertexdepth pt A}%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qtri@B\endvertex
+		\edef\PB{\pgfplotspatchvertexdepth pt B}%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@qtri@C\endvertex
+		\edef\PC{\pgfplotspatchvertexdepth pt C}%
+		\pgfplotsutilsortthree\PA\PB\PC
+		\def\toCHAR##1pt ##2{##2}% get original index
+		%
+		\edef\Pcur{\expandafter\toCHAR\PB}%%
+		\edef\Pnext{\csname pgfplots@qtri@next@\Pcur\endcsname}%
+		\edef\Pnext{\csname pgfplots@qtri@next@\Pnext\endcsname}%
+		\if\Pnext\PA
+			% ok, next(next(AA)) = BB.
+			% that means we have to advance forward.
+			\def\Pnextseq{}%
+		\else
+			% well, since we have a triangle, there only remains
+			% the backwards direction.
+			\def\Pnextseq{r}%
+		\fi
+%\message{FOREGROUND VERTEX = \PA.^^J}%
+%\message{SECOND NEAREST VERTEX = \PB.^^J}%
+	\fi
+}
+\def\pgfplotspatchclass@tri@to@coonspatch@findshadingsequence@for@depth@no@op{%
+	\def\Pcur{A}%
+	\def\Pnextseq{}%
+}
+
+% bilinear is the same as 'rectangle', but it uses a different shader.
+\pgfplotsdeclarepatchclass{bilinear}{%
+	allow matrix=1,
+	new=\def\pgfplotspatchclass@rect@no{0},
+	set next vertex={%
+		\ifcase\pgfplotspatchclass@rect@no\relax
+			\edef\pgfplotspatchclass@rect@A{#1}%
+			\def\pgfplotspatchclass@rect@no{1}%
+		\or
+			\edef\pgfplotspatchclass@rect@B{#1}%
+			\def\pgfplotspatchclass@rect@no{2}%
+		\or
+			\edef\pgfplotspatchclass@rect@C{#1}%
+			\def\pgfplotspatchclass@rect@no{3}%
+		\or
+			\edef\pgfplotspatchclass@rect@D{#1}%
+			\def\pgfplotspatchclass@rect@no{0}%
+			\pgfplotspatchready%
+		\fi
+	},
+	first vertex=\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@A\endvertex,
+	foreach vertex={%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@A\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@B\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@C\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@D\endvertex #1%
+	},
+	stream to shader={%
+		% create a coons patch:
+		\begingroup
+		\pgfplotspatchclass@rect@to@coonspatch@findshadingsequence@for@depth
+			{pgfplotspatchclass@rect@}{\Pcur}{\Pnextseq}%
+		%
+		\pgfutil@namelet{Pstart}{pgfplotspatchclass@rect@\Pcur}%
+		\def\pgfplots@coonsedge{%
+%\message{EDGE \Pcur^^J}%
+			\expandafter\let\expandafter\PA\csname pgfplotspatchclass@rect@\Pcur\endcsname
+			\edef\Pcur{\csname pgfplots@rect@\Pnextseq next@\Pcur\endcsname}%
+%\message{---> \Pcur^^J}%
+			\expandafter\let\expandafter\PB\csname pgfplotspatchclass@rect@\Pcur\endcsname
+			\ifx\PA\Pstart
+				\expandafter\pgfplotspatchvertex\PA\endvertex
+					\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
+					\pgfplotsaxisvisphasetransformpointmeta
+				\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
+			\fi
+			%
+			% CONTROL POINT A+1/3(B-A)
+			\pgfplotslibrarysurfstreamcoord{%
+				\pgfpointadd
+					{\pgfqpointscale{0.6666666}{\expandafter\pgfplotspointpatchvertex\PA\endvertex}}%
+					{\pgfqpointscale{0.3333333}{\expandafter\pgfplotspointpatchvertex\PB\endvertex}}%
+			}{}%
+			% CONTROL POINT A+2/3(B-A)
+			\pgfplotslibrarysurfstreamcoord{%
+				\pgfpointadd
+					{\pgfqpointscale{0.3333333}{\expandafter\pgfplotspointpatchvertex\PA\endvertex}}%
+					{\pgfqpointscale{0.6666666}{\expandafter\pgfplotspointpatchvertex\PB\endvertex}}%
+			}{}%
+			\ifx\PB\Pstart
+			\else
+				\expandafter\pgfplotspatchvertex\PB\endvertex
+					\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
+					\pgfplotsaxisvisphasetransformpointmeta
+				\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
+			\fi
+		}%
+		%
+		\pgfplots@coonsedge
+		%
+		\pgfplots@coonsedge
+		%
+		\pgfplots@coonsedge
+		%
+		\pgfplots@coonsedge
+		%
+		\endgroup
+	},%
+	fill path={%
+		\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@rect@A\endvertex}%
+		\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@rect@B\endvertex}%
+		\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@rect@C\endvertex}%
+		\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@rect@D\endvertex}%
+		\pgfpathclose
+	},
+	triangulate={%
+		\pgfplotscoordmath{meta}{parsenumber}{0.25}%
+		\let\pgfplots@loc@scale=\pgfmathresult
+		%
+		\pgf@xa=0pt
+		\pgf@ya=0pt
+		\pgf@yb=0pt
+		\pgfplotscoordmath{meta}{zero}%
+		\def\pgfplots@loc@accum@mean{%
+			\advance\pgf@xa by\pgfplotspatchvertexx\relax
+			\advance\pgf@ya by\pgfplotspatchvertexy\relax
+			\pgfplotscoordmath{meta}{op}{add}{{\pgfmathresult}{\pgfplotspatchvertexmeta}}%
+			\ifx\pgfplotspatchvertexdepth\pgfutil@empty
+			\else
+				\advance\pgf@yb by\pgfplotspatchvertexdepth pt\relax
+			\fi
+		}%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@A\endvertex \pgfplots@loc@accum@mean%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@B\endvertex \pgfplots@loc@accum@mean%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@C\endvertex \pgfplots@loc@accum@mean%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@rect@D\endvertex \pgfplots@loc@accum@mean%
+		%
+		\divide\pgf@xa by4
+		\divide\pgf@ya by4
+		\divide\pgf@yb by4
+		\pgfplotscoordmath{meta}{op}{multiply}{{\pgfmathresult}{\pgfplots@loc@scale}}%
+		\edef\pgfplotspatchclass@rect@M{{\the\pgf@xa}{\the\pgf@ya}{\pgfmathresult}\ifx\pgfplotspatchvertexdepth\pgfutil@empty\else \pgf@sys@tonumber\pgf@yb\fi}%
+		%
+		\let\pgfplotsplothandlermesh@patchclass@=\pgfplotsplothandlermesh@patchclass
+		\def\pgfplotsplothandlermesh@patchclass{triangle}%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{new}%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set edge visible}01%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set edge visible}10%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set edge visible}20%
+		% Ok. Now create 4 triangles. The ordering is not arbitrary
+		% (unless z buffer=sort is in effect). Let's assume that the
+		% AB edge is BACKGROUND and the CD edge is FOREGROUND. Then
+		% this sequence here should have approximately the same depth
+		% ordering:
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@A}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@B}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@M}%
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@B}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@M}%
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@D}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@A}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@M}%
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@D}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@M}%
+		\let\pgfplotsplothandlermesh@patchclass=\pgfplotsplothandlermesh@patchclass@
+	},%
+	recursive refine@={%
+		\pgfplotspatchclass@rect@refine@{#1}%
+	},%
+	serialize except vertices=\let\pgfplotsretval\pgfutil@empty,%
+	deserialize except vertices=,
+	get pdf shading type=6,
+	get num vertices=4,
+}%
+
+\pgfplotsdeclarepatchclass{rectangle}{%
+	recursive refine@={%
+		\pgfplotspatchclass@rect@refine@{#1}%
+	},%
+}
+\def\pgfplotspatchclass@rect@refine@#1{%
+	\pgfplotspatchclass@rect@recursiverefine@newnames
+	%
+	\pgfplotspatchclass{\pgfplotspatchclassname}{new}%
+	%--------------------------------------------------
+	% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}01%
+	% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}11%
+	% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}20%
+	%-------------------------------------------------- 
+	% The ordering is not arbitrary
+	% (unless z buffer=sort is in effect). Let's assume that the
+	% AB edge is BACKGROUND and the CD edge is FOREGROUND. Then
+	% this sequence here should have approximately the same depth
+	% ordering:
+	%
+	\pgfplotspatchvertexaccumstart
+	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@rect@A\times{0.25}%
+	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@rect@B\times{0.25}%
+	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@rect@C\times{0.25}%
+	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@rect@D\times{0.25}%
+	\pgfplotspatchvertexfinish\pgfplotspatchclass@rect@M
+	%
+	\expandafter\pgfplotspatchclass@rect@refine@@\expandafter{\pgfplotspatchclass@rect@M}{#1}%
+}
+\def\pgfplotspatchclass@rect@refine@@#1#2{%
+	\pgfplotspatchvertexaccumstart
+	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@rect@A\times{0.5}%
+	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@rect@B\times{0.5}%
+	\pgfplotspatchvertexfinish\pgfplotspatchclass@rect@AB
+	%
+	\pgfplotspatchvertexaccumstart
+	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@rect@A\times{0.5}%
+	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@rect@D\times{0.5}%
+	\pgfplotspatchvertexfinish\pgfplotspatchclass@rect@DA
+	%
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@A@}%
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@AB}%
+	\pgfplotsplothandlermesh@setnextvertex{#1}%
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@DA}%
+	#2\pgfplotspatchclass@rect@recursiverefine@newnames
+	%
+	%
+	\pgfplotspatchvertexaccumstart
+	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@rect@A\times{0.5}%
+	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@rect@B\times{0.5}%
+	\pgfplotspatchvertexfinish\pgfplotspatchclass@rect@AB
+	%
+	\pgfplotspatchvertexaccumstart
+	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@rect@B\times{0.5}%
+	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@rect@C\times{0.5}%
+	\pgfplotspatchvertexfinish\pgfplotspatchclass@rect@BC
+	%
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@AB}%
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@B@}%
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@BC}%
+	\pgfplotsplothandlermesh@setnextvertex{#1}%
+	#2\pgfplotspatchclass@rect@recursiverefine@newnames
+	%
+	%
+	%
+	\pgfplotspatchvertexaccumstart
+	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@rect@C\times{0.5}%
+	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@rect@D\times{0.5}%
+	\pgfplotspatchvertexfinish\pgfplotspatchclass@rect@CD
+	%
+	\pgfplotspatchvertexaccumstart
+	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@rect@B\times{0.5}%
+	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@rect@C\times{0.5}%
+	\pgfplotspatchvertexfinish\pgfplotspatchclass@rect@BC
+	%
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@BC}%
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@C@}%
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@CD}%
+	\pgfplotsplothandlermesh@setnextvertex{#1}%
+	#2\pgfplotspatchclass@rect@recursiverefine@newnames
+	%
+	%
+	%
+	\pgfplotspatchvertexaccumstart
+	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@rect@C\times{0.5}%
+	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@rect@D\times{0.5}%
+	\pgfplotspatchvertexfinish\pgfplotspatchclass@rect@CD
+	%
+	\pgfplotspatchvertexaccumstart
+	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@rect@D\times{0.5}%
+	\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@rect@A\times{0.5}%
+	\pgfplotspatchvertexfinish\pgfplotspatchclass@rect@DA
+	%
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@CD}%
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@D@}%
+	\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@rect@DA}%
+	\pgfplotsplothandlermesh@setnextvertex{#1}%
+	#2\pgfplotspatchclass@rect@recursiverefine@newnames
+	%
+}%
+
+\def\pgfplotspatchclass@rect@recursiverefine@newnames{%
+	\let\pgfplotspatchclass@rect@A@=\pgfplotspatchclass@rect@A%
+	\let\pgfplotspatchclass@rect@B@=\pgfplotspatchclass@rect@B%
+	\let\pgfplotspatchclass@rect@C@=\pgfplotspatchclass@rect@C%
+	\let\pgfplotspatchclass@rect@D@=\pgfplotspatchclass@rect@D%
+}%
+
+
+% An arbitrary poligy specified in the sequence
+% D <-- C
+% |     ^
+% v     |
+% A --> B 
+%       
+\pgfkeyssetvalue{/pgfplots/vertex count}{0}%
+\pgfplotsdeclarepatchclass{polygon}{%
+	new=\def\pgfplotspatchclass@poly@no{0},
+	set next vertex={%
+		\pgfplotspatchclass@poly@checkcount
+		\expandafter\edef\csname pgfplotspatchclass@poly@\pgfplotspatchclass@poly@no\endcsname{#1}%
+		\pgfplotsutil@advancestringcounter\pgfplotspatchclass@poly@no
+		\ifnum\pgfplotspatchclass@poly@no=\pgfkeysvalueof{/pgfplots/vertex count} %
+			\def\pgfplotspatchclass@poly@no{0}%
+			\pgfplotspatchready%
+		\fi
+	},
+	first vertex=\expandafter\expandafter\expandafter\pgfplotspatchvertex\csname pgfplotspatchclass@poly@0\endcsname\endvertex,
+	foreach vertex={%
+		\pgfplotspatchclass@poly@foreach@loop{0}{#1}%
+	},
+	init pdf shading={%
+		\pgfplots@error{Sorry, patch type=polygon does not support shadings}%
+	},
+	serialize except vertices=\let\pgfplotsretval\pgfutil@empty,%
+	deserialize except vertices=,
+	get pdf shading type=4,
+	get num vertices=\pgfkeysvalueof{/pgfplots/vertex count},
+}%
+\def\pgfplotspatchclass@poly@checkcount{%
+	\ifnum\pgfkeysvalueof{/pgfplots/vertex count}>0
+	\else
+		\pgfplots@error{Sorry, 'patch type=polygon' *requires* that 'vertex count=<num>' is set (note: it is allowed if multiple vertices have the same coordinates).}%
+	\fi
+}%
+\long\def\pgfplotspatchclass@poly@foreach@loop#1#2{%
+	\ifnum#1<\pgfkeysvalueof{/pgfplots/vertex count} %
+		\expandafter\expandafter\expandafter\pgfplotspatchvertex\csname pgfplotspatchclass@poly@#1\endcsname\endvertex #2%
+		\begingroup
+		\c@pgf@counta=#1 %
+		\advance\c@pgf@counta by1 %
+		\t@pgfplots@toka={#2}%
+		\xdef\pgfplots@glob@TMPc{\noexpand\pgfplotspatchclass@poly@foreach@loop{\the\c@pgf@counta}{\the\t@pgfplots@toka}}%
+		\endgroup
+	\else
+		\gdef\pgfplots@glob@TMPc{}%
+	\fi
+	\pgfplots@glob@TMPc
+}%
+
+\def\pgfplots@biquad@next@A{E}
+\def\pgfplots@biquad@next@B{F}
+\def\pgfplots@biquad@next@C{G}
+\def\pgfplots@biquad@next@D{H}
+\def\pgfplots@biquad@next@E{B}
+\def\pgfplots@biquad@next@F{C}
+\def\pgfplots@biquad@next@G{D}
+\def\pgfplots@biquad@next@H{A}
+
+
+\def\pgfplots@biquad@rnext@A{H}
+\def\pgfplots@biquad@rnext@B{E}
+\def\pgfplots@biquad@rnext@C{F}
+\def\pgfplots@biquad@rnext@D{G}
+\def\pgfplots@biquad@rnext@E{A}
+\def\pgfplots@biquad@rnext@F{B}
+\def\pgfplots@biquad@rnext@G{C}
+\def\pgfplots@biquad@rnext@H{D}
+
+\def\pgfplotspatchclass@biquad@recursiverefine@newnames{%
+	\let\pgfplotspatchclass@biquad@A@=\pgfplotspatchclass@biquad@A%
+	\let\pgfplotspatchclass@biquad@B@=\pgfplotspatchclass@biquad@B%
+	\let\pgfplotspatchclass@biquad@C@=\pgfplotspatchclass@biquad@C%
+	\let\pgfplotspatchclass@biquad@D@=\pgfplotspatchclass@biquad@D%
+	\let\pgfplotspatchclass@biquad@E@=\pgfplotspatchclass@biquad@E%
+	\let\pgfplotspatchclass@biquad@F@=\pgfplotspatchclass@biquad@F%
+	\let\pgfplotspatchclass@biquad@G@=\pgfplotspatchclass@biquad@G%
+	\let\pgfplotspatchclass@biquad@H@=\pgfplotspatchclass@biquad@H%
+	\let\pgfplotspatchclass@biquad@I@=\pgfplotspatchclass@biquad@I%
+}%
+
+
+% mathematica shape functions parameterized in 
+% (xi,eta) in [-1,1]x[-1,1]:
+%f[xi_, eta_] =
+%   a*1/4*(1 - xi) (1 - eta) xi*eta +
+%    b 1/4 (-1 - xi) (1 - eta) xi*eta + 
+%   c*  1/4 (-1 - xi) (-1 - eta) xi*eta +
+%    d *1/4 (1 - xi) (-1 - eta) xi*eta + 
+%   e * 1/2 (xi^2 - 1) (1 - eta) eta +
+%   f*1/2 (-1 - xi) (eta^2 - 1) xi +
+%   g* -1/2 (1 - xi^2) (-1 - eta) eta +
+%   h* -1/2 (1 - xi) (1 - eta^2) xi +
+%   i*(1 - xi^2) (1 - eta^2)
+% here, a,b,...,i are the 9 nodes.
+\pgfplotsdeclarepatchclass{biquadratic}{%
+	allow matrix=0,
+	new=\def\pgfplotspatchclass@biquad@no{A}\let\pgfplotspatchclass@biquade@AB\relax,
+	set next vertex={%
+		% defines \pgfplotspatchclass@biquad@A ... \pgfplotspatchclass@biquad@I (9 points)
+		\expandafter\edef\csname pgfplotspatchclass@biquad@\pgfplotspatchclass@biquad@no\endcsname{#1}%
+		\if I\pgfplotspatchclass@biquad@no
+			\def\pgfplotspatchclass@biquad@no{A}%
+			\pgfplotspatchready
+		\else
+			\expandafter\let\expandafter\pgfplotspatchclass@biquad@no\csname pgfpptchindexnext@\pgfplotspatchclass@biquad@no\endcsname
+		\fi
+	},
+	first vertex=\expandafter\pgfplotspatchvertex\pgfplotspatchclass@biquad@A\endvertex,
+	foreach vertex={%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@biquad@A\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@biquad@B\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@biquad@C\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@biquad@D\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@biquad@E\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@biquad@F\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@biquad@G\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@biquad@H\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@biquad@I\endvertex #1%
+	},
+	fill path={%
+		\begingroup
+		% Visualize the patch boundary using four bezier curves.
+		%
+		% This involves a change from Lagrange to bezier
+		% representation of the boundary curves.
+		% 
+		% Furthermore, pdf supports only **cubic** bezier curves. What
+		% I am doing here is 
+		% a) change of basis from 3-point lagrange ---> 3 point quadratic bezier
+		% b) expression 3 point quadratic bezier ----> 4 point cubic bezier
+		%
+		% INPUT:
+		% 3 langrange points (i.e. the patch passes through them)
+		% \PA,\PB,\PC (start,middle,end)
+		%
+		% OUTPUT:
+		% \PA,bezier control 1, bezier control 2, \PC.
+		% 
+		\def\pgfplots@edge{%
+			\ifx\pgfplotspatchclass@biquad@A\PA
+				\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\PA\endvertex}%
+			\fi
+			\pgfpathcurveto	{%
+				\pgfpointadd
+					{\pgfqpointscale{1.333333}{\expandafter\pgfplotspointpatchvertex\PB\endvertex}}%
+					{\pgfqpointscale{-0.333333}{\expandafter\pgfplotspointpatchvertex\PC\endvertex}}%
+			}{%
+				\pgfpointadd
+					{\pgfqpointscale{1.333333}{\expandafter\pgfplotspointpatchvertex\PB\endvertex}}%
+					{\pgfqpointscale{-0.333333}{\expandafter\pgfplotspointpatchvertex\PA\endvertex}}%
+			}{%
+				\expandafter\pgfplotspointpatchvertex\PC\endvertex
+			}%
+		}%
+		\let\PA=\pgfplotspatchclass@biquad@A
+		\let\PB=\pgfplotspatchclass@biquad@E
+		\let\PC=\pgfplotspatchclass@biquad@B
+		\pgfplots@edge
+		%
+		\let\PA=\pgfplotspatchclass@biquad@B
+		\let\PB=\pgfplotspatchclass@biquad@F
+		\let\PC=\pgfplotspatchclass@biquad@C
+		\pgfplots@edge
+		%
+		\let\PA=\pgfplotspatchclass@biquad@C
+		\let\PB=\pgfplotspatchclass@biquad@G
+		\let\PC=\pgfplotspatchclass@biquad@D
+		\pgfplots@edge
+		%
+		\let\PA=\pgfplotspatchclass@biquad@D
+		\let\PB=\pgfplotspatchclass@biquad@H
+		\let\PC=\pgfplotspatchclass@biquad@A
+		\pgfplots@edge
+		\endgroup
+		\pgfpathclose
+	},
+	%--------------------------------------------------
+	% stroke path={%
+	% 	\ifx\pgfplotspatchclass@biquade@AB\relax
+	% 		\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@biquad@A\endvertex}%
+	% 		\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@biquad@B\endvertex}%
+	% 		\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@biquad@C\endvertex}%
+	% 		\pgfpathclose
+	% 	\else
+	% 		\if1\pgfplotspatchclass@biquade@AB
+	% 			\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@biquad@A\endvertex}%
+	% 			\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@biquad@B\endvertex}%
+	% 		\fi
+	% 		\if1\pgfplotspatchclass@biquade@BC
+	% 			\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@biquad@B\endvertex}%
+	% 			\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@biquad@C\endvertex}%
+	% 		\fi
+	% 		\if1\pgfplotspatchclass@biquade@CA
+	% 			\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@biquad@C\endvertex}%
+	% 			\pgfpathlineto{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@biquad@A\endvertex}%
+	% 		\fi
+	% 	\fi
+	% },
+	%-------------------------------------------------- 
+	stream to shader={%
+		\begingroup
+		\pgfplotspatchclass@rect@to@coonspatch@findshadingsequence@for@depth
+			{pgfplotspatchclass@biquad@}{\Pcur}{\Pnextseq}%
+		%
+		\let\Pstartidx\Pcur%
+		\pgfutil@namelet{Pstart}{pgfplotspatchclass@biquad@\Pcur}%
+		%
+		% create a tensor cubic bezier patch.
+		%
+		% Again, the outer boundary involves a map from 3 point lagrange
+		% representation to 4 point cubic bezier.
+		%
+		% The main complication arises to support the INNER node (\pgfplotspatchclass@biquad@I) .
+		% We need the four inner bezier control points to get it
+		% correctly.
+		%
+		% this here handles only the OUTER shaper. It is the same as
+		% for 'fill path'.
+		% See 'fill path' for docs.
+		% 
+		\pgfplotspatchclass@biquad@coonsedge
+		%
+		\pgfplotspatchclass@biquad@coonsedge
+		%
+		\pgfplotspatchclass@biquad@coonsedge
+		%
+		\pgfplotspatchclass@biquad@coonsedge
+		%
+		% FIXME:
+		% \pgfplotspatchclass@biquad@innercontrolpoints
+		%
+		\endgroup
+	},%
+	triangulate={%
+		\let\pgfplotsplothandlermesh@patchclass@=\pgfplotsplothandlermesh@patchclass
+		\def\pgfplotsplothandlermesh@patchclass{triangle}%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{new}%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set edge visible}01%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set edge visible}10%
+		\pgfplotspatchclass{\pgfplotsplothandlermesh@patchclass}{set edge visible}20%
+		% Ok. Now create 4 triangles. The ordering is not arbitrary
+		% (unless z buffer=sort is in effect). Let's assume that the
+		% AB edge is BACKGROUND and the CD edge is FOREGROUND. Then
+		% this sequence here should have approximately the same depth
+		% ordering:
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@A}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@E}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@I}%
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@H}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@A}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@I}%
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@E}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@B}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@I}%
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@B}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@F}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@I}%
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@D}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@H}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@I}%
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@D}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@G}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@I}%
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@G}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@I}%
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@C}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@F}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@I}%
+		\let\pgfplotsplothandlermesh@patchclass=\pgfplotsplothandlermesh@patchclass@
+	},%
+	%--------------------------------------------------
+	% set edge visible={%
+	% 	\ifcase#1
+	% 		\edef\pgfplotspatchclass@biquade@AB{#2}%
+	% 	\or
+	% 		\edef\pgfplotspatchclass@biquade@BC{#2}%
+	% 	\or
+	% 		\edef\pgfplotspatchclass@biquade@CA{#2}%
+	% 	\fi
+	% },
+	%-------------------------------------------------- 
+	serialize except vertices={%
+		\ifx\pgfplotspatchclass@biquade@AB\relax
+			\let\pgfplotsretval\pgfutil@empty%
+		\else
+			\edef\pgfplotsretval{%
+				\noexpand\def\noexpand\pgfplotspatchclass@biquade@AB{\pgfplotspatchclass@biquade@AB}%
+				\noexpand\def\noexpand\pgfplotspatchclass@biquade@BC{\pgfplotspatchclass@biquade@BC}%
+				\noexpand\def\noexpand\pgfplotspatchclass@biquade@CA{\pgfplotspatchclass@biquade@CA}%
+			}%
+		\fi
+	},%
+	deserialize except vertices=%
+		\let\pgfplotspatchclass@biquade@AB\relax
+		#1,
+	recursive refine@={%
+		\pgfplotspatchclass@biquad@recursiverefine@newnames
+		%
+		\pgfplotspatchclass{\pgfplotspatchclassname}{new}%
+		%--------------------------------------------------
+		% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}01%
+		% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}11%
+		% \pgfplotspatchclass{\pgfplotspatchclassname}{set edge visible}20%
+		%-------------------------------------------------- 
+		% The ordering is not arbitrary
+		% (unless z buffer=sort is in effect). Let's assume that the
+		% AB edge is BACKGROUND and the CD edge is FOREGROUND. Then
+		% this sequence here should have approximately the same depth
+		% ordering:
+		%
+		% I used the reference triangle and shape functions as listed in
+		% http://www.colorado.edu/engineering/CAS/courses.d/IFEM.d/,
+		% see above for the definition of f[xi,eta]
+		%
+		% N[{f[-1/2, -1], f[0, -1/2], f[-1/2, 0], f[-1, -1/2], f[-1/2, -1/2]}]
+		% {0.375` a - 0.125` b + 0.75` e,
+		%  0.375` e - 0.125` g + 0.75` i,
+		%   -0.125` f + 0.375` h + 0.75` i,
+		%    0.375` a - 0.125` d + 0.75` h, 
+		%     0.140625` a - 0.046875` b + 0.015625` c - 0.046875` d + 
+		%       0.28125` e -  0.09375` f - 0.09375` g + 0.28125` h +
+		%       0.5625` i}
+		%-------------------------------------------------- 
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@A\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@B\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@E\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@biquad@AE
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@E\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@G\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@I\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@biquad@EI
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@F\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@H\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@I\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@biquad@HI
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@A\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@D\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@H\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@biquad@AH
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@A\times{0.140625}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@B\times{-0.046875}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@C\times{0.015625}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@D\times{-0.046875}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@E\times{0.28125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@F\times{-0.09375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@G\times{-0.09375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@H\times{0.28125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@I\times{0.5625}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@biquad@AEIH
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@A@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@E@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@I@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@H@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@AE}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@EI}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@HI}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@AH}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@AEIH}%
+		%
+		#1\pgfplotspatchclass@biquad@recursiverefine@newnames
+		%
+		% N[{f[1/2, -1],   f[1, -1/2],    f[1/2, 0],  f[1/2, -1/2]}]
+		% {-0.125` a + 0.375` b + 0.75` e,
+		% 0.375` b - 0.125` c + 0.75` f,
+		% 0.375` f - 0.125` h + 0.75` i,
+		% -0.046875 a + 0.140625 b - 0.046875 c + 0.015625 d + 0.28125 e + 0.28125 f - 0.09375 g - 0.09375 h + 0.5625 i}
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@A\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@B\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@E\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@biquad@EB
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@B\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@C\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@F\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@biquad@BF
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@F\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@H\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@I\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@biquad@FI
+		%
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@E\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@G\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@I\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@biquad@EI
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@A\times{-0.046875}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@B\times{0.140625}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@C\times{-0.046875}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@D\times{0.015625}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@E\times{0.28125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@F\times{0.28125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@G\times{-0.09375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@H\times{-0.09375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@I\times{0.5625}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@biquad@EBFI
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@E@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@B@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@F@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@I@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@EB}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@BF}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@FI}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@EI}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@EBFI}%
+		%
+		#1\pgfplotspatchclass@biquad@recursiverefine@newnames
+		%
+		%
+		% N[ {f[1, 1/2],   f[1/2, 1],   f[0, 1/2],    f[1/2, 1/2]}]
+		% {-0.125` b + 0.375` c + 0.75` f,
+		% 0.375` c - 0.125` d + 0.75` g,
+		% -0.125` e + 0.375` g + 0.75` i, 
+		% 0.015625` a - 0.046875` b + 0.140625` c - 0.046875` d - 0.09375` e + 0.28125` f + 0.28125` g - 0.09375` h + 0.5625` i}
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@B\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@C\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@F\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@biquad@FC
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@C\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@D\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@G\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@biquad@CG
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@E\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@G\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@I\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@biquad@GI
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@F\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@H\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@I\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@biquad@FI
+		%
+		%
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@A\times{0.015625}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@B\times{-0.046875}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@C\times{0.140625}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@D\times{-0.046875}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@E\times{-0.09375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@F\times{0.28125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@G\times{0.28125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@H\times{-0.09375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@I\times{0.5625}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@biquad@IFCG
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@I@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@F@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@C@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@G@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@FI}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@FC}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@CG}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@GI}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@IFCG}%
+		%
+		#1\pgfplotspatchclass@biquad@recursiverefine@newnames
+		%
+		%
+		% N[{f[-1/2, 1],  f[-1, 1/2],  f[-1/2, 1/2]}]
+		% {-0.125 c + 0.375 d + 0.75 g,
+		% -0.125 a + 0.375 d + 0.75 h,
+		%  -0.046875 a + 0.015625 b - 0.046875 c + 0.140625 d - 0.09375 e - 0.09375 f + 0.28125 g + 0.28125 h + 0.5625 i}
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@C\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@D\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@G\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@biquad@GD
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@A\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@D\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@H\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@biquad@DH
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@E\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@G\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@I\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@biquad@GI
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@F\times{-0.125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@H\times{0.375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@I\times{0.75}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@biquad@HI
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@A\times{-0.046875}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@B\times{0.015625}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@C\times{-0.046875}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@D\times{0.140625}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@E\times{-0.09375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@F\times{-0.09375}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@G\times{0.28125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@H\times{0.28125}%
+		\expandafter\pgfplotspatchvertexadd\pgfplotspatchclass@biquad@I\times{0.5625}%
+		\pgfplotspatchvertexfinish\pgfplotspatchclass@biquad@HIGD
+		%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@H@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@I@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@G@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@D@}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@HI}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@GI}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@GD}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@DH}%
+		\expandafter\pgfplotsplothandlermesh@setnextvertex\expandafter{\pgfplotspatchclass@biquad@HIGD}%
+		%
+		#1%
+		%
+	},%
+	get pdf shading type=6,
+	get num vertices=9,
+}%
+
+% see docs in 'biquadratic::stream to shader' for details.
+% PRECONDITION: to be used inside of 'stream to shader'.
+\def\pgfplotspatchclass@biquad@coonsedge{%
+%\message{EDGE \Pcur^^J}%
+	\expandafter\let\expandafter\PA\csname pgfplotspatchclass@biquad@\Pcur\endcsname
+	\edef\Pcur{\csname pgfplots@biquad@\Pnextseq next@\Pcur\endcsname}%
+	\expandafter\let\expandafter\PB\csname pgfplotspatchclass@biquad@\Pcur\endcsname
+%\message{---> \Pcur^^J}%
+	\edef\Pcur{\csname pgfplots@biquad@\Pnextseq next@\Pcur\endcsname}%
+	\expandafter\let\expandafter\PC\csname pgfplotspatchclass@biquad@\Pcur\endcsname
+%\message{---> \Pcur^^J}%
+	\ifx\PA\Pstart
+		\expandafter\pgfplotspatchvertex\PA\endvertex
+			\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
+			\pgfplotsaxisvisphasetransformpointmeta
+		\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
+	\fi
+	\pgfplotslibrarysurfstreamcoord{%
+		\pgfpointadd
+			{\pgfqpointscale{1.333333}{\expandafter\pgfplotspointpatchvertex\PB\endvertex}}%
+			{\pgfqpointscale{-0.333333}{\expandafter\pgfplotspointpatchvertex\PC\endvertex}}%
+	}{}%
+	\pgfplotslibrarysurfstreamcoord{%
+		\pgfpointadd
+			{\pgfqpointscale{1.333333}{\expandafter\pgfplotspointpatchvertex\PB\endvertex}}%
+			{\pgfqpointscale{-0.333333}{\expandafter\pgfplotspointpatchvertex\PA\endvertex}}%
+	}{}%
+	\ifx\PC\Pstart
+	\else
+		\expandafter\pgfplotspatchvertex\PC\endvertex
+			\let\pgfplots@current@point@meta=\pgfplotspatchvertexmeta
+			\pgfplotsaxisvisphasetransformpointmeta
+		\pgfplotslibrarysurfstreamcoord{\pgfqpoint\pgfplotspatchvertexx\pgfplotspatchvertexy}{\pgfplotspointmetatransformed}%
+	\fi
+}%
+\def\pgfplotspatchclass@biquad@innercontrolpoints{%
+	\begingroup
+		%
+		% This here computes the FOUR INNER CONTROL POINTS of a tensor
+		% cubic bezier patch (Shading Type 7).
+		%
+		%
+		% the following point coordinates have been acquired from
+		% biquadratic::recursive refine. See above for documentation.
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@biquad@A\times{0.375}%
+		\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@biquad@B\times{-0.125}%
+		\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@biquad@E\times{0.75}%
+		\pgfplotspatchvertexfinishXY\pgfplotspatchclass@biquad@AE
+		%
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@biquad@F\times{-0.125}%
+		\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@biquad@H\times{0.375}%
+		\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@biquad@I\times{0.75}%
+		\pgfplotspatchvertexfinishXY\pgfplotspatchclass@biquad@HI
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@biquad@A\times{-0.125}%
+		\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@biquad@B\times{0.375}%
+		\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@biquad@E\times{0.75}%
+		\pgfplotspatchvertexfinishXY\pgfplotspatchclass@biquad@EB
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@biquad@F\times{0.375}%
+		\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@biquad@H\times{-0.125}%
+		\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@biquad@I\times{0.75}%
+		\pgfplotspatchvertexfinishXY\pgfplotspatchclass@biquad@FI
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@biquad@C\times{0.375}%
+		\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@biquad@D\times{-0.125}%
+		\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@biquad@G\times{0.75}%
+		\pgfplotspatchvertexfinishXY\pgfplotspatchclass@biquad@CG
+		%
+		\pgfplotspatchvertexaccumstart
+		\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@biquad@C\times{-0.125}%
+		\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@biquad@D\times{0.375}%
+		\expandafter\pgfplotspatchvertexaddXY\pgfplotspatchclass@biquad@G\times{0.75}%
+		\pgfplotspatchvertexfinishXY\pgfplotspatchclass@biquad@GD
+		%
+		%
+		\let\PA=\pgfplotspatchclass@biquad@AE
+		\let\PB=\pgfplotspatchclass@biquad@HI
+		\let\PC=\pgfplotspatchclass@biquad@GD
+		\pgfplotspatchclass@biquad@innercontrolpoints@PREPARE\pgfplotspatchclass@biquad@@A\pgfplotspatchclass@biquad@@D
+		%
+		\let\PA=\pgfplotspatchclass@biquad@EB
+		\let\PB=\pgfplotspatchclass@biquad@FI
+		\let\PC=\pgfplotspatchclass@biquad@CG
+		\pgfplotspatchclass@biquad@innercontrolpoints@PREPARE\pgfplotspatchclass@biquad@@B\pgfplotspatchclass@biquad@@C
+		%
+		%
+		\let\Pcur=\Pstartidx
+		\pgfplotslibrarysurfstreamcoord{\csname pgfplotspatchclass@biquad@@\Pcur\endcsname}{}%
+		%
+		\edef\Pcur{\csname pgfplots@rect@\Pnextseq next@\Pcur\endcsname}%
+		\pgfplotslibrarysurfstreamcoord{\csname pgfplotspatchclass@biquad@@\Pcur\endcsname}{}%
+		%
+		\edef\Pcur{\csname pgfplots@rect@\Pnextseq next@\Pcur\endcsname}%
+		\pgfplotslibrarysurfstreamcoord{\csname pgfplotspatchclass@biquad@@\Pcur\endcsname}{}%
+		%
+		\edef\Pcur{\csname pgfplots@rect@\Pnextseq next@\Pcur\endcsname}%
+		\pgfplotslibrarysurfstreamcoord{\csname pgfplotspatchclass@biquad@@\Pcur\endcsname}{}%
+	\endgroup
+}%
+\def\pgfplotspatchclass@biquad@innercontrolpoints@PREPARE#1#2{%
+	\pgfpointadd
+		{\pgfqpointscale{1.333333}{\expandafter\pgfplotspointpatchvertex\PB\endvertex}}%
+		{\pgfqpointscale{-0.333333}{\expandafter\pgfplotspointpatchvertex\PC\endvertex}}%
+	\edef#1{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
+	%
+	\pgfpointadd
+		{\pgfqpointscale{1.333333}{\expandafter\pgfplotspointpatchvertex\PB\endvertex}}%
+		{\pgfqpointscale{-0.333333}{\expandafter\pgfplotspointpatchvertex\PA\endvertex}}%
+	\edef#2{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
+	%
+\pgfpathcircle{\expandafter\pgfplotspointpatchvertex\PA\endvertex}{1pt}\pgfusepath{fill}%
+\pgfpathcircle{\expandafter\pgfplotspointpatchvertex\PB\endvertex}{1pt}\pgfusepath{fill}%
+\pgfpathcircle{\expandafter\pgfplotspointpatchvertex\PC\endvertex}{1pt}\pgfusepath{fill}%
+\pgfpathmoveto{\expandafter\pgfplotspointpatchvertex\PA\endvertex}%
+\pgfpathcurveto{#1}{#2}{\expandafter\pgfplotspointpatchvertex\PC\endvertex}%
+\pgfusepath{stroke}%
+}
+
+% Direct interface to coons patches (pdf shading type 6).
+% See manual and/or pdf reference
+\pgfplotsdeclarepatchclass{coons}{%
+	allow matrix=0,
+	new=\def\pgfplotspatchclass@coons@no{A},
+	set next vertex={%
+		% defines \pgfplotspatchclass@coons@A ... \pgfplotspatchclass@coons@L (12 points)
+		\expandafter\edef\csname pgfplotspatchclass@coons@\pgfplotspatchclass@coons@no\endcsname{#1}%
+		\if L\pgfplotspatchclass@coons@no
+			\def\pgfplotspatchclass@coons@no{A}%
+			\pgfplotspatchready
+		\else
+			\expandafter\let\expandafter\pgfplotspatchclass@coons@no\csname pgfpptchindexnext@\pgfplotspatchclass@coons@no\endcsname
+		\fi
+	},
+	first vertex=\expandafter\pgfplotspatchvertex\pgfplotspatchclass@coons@A\endvertex,
+	foreach vertex={%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@coons@A\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@coons@B\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@coons@C\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@coons@D\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@coons@E\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@coons@F\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@coons@G\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@coons@H\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@coons@I\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@coons@J\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@coons@K\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@coons@L\endvertex #1%
+	},
+	foreach cdata vertex={%
+		% 0, 3, 6, 9
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@coons@A\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@coons@D\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@coons@G\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@coons@J\endvertex #1%
+	},
+	fill path={%
+		\pgfpathmoveto	{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@coons@A\endvertex}%
+		\pgfpathcurveto	{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@coons@B\endvertex}%
+						{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@coons@C\endvertex}%
+						{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@coons@D\endvertex}%
+		\pgfpathcurveto	{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@coons@E\endvertex}%
+						{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@coons@F\endvertex}%
+						{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@coons@G\endvertex}%
+		\pgfpathcurveto	{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@coons@H\endvertex}%
+						{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@coons@I\endvertex}%
+						{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@coons@J\endvertex}%
+		\pgfpathcurveto	{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@coons@K\endvertex}%
+						{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@coons@L\endvertex}%
+						{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@coons@A\endvertex}%
+		\pgfpathclose
+	},
+	serialize except vertices=\let\pgfplotsretval\pgfutil@empty,%
+	deserialize except vertices=,
+	get pdf shading type=6,
+	get num vertices=12,
+	get num cdata vertices=4,
+}%
+
+% Direct interface to tensor product bezier patches (pdf shading type 7).
+% See manual and/or pdf reference
+\pgfplotsdeclarepatchclass{tensor bezier}{%
+	allow matrix=0,
+	new=\def\pgfplotspatchclass@tensor@no{A},
+	set next vertex={%
+		% defines \pgfplotspatchclass@tensor@A ... \pgfplotspatchclass@tensor@P (16 points)
+		\expandafter\edef\csname pgfplotspatchclass@tensor@\pgfplotspatchclass@tensor@no\endcsname{#1}%
+		\if P\pgfplotspatchclass@tensor@no
+			\def\pgfplotspatchclass@tensor@no{A}%
+			\pgfplotspatchready
+		\else
+			\expandafter\let\expandafter\pgfplotspatchclass@tensor@no\csname pgfpptchindexnext@\pgfplotspatchclass@tensor@no\endcsname
+		\fi
+	},
+	first vertex=\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tensor@A\endvertex,
+	foreach vertex={%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tensor@A\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tensor@B\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tensor@C\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tensor@D\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tensor@E\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tensor@F\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tensor@G\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tensor@H\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tensor@I\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tensor@J\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tensor@K\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tensor@L\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tensor@M\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tensor@N\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tensor@O\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tensor@P\endvertex #1%
+	},
+	foreach cdata vertex={%
+		% 0, 3, 6, 9
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tensor@A\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tensor@D\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tensor@G\endvertex #1%
+		\expandafter\pgfplotspatchvertex\pgfplotspatchclass@tensor@J\endvertex #1%
+	},
+	fill path={%
+		\pgfpathmoveto	{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tensor@A\endvertex}%
+		\pgfpathcurveto	{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tensor@B\endvertex}%
+						{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tensor@C\endvertex}%
+						{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tensor@D\endvertex}%
+		\pgfpathcurveto	{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tensor@E\endvertex}%
+						{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tensor@F\endvertex}%
+						{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tensor@G\endvertex}%
+		\pgfpathcurveto	{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tensor@H\endvertex}%
+						{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tensor@I\endvertex}%
+						{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tensor@J\endvertex}%
+		\pgfpathcurveto	{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tensor@K\endvertex}%
+						{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tensor@L\endvertex}%
+						{\expandafter\pgfplotspointpatchvertex\pgfplotspatchclass@tensor@A\endvertex}%
+		\pgfpathclose
+	},
+	serialize except vertices=\let\pgfplotsretval\pgfutil@empty,%
+	deserialize except vertices=,
+	get pdf shading type=7,
+	get num vertices=16,
+	get num cdata vertices=4,
+}%

@@ -1,0 +1,1184 @@
+%%%% OFS: Olsak's Font System based on plain macros
+%%%% Jun 2001                            Petr Olsak
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%% See the ofsdoc.tex for more details
+
+\ifx\setfonts\undefined\else \expandafter\endOFSmacro \fi 
+
+%\def\OFSversion{Nov. 2001} % First version released
+%\def\OFSversion{Jun. 2002} % The \savefontid \restorefontid added
+%\def\OFSversion{Oct. 2002} % The (Variant) in \loadtextfam introduced
+                            % \addcmd introduced
+                            % \def\relax{} in \setfosize macro added
+                            % \ifx\sgfamily\newfamily added in \setfontfamily
+%\def\OFSversion{Feb. 2004} % The encoding-dependend macros improved
+                            %   -- see new section 3.5 in ofsdoc.tex
+                            % \bigsymbofont used for \fomenc PS in ofsdef.tex
+                            % \ofshexbox introduced
+                            % \registerenc introduced
+                            % Fam-var: "var" can be in in arbitrary catcode
+                            % \ofsremovefromlist introduced
+%\def\OFSversion{Mar. 2004} % \characterdef keeps sequences defined already
+                            % \tryloadenc is called from \loadtextfam now
+                            % \listfamilies re-implemented -> \ofslistfamilies
+\def\OFSversion{May 2004}   % \ofscopyright defined in ofsdef.tex
+                            % \plaincatcodes defined and used in \input ofs-*
+                            % \safelet introduced
+                            % space not required after <char> in \accentdef
+                            % \showfonts lists only registered families
+                            % \loadmathfam allows [-<variant>/] parameter
+                            % \registertfm <name> - - introduced
+                            % \lastfam + \mathencread + \mathencdef introduced
+                            % \protectreading introduced
+
+%%%% Basic settings %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newlinechar=`^^J
+\def\ofslistfamilies{}
+
+\message{OFS (Olsak's Font System) based on plain initialized. 
+   <\OFSversion>}
+\def\fosize{at10pt}                       % default font size
+\def\currentfamily{CMRoman}               % default font family
+\ifx\fotenc\undefined \def\fotenc{8z}\fi  % default font encoding
+\def\extraenc{}                           % default extra encoding
+
+\chardef\bifam=5      % \slfam=5, but it is not usuall math. family
+
+\def\rm {\fam0      \let\currentvariant M\tenrm} 
+\def\bf {\fam\bffam \let\currentvariant F\tenbf} 
+\def\it {\fam\itfam \let\currentvariant T\tenit} 
+\def\bi {\fam\bifam \let\currentvariant I\tenbi} \let\tenbi=\relax
+\let\currentvariant=M                      
+
+%%%% The \fontusage macro %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\bgroup \catcode`\#=12 
+  \catcode`\{=12 \catcode`}=12 \catcode`\X=1 \catcode`\Z=2
+  \catcode`\^^M=14 \catcode`\ =12 \catcode`\|=0\catcode`\\=12
+|gdef|fontusageX
+|begingroup
+|immediate|write16X%---------------------------------------------------
+\fontusage: ============== Olsak's Font System, usage: =================^^J
+\input ofs [sjannon, sdynamo, a35] \loadingenc=1  ... for example^^J
+\showfonts  ... shows all loaded font families (by previous \input)^^J
+\setfonts [Family/] ... local switch to the new family, after this, the^^J
+  \rm, \bf, \it, bi will switch to the variants. The current size is used.^^J
+\setfonts [/size] ... local switch to the new size of fonts, the family is^^J 
+  not changed. The "size" has the following possible formats:^^J
+    at<dimen>       ... the same as \font\something=file at<dimen>^^J
+    <dimen>         ... the same as at<dimen>^^J
+    <number>        ... the same as at<number>pt^^J
+    scaled<number>  ... the same as \font\something=file scaled<number>^^J
+    mag<decimal-number> fonts will be magnified by given coefficient^^J
+                        depend on current size of the fonts.^^J
+\setfonts [Family/size] ... switch to the new family at given size^^J
+\setfonts [Family-bf/size] ... switch to the specified font.^^J
+\fontdef\name [Family/size] ... same as \gdef\name{\setfonts[Family/size]}^^J
+  The "Family" or "size" parameter may be empty.^^J
+\fontdef\name [Family-vr/size] ... \name is fixed-font switch iff:^^J
+  "size" is no empty and no mag<dec-number>.^^J
+  Fixed-font switch "\name" is implemented as \global\font\name=file.^^J
+\setmath [size/size/size] ... set math it/rm as current it/rm + use PS Symbol^^J
+\nofontmessages, \logfontmessages, \displayfontmessages, \detailfontmessages^^J
+  ... the levels of log.
+Z%-----------------------------------------------------------------------
+|endgroup
+Z
+|egroup
+
+
+%%%% The fragile/robust story %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\bgroup \catcode`\#=12 \catcode`\|=0 \catcode`\\=12
+|gdef|fragilecommand{%
+   |begingroup 
+     |def|spc{|space|space|space|space|space}%
+     |message
+     { ERROR !! The fragile command in the toc/ind/aux or similar file.^^J
+          You can solve this problem by the following steps:^^J
+          1. Remove the auxiliary file with this command.^^J
+          2. Include the following macro code into your document header:^^J
+     |spc \let\orishipout=\shipout^^J
+     |spc \def\shipout#1#2{\setbox0=#1{#2}\bgroup^^J
+     |spc |spc \let\expandaction=\noexpand \orishipout\box0 \egroup}^^J
+          3. TeX your document again and again...^^J
+          See the OFS documentation for more info.^^J}%
+     |errmessage{The fragile command in auxiliary file}%
+   |endgroup
+}
+|egroup
+
+\edef\tmpc{\the\catcode`\|}\catcode`\|=12 %% ConTeXt sets \catcode`\|=13
+% but we need it nonactive because of \if|#2| constructions below.
+
+%%%% The macros used in declaration files %%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\def\ofsputfamlist #1{%
+   \expandafter \gdef\expandafter \ofslistfamilies 
+       \expandafter{\ofslistfamilies \ofslisttext{#1}}%
+}
+\def\ofsdeclarefamily [#1] #2{%
+   \expandafter \ifx \csname fam!.#1\endcsname \relax \else
+      \ofsremovefromlist {#1}\fi
+   \expandafter \gdef \csname fam!.#1\endcsname {#2}%
+   \expandafter\expandafter\expandafter \gdef 
+   \expandafter\expandafter\expandafter \ofslistfamilies 
+   \expandafter\expandafter\expandafter {\expandafter\ofslistfamilies
+      \expandafter \ofslistfamily \csname fam!.#1\endcsname}%
+   \edef\declaredfamily{#1}%
+}
+% \ofslistfamilies includes (without spaces): 
+% \ofslisttext {text1} \ofslistfamily \fam!.Family1 \ofslistfamily \fam!.Family2
+% ... etc. \ofslisttext {text2} \ofslistfamily \fam!.Family ... etc. 
+
+\def\loadtextfam #1;#2;#3;#4;#5;{\tryloadenc{#5}%
+   \def\ofslistvariants{}%
+   \ofsloadfont {\currentfamily-rm}{tenrm}{#1}{M}{#5}{}%
+   \ofsloadfont {\currentfamily-bf}{tenbf}{#2}{F}{#5}{Bold}%
+   \ofsloadfont {\currentfamily-it}{tenit}{#3}{T}{#5}{Italic}%
+   \ofsloadfont {\currentfamily-bi}{tenbi}{#4}{I}{#5}{BoldItalic}%
+   \fontmessage{\ofsmessageheader\ofslistvariants}% 
+   \def\ofslistvariants{}%
+}
+\def\savefontid #1{%  % The font identifier is stored in TeX by
+                      % the last \font primitive used for this font
+   \expandafter \gdef % but I need to store the first one.
+      \csname fn:\expandafter\fontname\csname#1\endcsname\endcsname{#1}%
+}
+\def\restorefontid #1{\expandafter
+   \ifx \csname fn:\expandafter\fontname\csname#1\endcsname\endcsname \relax
+   \else
+       \begingroup \expandafter \font \csname
+           \csname fn:\expandafter\fontname\csname#1\endcsname\endcsname
+           \endcsname =\fontname\csname#1\endcsname\relax \endgroup
+   \fi
+}
+\def\ofsloadfont #1#2#3#4#5#6{% #1:famname #2:seqname, #3:(variant) file, 
+   \if|#3|\fontprefix         % #4:variant, #5:extraenc, #6: defaultvar
+       \missingofsvariant #1;#2;#4;%
+   \else
+       \separeofsvariant #1;#2;#3;#4;#5;#6;%
+   \fi
+}
+\def\missingofsvariant #1-#2;#3;#4;{%
+   \expandafter\let \csname #3\expandafter \endcsname
+                             \csname warn#4\endcsname
+   \expandafter\let \csname var!.the#4\endcsname = \relax
+   \expandafter\let \csname fm:-#2\endcsname = \relax
+}
+\def\separeofsvariant #1-#2;#3;#4#5;#6;#7;#8;{%
+   \if(#4%
+     \storeofsvariant #1-#2;#3;#4#5;#6;#7;%
+   \else 
+      \expandafter \ifx \csname reg!.#4#5\endcsname \empty
+         \missingofsvariant #1-#2;#3;#6;%
+      \else
+         \ifx \userfontname#3\else
+            \edef\ofslistvariants {\ofslistvariants 
+               \space \expandafter\string\csname#2\endcsname\space (#8)}%
+         \fi
+         \expandafter \def \csname fm:-#2\endcsname {#4#5}% formal metric
+         \ofsloadfontori {#1-#2}{#3}{#4#5}{#6}{#7}%
+   \fi\fi
+}
+\def\storeofsvariant #1-#2;#3;(#4) #5;#6;#7;{%
+   \expandafter \ifx \csname reg!.#5\endcsname \empty
+      \missingofsvariant #1-#2;#3;#6;%
+   \else
+      \ifx \userfontname#3\else
+         \edef\ofslistvariants{\ofslistvariants 
+            \space \expandafter\string\csname#2\endcsname\space (#4)}%
+      \fi
+      \expandafter \def \csname fm:-#2\endcsname {#5}% formal metric
+      \ofsloadfontori {#1-#2}{#3}{#5}{#6}{#7}%
+   \fi
+}
+\def\ofsloadfontori #1#2#3#4#5{% #1:famname #2:seqname, #3:file, 
+                               % #4: variant-letter #5: extraenc
+   \calculatemetricfile {#3}\fosize 
+   \fontprefix \expandafter\font\csname #1/\fosize\endcsname
+        =\metricfile\fosize\relax
+   \savefontid{#1/\fosize}%
+   \fontprefix \expandafter \let \csname #2\expandafter\endcsname
+                                 \csname #1/\fosize\endcsname
+   \fontloadmessage{#2}{\metricfile\fosize}%
+   \expandafter\edef \csname var!.the#4\endcsname {%
+         \csname #2\endcsname}%
+   \if|#5|\else 
+      \let\tmpa=\fotenc \edef\fotenc{#5}%
+      \calculatemetricfile {#3}\fosize
+      \let\fotenc=\tmpa
+      \fontprefix \expandafter \edef 
+         \csname eXfont!.\fontname \csname #2\endcsname\endcsname
+            {\metricfile\fosize}%
+      \fontprefix \expandafter \edef 
+         \csname eXenc!.\fontname \csname #2\endcsname\endcsname {#5}%
+   \fi
+}
+\def\fontprefix{} % on another place will be: \let\fontprefix=\global
+
+\def\newvariant #1 #2(#3) #4;#5;{% #1:number #2:\sequence, #3:comment 
+   \savetokenname #2\tmpb        % #4:file, #5:extraenc
+   \edef\ofslistvariants {\ofslistvariants \space \string#2 (#3)}%
+   \ofsloadfontori {\currentfamily-\tmpb}{ten\tmpb}{#4}{#1}{#5}%
+   \edef #2{\let\currentvariant #1%
+            \expandafter\noexpand \csname ten\tmpb\endcsname}%
+   \expandafter\let \csname var!.the#1\endcsname =#2%
+}
+\def\registertfm #1 #2-#3 #4 {%
+   \if -#4\relax
+      \expandafter \def \csname reg!.#1\endcsname {}%
+   \else
+      \expandafter \ifx \csname reg!.#1\endcsname \relax
+         \expandafter \def \csname reg!.#1\endcsname {}\fi
+      \let\testtfmsize=\relax
+      \def\tmpa{*}\def\tmpb{#3}%
+      \ifx \tmpa\tmpb \def\tmpb{\maxdimen}\fi
+      \expandafter \edef \csname reg!.#1\endcsname {%
+         \csname reg!.#1\endcsname \testtfmsize #2-\tmpb:#4 }%
+   \fi
+}
+\def\addcmd #1#2{\expandafter\def\expandafter\tmpa\expandafter{#1}%
+   \def\tmpb{#1}%
+   \ifx\tmpa\tmpb % the #1 is not a macro
+      \expandafter\let\csname \string#1-original\endcsname =#1%
+      \expandafter\def\expandafter #1\expandafter{%
+           \csname\string#1-original\endcsname #2}%
+   \else          % the #1 is a macro
+      \expandafter\def\expandafter #1\expandafter{#1#2}%
+   \fi
+}
+
+%%%% Logging %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\def\displaymessage{\immediate\write16 }
+\def\ofsmessageheader{OFS (l.\the\inputlineno): }
+
+\def\displayfontmessages{\let\fontmessage=\displaymessage 
+   \def\fontloadmessage##1##2{}}
+\def\logfontmessages{\let\fontmessage=\wlog
+   \def\fontloadmessage##1##2{}}
+\def\nofontmessages{\def\fontmessage##1{}\def\fontloadmessage##1##2{}}
+\def\detailfontmessages{\displayfontmessages
+   \def\fontloadmessage##1##2{\displaymessage{\ofsmessageheader
+          \space\space \ifx\fontprefix\global\string\global\fi\string\font
+       \csname##1\endcsname= ##2}}}
+\logfontmessages                          % default OFS logging
+
+%%%% \showfonts %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\def\showfonts{\bgroup \def\displaymessage{\immediate\write16 }%
+      \displaymessage{\ofsmessageheader
+      The list of known font families (encoding \fotenc):}\ofslistfamilies
+   \egroup
+}
+\def\ofslistfamily #1{%
+   \bgroup
+     \def\tmpa ##1!.##2/{##2}%
+     \edef\tmpa{\expandafter\tmpa\string #1/}%
+     \registeredfam\tmpa?\iftrue
+        \edef\tmpc {[\tmpa/]}%
+        \count2=21
+        \def\tmpa ##1{\if:##1\else\advance\count2 by-1 \expandafter\tmpa\fi}%
+        \expandafter\tmpa \tmpc:%
+        \def\tmpa {\ifnum\count2>0 \advance\count2 by-1 \edef\tmpc{\tmpc\space}%
+                   \expandafter \tmpa\fi}\tmpa     
+        \def\loadtextfam ##1;##2;##3;##4;##5;{%
+           \if|##1|\edef\tmpc{\tmpc\space\space- }%
+           \else  \edef\tmpc{\tmpc\space\string\rm}\fi
+           \if|##2|\edef\tmpc{\tmpc, \space- }%
+           \else  \edef\tmpc{\tmpc, \string\bf}\fi
+           \if|##3|\edef\tmpc{\tmpc, \space- }%
+           \else  \edef\tmpc{\tmpc, \string\it}\fi
+           \if|##4|\edef\tmpc{\tmpc, \space- }%
+           \else  \edef\tmpc{\tmpc, \string\bi}\fi}
+        \def\newvariant ##1 ##2(##3) ##4;##5;{\edef\tmpc{\tmpc, \string##2}}%
+        \def\modifyread ##1;{}
+        #1%
+        \displaymessage{ \space\space\tmpc}%
+     \fi
+   \egroup
+}
+\def\ofslisttext #1{\if^^J\readfirsttoken #1:\end 
+      \immediate\write16{\readothertokens #1:\end}%
+   \else  \displaymessage{#1}\fi}
+
+\def\ofsremovefromlist #1{% removes family #1 from \ofslistfamilies
+   \edef\act{\def\noexpand\tmpa   
+      ####1\noexpand\ofslistfamily 
+      \expandafter\noexpand\csname fam!.#1\endcsname
+      ####2^^X{\gdef\noexpand\ofslistfamilies{####1####2}}}\act
+   \expandafter \tmpa\ofslistfamilies^^X%
+   \expandafter \let  \csname ffe?#1:\endcsname =\relax
+   \fontmessage{\ofsmessageheader The family [#1/] is redeclared.}%
+}       
+
+%%%% Auxiliary macros %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\def\warnmissingfont #1#2{%
+  \ifx\expandaction\noexpand
+     \expandafter \noexpand \csname ten#1\endcsname
+  \else
+     \csname fragilecommand!\endcsname
+     \displaymessage{\ofsmessageheader WARNING.
+        Variant #2-#1 is unknown. No font is set.}%
+  \fi
+}
+\def\warnM{\warnmissingfont {rm}\currentfamily}
+\def\warnT{\warnmissingfont {it}\currentfamily}
+\def\warnF{\warnmissingfont {bf}\currentfamily}
+\def\warnI{\warnmissingfont {bi}\currentfamily}
+
+\def\setfosize #1#2#3:{\if a#2\def#1{#2#3}%
+   \else\if s#2\let\tmpc=\relax \def\relax{}\edef#1{#2#3}\let\relax=\tmpc%
+        \else\if m#2\expandafter\readfosize\fosize:%
+                 \readmag #2#3..:#1%
+             \else\isunitpresent #2#3.?\edef#1{at#2#3\tmpa}%
+   \fi  \fi  \fi}
+\def\readfosize #1{%
+   \if a#1\def\tmpc t##1:{\dimen0=##1\relax}%
+   \else \if s#1\def\tmpc caled##1:{\dimen0=.01pt
+      {\def\relax{}\xdef\tmpc{##1}}\dimen0=\tmpc\dimen0\relax}%
+   \else \errmessage{OFS: readfosize: something wrong??}%
+   \fi\fi \tmpc
+}
+\def\readmag mag#1.#2.#3:#4{%
+   \if|#2|\if|#3|%
+      \errmessage{OFS: "mag" needs the decimal parameter with decimal point}%
+   \fi\fi
+   \dimen0 =#1.#2 \dimen0
+   \advance\dimen0 by7sp % rounding to three digits after decimal point
+   \ifdim\dimen0<10pt \edef\tmpa{+\the\dimen0}\else \edef\tmpa{\the\dimen0}\fi
+   \dimen0 =\expandafter \readsixdigits \tmpa :::::|pt
+   \edef#4{at\the\dimen0}%
+}
+\def\readsixdigits #1#2#3#4#5#6#7#8#9|{%
+   \if:#5#1#2\else\if:#6#1#2#3\else\if:#7#1#2#3#4\else
+   \if:#8#1#2#3#4#5\else#1#2#3#4#5#6\fi\fi\fi\fi
+}
+\def\isunitpresent #1.#2?{\bgroup
+   \if |#2|\afterassignment\defpttotmpa \count2=#1.:%
+   \else   \afterassignment\defpttotmpa \count2=0#2:\fi
+}
+\def\defpttotmpa #1.:{\if|#1|\gdef\tmpa{pt}\else\gdef\tmpa{}\fi\egroup}
+
+\def\savetokenname #1#2{%
+   \edef\tmpa{\escapechar=\the\escapechar}%
+   \escapechar=-1 
+   \edef#2{\string#1\expandafter}\tmpa \relax
+}
+\def\readfamvariant #1-#2-#3:{\def\tmpb{#1}\def\famvariant{#2}}
+\long\def\readfirsttoken #1#2:\end{#1}
+\long\def\readothertokens #1#2:\end{#2}
+% TBN, page 80
+{\catcode`p=12 \catcode`t=12
+ \gdef\noPT #1pt{#1}}
+
+\def\calculatemetricfile #1#2{% #1: name or metric file, #2: fosize
+   \expandafter \ifx \csname reg!.#1\endcsname \relax
+       \edef\metricfile{#1 }%
+   \else
+       \let\metricfile=\empty
+       \expandafter \readfosize #2:% \dimen0 = fosize
+       \if s\expandafter \readfirsttoken #2:\end
+           \let\testtfmsize=\testtfmsizescaled
+       \else
+           \let\testtfmsize=\testtfmsizeat
+       \fi
+       \csname reg!.#1\endcsname
+       \ifx \metricfile\empty
+          \let\testtfmsize=\testtfmsizescaled
+          \csname reg!.#1\endcsname
+          \ifx \metricfile\empty 
+             \displaymessage {\ofsmessageheader WARNING.
+                 The name "#1" is not registered for size #2.}%
+             \edef\metricfile{#110 }%
+   \fi\fi\fi
+}
+\def\testtfmsizeat #1-#2:#3 {%
+  \if|#1|\else 
+        \ifdim #1>\dimen0 \else\ifdim #2<\dimen0 \else
+        \def\metricfile{#3 }%
+  \fi\fi\fi
+}
+\def\testtfmsizescaled #1-#2:#3 {%
+   \if|#1|\def\metricfile{#3 }\fi
+}
+\def\metrictmpa{\expandafter\singlefontname
+   \fontname\expandafter\tmpa\space:}
+
+\def\singlefontname #1 #2:{#1}
+\def\ofsmeaning #1 #2 {the}
+
+%%%% The \setfonts macro %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\def\setfonts [#1/#2]{%
+   \ifx\expandaction\noexpand
+      \noexpand\setfonts [#1/#2]%
+   \else
+      \csname fragilecommand!\endcsname
+      \let\setfontsOK=\relax
+      \edef\tmpa{#1}\expandafter \readfamvariant\tmpa--:%
+      \ifx\famvariant\empty
+         \if|#1|\let\tmpa=\currentfamily \else\def\tmpa{#1}\fi
+         \registeredfam \tmpa?\iftrue
+            \def\newmodifylist{}%
+            \setfontfamily [#1/#2]%
+            \ifx\setfontsOK\relax \runmodifylist \fi
+         \else \warnunregistered\tmpa \let\setfontsOK=\undefined
+         \fi
+      \else
+         \if|#2|\ifx\tmpb\empty
+            \let\tmpb=\relax \csname\famvariant\endcsname
+         \fi\fi 
+         \ifx\tmpb\relax \else
+            \registeredfam \tmpb?\iftrue
+               \def\newmodifylist{}%
+               \edef\userfontname{singlefont}%
+               \setsinglefont [\tmpb-\famvariant/#2]%
+               \ifx\setfontsOK\relax \runmodifylist \fi
+            \else \warnunregistered\tmpb \let\setfontsOK=\undefined
+      \fi\fi\fi
+      \ignorespaces
+   \fi
+}
+\def\setfontfamily [#1/#2]{%
+   \if|#1|\let\newfamily=\currentfamily 
+   \else \edef\newfamily{#1}\fi
+   \if|#2|\else \setfosize\fosize #2:\fi
+   \expandafter\ifx \csname fam!.\newfamily\endcsname \relax
+      \displaymessage{\ofsmessageheader WARNING. No font family is set.^^J%
+      The family name [\newfamily/] is not known in the list:}\ofslistfamilies
+      \let\setfontsOK=\undefined
+   \else
+      \let\currentfamily=\newfamily
+      \fontmessage{\ofsmessageheader Font family 
+           \currentfamily\space\fosize \space (enc=\fotenc) activated:}%
+      \def\tmpa##1{\expandafter \let \csname var!.the##1\endcsname \relax}%
+      \tmpa0\tmpa1\tmpa2\tmpa3\tmpa4\tmpa5\tmpa6\tmpa7\tmpa8\tmpa9%
+      \setfontshook
+      \csname fam!.\newfamily\endcsname
+      \ifx \ofslistvariants \empty \else
+         \fontmessage{\ofsmessageheader\ofslistvariants}\fi 
+      % restoring current variant:
+      \ifx G\currentvariant 
+         \ifx \sgfamily\newfamily \if |#2|\else 
+                                     \setsinglefont[\sgfamily-\sgvariant/#2]%
+                                  \fi
+         \else \tenrm
+         \fi
+      \else
+         \expandafter 
+            \ifx \csname var!.\expandafter\ofsmeaning\meaning 
+                 \currentvariant\endcsname \relax
+            \tenrm
+         \else
+            \csname var!.\expandafter\ofsmeaning\meaning
+                 \currentvariant\endcsname
+   \fi\fi\fi
+}
+
+\def\setsinglefont [#1-#2/#3]{%
+   \edef\newfamily{#1}%
+   \expandafter\savetokenname \csname#2\endcsname \sgvariant
+   \ifx\newfamily\empty \let\newfamily=\currentfamily \fi
+   \edef\tmpa{#3}%
+   \let\orifosize=\fosize 
+   \let\oriloadfam=\loadtextfam
+   \let\orinewvariant=\newvariant
+   \ifx\tmpa\empty \let\tmpa=\fosize
+   \else \expandafter\setfosize\expandafter\fosize\tmpa:%
+   \fi
+   \expandafter\ifx \csname fam!.\newfamily\endcsname \relax
+      \displaymessage{\ofsmessageheader WARNING. No font is set.^^J%
+      The family name [\newfamily/] is not known in the list:}\ofslistfamilies
+      \let\setfontsOK=\undefined
+   \else
+      \fontmessage{\ofsmessageheader Loading single font 
+          \newfamily-#2 \fosize \space (enc=\fotenc).}%
+      \expandafter\savetokenname \csname rm\endcsname \tmpa
+      \ifx\sgvariant\tmpa
+         \def\loadtextfam ##1;##2;##3;##4;##5;{\tryloadenc{##5}%
+            \ofsloadfont {\newfamily-rm}{\userfontname}{##1}{M}{##5}{}}%
+      \fi
+      \expandafter\savetokenname \csname bf\endcsname \tmpa
+      \ifx\sgvariant\tmpa
+         \def\loadtextfam ##1;##2;##3;##4;##5;{\tryloadenc{##5}%
+            \ofsloadfont {\newfamily-bf}{\userfontname}{##2}{F}{##5}{}}%
+      \fi
+      \expandafter\savetokenname \csname it\endcsname \tmpa
+      \ifx\sgvariant\tmpa
+         \def\loadtextfam ##1;##2;##3;##4;##5;{\tryloadenc{##5}%
+            \ofsloadfont {\newfamily-it}{\userfontname}{##3}{T}{##5}{}}%
+      \fi
+      \expandafter\savetokenname \csname bi\endcsname \tmpa
+      \ifx\sgvariant\tmpa
+         \def\loadtextfam ##1;##2;##3;##4;##5;{\tryloadenc{##5}%
+            \ofsloadfont {\newfamily-bi}{\userfontname}{##4}{I}{##5}{}}%
+      \fi
+      \ifx\loadtextfam\oriloadfam 
+         \def\loadtextfam ##1;##2;##3;##4;##5;{\tryloadenc{##5}}%
+         \def\newvariant ##1 ##2(##3) ##4;##5;{\savetokenname ##2\tmpa
+             \ifx \tmpa\sgvariant
+               \ofsloadfont {\newfamily-\tmpa}{\userfontname}{##4}{##1}{##5}{}%
+             \fi}%
+      \else
+         \def\newvariant ##1 ##2(##3) ##4;##5;{}%
+      \fi
+      \fontprefix \expandafter \let \csname \userfontname \endcsname =\relax
+      \setfontshook
+      \csname fam!.\newfamily\endcsname
+      \expandafter \ifx \csname \userfontname \endcsname \relax
+         \displaymessage{\ofsmessageheader WARNING. 
+                 Variant \newfamily-\sgvariant\space is unknown.
+                 No font is set.}%
+         \let\setfontsOK=\undefined
+      \else
+         \csname \userfontname \endcsname
+         \let\sgfamily=\newfamily
+         \let\currentvariant=G%
+      \fi
+   \fi
+   \let\fosize=\orifosize 
+   \let\loadtextfam=\oriloadfam
+   \let\orinewvariant=\newvariant
+} 
+\let\orifosize=\relax \let\oriloadfam=\relax \let\orinewvariant=\relax
+\let\newfamily=\relax \let\sgfamily=\relax \let\sgvariant=\relax
+
+\def\fontdef #1[#2/#3]{\def\tmpc{!}%
+   \edef\tmpa{#3}%
+   \ifx\tmpa\tmpc \let\tmpa=\fosize \fi
+   \edef\tmpb{#2}\expandafter \readfamvariant\tmpb--:%
+   \ifx\tmpb\tmpc \let\tmpb=\currentfamily \fi
+   \ifx\famvariant\empty
+      \fontmessage{\ofsmessageheader Define \string#1
+          as \noexpand\setfonts[\tmpb/\tmpa].}%
+      \xdef #1{\noexpand\setfonts [\tmpb/\tmpa]}%
+   \else
+      \ifx\tmpa\empty \def\tmpa{mag1.0}\fi
+      \expandafter \if m\expandafter \readfirsttoken \tmpa:\end
+         \fontmessage{\ofsmessageheader Define \string#1
+            as \noexpand\setfonts[\tmpb-\famvariant/\tmpa].}%
+         \xdef #1{\noexpand\setfonts [\tmpb-\famvariant/\tmpa]}%
+      \else 
+         \ifx\tmpb\empty 
+            \fontmessage{\ofsmessageheader Define \string#1
+               as \noexpand\setfonts[-\famvariant/\tmpa].}%
+            \xdef #1{\noexpand\setfonts [-\famvariant/\tmpa]}%
+         \else
+            \registeredfam \tmpb?\iftrue
+               \fontmessage{\ofsmessageheader Define \string#1
+                  as fixed font [\tmpb-\famvariant/\tmpa].}%
+               {\let\fontprefix=\global \let\tmpc=\tmpa
+                  \savetokenname #1\userfontname
+                  \setsinglefont [\tmpb-\famvariant/\tmpc]}%
+            \else
+               \warnunregistered \tmpb 
+               \displaymessage{ \space \string\fontdef\string#1
+                   [#2/#3] ignored. \string#1=\string\nullfont}%
+               \global\let #1=\nullfont    
+   \fi\fi\fi\fi
+}
+
+
+%%%% \knownfam \registeredfam \knownchar %%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\def\knownfam #1?#2{%  usage: \knownfam Times? \iftrue ...\else...\fi 
+   \expandafter\ifx \csname fam!.#1\endcsname \relax
+       \csname iffalse\expandafter\endcsname 
+   \else
+       \csname iftrue\expandafter\endcsname
+   \fi
+}
+\def\ifknownfam [#1]{\knownfam #1?!}  % for bacward compatibility
+
+\def \registeredfam #1?#2{%  usage: \registeredfam Times?\iftrue...\else...\fi
+   \expandafter \ifx\csname ffe?#1:\endcsname \relax
+         \def\tmpc{iftrue}%
+   \else \edef\act{\def\noexpand\tmpc####1 \fotenc,####2^^X%
+                  {\def\noexpand\tmpc{####2}}}\act
+         \edef\act{\noexpand\tmpc \space 
+                   \csname ffe?#1:\expandafter\endcsname, \fotenc,^^X}\act
+         \ifx\tmpc\empty \def\tmpc{iffalse}%
+         \else \def\tmpc{iftrue}\fi
+   \fi \csname\tmpc\endcsname
+}
+\def\knownchar #1?#2{%  usage: \knownchar \euro? \iftrue...\else...\fi 
+   \if u\expandafter \readfirsttoken \meaning #1:\end % undefined
+       \let\tmpa=\relax \let\tmpb=\relax
+   \else
+   {\def\printcharacterwarn##1{\relax}\def\printcharacteraccent##1##2{\relax}%
+    \def\setextrafont{}\xdef\tmpa{#1}\gdef\tmpb{\relax}}%
+   \fi 
+   \ifx \tmpa\tmpb \csname iffalse\expandafter\endcsname \else 
+                   \csname iftrue\expandafter\endcsname \fi
+}
+
+
+%%%% Extra encodings %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\def\setextrafont{%
+   \ifx\expandaction\noexpand
+      \noexpand\setextrafont
+   \else
+      \csname fragilecommand!\endcsname
+      \expandafter \ifx \csname eXfont!.\fontname\the\font\endcsname \relax
+         \expandafter\let\expandafter\tmpa \the\font
+         \displaymessage{\ofsmessageheader WARNING.
+            \string\setextrafont: No extra metric for \metrictmpa.}%
+      \else 
+         \font\extrafont=\csname eXfont!.\fontname\the\font\endcsname 
+         \relax
+         \fontloadmessage{extrafont}%
+                         {\csname eXfont!.\fontname\the\font\endcsname}%
+         \extrafont
+      \fi
+   \fi
+}
+\let\currentextrafont=\relax
+
+\def\characterdef #1#2#3 {\relax \savetokenname #1\tmpa
+   \edef \tmpb{\noexpand\printcharacter {\tmpa}}%
+   \expandafter \ifx \csname\tmpa\endcsname \relax \let#1=\tmpb \fi
+   \let\tmpc=\tmpa
+   \edef \tmpa {\tmpa:-#2#3}%
+   \ifx #1\tmpb \else
+       \expandafter \ifx \csname\tmpa\endcsname \relax
+          \fontmessage{\ofsmessageheader "\string#1" is
+          defined already, \noexpand\characterdef ignored.}%
+   \fi\fi
+   \futurelet \tmpb \docharacterdef
+}
+\def\characterdel #1#2#3 {\relax \savetokenname #1\tmpa
+   \ifx\tmpc\tmpa \else
+      \expandafter \let \csname\tmpa:-#2#3\endcsname =\relax \fi
+   \let\tmpc=\relax
+   \def \tmpa {tmpa}%
+   \futurelet \tmpb \docharacterdef
+}
+\def\characternodef #1#2#3 {\relax \savetokenname #1\tmpa
+   \edef \tmpb{\noexpand\printcharacter {\tmpa}}%
+   \expandafter \ifx \csname\tmpa\endcsname \relax \let#1=\tmpb \fi
+   \edef \tmpa {tmpa}%
+   \futurelet \tmpb \docharacterdef
+}
+\def\docharacterdef {%
+   \ifx\tmpb\bgroup 
+      \afterassignment \ignorespaces
+      \expandafter \def \csname \tmpa \expandafter\endcsname 
+   \else
+      \afterassignment \donumbercharacterdef 
+      \uccode`\^^@=
+   \fi
+}
+{\catcode`\^^@=12
+\gdef\donumbercharacterdef {%
+   \uppercase{\expandafter \def\csname \tmpa\endcsname {^^@}}%
+   \uccode`\^^@=0
+}}
+\def\printcharacter #1{%
+   \ifx\expandaction\noexpand
+       \expandafter\noexpand \csname #1\endcsname
+   \else
+       \expandafter\ifx\csname #1:-\fotenc\endcsname \relax
+         \expandafter \ifx \csname eXfont!.\fontname\the\font\endcsname \relax
+            \expandafter\ifx\csname #1:-*\endcsname \relax
+               \printcharacterwarn{#1}%
+            \else \csname #1:-*\endcsname
+            \fi 
+         \else
+            \expandafter \ifx \csname 
+                     #1:-\csname eXenc!.\fontname\the\font\endcsname 
+                     \endcsname \relax
+               \expandafter\ifx\csname #1:-*\endcsname \relax
+                  \printcharacterwarn{#1}%
+               \else \csname #1:-*\endcsname
+               \fi
+            \else
+               {\expandafter \setextrafont \csname 
+                  #1:-\csname eXenc!.\fontname\the\font\endcsname \endcsname}%
+            \fi
+         \fi
+      \else
+         \csname #1:-\fotenc\endcsname
+      \fi
+   \fi
+} 
+\def\printcharacterwarn #1{%
+   \csname fragilecommand!\expandafter\endcsname
+   % \printcharacter may be first token in \halign data
+   \expandafter\def\expandafter\tmpa\expandafter{\currentfamily}%
+   \displaymessage{\ofsmessageheader WARNING.
+                  Command \expandafter\noexpand\csname#1\endcsname
+                  is unavailable in \tmpa.}%
+}
+
+\def\extchar{\afterassignment\doextchar \chardef\tmpc=}
+\def\doextchar{{\setextrafont\tmpc}}
+
+\def\accentdef #1#2#3#4 {\relax \savetokenname #1\tmpa
+   \edef #1##1{\noexpand\printaccent {\tmpa}{##1}}%
+   \if *#2\edef \tmpa {\tmpa:#2--#3#4}%
+   \else \edef \tmpa {\tmpa:#2:-#3#4}%
+   \fi
+   \futurelet \tmpb \docharacterdef
+}
+\def\accentdel #1#2#3#4 {\relax \savetokenname #1\tmpa
+   \if *#2\expandafter \let \csname\tmpa:#2--#3#4\endcsname =\relax
+   \else \expandafter \let \csname\tmpa:#2:-#3#4\endcsname =\relax
+   \fi
+   \def \tmpa {tmpa}%
+   \futurelet \tmpb \docharacterdef
+}
+\def\accentnodef #1#2#3#4 {\relax \savetokenname #1\tmpa
+   \edef #1##1{\noexpand\printaccent {\tmpa}{##1}}%
+   \edef \tmpa {tmpa}%
+   \futurelet \tmpb \docharacterdef
+}
+\def\printaccent #1#2{%
+   \ifx\expandaction\noexpand
+      \expandafter\noexpand \csname #1\endcsname {#2}%
+   \else
+      \expandafter \ifx \csname #1:#2:-\fotenc\endcsname \relax
+         \expandafter \ifx \csname eXfont!.\fontname\the\font\endcsname\relax
+            \expandafter \ifx \csname #1:*--\fotenc\endcsname \relax 
+               \expandafter \ifx \csname #1:#2:-*\endcsname \relax
+                  \expandafter \ifx \csname #1:*--*\endcsname \relax 
+                     \printaccentwarn{#1}{#2}%
+                  \else 
+                     \if ^^X#2^^X\csname #1:*--*\endcsname {}%
+                     \else \csname #1:*--*\endcsname #2%
+                     \fi
+                  \fi
+               \else \csname #1:#2:-*\endcsname
+               \fi
+            \else
+               \if ^^X#2^^X\csname #1:*--\fotenc\endcsname {}%
+               \else \csname #1:*--\fotenc\endcsname #2%
+               \fi
+            \fi
+         \else
+            \expandafter \ifx \csname 
+                      #1:#2:-\csname eXenc!.\fontname\the\font\endcsname 
+                      \endcsname \relax
+               \expandafter \ifx \csname #1:*--\fotenc\endcsname \relax
+                  \expandafter \ifx \csname 
+                         #1:*--\csname eXenc!.\fontname\the\font\endcsname 
+                         \endcsname \relax
+                     \expandafter \ifx \csname #1:#2:-*\endcsname \relax
+                        \expandafter \ifx \csname #1:*--*\endcsname \relax
+                           \printaccentwarn{#1}{#2}%
+                        \else
+                           \if ^^X#2^^X\csname #1:*--*\endcsname {}%
+                           \else \csname #1:*--*\endcsname #2%
+                           \fi
+                        \fi
+                     \else \csname #1:#2:-*\endcsname
+                     \fi
+                  \else
+                     \expandafter \let \expandafter \tmpb \the\font
+                     {\if ^^X#2^^X\expandafter \setextrafont \csname
+                          #1:*--\csname eXenc!.\fontname\tmpb\endcsname
+                          \endcsname \tmpb {}%
+                      \else       \expandafter \setextrafont \csname 
+                             #1:*--\csname eXenc!.\fontname\tmpb\endcsname 
+                         \endcsname \tmpb #2%
+                      \fi}%
+                  \fi
+               \else
+                  \if ^^X#2^^X\csname #1:*--\fotenc\endcsname {}%
+                  \else \csname #1:*--\fotenc\endcsname #2%
+                  \fi
+               \fi 
+            \else
+               {\expandafter \setextrafont \csname 
+                    #1:#2:-\csname eXenc!.\fontname\the\font\endcsname 
+                    \endcsname}%
+            \fi
+         \fi
+      \else
+         \csname #1:#2:-\fotenc\endcsname
+      \fi
+   \fi
+} 
+\def\printaccentwarn #1#2{%
+   \csname fragilecommand!\expandafter\endcsname
+   % \printaccent may be first token in \halign data
+   \expandafter\def\expandafter\tmpa\expandafter{\currentfamily}%
+   \displaymessage{\ofsmessageheader WARNING. 
+   Accent \expandafter\string\csname#1\endcsname{#2}
+   is unavailable in \tmpa.}%
+}
+\def\accentabove #1#2#3{%
+   \ifx\expandaction\noexpand
+      \noexpand\accentabove {#1}{#2}{#3}%
+   \else
+      \csname fragilecommand!\endcsname
+      \if ^^X#3^^X#1\else
+         \leavevmode\vbox{%
+            \setbox0=\hbox{#3}\setbox2=\hbox{#1}%
+            \dimen0=\ht0 \advance\dimen0 by\dp2 \advance\dimen0 by#2\relax 
+            \offinterlineskip
+            \halign {##\cr
+               \hidewidth\slantcorrection{\dimen0}\box2 \hidewidth\cr
+               \noalign{\kern#2}\box0 \cr}}%
+   \fi\fi
+}
+\def\accentbelow #1#2#3{%
+   \ifx\expandaction\noexpand
+      \noexpand\accentbelow {#1}{#2}{#3}%
+   \else
+      \csname fragilecommand!\endcsname
+      \if ^^X#3^^X#1\else
+         \leavevmode\vtop{%
+            \setbox0=\hbox{#3}\setbox2=\hbox{#1}%
+            \dimen0=-\dp0 \advance\dimen0 by-\ht2 \advance\dimen0 by-#2\relax
+            \offinterlineskip
+            \halign {##\cr \box0 \cr\noalign{\kern#2}%
+               \hidewidth \slantcorrection{\dimen0}%
+               \dimen0=\dp2 \ifdim\dimen0<.2ex \dimen0=.2ex \fi
+               \vbox to\dimen0{\hbox{\box2}\vss}\hidewidth\cr}}%
+   \fi\fi
+}
+\def\slantcorrection #1{\dimen0=#1\relax
+   \dimen0 =\expandafter \noPT\the\fontdimen1\the\font \dimen0
+   \kern 2\dimen0
+}
+
+%%%% \modifyenc, \modifydef, \tryloadenc, \registerenc %%%%%%%%%%%%%%
+                                          %% news in version Feb. 2004
+\newcount\loadingenc  \loadingenc=0
+
+\def\modifyenc #1:#2;{\def\tmpa{#1}% encoding
+   \ifx\tmpa\fotenc   \ofsaddenctolist #1:#2;\fi
+   \ifx\tmpa\extraenc \ofsaddenctolist #1:#2;\fi
+}
+\def\ofsaddenctolist #1;{\expandafter\expandafter\expandafter\def 
+   \expandafter\expandafter\expandafter \newmodifylist
+   \expandafter\expandafter\expandafter {\expandafter \newmodifylist
+   \csname #1\expandafter\endcsname}}
+\def\modifylist{} \def\newmodifylist{}
+
+\def\modifydef #1;#2{%
+   \expandafter \def \csname#1\endcsname {#2}%
+   \let\characterdef=\characternodef \let\accentdef=\accentnodef
+   \let\characterdel=\characternodef \let\accentdel=\accentnodef
+   \def\skipfirststep##1\relax\empty\empty{}%
+   #2\relax\empty\empty
+   \let\characterdef=\characterdefori \let\accentdef=\accentdefori
+   \let\characterdel=\characterdelori \let\accentdel=\accentdelori
+   \let\skipfirststep=\relax
+   \ignorespaces
+}
+\def\modifyread #1;{%
+   \ifnum\loadingenc>0
+      \expandafter \ifx \csname m:>#1\endcsname \relax
+          \fontmessage{\ofsmessageheader \string\modifyread: 
+                       file read from \string\modifytext}%
+          {\plaincatcodes \catcode`@=11 \endlinechar=-1 \globaldefs=1 
+           \def\tmpa ##1\modifytext{}%
+           \expandafter \tmpa \input #1
+           \expandafter \gdef \csname m:>#1\endcsname {}}%
+   \fi\fi
+}      
+\def\tryloadenc #1{\edef\extraenc{#1}%
+   \ifnum\loadingenc>0 
+      \ofsinput ofs-\fotenc.tex
+      \ifx\extraenc\empty \else \ofsinput ofs-\extraenc.tex \fi
+   \fi
+}
+\def\runmodifylist {%
+   \ifx \modifylist\relax \else
+      \ifx \modifylist\newmodifylist \else
+         \let\tmpc=\relax
+         \switchdeftodel \modifylist
+         \switchdeftodel \newmodifylist
+         \let \modifylist=\newmodifylist
+      \fi
+   \fi
+}
+\def\switchdeftodel{%
+   \let\tmpa=\characterdef \let\characterdef=\characterdel \let\characterdel=\tmpa
+   \let\tmpa=\accentdef    \let\accentdef=\accentdel       \let\accentdel=\tmpa
+}
+\let\characterdefori=\characterdef
+\let\characterdelori=\characterdel
+\let\accentdefori=\accentdef
+\let\accentdelori=\accentdel
+\let\skipfirststep=\relax
+
+\def\registerenc #1:#2#3 {%
+   \edef\tmpa{#1}\ifx\tmpa\empty \edef\tmpa{\declaredfamily}\fi
+   \if*#2\expandafter \let  \csname ffe?\tmpa:\endcsname =\relax
+   \else \expandafter \edef \csname ffe?\tmpa:\endcsname {%
+        \expandafter\ifx \csname ffe?\tmpa:\endcsname\relax
+        \else \csname ffe?\tmpa:\endcsname, \fi#2#3}%
+   \fi
+}
+\def\warnunregistered #1{\displaymessage{\ofsmessageheader WARNING.
+   Unregistered enc \fotenc\space for #1. No font is set.^^J
+   \space Use \noexpand\registerenc #1: \fotenc\space\space
+   if you have got appropriate tfm's.}}
+
+%%%% \plaincatcodes, \safelet, \protectreading %%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\def\plaincatcodes {\catcode`\\0\catcode`\{1\catcode`\}2%
+   \catcode`\$3\catcode`\&4\catcode`\^^M5\catcode`\#6%
+   \catcode`\^7\catcode`\_8\catcode`\ 10\catcode`\~13%
+   \catcode`\^^I10\catcode`\%14\catcode`!12\catcode`"12%
+   \catcodesloop '.{12}\catcodesloop 0@{12}\catcodesloop AZ{11}%
+   \catcode`[12\catcode`]12\catcode``12\catcodesloop az{11}%
+   \catcode`|12\relax
+}
+\def\catcodesloop #1#2#3{\countdef\tmpa2 \chardef\tmpb\tmpa
+   \tmpa=`#1\relax 
+   \loop
+      \catcode\tmpa=#3\relax
+      \ifnum\tmpa <`#2 \advance\tmpa by1 
+   \repeat
+   \tmpa=\tmpb % original value of \count2
+}
+\def\safelet #1{\ifx#1\undefined
+      \expandafter \let \expandafter #1%
+   \else \ifx#1\relax
+      \expandafter\expandafter\expandafter \let
+      \expandafter\expandafter\expandafter #1%
+   \else
+      \def\tmpa{\let\tmpa}\safeletwarn#1%
+      \expandafter\expandafter\expandafter \tmpa
+   \fi\fi
+}
+\def\safeletwarn #1{\displaymessage{\ofsmessageheader WARNING. 
+   \noexpand#1 is defined already, \noexpand \safelet does nothing.}}
+
+\def\protectreading #1 {\expandafter
+   \ifx \csname f:>#1\endcsname \relax
+       \expandafter \def \csname f:>#1\endcsname {}%
+   \else \expandafter \endinput
+   \fi
+}
+\def\ofsinput #1 {\expandafter
+   \ifx \csname f:>#1\endcsname \relax
+      {\plaincatcodes \catcode`@=11 \endlinechar=-1 \globaldefs=1 \input #1
+       \let\tmpa \relax
+       \expandafter \gdef \csname f:>#1\endcsname {}}\fi
+}
+
+%%%% Math %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\def\loadmathfam #1[#2/#3]{% #1: fam, [#2/#3]: basic font [switch/file]
+   % basic font is used in three sizes: \textfosize, \scriptfosize,
+   % \scsriptscriptfosize. The basic font is given by its font-switch
+   % (control sequence without backslash) XOR its filename.
+   \relax
+   \ifnum #1<16
+      \if |#2|\edef\tmpa{#3}\edef\tmpb{#3}% 
+      \else
+         \edef\tmpb{#2}%
+         \edef \tmpa {\expandafter \readfirsttoken \tmpb:\end}%
+         \if -\tmpa
+            \expandafter \ifx \csname fm:\tmpb\endcsname \relax
+               \expandafter \ifx \csname fv:\tmpb\endcsname \empty % -bi => -bf
+                     \displaymessage{\ofsmessageheader WARNING. loadmathfam: 
+                         no "\tmpb" in "\currentfamily", I try "-bf".}%
+                     \def\tmpb{-bf}%
+            \fi\fi    
+            \expandafter \ifx \csname fm:\tmpb\endcsname \relax
+               \ofsmissingmathfont {no "\tmpb" in "\currentfamily"}%
+            \else
+               \edef\tmpa {\csname fm:\tmpb\endcsname}%
+            \fi
+         \else
+            \if X\tmpa 
+               \edef\tmpa {\expandafter\readothertokens\tmpb:\end}%
+               \if s\expandafter\expandafter\expandafter \readfirsttoken
+                    \expandafter \meaning \csname \tmpa \endcsname:\end
+                   \expandafter \ifx \csname eXfont!.\fontname 
+                      \csname\tmpa\endcsname \endcsname \relax 
+                      \ofsmissingmathfont {"\tmpa" has no extra metric}%
+                   \else \edef \tmpa {\csname eXfont!.\fontname 
+                            \csname\tmpa\endcsname \endcsname \space}%
+                      \edef\tmpa{\expandafter\singlefontname\tmpa:}% gobble at<dimen>
+                   \fi
+               \else 
+                  \ofsmissingmathfont {"\tmpa" is no font selector}%
+               \fi
+            \else
+               \if s\expandafter\expandafter\expandafter \readfirsttoken
+                    \expandafter \meaning \csname #2\endcsname:\end
+                  \edef\tmpa{\expandafter\fontname\csname#2\endcsname\space}%
+                  \edef\tmpa{\expandafter\singlefontname\tmpa:}% gobble at<dimen>
+               \else
+                  \ofsmissingmathfont {"\tmpb" is no font selector}%
+      \fi\fi\fi\fi
+      \calculatemetricfile \tmpa \textfosize
+      \expandafter\font \csname\tmpb-Mt\endcsname 
+           =\metricfile\textfosize \relax \restorefontid{\tmpb-Mt}%
+      \fontloadmessage{\tmpb-Mt}{\metricfile\textfosize
+                       \space\space (fam:\string#1\if#1\relax=\the#1\fi)}%
+      \ifx \noindexsize \relax 
+         \expandafter \let \csname\tmpb-Mss\expandafter\endcsname
+                           \csname\tmpb-Mt\endcsname
+         \expandafter \let \csname\tmpb-Ms\expandafter\endcsname
+                           \csname\tmpb-Mt\endcsname
+      \else
+         \calculatemetricfile \tmpa \scriptfosize
+         \expandafter\font \csname\tmpb-Ms\endcsname  
+              =\metricfile\scriptfosize \relax \restorefontid{\tmpb-Ms}%
+         \fontloadmessage{\tmpb-Ms}{\metricfile\scriptfosize 
+                          \space\space (fam:\string#1\if#1\relax=\the#1\fi)}%
+         \calculatemetricfile \tmpa \scriptscriptfosize
+         \expandafter\font \csname\tmpb-Mss\endcsname 
+              =\metricfile\scriptscriptfosize \relax \restorefontid{\tmpb-Mss}%
+         \fontloadmessage{\tmpb-Mss}{\metricfile\scriptscriptfosize 
+                          \space\space (fam:\string#1\if#1\relax=\the#1\fi)}%
+      \fi
+      \textfont #1=\csname\tmpb-Mt\endcsname
+      \scriptfont #1=\csname\tmpb-Ms\endcsname
+      \scriptscriptfont #1=\csname\tmpb-Mss\endcsname
+   \else
+      \displaymessage{\ofsmessageheader WARNING. 
+          \noexpand\loadmathfam \string#1[#2/#3] ignored (\string#1 >= 16).}% 
+   \fi
+   \def\noindexsize {\let\noindexsize \relax}%
+}
+\def\ofsmissingmathfont #1{%
+   \displaymessage{\ofsmessageheader WARNING. 
+       loadmathfam: #1, \csname fm:-rm\endcsname\space used.}%
+   \edef\tmpa{\csname fm:-rm\endcsname}%
+   \def\tmpb{-rm}%
+}
+\expandafter\def \csname fm:-rm\endcsname {cmr10}
+\expandafter\def \csname fv:-bi\endcsname {}
+
+\def\noindexsize {\let\noindexsize \relax}
+\def\hex#1{\ifcase#10\or1\or2\or3\or4\or5\or6\or7\or8\or9\or 
+    A\or B\or C\or D\or E\or F\else0\fi}%
+\def\newmathfam #1{\advance\lastfam by1 \chardef #1=\lastfam\relax}
+\countdef\lastfam=18
+
+\def\setmath [#1/#2/#3]{%
+   \ifx\expandaction\noexpand
+      \noexpand\setmath [#1/#2/#3]%
+   \else
+      \csname fragilecommand!\endcsname
+      \if|#1|\def\tmpa{mag1.0}\else\edef\tmpa{#1}\fi
+      \expandafter \setfosize \expandafter \textfosize \tmpa:%
+      \if|#2|\def\tmpa{mag0.7}\else\edef\tmpa{#2}\fi
+      \expandafter \setfosize \expandafter \scriptfosize \tmpa:%
+      \if|#3|\def\tmpa{mag0.5}\else\edef\tmpa{#3}\fi
+      \expandafter \setfosize \expandafter \scriptscriptfosize \tmpa:%
+      \fontmessage{\ofsmessageheader \noexpand\setmath 
+          [\textfosize/\scriptfosize/\scriptscriptfosize]
+          (enc=\fomenc, version=\mathversion)}%
+      \mathfonts
+      \ifx \currentfomenc\fomenc \else     
+         \mathcharsback \let\mathcharsback=\relax
+         \mathchars \let\currentfomenc=\fomenc
+      \fi
+      \ignorespaces
+  \fi
+} 
+\def\setsimplemath{\setmath[//]} % for backward compatibility
+
+\def\safemathchardef{\dosafemathdef\mathchardef}
+\def\safemathaccentdef{\dosafemathdef\mathaccentdef}
+
+\def\dosafemathdef #1#2{\relax 
+   \ifx #2\undefined \expandafter #1\expandafter#2%
+   \else
+      \savetokenname #2\tmpb
+         \expandafter \ifx \csname M\tmpb\endcsname \relax
+         \expandafter \let \csname T\tmpb\endcsname =#2%
+         \edef #2{\noexpand\ifmmode \noexpand\expandafter
+                      \expandafter\noexpand \csname M\tmpb\endcsname
+                  \noexpand\else  \noexpand\expandafter  
+                      \expandafter\noexpand \csname T\tmpb\endcsname
+                  \noexpand\fi}%
+         \expandafter #1\csname M\tmpb
+                        \expandafter\expandafter\expandafter\endcsname
+      \else \mathchardef \tmpb 
+   \fi\fi
+}
+\def\mathaccentdef #1{\def\tmpa{\edef#1{\mathaccent\the\tmpb\space}}%
+   \afterassignment \tmpa \mathchardef\tmpb
+}
+
+
+\def\pickmathfont #1#2{% We need "=" in \Long/right/left/arrow macros 
+  \mathchoice          % but we need not allocate new mathfam
+  {\hbox{\calculatemetricfile{#1}\textfosize
+   \font\tmpa=\metricfile \textfosize \tmpa#2%
+   \fontloadmessage{tmpa}{\metricfile\textfosize
+      \space\space\space T: {\noexpand\tmpa#2}}}}%
+  {\hbox{\calculatemetricfile{#1}\textfosize
+   \font\tmpa=\metricfile \textfosize \tmpa#2%
+   \fontloadmessage{tmpa}{\metricfile\textfosize
+      \space\space\space D: {\noexpand\tmpa#2}}}}%
+  {\hbox{\calculatemetricfile{#1}\scriptfosize
+   \font\tmpa=\metricfile \scriptfosize \tmpa#2%
+   \fontloadmessage{tmpa}{\metricfile\scriptfosize
+      \space\space\space S: {\noexpand\tmpa#2}}}}%
+  {\hbox{\calculatemetricfile{#1}\scriptscriptfosize
+   \font\tmpa=\metricfile \scriptscriptfosize \tmpa#2%
+   \fontloadmessage{tmpa}{\metricfile\scriptscriptfosize
+      \space\space\space SS: {\noexpand\tmpa#2}}}}%
+}
+\def\ofshexbox#1#2#3{%
+  \ifx\expandaction\noexpand
+     \noexpand \ofshexbox{#1}#2#3%
+  \else
+     \csname fragilecommand!\endcsname
+     {\ifx F\currentvariant \def\tmpa{#1:-bf!}%
+      \else \ifx T\currentvariant \def\tmpa{#1:-it!}%
+      \else \ifx I\currentvariant \def\tmpa{#1:-bi!}%
+      \else \def\tmpa{#1:-rm!}\fi\fi\fi
+      \expandafter \ifx \csname\tmpa\endcsname \relax
+         \displaymessage{\ofsmessageheader WARNING. 
+            \string\ofsboxhex#1#2#3: fam#1 is undeclared,
+            use \string\ofshexboxdef}%                               
+      \else
+         \expandafter \calculatemetricfile \csname\tmpa\endcsname \fosize
+         \font\fn=\metricfile\fosize \relax  
+         \fontloadmessage{fn}{\metricfile\fosize \space\space(ofshexbox)}%
+         \fn
+      \fi \char"#2#3}%
+  \fi}
+
+\def\ofshexboxdef #1#2#3#4#5{%
+   \expandafter\def\csname #1:-rm!\endcsname {#2}%
+   \expandafter\def\csname #1:-bf!\endcsname {#3}%
+   \expandafter\def\csname #1:-it!\endcsname {#4}%
+   \expandafter\def\csname #1:-bi!\endcsname {#5}%
+}
+\def\mathencread#1;{\ofsinput #1.tex \global \expandafter
+   \let \csname f:>#1.tex\endcsname=\relax}
+\def\mathencdef#1{\aftergroup\runplusforget \aftergroup#1\gdef#1}
+\def\runplusforget#1{#1\global\let#1=\relax}
+
+\catcode`\|=\tmpc\relax % original catcode of |
+
+%%% default math sizes:
+\def\textfosize{at10pt} 
+\def\scriptfosize{at7pt} \def\scriptscriptfosize{at5pt}
+
+%%%% \endOFSmacro : reads [options] after \input ofs %%%%%%%%%%%%%%%%
+
+\def\endOFSmacro {\expandafter \futurelet \expandafter
+   \tmpa \expandafter \testOFSoptions \endinput}
+\def\testOFSoptions {\ifx [\tmpa \expandafter \readOFSoptions \fi}
+\def\readOFSoptions [#1]{\let\next=\processOFSoption \next #1,^^X,}
+\def\processOFSoption #1,{\if ^^X#1\let\next=\relax
+   \else \input #1 \fi \next}
+
+
+%%%% Default text + math families %%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\input ofsdef
+
+%%%% End of OFS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\endOFSmacro

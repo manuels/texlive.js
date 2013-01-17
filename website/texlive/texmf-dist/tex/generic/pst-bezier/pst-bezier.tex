@@ -1,0 +1,335 @@
+%% $Id: pst-bezier.tex 87 2009-01-29 10:37:06Z herbert $
+%%
+%% This is file `pst-bezier.tex',
+%%
+%% IMPORTANT NOTICE:
+%%
+%% Package `pst-bezier.tex'
+%%
+%% Tobias Nähring (www.tn-home.de)
+%% Herbert Voss <voss@PSTricks.de>
+%%
+%% This program can be redistributed and/or modified under the terms
+%% of the LaTeX Project Public License Distributed from CTAN archives
+%% in directory CTAN:/macros/latex/base/lppl.txt.
+%%
+%% DESCRIPTION:
+%%   `pst-bezier' is a PSTricks package to draw spline curves
+%%
+%%
+\csname PSTbezierLoaded\endcsname
+\let\PSTbezierLoaded\endinput
+
+\def\fileversion{0.01}
+\def\filedate{2009/01/29}
+\message{ v\fileversion, \filedate}
+
+\ifx\PSTricksLoaded\endinput\else\input pstricks.tex\fi
+\ifx\PSTXKeyLoaded\endinput\else\input pst-xkey \fi
+
+\edef\TheAtCode{\the\catcode`\@}\catcode`\@=11
+
+\pst@addfams{pst-bezier}
+
+%% We need this:
+\expandafter\if\csname gobble\endcsname\relax\def\gobble#1{}\fi
+%%
+%% \newcommand is not native TeX. Therefore the following definition.
+%%%%%%%%%%%%
+%% \defopt defines a macro with one optional argument.
+%% Syntax:
+%%   \defopt\MyNewMacro{DefaultValue}[#1]#2{StuffToBeAssignedToMyNewMacro}
+%% where \myNewMacro, DefaultValue, and StuffToBeAssignedToMyNewMacro
+%% have the obvious meaning. Instead of #2 up to #9 arguments can be
+%% specified.
+\def\defopt#1#2{%
+  \def\defopt@tmp##1{%
+    \expandafter\def\csname##1\endcsname{%
+      \def\defopt@tmp{\futurelet\defopt@arg}%
+      \expandafter\defopt@tmp\csname##1@opt\endcsname%
+    }%
+    \expandafter\def\csname##1@opt\endcsname{%
+      \if\defopt@arg[%]
+        \def\next{\csname##1@@opt\endcsname}%
+      \else%
+        \def\next{\csname##1@@opt\endcsname[#2]}%
+      \fi\next}%
+    }%
+  \edef\defopt@arg{\expandafter\gobble\string#1}
+  \expandafter\defopt@tmp\expandafter{\defopt@arg}%
+  \expandafter\def\csname\expandafter\gobble\string#1@@opt\endcsname%
+}
+%% The postscript part of pst-bezier:
+\pstheader{pst-bezier.pro}
+
+%% A list of TeX-code fragments is generated when parsing \psbcurve.
+%% The list is managed with the help of these two counters:
+\newcount\psbcurve@codeCntrEnd
+\newcount\psbcurve@codeCntr
+%% These counters should never be set globally.
+%% Also the code fragments should never be set globally.
+%% The list entries are numberated (therefore the entries can be
+%% accessed via \csname only).
+%% E. g. for the third entry you have the following items:
+%% \csname psbcurve@code3l\endcsname (the left control point)
+%% \csname psbcurve@code3r\endcsname (the right control point)
+%% \csname psbcurve@code3\endcsname (the interpolated point)
+%% \csname psbcurve@code3sl\endcsname (the left scaling factor)
+%% \csname psbcurve@code3sr\endcsname (the right scaling factor)
+%% \csname psbcurve@code3addon\endcsname (additional code that is run at
+%% first)
+%% 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Auxiliary macros for dealing
+%% with the list TeX-code fragments
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Syntax:
+%%  \psbcurve@def[offset]{item}{TeXcode}
+%% Where offset is some number (default:0),
+%% and item is one of {l,r,sl,sr,addon}.
+%% TeXcode will be assigned to the item of the list entry at
+%% \psbcurve@codeCntrEnd + offset.
+\defopt\psbcurve@def{0}[#1]#2{
+  \psbcurve@codeCntr\psbcurve@codeCntrEnd
+  \advance\psbcurve@codeCntr by #1
+  \expandafter\def\csname psbcurve@code\the\psbcurve@codeCntr#2\endcsname}
+
+%% Essentially the same as \psbcurve@def, but
+%% the list item will only be set if it is undefined.
+\defopt\psbcurve@defIfVoid{0}[#1]#2{
+  \psbcurve@codeCntr\psbcurve@codeCntrEnd
+  \let\next\relax
+  \advance\psbcurve@codeCntr by #1
+  \expandafter\ifx\csname %
+        psbcurve@code\the\psbcurve@codeCntr#2\endcsname\relax%
+  \def\next{\expandafter\def\csname %
+        psbcurve@code\the\psbcurve@codeCntr#2\endcsname}%
+  \fi\next}
+
+%% Essentially the same as \psbcurve@def (just \def replaced by \let):
+\defopt\psbcurve@let{0}[#1]#2{
+  \psbcurve@codeCntr\psbcurve@codeCntrEnd
+  \advance\psbcurve@codeCntr by #1
+  \expandafter\let\csname psbcurve@code\the\psbcurve@codeCntr#2\endcsname}
+
+%% Syntax:
+%%  \psbcurve@letvar[offset]{item}\MyVarToBeSet
+%% sets \MyVarToBeSet to the value of the list entry.
+%% See the definition of \psbcurve@def for a description
+%% of the list entry.
+\defopt\psbcurve@letvar{0}[#1]#2#3{
+  \psbcurve@codeCntr\psbcurve@codeCntrEnd
+  \advance\psbcurve@codeCntr by #1
+  \def#3{\noexpand#3}%
+  \expandafter\let\expandafter#3\csname psbcurve@code\the\psbcurve@codeCntr#2\endcsname}
+
+%% Syntax:
+%%  \psbcurve@ifx[offset]{item}\MyVarToBeCompared
+%% That is essentially an \ifx with the list item compared to
+%% \MyVarToBeCompared.
+\defopt\psbcurve@ifx{0}[#1]#2{
+  \psbcurve@codeCntr\psbcurve@codeCntrEnd
+  \advance\psbcurve@codeCntr by #1
+  \expandafter\ifx\csname psbcurve@code\the\psbcurve@codeCntr#2\endcsname}
+
+%% Syntax:
+%%  \psbcurve@get{item}
+%% This expands to the macro corresponding to `item' from the
+%% list entry at \psbcurve@codeCntr.
+\def\psbcurve@get#1{\csname psbcurve@code\the\psbcurve@codeCntr#1\endcsname}
+
+
+%% Auxiliary macros:
+%%%%%%%%%%%%%%%%%%%%%
+%% Multiple branching
+%% Syntax:
+%%   \psbcurve@switch\ExpandingToKey{KeyI,\MacroI,KeyII,\MacroII,...and so on...}
+%% If \ExpandingToKey expands to one of the keys KeyI, \KeyII, ...
+%% the corresponding \MacroI, \MacroII, ..., resp. is called.
+%% The key value \relax is special. Its corresponding \Macro is the
+%% default action which is taken if none of the Keys matches.
+\def\psbcurve@switch#1#2{%
+\def\next##1,##2,##3|{%
+\ifx#1##1\relax\def\next####1|{\let\next##2}\fi%
+\ifx##1\relax\def\next####1|{\let\next##2}\fi%
+\next##3|%
+}%
+\next#2,\relax,\relax,|\next}
+
+%% The user interface to psbcurve:
+%% Usage: See description in pst-bezier-doc.tex.
+%% The default value \relax for the optional argument indicates that
+%% there are no optional arguments.
+\defopt\psbcurve\relax[#1](#2){%
+  \bgroup% Makes optional pstricks-settings local to this \psbcurve call.
+  \ifx#1\relax\else%
+    \psset{#1}%
+  \fi%
+  \def\psbcurve@code{%
+  \moveto(#2)%
+    \code{
+      <<
+      /Splines [%] begin of the array of splines
+      [%] begin of the first dummy spline (just the start point)
+      /n /n /n /n } \coor(#2) \code{%
+      /n /n %[
+      ] % end of the first dummy spline
+    }% end of \code
+  }%
+  %% Initialise the list of postscript code fragments:
+  \psbcurve@codeCntrEnd0%
+  \psbcurve@pointSetDefaults%% Init first spline.
+  \psbcurve@def{l}{\coor(#2)}%% Default left control point of the first spline.
+  \psbcurve@next%% Now, get the next arguments...
+}
+
+%% The following macro declare the pstricks option psbcurveTension
+%% and set it to its default value.
+\define@key[psset]{pst-bezier}{bcurveTension}[0.25]{\def\psk@bcurveTension{#1}}
+\psset{bcurveTension=0.25}
+
+%% Points of a spline that are not set yet
+%% to a certain value or action
+%% get the following value:
+\def\psbcurve@ptNotDef{\code{ /n /n }}
+
+%% A newly allocated spline gets the following defaults:
+\def\psbcurve@pointSetDefaults{%
+  \psbcurve@defIfVoid{l}{\psbcurve@ptNotDef}%
+  \psbcurve@defIfVoid{r}{\psbcurve@ptNotDef}%
+  \psbcurve@defIfVoid{sl}{\code{ \psk@bcurveTension\space}}%
+  \psbcurve@defIfVoid{sr}{\code{ \psk@bcurveTension\space}}%
+  \psbcurve@defIfVoid{addon}{}%
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Now, there comes a series of commands. Depending on the next optional modifier
+%% in the argument list of \psbcurve one of these is called. If there follows a
+%% point (x,y) without modifier \psbcurve@nextPoint is called. If there follows a token that
+%% does not make sense to \psbcurve \psbcurve@end is called.
+
+%% the modifier l
+\def\psbcurve@lPoint#1(#2){%
+  \psbcurve@def{l}{\coor(#2)}%
+  \psbcurve@next}
+
+%% the modifier r
+\def\psbcurve@rPoint#1(#2){%
+  \psbcurve@def{r}{\coor(#2)}%
+  \psbcurve@next}
+
+%% the modifier L
+\def\psbcurve@LPoint#1(#2){%
+  \psbcurve@def{l}{\coor(#2)}%
+  \psbcurve@def[-1]{r}{\code{ /s /s }}%
+  \psbcurve@next}
+
+%% the modifier T
+\def\psbcurve@Tension#1#2{%
+  \psbcurve@def{addon}{\psset{bcurveTension=#2}}%
+  \psbcurve@next}
+
+%% The t modifier has some sub-modifiers
+%% These are recognised by this macro and the
+%% corresponding action is taken.
+\def\psbcurve@tension#1{\futurelet\psbcurve@tmp\psbcurve@@tension}
+%%
+\def\psbcurve@@tension{%
+\psbcurve@switch\psbcurve@tmp{%
+  l,\psbcurve@ltension,%
+  r,\psbcurve@rtension,%
+  s,\psbcurve@stension,%
+  \relax,\psbcurve@@@tension%
+}}
+
+%% the modifier t without further sub-modifiers
+\def\psbcurve@@@tension#1{%
+\psbcurve@def{sr}{\code{ #1 }}%
+\psbcurve@def{sl}{\code{ #1 }}%
+\psbcurve@next}
+
+%% the modifier ts
+\def\psbcurve@stension#1#2{% symmetric
+\psbcurve@def[-1]{sr}{\code{ #2 }}%
+\psbcurve@def{sl}{\code{ #2 }}%
+\psbcurve@next}
+
+%% the modifier tl
+\def\psbcurve@ltension#1#2{% left control point
+\psbcurve@def{sl}{\code{ #2 }}%
+\psbcurve@next}
+
+%% the modifier tr
+\def\psbcurve@rtension#1#2{% right control point
+\psbcurve@def{sr}{\code{ #2 }}%
+\psbcurve@next}
+
+%% This macro is called if the next token is
+%% no modifier but a point (x,y)
+\def\psbcurve@nextPoint(#1){%
+  \psbcurve@def{}{\coor(#1)}%
+  \advance\psbcurve@codeCntrEnd by 1
+  \psbcurve@pointSetDefaults%
+  \psbcurve@next}
+
+%% If the next token does not make sense to \psbcurve
+%% the curve is finished.
+\def\psbcurve@end{
+  %% Do we need to set the last control point to its default?
+  \def\tmp{\psbcurve@ptNotDef}%
+  \psbcurve@ifx[-1]{r}\tmp%
+    \psbcurve@letvar[-1]{}\tmp% \tmp is set to the end point
+    \psbcurve@let[-1]{r}\tmp% last control point is set to \tmp
+  \fi%
+  %% pscustom deactivates showpoints: reverse this:
+  \let\if@psbcurve@showpoints\ifshowpoints%
+  \pscustom{%
+    %% Following, the TeX-code fragments in \psbcurve@code...
+    %% are executed. These compose the postscript spline array.
+    \psbcurve@code%
+    \psbcurve@codeCntr0
+    \loop%
+    \code{[ %]
+    }%
+    \psbcurve@get{addon}% additional code
+    \psbcurve@get{l}% left control point
+    \psbcurve@get{r}% right control point
+    \psbcurve@get{}% interpolation point
+    \psbcurve@get{sl}% left scaling factor
+    \psbcurve@get{sr}% right scaling factor
+    \code{ %[
+      ] }% end of the spline.
+    \advance\psbcurve@codeCntr by 1
+    \ifnum\psbcurve@codeCntr<\psbcurve@codeCntrEnd%
+    \repeat%
+    \code{%[
+      ] % end of the spline array
+      /K 1
+      >> pstBCurve
+          }%
+    \if@psbcurve@showpoints%
+      \pst@OpenShowPoints %% works fine, only the dashed lines are missing:
+      \code{ \tx@BezierShowPoints }%
+    \fi%
+  }%
+  \egroup%
+}
+
+%% The following macro reads the next argument from the \psbcurve argument list
+%% recognises optional modifiers and branches to the corresponding macro.
+\def\psbcurve@next{\futurelet\psbcurve@tmp\psbcurve@@next}
+\def\psbcurve@@next{%
+  \psbcurve@switch\psbcurve@tmp{%
+(,\psbcurve@nextPoint,%)
+l,\psbcurve@lPoint,%
+r,\psbcurve@rPoint,%
+L,\psbcurve@LPoint,%
+t,\psbcurve@tension,%
+T,\psbcurve@Tension,%
+\relax,\psbcurve@end}%
+}
+
+\catcode`\@=\TheAtCode\relax
+\endinput
+

@@ -1,0 +1,2857 @@
+%%%% This is the main source for the French Cursive font.
+%%%% (c) Emanuel Beffara, 2001--2011. This work is covered by the LPPL licence.
+%%%%
+%%%% You can get a pretty-printed document with the commented source code (and
+%%%% especially the first page with an explanation of the parameters) by first
+%%%% running "mft frcursive" to get the TeX source and then compiling the
+%%%% driver file "fcsource.tex" (normally shipped with this source file). This
+%%%% compilation needs the standard 10-pt version (driver "frcr10.mf") to be
+%%%% available. The document is 52 pages long.
+%%%%
+%%\title French Cursive,
+%%   a cursive handwriting font in \MF \cr
+%%   \fc so you can write like this.
+%%{\parindent=2em \parskip=1ex
+%%
+%% The main difficulty in the design of a good cursive font lies in the fact
+%% that words must appear to be written in a single pen stroke. So words will
+%% actually consist in a succession of letter glyphs and link glyphs, and the
+%% shapes of the links will have to be adapted to the surrounding letters.
+%% Here we fully exploit \MF's ligatures system by letting it insert the link
+%% glyphs automatically between letters.
+%%
+%% In the following definitions, the letter glyphs correspond to the
+%% invariable parts of a letter's shape. For instance, in the glyph of a
+%% letter with a high loop like {\def\fs#1{{\fc\smash#1}} \fs b, \fs f, \fs h,
+%% \fs k, or \fs l}, the stroke starts at the top of the loop because the
+%% initial part depends on the height the previous letter starts at. The link
+%% glyphs are located in the range 0--31, which is reserved for accents and
+%% common ligatures in the T1 encoding.
+%%
+%% This file won't generate a font by itself. It is supposed to be read by a
+%% driver file after setting several parameters to control the actual shape of
+%% the font. The required parameters are the following:
+%% \item absolute dimensions: \deflist{%
+%%   \\{ex}\SH      & the base height (height of small letters like {\fc a})\cr
+%%   \\{thin}\SH    & the thickness of line ends\cr
+%%   \\{med}\SH     & the thickness of hairlines\cr
+%%   \\{thick}\SH   & the thickness of stems\cr
+%%   \\{dot\_size}\SH & the diameter of dots\cr}
+%% \item ratios: \deflist{%
+%%   \\{base\_width} & base width of the font with respect to \\{ex}\SH{}
+%%                     (this is the width of an unlinked {\fc a})\cr
+%%   \\{slant}       & the slant ratio to be applied\cr}
+%% \item widths, relative to \\{base\_width}: \deflist{%
+%%   \\{accent\_wd}  & base width of accents
+%%                     (width of acute and grave accents)\cr
+%%   \\{link\_width} & the width of inter-letter links\cr}
+%% \item heights, relative to \\{ex}\SH: \deflist{%
+%%   \\{straight\_ascend}  & height of ascending bars like {\fc t}\cr
+%%   \\{loop\_ascend}      & height of ascending loops like {\fc\smash l}\cr
+%%   \\{uc\_ascend}        & height of uppercase letters\cr
+%%   \\{straight\_descend} & depth of descending bars like {\fc\smash p}\cr
+%%   \\{loop\_descend}     & depth of descending loops like {\fc\smash j}\cr
+%%   \\{dot\_height}       & height of the dot of {\fc i} and {\fc\smash j}
+%%                           above the base line\cr
+%%   \\{accent\_bot}       & height of the bottom of accents\cr
+%%   \\{accent\_top}       & height of the top of accents\cr
+%%   \\{cedilla\_dp}       & depth of the {\it top} of the cedilla's loop\cr}
+%%}
+%%%% These are MFT formatting definitions:
+%%% length penpos make_accented make_cedilla
+%%% length label penlabels range save_letter
+%%% and thru
+%%% end bye
+%%%% We don't want one-line comments to be right-aligned:
+%%\def\9{$\quad{\eightrm\%}}
+%%%% vim: set foldmethod=marker :
+
+%%\sec Global definitions.   %{{{1
+
+%% Once all parameters are defined, we can compute the non-sharp values of the
+%% absolute dimensions according to the current mode.
+
+define_pixels(ex);
+define_whole_blacker_pixels(med, thin, thick, dot_size);
+
+%% The \cs\fontdimen\ registers are also computed here. The ones for spacing
+%% are kind of arbitrary, but these values look right.
+
+font_slant slant;
+font_normal_space 3/2 * base_width * ex#;
+font_normal_shrink 1/2 * base_width * ex#;
+font_normal_stretch 1/2 * base_width * ex#;
+font_x_height ex#;
+font_quad 2 * base_width * ex#;
+
+%% The following three constants describe the possible types of links. Low
+%% links are horizontal on the base line. High links are horizontal at height
+%% \\{hl\_y} with respect to \\{ex}\SH:
+
+hl_y := 1/2;   % the height of high links
+
+%% Medium links are lower and directed upwards.
+
+ml_y := 13/600 / link_width;  % the height of medium links
+ml_a := angle(.288675, ml_y);    % the angle of medium links
+
+%% We take care of slanted shapes by simply applying a global transformation.
+
+currenttransform := currenttransform slanted slant;
+
+%% Some shapes are defined differently in fixed-thickness mode.
+
+if unknown fixed:
+  boolean fixed; fixed := false;
+fi
+
+%% Some letter shapes have to be saved:
+%% \item a, c, e, g, l, n, o, r, t, u, y, z and uppercase letters are normal,
+%%   they are used for making accented variants
+%% \item i is dotless, it is kept for making accented versions
+%% \item j is dotless, its shape appears in y, G, J and Y
+%% \item q and s are unlinked on the right (like at the end of words), they
+%%   are kept to make linked versions
+%% \item exclamation and interrogation marks are used for the spanish
+%%   reversed version
+%%
+%% The \\{save\_letter} macro saves the picture of a given glyph so that it
+%% can be reused (as explained above). The first argument is a suffix that
+%% represents the letter, the second one is the $x$ coordinate where accents
+%% should be placed (i.e. roughly the middle of the letter).
+
+def save_letter (suffix ltr) (expr pos) =
+  picture letter.ltr;
+  letter.ltr := currentpicture;
+  accpos.ltr := cedpos.ltr := pos;
+  width.ltr := w;
+  height.ltr := h;
+  if proofing > 1: proofrule((pos,-d), (pos,h)); fi
+  width#.ltr := charwd;  % for the accented version's width
+  height#.ltr := charht; % for the height of accented uppercase letters
+  depth#.ltr := chardp
+enddef;
+
+%% Most characters have absolute widths of the same form:
+
+def ltr_wd(expr fb, fl) = (fb * base_width + fl * link_width) * ex# enddef;
+def ltr_w(expr fact) = ltr_wd(fact, 1) enddef;
+
+%% And some constants are useful:
+
+lnk := link_width / base_width;
+
+height_with_dot := dot_height * ex# + dot_size# / 2;
+
+ml_d := ml_a - 90;                % the stroke angle for medium links
+pair ml_dir; ml_dir := dir ml_a;  % and the line's direction
+
+%% And these multiplicative factors are simply everywhere:
+
+def u = scaled ex xscaled base_width enddef;
+def uu = xscaled (base_width * ex)
+         yscaled (uc_ascend * ex) enddef;
+def ua = xscaled (base_width * accent_wd * ex)
+         yscaled ((accent_top - accent_bot) * ex)
+         shifted (0, accent_bot * ex) enddef;
+v := base_width * ex;
+
+%% For proof-mode, we define the following macro to mark all useful
+%% information.
+
+def label(expr n) =
+  if proofing > 1:
+    penlabels(range 1 thru n);
+    if h > ex: proofrule((0, ex), (w, ex)); fi
+  fi
+enddef;
+
+%% Hinting...
+
+def goodx expr e =
+  begingroup save x, y; (x,y) = e; (good.x x, y) endgroup enddef;
+
+def goodxy expr e =
+  begingroup save x, y; (x,y) = e; (good.x x, good.y y) endgroup enddef;
+
+pickup pencircle scaled thick; thickpen := savepen;
+pickup pencircle scaled med; medpen := savepen;
+pickup pencircle scaled thin; thinpen := savepen;
+
+
+
+%% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %%
+
+%%\sec Lowercase letters.   %{{{1
+
+a_left := 1/3;  % the height of the left end of small loops
+
+"The letter a";
+beginchar("a", ltr_w(7/6), ex#, 0);
+  penpos1(med,     0);  x1r = hround (base_width * ex); y1 = 2/3 ex;
+  penpos2(med,    90);  z2r = (3/5, 1) u;
+  penpos3(thick, 180);  z3r = (0, a_left) u;
+  penpos4(med,   270);  z4r = (1/2, 0) u;
+  penpos5(med,     0);  x5 = x1; y5 = 1/3 ex;
+
+  penstroke z1e .. z2e .. tension 1.2 .. z3e .. z4e{right} .. z5e ;
+
+  penpos6(thick, 195);  z6 = z1 + (1/10, 2/9) u;
+  penpos7(thick, 180);  z7r = z1l;
+  penpos8(thick, 180);  z8r = z5l;
+  penpos9(med,   270);  z9r = (7/6 + lnk, 0) u;
+
+  penstroke z6e .. z7e .. tension 2 .. z8e .. {right}z9e ;
+
+  label(9);
+
+  save_letter(a)(x2);
+  cedpos.a := x9;
+endchar;
+
+"The letter b";
+beginchar("b", ltr_w(1), loop_ascend * ex#, 0);
+  penpos2(med,   330);  z2 = goodx (3/4, 2/3 * loop_ascend) u ;
+  penpos3(med,   100);  z3r = (4/10, loop_ascend) u ;
+  penpos4(thick, 180);  z4r = goodx (0, 3/5 * loop_ascend) u ;
+  penpos5(thick, 180);  x5 = x4; y5 = ex ;
+  penpos6(med,   260);  z6r = (1/2, 0) u ;
+  penpos7(med,     0);  z7 = (v, y10l);
+  penpos8(thin,  135);  z8 = z7l + (-1, 1) * ex / 6 ;
+  penpos9(med,   270);  z9l = z7l ;
+  penpos10(med,  270);  z10 = (1 + lnk, hl_y) u;
+
+  penstroke z2e{up} .. tension 1.2 .. z3e
+  .. controls (x4e,y3e) and (x4e,2/3[y3e,y4e]) .. z4e
+  .. z5e{down} .. z6e .. {up}z7e .. z8e .. {right}z9e .. {right}z10e
+  ;
+
+  label(10);
+endchar ;
+
+"The letter c";
+beginchar("c", ltr_w(1), ex#, 0);
+  penpos1(med,    30);  z1r = (1, 3/4) u;
+  penpos2(med,    90);  z2r = (3/5, 1) u;
+  penpos3(thick, 180);  z3r = (0, a_left) u;
+  penpos4(med,   270);  z4r = (1/2, 0) u;
+  penpos5(med,  ml_d);  z5 = (1 + lnk, ml_y) u;
+
+  penstroke z1e .. z2e .. tension 1.2 .. z3e .. z4e{right} .. {ml_dir}z5e ;
+
+  label(5);
+
+  save_letter(c)(3/5 v);
+endchar ;
+
+"The letter d";
+beginchar("d", ltr_w(7/6), straight_ascend * ex#, 0);
+  penpos1(med,     0);  x1r = hround (base_width * ex); y1 = 2/3 ex;
+  penpos2(med,    90);  z2r = (3/5, 1) u;
+  penpos3(thick, 180);  z3r = (0, a_left) u;
+  penpos4(med,   270);  z4r = (1/2, 0) u;
+  penpos5(med,     0);  z5r = (1, 1/3) u;
+
+  penstroke z1e .. z2e .. tension 1.2 .. z3e .. z4e{right} .. z5e ;
+
+  penpos6(thick, 170);  x6r = x1l; y6 = straight_ascend * ex;
+  penpos7(thick, 180);  x7r = x1l; y7 = 2/3 * straight_ascend * ex;
+  penpos8(thick, 180);  x8r = x7r; y8 = y5;
+  penpos9(med,   270);  z9r = (7/6 + lnk, 0) u;
+
+  penstroke z6e .. {down}z7e .. {down}z8e .. {right}z9e ;
+
+  label(9);
+
+  save_letter(d)(x6);
+endchar;
+
+"The letter e";
+beginchar("e", ltr_w(1), ex#, 0);
+  penpos1(med,   270);  z1 = (thin, 1/2 * ex) ;
+  penpos2(med,   270);  z2 = (1/2, 1/2) u;
+  penpos3(med,     0);  z3r = (1, 3/4) u;
+  penpos4(med,    90);  z4r = (3/5, 1) u;
+  penpos5(thick, 180);  z5r = (0, a_left) u;
+  penpos6(med,   270);  z6r = (1/2, 0) u;
+  penpos7(med,  ml_d);  z7 = (1 + lnk, ml_y) u;
+
+  penstroke z1e .. z2e{right} .. tension 1.2 .. {up}z3e
+  .. z4e .. tension 1.2 .. z5e .. z6e{right} .. {ml_dir}z7e ;
+
+  label(7);
+
+  save_letter(e)(3/5 v);
+endchar ;
+
+"The letter f";
+beginchar("f", ltr_w(5/6), loop_ascend * ex#, loop_descend * ex#);
+  penpos2(med,   330);  z2 = goodx (3/4, 2/3 * loop_ascend) u ;
+  penpos3(med,   100);  z3r = (4/10, loop_ascend) u ;
+  penpos4(thick, 180);  z4r = (0, 3/5 * loop_ascend) u ;
+  penpos5(thick, 180);  z5r = (0, -1/3 * loop_descend) u ;
+  penpos6(med,   270);  z6r = (4/10, - loop_descend) u ;
+  penpos7(med,     0);  z7r = goodx (8/9, -2/5 * loop_descend) u ;
+  penpos8(med,    25);  z8 = (2/3, 1/6) u ;
+  penpos9(thin,  135);  z9 = z8 + (-2, 1) * ex / 9 ;
+  penpos10(med,  270);  z10r = (2/3, 0) u ;
+  penpos11(med, ml_d);  z11 = (5/6 + lnk, ml_y) u;
+
+  penstroke z2e{up} .. tension 1.2 .. z3e
+  .. controls (x4e,y3e) and (x4e,2/3[y3e,y4e]) .. z4e .. z5e
+  .. controls (x5e,2/3[y6e,y5e]) and (x5e,y6e) .. z6e .. tension 1.2
+  .. z7e {up} .. z8e {z9-z7} .. tension 1.1
+  .. {dir 225} z9e .. tension 1.1
+  .. {right}z10e .. {ml_dir}z11e ;
+
+  label(11);
+endchar ;
+
+"The letter g";
+beginchar("g", ltr_w(9/8), ex#, loop_descend * ex#);
+  penpos1(med,     0);  x1r = hround (base_width * ex); y1 = 2/3 ex;
+  penpos2(med,    90);  z2r = (3/5, 1) u;
+  penpos3(thick, 180);  z3r = (0, a_left) u;
+  penpos4(med,   270);  z4r = goodx (1/2, 0) u;
+  penpos5(med,     0);  x5r = x1r; y5 = 1/3 ex;
+
+  penstroke z1e .. z2e .. tension 1.2 .. z3e .. z4e .. z5e ;
+
+  penpos6(thick, 190);  z6 = z1 + (1/10, 2/9) u;
+  penpos7(thick, 180);  z7r = z1l;
+  penpos8(thick, 180);  x8r = x5l;  y8 = -1/3 * loop_descend * ex;
+  penpos9(med,    90);  x9 = x4; y9l = vround (-loop_descend * ex);
+  penpos10(med,  315);  z10l = (1/4, -1/3 * loop_descend) u;
+  penpos11(med, ml_d);  z11 = (9/8 + lnk, ml_y) u;
+  
+  penstroke z6e .. z7e{down} .. {down}z8e .. tension 1.1
+  .. z9e .. z10e .. {ml_dir}z11e ;
+
+  label(11);
+
+  save_letter(g)(x2);
+endchar;
+
+"The letter h";
+beginchar("h", ltr_w(1), loop_ascend * ex#, 0);
+  penpos2(med,   330);  z2 = goodx (3/4, 2/3 * loop_ascend) u ;
+  penpos3(med,   100);  z3r = (4/10, loop_ascend) u ;
+  penpos4(thick, 180);  z4r = goodx (0, 3/5 * loop_ascend) u ;
+  penpos5(thick, 180);  z5r = (0, 0) u ;
+
+  penstroke z2e{up} .. tension 1.2 .. z3e
+  .. controls (x4e,y3e) and (x4e,2/3[y3e,y4e]) .. z4e .. z5e ;
+
+  penpos6(thick,   0);  z6l = (0, 1/3) u;
+  penpos7(med,   270);  z7l = (0.55, 1) u;
+  penpos8(thick, 180);  x8l = hround (base_width * ex); y8 = 1/2 ex;
+  penpos9(med,   270);  z9r = (1 + lnk, 0) u;
+
+  penstroke z6e{up} .. tension 1.4 .. z7e %.. tension 1.1
+  .. {down}z8e .. {right}z9e;
+
+  label(9);
+endchar;
+
+"The letter i";
+beginchar("i", ltr_w(1/2), height_with_dot, 0);
+  penpos1(thick, 180);  x1r = hround (base_width * ex / 6); y1 = ex;
+  penpos2(thick, 180);  x2r = x1r; y2r = 2/3 ex;
+  penpos3(med,   270);  z3r = (1/2 + lnk, 0) u;
+
+  penstroke z1e -- z2e{down} .. {right}z3e;
+
+  save_letter(i)(x1);
+  height.i := ex; height#.i := ex#;  % the letter is saved without the dot
+
+  pickup pencircle scaled thick;
+  x4 = x1; y4 = dot_height * ex;
+  pickup pencircle scaled dot_size;
+  drawdot z4;
+
+  label(4);
+endchar;
+
+"The letter j";
+beginchar("j", ltr_w(7/8), ex#, loop_descend * ex#);
+  penpos1(thick, 180);  z1 = good.lft ((3/4, 1) u);
+  penpos2(thick, 180);  x2 = x1; y2 = -1/3 loop_descend * ex;
+  penpos3(med,    90);  x3 = x1/3; y3l = vround (-loop_descend * ex);
+  penpos4(med,   315);  z4 = (0, -1/3 * loop_descend) u;
+  penpos5(med,  ml_d);  z5 = (7/8 + lnk, ml_y) u;
+
+  penstroke z1e{down} .. {down}z2e .. tension 1.1 .. z3e .. z4e .. {ml_dir}z5e;
+
+  save_letter(j)(x1);
+
+  pickup pencircle scaled thick;
+  x6 = x1; y6 = dot_height * ex;
+  pickup pencircle scaled dot_size;
+  drawdot z6;
+
+  label(6);
+endchar;
+
+"The letter k";
+beginchar("k", ltr_w(5/6), loop_ascend * ex#, 0);
+  penpos2(med,   330);  z2 = goodx (3/4, 2/3 * loop_ascend) u ;
+  penpos3(med,   100);  z3r = (4/10, loop_ascend) u ;
+  penpos4(thick, 180);  z4r = (0, 3/5 * loop_ascend) u ;
+  penpos5(thick, 180);  z5r = (0, 0) u ;
+
+  penstroke z2e{up} .. tension 1.2 .. z3e
+  .. controls (x4e,y3e) and (x4e,2/3[y3e,y4e]) .. z4e .. z5e ;
+
+  penpos6(med,   270);  z6 = (thick, 13/16 * ex);
+  penpos7(med,   180);  z7l = goodx (8/9, 9/16) u;
+  penpos8(med,    90);  z8 = (1/8, 2/5) u;
+
+  penstroke z6e{dir 60} .. {down}z7e .. tension 1.3 .. {dir 140}z8e;
+
+  penpos9 (med, 270);  z9 = z8;
+  penpos10(med, 270);  z10r = (5/6 + lnk, 0) u;
+
+  penstroke z9e{dir 10} .. tension 0.8 ..{right}z10e;
+
+  label(11);
+endchar;
+
+"The letter l";
+beginchar("l", ltr_w(2/3), loop_ascend * ex#, 0);
+  penpos2(med,   330);  z2 = goodx (3/4, 2/3 * loop_ascend) u;
+  penpos3(med,   100);  z3r = (4/10, loop_ascend) u;
+  penpos4(thick, 180);  z4r = (0, 3/5 * loop_ascend) u;
+  penpos5(thick, 180);  z5r = (0, 1) u;
+  penpos6(med,   260);  z6r = (1/2, 0) u;
+  penpos7(med,  ml_d);  z7 = (2/3 + lnk, ml_y) u;
+
+  penstroke z2e{up} .. tension 1.2 .. z3e
+  .. controls (x4e,y3e) and (x4e,2/3[y3e,y4e]) .. z4e -- z5e
+  .. controls (x5e,1/2[y5e,y6e]) and (x5e,y6e) .. z6e .. {ml_dir}z7e ;
+
+  label(7);
+
+  save_letter(l)(x3);
+endchar ;
+
+"The letter m";
+beginchar("m", ltr_w(13/6), ex#, 0);
+  pickup thickpen;
+  penpos1(med,   270);  z1l = (1/3, 1) u;
+  penpos2(thick, 180);  z2 = good.lft ((2/3, 1/3) u);
+  penpos3(thick, 180);  x3 = x2; y3 = 0;
+
+  penstroke z1e{right} .. {down}z2e -- z3e;
+
+  penpos4(thick,   0);  z4 = z2;
+  penpos5(med,   270);  z5l = (1, 1) u;
+  penpos6(thick, 180);  z6 = good.lft ((4/3, 1/3) u);
+  penpos7(thick, 180);  x7 = x6; y7 = 0;
+
+  penstroke z4e{up} .. {right}z5e .. {down}z6e -- z7e;
+
+  penpos8 (thick,   0);  z8 = z6;
+  penpos9 (med,   270);  z9l = (5/3, 1) u;
+  penpos10(thick, 180);  x10 - x6 = x6 - x2; y10 = 2/5 ex;
+  penpos11(med,   270);  z11r = (13/6 + lnk, 0) u;
+
+  penstroke z8e{up} .. {right}z9e .. {down}z10e .. {right}z11e;
+
+  label(11);
+endchar;
+
+"The letter n";
+beginchar("n", ltr_w(3/2), ex#, 0);
+  pickup thickpen;
+  penpos1(med,   270);  z1l = (1/3, 1) u;
+  penpos2(thick, 180);  z2 = good.lft ((2/3, 1/3) u);
+  penpos3(thick, 180);  z3 = (2/3, 0) u;
+
+  penstroke z1e{right} .. {down}z2e -- z3e;
+
+  penpos4(thick,   0);  z4 = z2;
+  penpos5(med,   270);  z5l = (1, 1) u;
+  penpos6(thick, 180);  z6 = good.lft ((4/3, 2/5) u);
+  penpos7(med,   270);  z7r = (3/2 + lnk, 0) u;
+
+  penstroke z4e{up} .. {right}z5e .. {down}z6e .. {right} z7e;
+
+  label(7);
+
+  save_letter(n)(x2);
+endchar;
+
+"The letter o";
+beginchar("o", ltr_w(9/8), ex#, 0);
+  penpos1(med,   330);  z1r = (1, 7/10) u;
+  penpos2(med,    90);  z2r = (1/2, 1) u;
+  penpos3(thick, 180);  z3r = (0, a_left) u;
+  penpos4(med,   270);  z4r = (3/5, 0) u;
+  penpos5(med,     0);  z5r = (9/8, 1/2) u;
+  penpos6(med,    60);  z6 = (7/8, 8/10) u;
+  penpos7(med,   220);  z7 = (5/8, 3/5) u;
+  penpos8(med,   270);  z8 = (9/8 + lnk, hl_y) u;
+
+  penstroke z1e .. z2e .. tension 1.1 .. z3e .. z4e
+   .. {up}z5e .. {dir 150}z6e .. {dir 310}z7e .. {right}z8e;
+
+  label(8);
+
+  save_letter(o)(1/2[x3r,x5r]);
+endchar ;
+
+"The letter p";
+beginchar("p", ltr_w(7/4), ex#, straight_descend * ex#);
+  pickup thickpen;
+  penpos1(thick, 180);  z1 = good.lft ((3/4, 1) u);
+  penpos2(thick, 180);  x2 = x1; y2 = vround (-straight_descend * ex);
+
+  penstroke z1e -- z2e;
+
+  penpos3(med,     0);  z3r = (x1l, 0);
+  penpos4(med,   270);  z4l = (5/4, 1) u;
+  penpos5(thick, 180);
+  penpos6(med,   270);  z6r = (7/4 + lnk, 0) u;
+  z5 = good.lft ((1/2[x4,x6], 1/2 * ex));
+
+  penstroke z3e{up} .. tension 1.2 .. {right}z4e .. z5e .. {right}z6e;
+
+  label(6);
+endchar;
+
+"The letter q with no link";
+beginchar("q", ltr_wd(1, 0) + thick# - med#, ex#, straight_descend * ex#);
+  penpos1(med,     0);  x1r = hround (base_width * ex); y1 = 2/3 ex;
+  penpos2(med,    90);  z2r = (3/5, 1) u;
+  penpos3(thick, 180);  z3r = (0, a_left) u;
+  penpos4(med,   270);  z4r = (1/2, 0) u;
+  penpos5(med,     0);  x5 = x1; y5 = 1/3 ex;
+
+  penstroke z1e .. z2e .. tension 1.2 .. z3e .. z4e{right} .. z5e ;
+
+  penpos6(thick, 195);  z6 = z1 + (1/10, 2/9) u;
+  penpos7(thick, 180);  z7r = z1l;
+  penpos8(thick, 180);  x8r = x5l;  y8 = vround (-straight_descend * ex);
+
+  penstroke z6e .. z7e --- z8e;
+
+  picture letter.q;
+  letter.q := currentpicture; % We keep the glyph for the linked version.
+
+  label(8);
+endchar;
+
+"The letter r";
+beginchar("r", ltr_w(5/4), 6/5 ex#, 0);
+  penpos1(med,     0);  z1l = (1/6, 1) u;
+  penpos2(med,    90);  z2r = z1l + (-1/3,1)/5 u;
+  penpos3(med,   270);  z3l = z1l;
+  penpos4(med,   220);  %z4l = (1, 1) u;
+  %z4l = (x5l,y3l);
+  z4r = (x5r,y3r);
+  penpos5(thick, 180);  z5l = (9/8, 2/5) u;
+  penpos6(med,   270);  z6r = (5/4 + lnk, 0) u;
+
+  penstroke z1e{up} .. z2e .. z3e .. tension 1.4 .. z4e
+  .. tension 1.3 .. {down}z5e .. {right}z6e;
+
+  label(6);
+
+  save_letter(r)(1/2[x1,x4]);
+  height.r := ex;
+  height#.r := ex#;
+endchar;
+
+"The letter s with no link";
+beginchar("s", ltr_wd(5/4, 0), 7/6 ex#, 0);
+  penpos0(thick,   0);  z0 = good.rt ((3/4, 1) u);
+  penpos1(med,     0);  z1l = z0l;
+  penpos2(med,    90);  z2r = z1l + (0, 1/6) u;
+  penpos3(med,   210);  z3l = z1l;
+  penpos4(thick, 180);  z4l = (5/4, 1/3) u;
+  penpos5(med,    90);  z5l = (5/8, 0) u;
+  penpos6(med,   300);  z6 = (1/2, 2/5) u;
+
+  penstroke z1e{dir 60} .. z2e .. z3e{dir 315} .. tension 1.2 .. z4e
+    .. {left}z5e .. {dir 30}z6e;
+
+  picture letter.s;
+  letter.s := currentpicture; % Same trick as for the q.
+
+  label(6);
+
+  save_letter(s)(x5);
+  height.s := ex;
+  height#.s := ex#;
+endchar;
+
+"The letter t";
+beginchar("t", ltr_w(7/8), straight_ascend * ex#, 0);
+  penpos1(thick, 180);  z1r = goodx (1/6, straight_ascend) u;
+  penpos2(thick, 180);  z2r = goodx (1/6, 2/3) u;
+  penpos3(med,   270);  z3r = (2/3, 0) u;
+  penpos4(med,  ml_d);  z4 = (7/8 + lnk, ml_y) u;
+
+  penstroke z1e -- z2e{down} .. {right}z3e .. {ml_dir}z4e;
+
+  penpos5(med, 270);  z5l = goodxy (1/6 * v + med, 2/3 * straight_ascend * ex);
+  penpos6(med, 270);  z6l = goodxy (1, 2/3 * straight_ascend) u;
+
+  penstroke z5e -- z6e;
+
+  label(6);
+
+  save_letter(t)(x3);
+endchar;
+
+"The letter u";
+beginchar("u", ltr_w(4/3), ex#, 0);
+  penpos1(thick, 180);  z1r = goodx (1/6, 1) u;
+  penpos2(thick, 180);  x2 = x1 ; y2 = 1/2 ex;
+  penpos3(med,   270);  x3 = 1/2[x2,x4]; y3r = 0;
+  pickup thickpen;
+  penpos4(thick,   0);  z4 = good.lft ((7/6, 1/2) u);
+  penpos5(thick,   0);  x5 = x4 ; y5 = ex ;
+
+  penstroke z1e -- z2e{down} .. {right}z3e .. {up}z4e -- z5e;
+
+  penpos6(thick, 180);  z6 = z4;
+  penpos7(med,   270);  z7r = (4/3 + lnk, 0) u;
+
+  penstroke z6e{down}.. {right}z7e;
+
+  label(7);
+
+  begingroup save u;
+  save_letter(u)(1/2[x1,x5]);
+  endgroup
+endchar;
+
+"The letter v";
+beginchar("v", ltr_w(10/6), ex#, 0);
+  pickup thickpen;
+  penpos1(med,   270);  z1l = (1/3, 1) u;
+  penpos2(thick, 180);  z2 = good.lft ((1/2, 1/2) u);
+  penpos3(med,   270);  z3r = (1, 0) u;
+  penpos4(med,     0);  z4 = goodx (3/2, 5/8) u;
+  penpos5(med,   150);  z5r = (7/6, 15/16) u;
+  penpos6(med,   270);  z6 = (10/6 + lnk, hl_y) u;
+
+  penstroke z1e{right} .. tension 1.2
+  .. {down} z2e .. {right}z3e .. {up}z4e
+   .. tension 0.8 .. {dir 240}z5e .. {right}z6e;
+
+  label(6);
+endchar;
+
+"The letter w";
+beginchar("w", ltr_w(13/6), ex#, 0);
+  pickup thickpen;
+  penpos1(med,   270);  z1l = (1/3, 1) u;
+  penpos2(thick, 180);  z2 = good.lft ((1/2, 1/2) u);
+  penpos3(med,   270);  z3r = (7/8, 0) u;
+  penpos5(thick, 180);  z5 = good.lft ((9/8, 7/8) u);
+  penpos4(med,     0);  z4l = z5r;
+
+  penstroke z1e{right} .. tension 1.2 .. {down}z2e 
+   .. {right}z3e .. tension 1.3 .. {up}z4e;
+
+  penpos6(med,   270);  z6r = (13/8, 0) u;
+  penpos7(med,     0);  z7 = goodx (2, 5/8) u;
+  penpos8(med,   150);  z8r = (5/3, 15/16) u;
+  penpos9(med,   270);  z9 = (13/6 + lnk, hl_y) u;
+
+  penstroke z5e{down} .. tension 1.3 .. {right}z6e
+  .. {up}z7e .. tension 0.8 .. {dir 240}z8e .. {right}z9e;
+
+  label(9);
+endchar;
+
+"The letter x";
+beginchar("x", ltr_w(8/5), ex#, 0);
+  penpos0(med,   300);  z0 = (-1/5, 5/6) u;
+  penpos1(med,   270);  z1l = (1/3, 1) u;
+  penpos2(thick, 180);  z2 = (4/5, 1/2) u;
+  penpos3(med,    90);  z3l = (1/3, 0) u;
+  penpos4(med,    45);  z4 = (0, 1/8) u;
+
+  penstroke z1e{right} .. {dir 270}z2e .. {left}z3e .. {dir 135}z4e;
+
+  penpos5(med,   45);  z2 = 1/2 [z4, z5];
+  penpos6(med,  270);  z2 = 1/2 [z1, z6];
+  penpos7(med, ml_d);  z7 = (8/5 + lnk, ml_y) u;
+
+  penstroke z5e{dir 135} .. {dir 270}z2e .. {right}z6e .. {ml_dir}z7e;
+
+  label(7);
+endchar;
+
+"The letter y";
+beginchar("y", width#.j + (3v/2 - accpos.j + lnk) / ex * ex#,
+    ex#, loop_descend * ex#);
+  pickup thickpen;
+  penpos1(med,   270);  z1l = (1/3, 1) u;
+  penpos2(thick, 180);  z2 = good.lft ((1/2, 1/2) u);
+  penpos3(med,   270);  z3r = (1/2[x2,x4], 0);
+  penpos4(med,     0);  z4l = z5r;
+  penpos5(thick, 180);  z5 = (3/2, 1) u;
+  penstroke z1e{right} .. {down}z2e .. {right}z3e .. {up}z4e;
+
+  addto currentpicture also letter.j shifted (x5 - accpos.j, 0);
+
+  label(4);
+
+  save_letter(y)(x3);
+endchar;
+
+"The letter z";
+beginchar("z", ltr_w(11/6), 6/5 * ex#, loop_descend * ex#);
+  penpos1(med,     0);  z1l = (1/6, 1) u;
+  penpos2(med,    90);  z2r = z1l + (-1/3,1)/5 u;
+  penpos3(med,   270);  z3l = z1l;
+  penpos4(thick, 210);  z4l = (9/8, 1) u;
+  penpos5(med,   135);  z5 = (2/3, 0) u;
+
+  penstroke z1e{up} .. z2e .. z3e .. z4e .. {dir 225}z5e;
+
+  penpos6(med,    315);  z6 = z5;
+  penpos7(thick,  220);  z7 = (5/4, 1/5) u;
+  penpos8(thick,  155);  z8 = (7/4, -4/9 * loop_descend) u;
+  penpos9(med,     90);  z9l = (1, -loop_descend) u;
+  penpos10(med,   315);  z10 = (7/8, -1/3 * loop_descend) u;
+  penpos11(med,  ml_d);  z11 = (11/6 + lnk, ml_y) u;
+
+  penstroke z6e{dir 45} .. z7e .. z8e .. tension 1.3
+   .. z9e .. z10e .. tension 1.4 .. {ml_dir}z11e;
+
+  label(8);
+
+  save_letter(z)(1/2[x1,x4]);
+  height.z := ex;
+  height#.z := ex#;
+endchar;
+
+"The ligature oe";
+beginchar(247, ltr_w(2), ex#, 0)
+  addto currentpicture also letter.o;
+  addto currentpicture also letter.e shifted ((1,0) u);
+endchar;
+
+%% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %%
+
+%%\sec Uppercase letters.   %{{{1
+
+hgt := uc_ascend * ex#;
+
+%% The small loop at the beginning of H, I, J and K is the same.
+
+picture small_loop;
+
+
+"The letter A";
+beginchar("A", ltr_wd(3,0), hgt, 0);
+
+%% The left bar:
+  
+  penpos1(thin,    0);  z1 = (3/5, 2/9) uu;
+  penpos2(med,    90);  z2l = (2/5, 1/3) uu;
+  penpos3(med,   180);  z3r = (0, 1/6) uu;
+  penpos4(med,   280);  z4r = (2/5, 0) uu;
+  penpos5(med,     0);  z5 = (7/6, 1/2) uu;
+  penpos6(med,   320);  z6 = (3/2, 1) uu;
+
+  penstroke z1e .. {left}z2e .. z3e
+  .. z4e .. {up}z5e .. z6e;
+
+%% The right bar:
+
+  penpos7(med,   145);  z7 = z6;
+  penpos8(thick, 180);  z8l = (3/2, 5/12) uu;
+  penpos9(med,   270);  z9r = (6/3, 0) uu;
+  penpos10(med,    0);  z10r = (3, 1/3) uu;
+  penpos11(med,   90);  z11 = (5/2, 2/3) uu;
+  penpos12(thin, 240);  z12 = (17/8, 1/3) uu;
+
+  penstroke z7e .. z8e{down} .. z9e .. z10e
+  .. tension 1.2 .. {left}z11e .. {dir 290}z12e;
+
+%% The horizontal bar:
+
+  penpos13(thin, 330);  z13 = (7/8, 6/12) uu;
+  penpos14(med,  270);  z14 = (13/8, 1/2) uu;
+  penpos15(thin,   0);  z15 = (11/6, 4/6) uu;
+
+  penstroke z13e{dir 105} .. {right}z14e .. {dir 110}z15e;
+
+  label(15);
+
+  save_letter(A)(x6l);
+  cedpos.A := x9;
+endchar;
+
+
+"The letter B";
+beginchar("B", ltr_wd(5/2,0), hgt, 0);
+
+%% The vertical bar:
+
+  penpos1(med,   135);  z1 = (1, 1) uu;
+  penpos2(thick, 180);  z2 = (1, 2/5) uu;
+  penpos3(med,    90);  z3l = (3/5, 0) uu;
+  penpos4(med,   330);  z4l = (1/5, 1/6) uu;
+
+  penstroke z1e{dir 255} .. z2e .. {left}z3e .. z4e;
+
+%% The two loops:
+ 
+  penpos5(thin,   180);  z5 = (3/5, 3/5) uu;
+  penpos6(med,     90);  z6 = (3/10, 1/3) uu;
+  penpos7(med,      0);  z7l = (0, 3/5) uu;
+  penpos8(med,    270);  z8l = (1, 1) uu;
+  penpos9(thick,  180);  z9 = (2, 7/9) uu;
+  penpos10(med,   345);  z10 = (9/8, 3/5) uu;
+  penpos11(thick, 180);  z11l = (5/2, 2/9) uu;
+  penpos12(med,    90);  z12l = (7/4, 0) uu;
+  penpos13(med,     0);  z13 = (5/4, 1/6) uu;
+  penpos14(thin,  340);  z14 = (3/2, 3/10) uu;
+
+  penstroke z5e{down} .. tension 1.2 .. z6e .. tension 1.3 .. {up}z7e
+  .. {right}z8e .. {down}z9e .. tension 1.4 .. {up}z10e .. tension 1.5
+  .. {down}z11e .. {left}z12e .. tension 1.0 .. z13e .. z14e;
+
+  label(14);
+endchar;
+
+
+"The letter C";
+beginchar("C", ltr_wd(2,0), hgt, 0);
+  penpos1(thin,  180);  z1 = (2/5, 1) uu;
+  penpos2(med,   180);  z2r = (0, 2/3) uu;
+  penpos3(med,   270);  z3 = (1, 1/2) uu;
+  penpos4(med,     0);  z4r = (2, 5/6) uu;
+  penpos5(med,    90);  z5r = (8/5, 1) uu;
+  penpos6(thick, 180);  z6r = (2/5, 2/5) uu;
+  penpos7(med,   270);  z7r = (4/3, 0) uu;
+  penpos8(med,     0);  z8 = (9/5, 1/4) u;
+  penpos9(thin,  130);  z9 = (7/5, 1/3) uu;
+
+  penstroke z1e .. {down}z2e .. z3e .. z4e .. z5e
+  .. {down}z6e .. z7e .. z8e .. z9e;
+
+  label(9);
+
+  save_letter(C)(x7);
+endchar;
+
+
+"The letter D";
+beginchar("D", ltr_wd(13/6,0), hgt, 0);
+  penpos1(thin,  180);  z1 = (4/3, 1) uu;
+  penpos2(thick, 180);  z2 = (1, 1/2) uu;
+  penpos3(med,    90);  z3l = (1/3, 0) uu;
+  penpos4(med,     0);  z4l = (0, 1/6) uu;
+  penpos5(med,   270);  z5 = (4/5, 1/6) uu;
+  penpos6(med,   270);  z6r = (3/2, 0) uu;
+  penpos7(thick,   0);  z7r = (13/6, 1/3) uu;
+  penpos8(med,    90);  z8r = (6/7, 1) uu;
+  penpos9(med,   180);  z9r = (0, 3/4) uu;
+  penpos10(thin, 240);  z10 = (2/5, 1/2) uu;
+  penpos11(thin,   0);  z11 = (2/3, 2/3) uu;
+
+  penstroke z1e .. z2e .. z3e .. z4e{up} .. z5e
+   .. z6e .. z7e .. z8e .. z9e .. z10e .. {up}z11e;
+
+  label(11);
+
+  save_letter(D)(1/2[x1,x2]);
+endchar;
+
+
+"The letter E";
+beginchar("E", ltr_wd(2,0), hgt, 0);
+  penpos1(thin,  180);  z1 = (1/3, 1) uu;
+  penpos2(med,   270);  z2 = (1/5, 3/4) uu;
+  penpos3(med,     0);  z3 = (8/5, 7/8) uu;
+  penpos4(med,    90);  z4r = (4/3, 1) uu;
+  penpos5(thick, 180);  z5 = (2/3, 7/10) uu;
+  penpos6(thin,  270);  z6l = (4/3, 12/20) uu;
+
+  penstroke z1e .. z2e .. tension 1.3 .. z3e .. z4e .. z5e .. {right}z6e;
+
+  penpos7(med,    90);  z7r = z6l;
+  penpos8(thick, 180);  z8r = (1/6, 1/6) uu;
+  penpos9(med,   270);  z9r = (1, 0) uu;
+  penpos10(med,    0);  z10r = (2, 1/4) uu;
+  penpos11(thin, 130);  z11 = (7/6, 1/4) uu;
+
+  penstroke z7e{left} .. z8e .. z9e .. z10e{up} .. z11e;
+
+  label(11);
+
+  save_letter(E)(1/2[x3,x5]);
+endchar;
+
+
+"The letter F";
+beginchar("F", ltr_wd(9/4,0), hgt, 0);
+
+%% The vertical bar:
+
+  penpos1(thin,  135);  z1 = (6/4, 1) uu;
+  penpos2(thick, 180);  z2 = (5/4, 1/2) uu;
+  penpos3(med,    90);  z3l = (2/3, 0) uu;
+  penpos4(thin,  330);  z4 = (1/3, 1/6) uu;
+
+  penstroke z1e .. {down}z2e .. z3e .. z4e;
+
+%% The upper horizontal bar:
+
+  penpos5(thin, 180);  z5 = (3/4, 2/3) uu;
+  penpos6(med,   90);  z6 = (1/2, 1/3) uu;
+  penpos7(med,    0);  z7l = (0, 1/2) uu;
+  penpos8(med,  270);  z8l = (4/5, 1) uu;
+  penpos9(med,  270);  z9 = (2, 5/6) uu;
+  penpos10(thin, 90);  z10r = (2, 1) uu;
+
+  penstroke z5e .. tension 1.2 .. z6e .. z7e
+  .. tension 1.2 .. z8e{right} .. {right}z9e .. z10e;
+
+%% The middle bar:
+
+  penpos11(med,  270);  z11 = z2r - (1/10, 0) uu;
+  penpos12(med,  270);  z12 = z2r + (2/3, 0) uu;
+  penpos13(med,  110);  z13 = z2r + (2/3, 1/12) uu;
+  penpos14(thin, 180);  z14 = z2r + (1/2, -1/6) uu;
+
+  penstroke z11e .. z12e{right} .. z13e .. {down}z14e;
+
+  label(14);
+endchar;
+
+
+"The letter G";
+beginchar("G", ltr_w(2), hgt, loop_descend * ex#);
+  penpos1(thin,  180);  z1 = (1/2, 1) uu;
+  penpos2(med,   200);  z2r = (0, 2/3) uu;
+  penpos3(med,     0);  z3r = (2, 5/6) uu;
+  penpos4(med,    90);  z4r = (5/3, 1) uu;
+  penpos5(thick, 180);  z5r = (1/3, 1/3) uu;
+  penpos6(med,   270);  z6r = (1, 0) uu;
+  penpos7(thick,   0);  z7 = good.rt ((15/8, 1) u);
+
+  penstroke z1e .. {down}z2e .. tension 1.2 .. z3e .. z4e
+  .. tension 1.2 .. z5e .. z6e .. {up}z7e;
+
+  penpos0(thick, 180);  z0 = good.lft ((3/4, 1) u);
+  addto currentpicture also letter.j shifted (z7 - z0);
+
+  label(7);
+
+  save_letter(G)(1/4[x4,x5]);
+endchar;
+
+
+"The letter H";
+beginchar("H", ltr_wd(5/2,0), hgt, 0);
+
+%% The loop before the vertical bar:
+
+  penpos1(thin,  270);  z1l = (0, 7/12) uu;
+  penpos2(med,    20);  z2 = (1/6, 1) uu;
+  penpos3(med,   250);  z3l = (1/10, 29/30) uu;
+  penpos4(thick,   0);  z4 = (1, 1) uu;
+
+  penstroke z1e .. {dir 110}z2e .. {dir 340}z3e .. z4e;
+
+  small_loop := currentpicture;
+
+%% The letter's shape:
+
+  penpos5(thick,  180);  z5 = z4;
+  penpos6(thick,  180);  z6 = (1, 1/3) uu;
+  penpos7(med,     90);  z7l = (1/2, 0) uu;
+  penpos8(med,      0);  z8l = (0, 1/6) uu;
+  penpos9(med,    315);  z9 = (5/4, 1/2) uu;
+  penpos10(med,     0);  z9 = 1/2[z8, z10];
+  penpos11(med,    90);  z9 = 1/2[z7, z11];
+  penpos12(thick, 180);  z9 = 1/2[z6, z12];
+  penpos13(thick, 180);  z13 = (3/2, 1/3) uu;
+  penpos14(med,   270);  z14r = (2, 0) uu;
+  penpos15(thin,   90);  z15 = (2, 1/3) uu;
+
+  penstroke z5e .. z6e .. z7e .. z8e .. z9e .. z10e .. z11e .. z12e .. z13e
+   .. z14e .. {dir 190}z15e;
+
+%% The small vertical bar in the middle:
+
+  penpos16(thin, 180);  z16 = z9 + (0, 1/8) uu;
+  penpos17(thin, 180);  z9 = 1/2[z16, z17];
+
+  penstroke z16e .. z17e;
+
+  label(18);
+endchar;
+
+
+"The letter I";
+beginchar("I", ltr_wd(1,0) + thick#/2, hgt, 0);
+
+  addto currentpicture also small_loop;
+
+  penpos1(thick, 180);  z1 = (1, 1) uu;
+  penpos2(thick, 180);  z2 = (1, 1/3) uu;
+  penpos3(med,    90);  z3l = (3/5, 0) uu;
+  penpos4(med,     0);  z4l = (0, 1/6) uu;
+  penpos5(thin,  270);  z5 = (1/3, 1/3) uu;
+
+  penstroke z1e .. {down}z2e .. z3e .. z4e .. {right}z5e;
+
+  label(5);
+
+  save_letter(I)(x3);
+endchar;
+
+
+"The letter J";
+beginchar("J", ltr_w(9/8), hgt, loop_descend * ex#);
+  addto currentpicture also small_loop;
+
+  z0 = good.lft ((3/4, 1) uu);
+  penpos1(thick, 180);  z1 = (1, 1) uu;
+  penpos2(thick, 180);  z2 = (1, 0) uu;
+
+  penstroke z1e .. z2e;
+
+  addto currentpicture also letter.j shifted (z1 - z0);
+
+  label(2);
+endchar;
+
+
+"The letter K";
+beginchar("K", ltr_wd(7/3,0), hgt, 0);
+
+%% We get back the I's vertical bar:
+
+  addto currentpicture also letter.I;
+
+%% And we add the oblique bars:
+
+  penpos1(thin,    0);  z1r = (7/3, 9/10) uu;
+  penpos2(med,    90);  z2r = (2, 1) uu;
+  penpos3(thick, 180);  z3 = 1/2[z2, z4];
+  penpos4(med,    90);  z4 = (7/6, 5/12) uu;
+  penpos5(med,     0);  z5 = (5/6, 11/24) uu;
+  penpos6(med,   270);  z6 = (7/6, 1/2) uu;
+  penpos7(thick, 180);  z7 = 1/2[z6, z8];
+  penpos8(med,   290);  z8r = (2, 0) uu;
+  penpos9(med,     0);  z9r = (7/3, 1/6) uu;
+  penpos10(thin,  90);  z10 = (2, 1/3) uu;
+
+  penstroke z1e .. z2e .. z3e .. z4e .. z5e .. z6e .. z7e .. z8e
+  .. z9e .. z10e;
+
+  label(10);
+endchar;
+
+
+"The letter L";
+beginchar("L", ltr_wd(7/3,0), hgt, 0);
+  penpos1(thin,  180);  z1r = (0, 1) uu;
+  penpos2(med,   270);  z2 = (7/6, 1/2) uu;
+  penpos3(med,     0);  z3r = (7/3, 5/6) uu;
+  penpos4(med,   110);  z4r = (2, 1) uu;
+  penpos5(thick, 150);  z5 = (7/6, 1/2) uu;
+  penpos6(med,   110);  z6l = (1/2, 0) uu;
+  penpos7(med,     0);  z7l = (0, 1/6) uu;
+  penpos8(med,   240);  z8 = (2/3, 1/4) uu;
+  penpos9(med,   270);  z9r = (5/3, 0) uu;
+  penpos10(med,    0);  z10r = (7/3, 1/6) uu;
+  penpos11(thin, 180);  z11 = (7/4, 1/4) uu;
+
+  penstroke z1e{down} .. z2e .. z3e .. z4e .. z5e .. z6e
+   .. z7e .. {dir -50}z8e .. {right}z9e .. z10e .. {down}z11e;
+
+  label(11);
+
+  save_letter(L)(x9);
+endchar;
+
+
+"The letter M";
+beginchar("M", ltr_wd(10/3,0), hgt, 0);
+
+%% The left bar:
+
+  penpos1(thin,    0);  z1 = (1/2, 1/4) uu;
+  penpos2(med,   180);  z2r = (0, 1/5) uu;
+  penpos3(med,   300);  z3r = (1/2, 0) uu;
+  penpos4(med,     0);  z4l = (1, 1) uu;
+
+  penstroke z1e{up} .. {down}z2e .. z3e .. tension 1.6 .. {up}z4e;
+
+%% The first middle bar:
+
+  penpos5(thick, 180);  z5r = z4l;
+  penpos6(thick, 180);  z6 = (4/3, 0) uu;
+  
+  penstroke z5e .. z6e;
+
+%% The second middle bar:
+
+  penpos7(med, 0);  z7r = z6l;
+  penpos8(med, 0);  z8l = (2, 1) uu;
+
+  penstroke z7e .. {dir 70}z8e;
+
+%% The right bar:
+
+  penpos9(thick,  180);  z9r = z8l;
+  penpos10(med,   270);  z10r = (5/2, 0) uu;
+  penpos11(med,     0);  z11r = (10/3, 1/3) uu;
+  penpos12(med,    90);  z12 = (8/3, 2/3) uu;
+  penpos13(thin,  180);  z13 = (7/3, 1/3) uu;
+
+  penstroke z9e{dir 250} .. tension 1.5 .. {right}z10e .. z11e
+  .. z12e .. {down}z13e;
+
+  label(13);
+endchar;
+
+
+"The letter N";
+beginchar("N", ltr_wd(3,0), hgt, 0);
+
+%% The left bar:
+
+  penpos1(thin,    0);  z1 = (1/2, 1/4) uu;
+  penpos2(med,   180);  z2r = (0, 1/5) uu;
+  penpos3(med,   300);  z3r = (1/2, 0) uu;
+  penpos4(med,     0);  z4l = (1, 1) uu;
+
+  penstroke z1e{up} .. {down}z2e .. z3e .. tension 1.6 .. {up}z4e;
+
+%% The middle bar:
+
+  penpos5(med,   180);  z5r = z4l;
+  penpos6(thick, 180);  z6 = (3/2, 0) uu;
+  
+  penstroke z5e .. z6e;
+
+%% The right bar:
+
+  penpos7(med,    0);  z7r = z6l;
+  penpos8(med,  290);  z8l = (7/3, 1) uu;
+  penpos9(med,  180);  z9l = (3, 2/3) uu;
+  penpos10(med,  90);  z10 = (5/2, 1/3) uu;
+  penpos11(thin,  0);  z11 = (2, 2/3) uu;
+
+  penstroke z7e{up} .. tension 1.2 .. z8e .. {down}z9e .. z10e
+  .. {dir 70}z11e;
+
+  label(11);
+
+  save_letter(N)(x6);
+endchar;
+
+
+"The letter O";
+beginchar("O", ltr_wd(2,0), hgt, 0);
+  penpos1(thin,   90);  z1r = (9/8, 1) uu;
+  penpos2(thick, 180);  z2r = (0, 1/2) uu;
+  penpos3(med,   270);  z3r = (1, 0) uu;
+  penpos4(thick,   0);  z4r = (2, 1/2) uu;
+  penpos5(med,    90);  z5r = (6/5, 19/20) uu;
+  penpos6(thin,  180);  z6 = (1/2, 1/3) uu;
+
+  penstroke z1e{left} .. z2e .. z3e .. z4e .. z5e .. {dir 300}z6e;
+
+  label(6);
+
+  save_letter(O)(x3);
+endchar;
+
+
+"The letter P";
+beginchar("P", ltr_wd(5/2,0), hgt, 0);
+  penpos1(thin,  180);  z1r = (3/2, 1) uu;
+  penpos2(thick, 180);  z2 = (3/2, 1/2) uu;
+  penpos3(med,    90);  z3l = (1, 0) uu;
+  penpos4(thin,    0);  z4 = (1/2, 1/4) uu;
+
+  penstroke z1e .. z2e .. z3e .. z4e;
+
+  penpos5(thin,  180);  z5 = (1, 2/3) uu;
+  penpos6(med,    90);  z6 = (1/2, 1/3) uu;
+  penpos7(med,     0);  z7l = (0, 1/2) uu;
+  penpos8(med,   270);  z8l = (4/3, 1) uu;
+  penpos9(thick, 180);  z9l = (5/2, 3/4) uu;
+  penpos10(thin,   0);  z10 = (5/3, 3/4) uu;
+
+  penstroke z5e .. z6e .. z7e{up} .. z8e .. z9e{down} .. z10e;
+
+  label(10);
+endchar;
+
+
+"The letter Q";
+beginchar("Q", ltr_wd(5/2,0), hgt, thick#/2);
+  addto currentpicture also letter.O;
+
+  penpos1(thin,  270);  z1 = (4/5, 1/6) uu;
+  penpos2(thick, 270);  z2 = (2, 0) uu;
+  penpos3(med,     0);  z3r = (5/2, 1/8) uu;
+  penpos4(thin,   90);  z4 = (13/6, 1/4) uu;
+
+  penstroke z1e{dir 20} .. z2e .. z3e .. z4e;
+
+  label(4);
+endchar;
+
+
+"The letter R";
+beginchar("R", ltr_wd(13/4,0), hgt, 0);
+  penpos1(thin,  180);  z1r = (3/2, 1) uu;
+  penpos2(thick, 180);  z2 = (3/2, 1/2) uu;
+  penpos3(med,    90);  z3l = (1, 0) uu;
+  penpos4(thin,    0);  z4 = (1/2, 1/4) uu;
+
+  penstroke z1e .. z2e .. z3e .. z4e;
+
+  penpos5(thin,   180);  z5 = (1, 2/3) uu;
+  penpos6(med,     90);  z6 = (1/2, 1/3) uu;
+  penpos7(med,      0);  z7l = (0, 1/2) uu;
+  penpos8(med,    270);  z8l = (4/3, 1) uu;
+  penpos9(thick,  180);  z9 = (5/2, 3/4) uu;
+  penpos10(med,   345);  z10 = (5/3, 3/5) uu;
+  penpos11(thick, 180);  z11 = (7/3, 1/3) uu;
+  penpos12(med,   270);  z12r = (11/4, 0) uu;
+  penpos13(med,     0);  z13r = (13/4, 1/6) uu;
+  penpos14(thin,   90);  z14 = (11/4, 1/3) uu;
+
+  penstroke z5e .. z6e .. z7e{up} .. z8e .. z9e .. tension 1.2 .. z10e{up}
+  .. tension 1.4 .. z11e .. z12e .. z13e .. z14e;
+
+  label(14);
+
+  save_letter(R)(x10);
+endchar;
+
+
+"The letter S";
+beginchar("S", ltr_wd(2,0), hgt, 0);
+  penpos1(thin,  180);  z1 = (2/5, 1) uu;
+  penpos2(med,   180);  z2r = (0, 2/3) uu;
+  penpos3(med,   270);  z3 = (1, 1/2) uu;
+  penpos4(med,     0);  z4r = (2, 5/6) uu;
+  penpos5(med,    90);  z5r = (8/5, 1) uu;
+  penpos6(thick, 210);  z6r = (1, 1/3) uu;
+  penpos7(med,    90);  z7l = (1, 0) uu;
+  penpos8(med,    70);  z8 = (2/5, 1/4) u;
+  penpos9(thin,  180);  z9r = (0, 0) uu;
+
+  penstroke z1e .. {down}z2e .. z3e .. z4e .. z5e
+  .. z6e .. z7e .. z8e .. {dir 250}z9e;
+
+  label(9);
+
+  save_letter(S)(1/2[x3,x5]);
+  cedpos.S := x7;
+endchar;
+
+
+"The letter T";
+beginchar("T", ltr_wd(11/4,0), hgt, 0);
+  penpos1(thin,  180);  z1 = (1, 2/3) uu;
+  penpos2(med,     0);  z2l = (0, 7/10) uu;
+  penpos3(med,   270);  z3l = (2/3, 1) uu;
+  penpos4(thick, 200);  z4 = (13/8, 2/3) uu;
+  penpos5(med,     0);  z5r = (11/4, 3/4) uu;
+  penpos6(med,    90);  z6r = (17/8, 1) uu;
+  penpos7(thick, 180);  z7 = (9/8, 2/5) uu;
+  penpos8(med,   270);  z8r = (2, 0) uu;
+  penpos9(med,     0);  z9r = (5/2, 1/6) uu;
+  penpos10(thin, 180);  z10 = (7/4, 1/4) uu;
+
+   penstroke z1e{down} .. {up}z2e .. z3e .. {dir 300}z4e .. z5e
+  .. {left}z6e .. tension 1.2 .. z7e .. {right}z8e .. z9e .. z10e;
+
+  label(10);
+
+  save_letter(T)(1/2[x3,x6]);
+  cedpos.T := x8;
+endchar;
+
+
+"The letter U";
+beginchar("U", ltr_wd(3,0), hgt, 0);
+  penpos1(thin,  180);  z1 = (3/4, 3/5) uu;
+  penpos2(med,     0);  z2l = (0, 2/3) uu;
+  penpos3(med,   250);  z3l = (3/5, 1) uu;
+  penpos4(thick, 180);  z4 = (1, 1/4) uu;
+  penpos5(med,   270);  z5r = (3/2, 0) uu;
+  penpos6(med,     0);  z6 = (2, 1/6) uu;
+
+  penstroke z1e{down} .. z2e{up} .. z3e .. tension 1.1 .. z4e .. z5e .. z6e;
+
+  penpos7(med,   180);  z7 = (2, 1) uu;
+  penpos8(thick, 180);  z8 = z6;
+  penpos9(med,   270);  z9r = (5/2, 0) uu;
+  penpos10(med,    0);  z10r = (3, 1/6) uu;
+  penpos11(thin,  90);  z11 = (12/5, 1/3) uu;
+
+  penstroke z7e{down} .. z8e{dir 280} .. z9e .. z10e .. z11e;
+
+  label(11);
+
+  save_letter(U)(1/2[x4,x7]);
+endchar;
+
+
+"The letter V";
+beginchar("V", ltr_wd(8/3,0), hgt, 0);
+  penpos1(thin,  180);  z1 = (3/4, 3/5) uu;
+  penpos2(med,     0);  z2l = (0, 2/3) uu;
+  penpos3(med,   250);  z3l = (3/5, 1) uu;
+  penpos4(thick, 180);  z4 = (1, 1/4) uu;
+  penpos5(med,   270);  z5r = (3/2, 0) uu;
+  penpos6(med,     0);  z6 = (9/4, 1/2) uu;
+  penpos7(med,    90);  z7r = (11/6, 1) uu;
+  penpos8(med,   270);  z8 = (2, 2/3) uu;
+  penpos9(thin,    0);  z9r = (8/3, 1) uu;
+
+  penstroke z1e{down} .. z2e{up} .. z3e .. tension 1.1 .. z4e .. z5e
+  .. {up}z6e .. tension 1.3 .. z7e{left} .. {right}z8e .. {up}z9e;
+
+  label(9);
+endchar;
+
+
+"The letter W";
+beginchar("W", ltr_wd(11/3,0), hgt, 0);
+  penpos1(thin,  180);  z1 = (3/4, 3/5) uu;
+  penpos2(med,     0);  z2l = (0, 2/3) uu;
+  penpos3(med,   250);  z3l = (3/5, 1) uu;
+  penpos4(thick, 180);  z4 = (1, 1/4) uu;
+  penpos5(med,   270);  z5r = (3/2, 0) uu;
+  penpos6(med,     0);  z6 = (2, 1/6) uu;
+
+  penstroke z1e{down} .. z2e{up} .. z3e .. tension 1.1 .. z4e .. z5e .. z6e;
+
+  penpos7(med,   180);  z7 = (15/8, 7/8) uu;
+  penpos8(thick, 180);  z8 = z6;
+  penpos9(med,   270);  z9r = (5/2, 0) uu;
+  penpos10(med,    0);  z10 = (13/4, 1/2) uu;
+  penpos11(med,   90);  z11r = (17/6, 1) uu;
+  penpos12(med,  270);  z12 = (3, 2/3) uu;
+  penpos13(thin,   0);  z13r = (11/3, 1) uu;
+
+  penstroke z7e{down} .. z8e{dir 280} .. z9e .. {up}z10e .. tension 1.3
+  .. z11e{left} .. {right}z12e .. {up}z13e;
+
+  label(13);
+endchar;
+
+
+"The letter X";
+beginchar("X", ltr_wd(8/3,0), hgt, 0);
+  penpos1(thin,   90);  z1 = (2/3, 2/3) uu;
+  penpos2(med,     0);  z2l = (0, 5/6) uu;
+  penpos3(med,   270);  z3l = (2/3, 1) uu;
+  penpos4(thick, 180);  z4 = (4/3, 1/2) uu;
+  penpos5(med,    90);  z5l = (1/2, 0) uu;
+  penpos6(med,     0);  z6l = (0, 1/6) uu;
+  penpos7(thin,  270);  z7 = (1/3, 1/3) uu;
+
+  penstroke z1e .. z2e .. z3e .. z4e .. z5e .. z6e .. z7e;
+
+  penpos8(thin,   270);  z8 = (2, 1/3) uu;
+  penpos9(med,    180);  z9l = (8/3, 1/6) uu;
+  penpos10(med,    90);  z10l = (2, 0) uu;
+  penpos11(thick,   0);  z11 = (4/3, 1/2) uu;
+  penpos12(med,   270);  z12l = (13/6, 1) uu;
+  penpos13(med,   180);  z13l = (8/3, 5/6) uu;
+  penpos14(thin,   90);  z14 = (7/3, 2/3) uu;
+
+  penstroke z8e .. z9e .. z10e .. z11e .. z12e .. z13e .. z14e;
+
+  label(14);
+endchar;
+
+
+"The letter Y";
+beginchar("Y", ltr_w(19/8), hgt, loop_descend * ex#);
+  penpos1(thin,  180);  z1 = (3/4, 3/5) uu;
+  penpos2(med,     0);  z2l = (0, 2/3) uu;
+  penpos3(med,   250);  z3l = (3/5, 1) uu;
+  penpos4(thick, 180);  z4 = (1, 3/8) uu;
+  penpos5(med,   270);  z5r = (3/2, 1/8) uu;
+  penpos6(med,     0);  z6l = z8r;
+
+  penpos7(thick, 180);  x7 = x8; y7 = uc_ascend * ex;
+  penpos8(thick, 180);  z8 = good.rt ((9/4, 1) u);
+
+  penstroke z1e{down} .. z2e{up} .. z3e .. tension 1.1 .. z4e
+  .. z5e .. {up}z6e;
+  penstroke z7e .. z8e;
+
+  addto currentpicture also letter.j shifted (3/2 * v, 0);
+
+  label(8);
+
+  save_letter(Y)(1/2[x4,x7]);
+endchar;
+
+
+"The letter Z";
+beginchar("Z", ltr_wd(3,0), hgt, 0);
+  penpos1(thin,  180);  z1 = (3/4, 5/6) uu;
+  penpos2(med,     0);  z2l = (0, 3/4) uu;
+  penpos3(med,   270);  z3l = (1/2, 1) uu;
+  penpos4(med,   270);  z4 = (5/2, 3/4) uu;
+  penpos5(med,     0);  z5r = (3, 7/8) uu;
+  penpos6(med,    90);  z6r = (8/3, 1) uu;
+  penpos7(thick, 165);  z7 = (6/4, 1/2) uu;
+  penpos8(med,    90);  z7 = 1/2[z6, z8];
+  penpos9(med,     0);  z7 = 1/2[z5, z9];
+  penpos10(med,  270);  z7 = 1/2[z4, z10];
+  penpos11(med,  270);  z7 = 1/2[z3, z11];
+  penpos12(med,    0);  z7 = 1/2[z2, z12];
+  penpos13(thin, 180);  z7 = 1/2[z1, z13];
+
+  penstroke z1e .. z2e{up} .. z3e{right} .. z4e .. z5e{up} .. z6e{left}
+  .. z7e .. {left}z8e .. z9e .. z10e .. {right}z11e .. z12e{up} .. z13e;
+
+  penpos14(thin, 270);  z14 = z7 - (1/2, 0) uu;
+  penpos15(med,  270);  z15 = z7;
+  penpos16(thin, 270);  z16 = z7 + (1/2, 0) uu;
+
+  penstroke z14e{dir 30} .. z15e .. {dir 30}z16e;
+
+  label(16);
+
+  save_letter(Z)(x15);
+endchar;
+
+
+%% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %%
+
+%%\sec Inter-letter links.   %{{{1
+
+%% The constants below define the position of the link glyphs in the font.
+%% the names have the form ``{\it lnk.right.left}'' where {\it right} is the
+%% shape of the letter on the right and {\it left} is the kind of link at the
+%% end of the letter on the left.
+
+%% Since we are limited to 256 positions, we have to use some codes that are
+%% defined in the T1 encoding for other purposes. The accent glyphs may be
+%% used for that, since constructed accented letters are unusable in this font
+%% (because they don't link to surrounding letters). The ``f'' ligatures are
+%% also usable since they are irrelevant here.
+
+lnk.small.low = 0; lnk.small.med = 1; lnk.small.high = 2;
+lnk.loop.low = 3; lnk.loop.med = 4; lnk.loop.high = 5;
+lnk.vert.low = 6; lnk.vert.med = 7; lnk.vert.high = 8;
+lnk.far.low = 9; lnk.far.med = 10; lnk.far.high = 11;
+lnk.hloop.low = 12; lnk.hloop.med = 13;
+lnk.mn.low = 14; lnk.mn.med = 15; lnk.mn.high = 16; lnk.mn.beg = 17;
+lnk.x.low = 24; lnk.x.med = 27;
+lnk.sq = 28;
+lnk.high = 29; lnk.low = 30; lnk.lowmed = 31;
+
+%% There is a special trick we use in all links: the initial $x$ coordinante
+%% is not 0 as would be expected but $-1$. This makes links begin one pixel to
+%% the left of their box, ensuring that they actually join with the letter
+%% before them.
+
+lw := link_width * ex#;
+
+%%\subsec For small letters (a, c, d, e, g, o, q).   %{{{2
+
+"Low link for small letters";
+beginchar(lnk.small.low, lw, 0, 0);
+  penpos1(med, 270);  z1r = (-1, 0);
+  penpos2(med,   0);  z2l = (lnk, 1/3) u;
+  penstroke z1e{right} .. {up}z2e;
+  label(2);
+endchar ;
+
+"Medium link for small letters";
+beginchar(lnk.small.med, lw, 0, 0);
+  penpos1(med, ml_d);  z1 = (-1, ml_y * ex);
+  penpos2(med, ml_d);  z2l = (lnk, 1/3) u;
+  penstroke z1e{ml_dir} .. tension 3 .. {up}z2e;
+  label(2);
+endchar ;
+
+"High link for small letters";
+beginchar(lnk.small.high, lw, 0, 0);
+  penpos1(med,  270);  z1 = (-1, hl_y * ex);
+  penpos2(thin, 270);  z2l = (3/5 + lnk, 1) u;
+  penstroke z1e{right} .. {right}z2e ;
+  label(2);
+endchar ;
+
+%%\subsec For loops (b, f, h, l).   %{{{2
+
+"Low link for large loops";
+beginchar(lnk.loop.low, lw, loop_ascend*ex#, 0);
+  if proofing > 1: proofrule ((lnk,0) u, (lnk,loop_ascend)u); fi
+  penpos1(med, 270);  z1r = (-1, 0);
+  penpos2(med, 330);  z2 = (3/4 + lnk, 2/3 * loop_ascend) u + (0,0);
+  penstroke z1e{right} .. tension 2 .. {up}z2e ;
+  label(2);
+endchar;
+
+"Medium link for large loops";
+beginchar(lnk.loop.med, lw, loop_ascend*ex#, 0);
+  if proofing > 1: proofrule ((lnk,0) u, (lnk,loop_ascend)u); fi
+  penpos1(med, ml_d);  z1 = (-1, ml_y * ex);
+  penpos2(med,  330);  z2 = (3/4 + lnk, 2/3 * loop_ascend) u + (0,0);
+  penstroke z1e{ml_dir} .. tension 1.2 .. {up}z2e ;
+  label(2);
+endchar;
+
+"High link for large loops";
+beginchar(lnk.loop.high, lw, loop_ascend*ex#, 0);
+  if proofing > 1: proofrule ((lnk,0) u, (lnk,loop_ascend)u); fi
+  penpos1(med, 270);  z1 = (-1, hl_y * ex);
+  penpos2(med, 330);  z2 = (3/4 + lnk, 2/3 * loop_ascend) u + (0,0);
+  penstroke z1e{right} .. tension 1.4 .. {up}z2e ;
+  label(2);
+endchar;
+
+"Low to medium transition";
+beginchar(lnk.lowmed, ltr_w(1/6), 0, 0);
+  penpos1(med,  270);  z1r = (-1, 0);
+  penpos2(med, ml_d);  z2 = (1/6 + lnk, ml_y) u;
+  penstroke z1e{right} .. {ml_dir}z2e ;
+  label(2);
+endchar;
+
+%%\subsec For those vertical on the left (i, u).   %{{{2
+
+"Low link for verticals";
+beginchar(lnk.vert.low, lw, 0, 0);
+  penpos1(med, 270);  z1r = (-1, 0);
+  penpos2(med,   0);  z2l = (1/6 + lnk, 2/3) u;
+  penpos3(med,   0);  z3l = (1/6 + lnk,   1) u;
+  penstroke z1e{right} .. {up}z2e -- z3e;
+  label(3);
+endchar;
+
+"Medium link for verticals";
+beginchar(lnk.vert.med, lw, 0, 0);
+  penpos1(med, ml_d);  z1 = (-1, ml_y * ex);
+  penpos2(med,    0);  z2l = (1/6 + lnk, 1) u;
+  penstroke z1e{ml_dir} .. tension 1.2 .. {up}z2e;
+  label(2);
+endchar;
+
+"High link for verticals";
+beginchar(lnk.vert.high, lw, 0, 0);
+  penpos1(med, 270);  z1 = (-1, hl_y * ex);
+  penpos2(med,   0);  z2l = (1/6 + lnk, 1) u;
+  penstroke z1e{right} .. {up}z2e;
+  label(2);
+endchar;
+
+%%\subsec For the far verticals (j, p).   %{{{2
+
+"Low link for far verticals";
+beginchar(lnk.far.low, lw, 0, 0);
+  penpos1(med, 270);  z1r = (-1, 0);
+  penpos2(med,   0);  z2l = z3l;
+  pickup thickpen;
+  penpos3(thick, 0);  z3 = good.rt ((3/4 + lnk, 1) u);
+  penstroke z1e{right} .. tension 1.2 .. {dir 60}z2e;
+  label(2);
+endchar;
+
+"Medium link for far verticals";
+beginchar(lnk.far.med, ltr_w(-1/4), 0, 0);
+  penpos1(med, ml_d);  z1 = (-1, ml_y * ex);
+  penpos2(med,    0);  z2l = z3l;
+  penpos3(thick,  0);  z3 = good.rt ((1/2 + lnk, 1) u);
+  penstroke z1e{ml_dir} .. tension 1.3 .. {dir 60}z2e;
+  label(2);
+endchar;
+
+"High link for far verticals";
+beginchar(lnk.far.high, ltr_w(-1/4), 0, 0);
+  penpos1(med, 270);  z1 = (-1, hl_y * ex);
+  penpos2(med,   0);  z2l = z3l;
+  penpos3(thick, 0);  z3 = good.rt ((1/2 + lnk, 1) u);
+  penstroke z1e{right} .. {dir 50}z2e;
+  label(2);
+endchar;
+
+%%\subsec For high loops (h, k).   %{{{2
+
+"Low link for high loops";
+beginchar(lnk.hloop.low, ltr_w(1/6), 0, 0)
+  penpos1(med, 270);  z1r = (-1, 0);
+  penpos2(med,   0);  z2l = (1/6 + lnk, 6/8) u;
+  
+  penstroke z1e{right} .. {up}z2e;
+
+  penpos3(med, 270);  z3l  = z2l;
+  penpos4(med, 330);  z4 = (11/12 + lnk, 2/3 * loop_ascend) u + (0,0);
+
+  penstroke z3e .. tension 1.2 .. {up}z4e;
+
+  label(4);
+endchar;
+
+"Medium link for high loops";
+beginchar(lnk.hloop.med, lw, 0, 0)
+  penpos1(med, ml_d);  z1 = (-1, ml_y * ex);
+  penpos2(med,    0);  z2l = (lnk, 6/8) u;
+
+  penstroke z1e{ml_dir} .. {up}z2e;
+
+  penpos3(med, 270);  z3l  = z2l;
+  penpos4(med, 330);  z4 = (3/4 + lnk, 2/3 * loop_ascend) u + (0,0);
+
+  penstroke z3e .. tension 1.2 .. {up}z4e;
+
+  label(4);
+endchar;
+
+%%\subsec For m, n, v, and w.   %{{{2
+
+"Low link for m and n";
+beginchar(lnk.mn.low, ltr_w(1/6), 0, 0)
+  penpos1(med, 270);  z1r = (-1, 0);
+  penpos2(med,   0);  z2l = (1/12 + lnk, 1/2) u;
+  penpos3(med, 270);  z3l = (1/2 + lnk, 1) u + (1,0);
+  penstroke z1e{right} .. tension 1.4 .. {up}z2e .. {right}z3e;
+  label(3);
+endchar;
+
+"Medium link for m and n";
+beginchar(lnk.mn.med, ltr_w(1/12), 0, 0)
+  penpos1(med, ml_d);  z1 = (-1, ml_y * ex);
+  penpos2(med,    0);  z2l = ((1/24 + lnk) * v, 1/2 [y1, y3]);
+  penpos3(med,  270);  z3l = (5/12 + lnk, 1) u + (1,0);
+  penstroke z1e{ml_dir} .. {up}z2e .. tension 1.1 .. {right}z3e;
+  label(3);
+endchar;
+
+"High link for m and n";
+beginchar(lnk.mn.high, ltr_w(1/6), 0, 0)
+  penpos1(med, 270);  z1 = (-1, hl_y * ex);
+  penpos2(med, 330);  z2 = 1/2 [z1, z3];
+  penpos3(med, 270);  z3l = (1/2 + lnk, 1) u + (1,0);
+  penstroke z1e{right} .. z2e .. {right}z3e;
+  label(3);
+endchar;
+
+"Beginning for m and n";
+beginchar(lnk.mn.beg, 0, 0, 0)
+  penpos1(med, 320);  z1 = (-1, 2/5 * ex);
+  penpos2(med, 270);  z2l = (1/3, 1) u + (1,0);
+  penstroke z1e{up} .. {right} z2e;
+  label(3);
+endchar;
+
+%%\subsec For the x.   %{{{2
+
+"Low link for x";
+beginchar(lnk.x.low, ltr_w(1/2), 0, 0)
+  penpos1(med, 270);  z1r = (-1, 0);
+  penpos2(med,   0);  z2 = 1/2[z1,z3];
+  penpos3(med, 270);  z3l = (5/6 + lnk, 1) u + (1,0);
+  penstroke z1e{right} .. {dir 80}z2e .. {right}z3e;
+  label(3);
+endchar;
+
+"Medium link for x";
+beginchar(lnk.x.med, ltr_w(1/4), 0, 0)
+  penpos1(med, ml_d);  z1 = (-1, ml_y * ex);
+  penpos2(med,    0);  z2 = 1/2[z1,z3];
+  penpos3(med,  270);  z3l = (7/12 + lnk, 1) u + (1,0);
+  penstroke z1e{ml_dir} .. {dir 80}z2e .. {right}z3e;
+  label(3);
+endchar;
+
+%%\subsec Special links.   %{{{2
+
+%% The letters {\fc s} and {\fc q} have final forms without a link on the
+%% right, which is the actual glyph. Inside words, they need an extra link.
+
+"Right link for s and q";
+beginchar(lnk.sq, lw, ex#/3, 0);
+  penpos1(med, 180);  z1l = (0, 1/3) u;
+  penpos2(med, 270);  z2r = (lnk, 0) u;
+  penstroke z1e {down} .. {right}z2e;
+  label(2);
+endchar;
+
+%% \chardef\HL=131
+%% This link has to be inserted by hand between the letters {\fc o} and
+%% {\fc e}, in order to produce ``{\fc o\HL e}'', which is different
+%% from the (fake) ligature ``{\fc oe}'' that is produced by typing
+%% ``{\tt oe}''.
+
+"High horizontal link";
+beginchar(lnk.high, lw, 0, 0);
+  penpos1(med, 270);  z1 = (-1, hl_y * ex);
+  penpos2(med, 270);  z2 = (lnk, 1/2) u + (1,0);
+  penstroke z1e{right} .. {right}z2e ;
+  label(2);
+endchar ;
+
+%% This one is the equivalent but at the level of the baseline. It is
+%% introduced for coherence.
+%% \par\nobreak
+
+"Low horizontal link";
+beginchar(lnk.low, lw, 0, 0);
+  penpos1(med, 270);  z1r = (-1, 0);
+  penpos2(med, 270);  z2r = (lnk * v + 1, 0);
+  penstroke z1e{right} .. {right}z2e ;
+  label(2);
+endchar ;
+
+
+
+%% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %%
+
+%%\sec Accents and accented letters.   %{{{1
+
+%% These constants are reference dimensions for all accents:
+
+a_wd := accent_wd * base_width * ex#;
+a_ht := accent_top * ex#;
+
+%%\subsec The glyphs for the accents.   %{{{2
+
+%% When \TeX\ builds an accented character out of an unaccented one and an
+%% accent glyph, the resulting object is not subject to ligatures. Therefore
+%% the accent glyphs are rather useless in this font, which has the pleasant
+%% effect of freeing a good number of character positions. The glyphs below
+%% are thus drawn, but not saved (except for some of them that correspond to
+%% proper characters, like tilde or circumflex). We use the following macros
+%% to save an accent's picture and dimensions in order to use it later when
+%% building accented characters:
+%%% beginchar beginaccent
+%%% endchar endaccent
+
+ignored = 0;
+
+def beginaccent (expr code, wd, ht, dp) =
+  beginchar(code, wd, ht, dp);
+enddef;
+
+def endaccent (suffix acc) =
+  picture accent.acc;
+  accent.acc := currentpicture;
+  acc_wd.acc := w;
+  acc_ht#.acc := charht;
+  acc_dp#.acc := chardp;
+
+  if charcode = ignored:
+    save shipit; let shipit = relax;
+  fi
+  endchar
+enddef;
+ 
+athin := 2/3 [thin, med];
+athick := 2/3 [med, thick];
+
+"Grave accent";
+beginaccent(ignored, a_wd, a_ht, 0);
+  penpos1(athick, 225);  z1 = (0, 1) ua;
+  penpos2(athin,   270);  z2 = (1, 0) ua;
+  penstroke z1e .. tension 1.4 .. {right}z2e;
+  label(2);
+endaccent(grave);
+
+"Acute accent";
+beginaccent(ignored, a_wd, a_ht, 0);
+  penpos1(athick, 135);  z1 = (1, 1) ua;
+  penpos2(athin,    90);  z2 = (0, 0) ua;
+  penstroke z1e .. tension 1.4 .. {left}z2e;
+  label(2);
+endaccent(acute);
+
+"Circumflex";
+beginaccent("^", 3/2 * a_wd, a_ht, 0);
+  penpos1(athin,   270);  z1 = (0, 0) ua;
+  penpos2(athick,   0);  z2 = (3/4, 1) ua;
+  penstroke z1e{right} .. z2e;
+  penpos3(athick, 180);  z3 = z2;
+  penpos4(athin,   270);  z4 = (3/2, 0) ua;
+  penstroke z3e .. {right}z4e;
+  label(4);
+endaccent(circum);
+
+"Tilde";
+beginaccent("~", 3/2 * a_wd, (2 accent_top + accent_bot)/3 * ex#, 0);
+  penpos1(athin, 310);  z1 = (0, 1/3) ua;
+  penpos2(med,  210);  z2l = (3/4, 1/2) ua;
+  penpos4(athick, 310);  (x4, y4l) = (3/2, 2/3) ua;
+  penstroke z1e .. z2e{dir 315} .. z4e;
+  label(4);
+endaccent(tilde);
+
+"Double acute";
+beginaccent(34, 4/3 a_wd, a_ht, 0);
+  penpos1(athick, 135);  z1 = (2/3, 1) ua;
+  penpos2(athin, 135);  z2 = (0, 0) ua;
+  penstroke z1e .. z2e;
+  z3 = (4/3, 1) ua;
+  addto currentpicture also currentpicture shifted (z3 - z1);
+  label(2);
+endaccent(dblacute);
+
+"Umlaut";
+beginaccent(ignored, a_wd, height_with_dot, 0);
+  pickup pencircle scaled dot_size;
+  lft z1 = (0, dot_height) u;
+  rt z2 = (accent_wd, dot_height) u;
+  drawdot z1; drawdot z2;
+  label(2);
+endaccent(umlaut);
+
+"Ring";
+beginaccent(ignored, 3/4 a_wd, a_ht, 0);
+  penpos1(med,  90);  z1r = (3/8, 1) ua;
+  penpos2(med, 180);  z2r = (0, 1/2) ua;
+  penpos3(med, 270);  z3r = (3/8, 0) ua;
+  penpos4(med,   0);  z4r = (3/4, 1/2) ua;
+  penstroke z1e .. z2e .. z3e .. z4e .. cycle;
+  label(4);
+endaccent(ring);
+
+"Hachek";
+beginaccent(ignored, 3/2 * a_wd, a_ht, 0);
+  penpos1(athin,   270);  z1l = (0, 1) ua;
+  penpos2(athick, 270);  z2r = (3/4, 0) ua;
+  penpos3(athin,   270);  z3l = (3/2, 1) ua;
+  penstroke z1e -- z2e -- z3e;
+  label(3);
+endaccent(hachek);
+
+"Breve";
+beginaccent(ignored, 3/2 * a_wd, a_ht, 0);
+  penpos1(athin,   180);  z1r = (0, 1) ua;
+  penpos2(med, 270);  z2r = (3/4, 0) ua;
+  penpos3(athin,     0);  z3r = (3/2, 1) ua;
+  penstroke z1e .. z2e .. z3e;
+  label(3);
+endaccent(breve);
+
+"Cedilla";
+beginaccent(ignored, ltr_wd(3/4,0), 0, (cedilla_dp + 1/3) * ex#);
+  penpos1(thick, 180);  z1 = (3/8, 0) u;
+  penpos2(thick, 180);  z2 = (3/8, -cedilla_dp) u;
+  penstroke z1e .. z2e;
+  penpos3(med, 270);  z3r = z2l;
+  penpos4(athick, 180);  x4l = 3/4 base_width * ex; y4 = 1/2[y3,y5];
+  penpos5(med,  90);  z5l = (3/8, -cedilla_dp - 1/3) u;
+  penpos6(athin,  0);  x6l = 0; y6 = y4;
+  penstroke z3e .. z4e .. z5e{left} .. z6e;
+  label(6);
+endaccent(cedilla);
+
+"Ogonek";
+beginaccent(ignored, ltr_wd(3/4,0), 0, 2 * cedilla_dp * ex#);
+  penpos1(med,    90); z1l = (3/8, 0) u;
+  penpos2(athick, 180); z2r = (0, -cedilla_dp) u;
+  penpos3(med,   270); z3r = (3/8, -2 cedilla_dp) u;
+  penpos4(athin,  -45); z4 = (0.7, -cedilla_dp) u;
+  penstroke z1e {left} .. z2e .. z3e .. z4e;
+  label(4);
+endaccent(ogonek);
+
+
+%%\subsec The accented characters.   %{{{2
+
+%% The definition of `make\_accented' produces characters with the same height
+%% as their unaccented version, so that the accented uppercase are not too
+%% high (otherwise it would force to space out successive lines too much).
+%% The macro `make\_cedilla' is used to put something (a cedilla or an
+%% ogonek) under a letter, and this one does modify the depth of the original
+%% letter. The macro `make\_caron' adds a caron (same shape as an apostrophe)
+%% to a glyph, without changing the glyph width, so that linking is not
+%% influenced.
+
+def make_accented(expr name, chr)(text base, acc) =
+  begingroup save base;
+    name;
+    beginchar(chr, width#.base, height#.base, depth#.base)
+      addto currentpicture also letter.base;
+      addto currentpicture also accent.acc
+        shifted ((accpos.base - acc_wd.acc/2, height.base - ex) slanted slant);
+    endchar
+  endgroup
+enddef;
+
+def make_cedilla(expr name, chr)(text base, acc) =
+  begingroup save base;
+    name;
+    beginchar(chr, width#.base, height#.base, max(depth#.base, acc_dp#.acc))
+      addto currentpicture also letter.base;
+      addto currentpicture also accent.acc
+        shifted (cedpos.base - acc_wd.acc/2, 0);
+    endchar
+  endgroup
+enddef;
+
+def make_caron(expr name, chr)(text base, pos) =
+  begingroup save base;
+    name;
+    beginchar(chr, width#.base, height#.base, depth#.base)
+      addto currentpicture also letter.base;
+      penpos1(athick, 180);
+      penpos2(athin, 90);
+      y1 = h; x2 = pos;
+      z1 - z2 = (accent_wd/2, 1/2) u;
+      penstroke z1e {down} .. z2e;
+      label(2);
+    endchar
+  endgroup
+enddef;
+
+make_accented("The letter a with breve",        160)(a)(breve);
+make_cedilla ("The letter a with ogonek",       161)(a)(ogonek);
+make_accented("The letter a with gravis",       224)(a)(grave);
+make_accented("The letter a with acute",        225)(a)(acute);
+make_accented("The letter a with circumflex",   226)(a)(circum);
+make_accented("The letter a with tilde",        227)(a)(tilde);
+make_accented("The letter a with umlaut",       228)(a)(umlaut);
+make_accented("The letter a with ring",         229)(a)(ring);
+
+make_accented("The letter c with acute",        162)(c)(acute);
+make_accented("The letter c with hachek",       163)(c)(hachek);
+make_cedilla ("The letter c with cedilla",      231)(c)(cedilla);
+
+make_caron("The letter d with caron", 164)(d)(accpos.d + thick*base_width);
+
+make_accented("The letter e with hachek",       165)(e)(hachek);
+make_cedilla ("The letter e with ogonek",       166)(e)(ogonek);
+make_accented("The letter e with gravis",       232)(e)(grave);
+make_accented("The letter e with acute",        233)(e)(acute);
+make_accented("The letter e with circumflex",   234)(e)(circum);
+make_accented("The letter e with umlaut",       235)(e)(umlaut);
+
+make_accented("The letter g with breve",        167)(g)(breve);
+
+make_accented("The letter i with gravis",       236)(i)(grave);
+make_accented("The letter i with acute",        237)(i)(acute);
+make_accented("The letter i with circumflex",   238)(i)(circum);
+make_accented("The letter i with umlaut",       239)(i)(umlaut);
+
+make_accented("The letter l with acute",        168)(l)(acute);
+make_caron   ("The letter l with caron",        169)(l)(w);
+
+"The letter l slash";
+beginchar(170, width#.l, height#.l, depth#.l)
+  addto currentpicture also letter.l;
+  penpos1(med, 270);
+  penpos2(med, 270);
+  penpos3(thick, 0);  z3l = (0, loop_ascend/2) u;
+  1/2[z2,z1] = z3;
+  z2 - z1 = (2/3, 1/6) u;
+  penstroke z1e .. z2e;
+  label(2);
+endchar;
+
+make_accented("The letter n with acute",        171)(n)(acute);
+make_accented("The letter n with hachek",       172)(n)(hachek);
+make_accented("The letter n with tilde",        241)(n)(tilde);
+
+make_accented("The letter o with double acute", 174)(o)(dblacute);
+make_accented("The letter o with gravis",       242)(o)(grave);
+make_accented("The letter o with acute",        243)(o)(acute);
+make_accented("The letter o with circumflex",   244)(o)(circum);
+make_accented("The letter o with tilde",        245)(o)(tilde);
+make_accented("The letter o with umlaut",       246)(o)(umlaut);
+
+"Scandinavian letter o slash";
+beginchar(248, width#.o, 7/6 ex#, 1/6 ex#)
+  addto currentpicture also letter.o;
+  penpos1(med, 150); z1l = (w, 7/6 ex);
+  penpos2(med, 150); z2r = (0, -1/6 ex);
+  penstroke z1e .. z2e;
+  label(2);
+endchar;
+
+make_accented("The letter r with acute",        175)(r)(acute);
+make_accented("The letter r with hachek",       176)(r)(hachek);
+
+make_accented("The letter s with acute",        177)(s)(acute);
+make_accented("The letter s with hachek",       178)(s)(hachek);
+make_cedilla ("The letter s with cedilla",      179)(s)(cedilla);
+
+make_caron   ("The letter t with caron",        180)(t)(accpos.t);
+make_cedilla ("The letter t with cedilla",      181)(t)(cedilla);
+
+make_accented("The letter u with double acute", 182)(u)(dblacute);
+make_accented("The letter u with ring",         183)(u)(ring);
+make_accented("The letter u with gravis",       249)(u)(grave);
+make_accented("The letter u with acute",        250)(u)(acute);
+make_accented("The letter u with circumflex",   251)(u)(circum);
+make_accented("The letter u with umlaut",       252)(u)(umlaut);
+
+make_accented("The letter y with umlaut",       184)(y)(umlaut);
+make_accented("The letter y with acute",        253)(y)(acute);
+
+make_accented("The letter z with acute",        185)(z)(acute);
+make_accented("The letter z with hachek",       186)(z)(hachek);
+
+"The letter z with dot above";
+beginchar(187, width#.z, height#.z, depth#.z)
+  addto currentpicture also letter.z;
+  pickup pencircle scaled dot_size;
+  drawdot (accpos.z, 1/2[accent_bot, accent_top] * ex);
+endchar;
+  
+make_accented("The letter A with breve",        128)(A)(breve);
+make_cedilla ("The letter A with ogonek",       129)(A)(ogonek);
+make_accented("The letter A with gravis",       192)(A)(grave);
+make_accented("The letter A with acute",        193)(A)(acute);
+make_accented("The letter A with circumflex",   194)(A)(circum);
+make_accented("The letter A with tilde",        195)(A)(tilde);
+make_accented("The letter A with umlaut",       196)(A)(umlaut);
+make_accented("The letter A with ring",         197)(A)(ring);
+
+make_accented("The letter C with acute",        130)(C)(acute);
+make_accented("The letter C with hachek",       131)(C)(hachek);
+make_cedilla ("The letter C with cedilla",      199)(C)(cedilla);
+
+make_accented("The letter D with hachek",       132)(D)(hachek);
+
+make_accented("The letter E with hachek",       133)(E)(hachek);
+make_cedilla ("The letter E with ogonek",       134)(E)(ogonek);
+make_accented("The letter E with gravis",       200)(E)(grave);
+make_accented("The letter E with acute",        201)(E)(acute);
+make_accented("The letter E with circumflex",   202)(E)(circum);
+make_accented("The letter E with umlaut",       203)(E)(umlaut);
+
+make_accented("The letter G with breve",        135)(G)(breve);
+
+"The letter I with dot above";
+beginchar(157, width#.I, height#.I, depth#.I)
+  addto currentpicture also letter.I;
+  pickup pencircle scaled dot_size;
+  drawdot (accpos.z, (1/2[accent_bot, accent_top] + uc_ascend - 1) * ex);
+endchar;
+
+make_accented("The letter I with gravis",       204)(I)(grave);
+make_accented("The letter I with acute",        205)(I)(acute);
+make_accented("The letter I with circumflex",   206)(I)(circum);
+make_accented("The letter I with umlaut",       207)(I)(umlaut);
+
+make_accented("The letter L with acute",        136)(L)(acute);
+make_caron   ("The letter L with caron",        137)(L)(w);
+
+"The letter L slash";
+beginchar(138, width#.L, height#.L, depth#.L)
+  addto currentpicture also letter.L;
+  penpos1(med, 270);
+  penpos2(med, 270);
+  1/2[z2,z1] = (7/6, 2/5) uu;
+  z2 - z1 = (1, 1/10) u;
+  penstroke z1e .. z2e;
+  label(2);
+endchar;
+
+make_accented("The letter N with acute",        139)(N)(acute);
+make_accented("The letter N with hachek",       140)(N)(hachek);
+make_accented("The letter N with tilde",        209)(N)(tilde);
+
+make_accented("The letter O with double acute", 142)(O)(dblacute);
+make_accented("The letter O with gravis",       210)(O)(grave);
+make_accented("The letter O with acute",        211)(O)(acute);
+make_accented("The letter O with circumflex",   212)(O)(circum);
+make_accented("The letter O with tilde",        213)(O)(tilde);
+make_accented("The letter O with umlaut",       214)(O)(umlaut);
+
+"Scandinavian letter O slash";
+beginchar(216, width#.O, height#.O, depth#.O)
+  addto currentpicture also letter.O;
+  penpos1(med, 150); z1l = (w - 1/8 v, h);
+  penpos2(med, 150); z2r = (1/8 v, 0);
+  penstroke z1e .. z2e;
+  label(2);
+endchar;
+
+make_accented("The letter R with acute",        143)(R)(acute);
+make_accented("The letter R with hachek",       144)(R)(hachek);
+
+make_accented("The letter S with acute",        145)(S)(acute);
+make_accented("The letter S with hachek",       146)(S)(hachek);
+accpos.S := base_width * ex;
+make_cedilla ("The letter S with cedilla",      147)(S)(cedilla);
+
+make_accented("The letter T with hachek",       148)(T)(hachek);
+accpos.T := 2 base_width * ex;
+make_cedilla ("The letter T with cedilla",      149)(T)(cedilla);
+
+make_accented("The letter U with double acute", 150)(U)(dblacute);
+make_accented("The letter U with ring",         151)(U)(ring);
+make_accented("The letter U with gravis",       217)(U)(grave);
+make_accented("The letter U with acute",        218)(U)(acute);
+make_accented("The letter U with circumflex",   219)(U)(circum);
+make_accented("The letter U with umlaut",       220)(U)(umlaut);
+
+make_accented("The letter Y with umlaut",       152)(Y)(umlaut);
+make_accented("The letter Y with acute",        221)(Y)(acute);
+
+make_accented("The letter Z with acute",        153)(Z)(acute);
+make_accented("The letter Z with hachek",       154)(Z)(hachek);
+
+"The letter Z with dot above";
+beginchar(155, width#.Z, height#.Z, depth#.Z)
+  addto currentpicture also letter.Z;
+  pickup pencircle scaled dot_size;
+  drawdot (accpos.Z, (1/2[accent_bot, accent_top] + uc_ascend - 1) * ex);
+endchar;
+
+"The letter i with no dot";
+beginchar(25, width#.i, ex#, 0);
+  addto currentpicture also letter.i;
+endchar;
+
+"The letter j with no dot";
+beginchar(26, width#.j, ex#, loop_descend * ex#);
+  addto currentpicture also letter.j;
+endchar;
+
+
+
+%% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %%
+
+%%\sec Digits.   %{{{1
+
+%% All digits have the same height, fixed to $\frac3/2\,\\{base\_witdh}$, and
+%% they contain an extra spacing of $\frac1/6\,\\{base\_width}$ on each side.
+
+num_wd := 11/6 * base_width * ex#;
+num_ht := straight_ascend * ex#;
+
+def nu = shifted (1/6,0) u yscaled straight_ascend enddef;
+
+"The numeral 0";
+beginchar("0", num_wd, num_ht, 0);
+  penpos1(thin,   90);  z1r = (9/10, 1) nu;
+  penpos2(thick, 180);  z2r = (0, 1/2) nu;
+  penpos3(med,   270);  z3r = (3/4, 0) nu;
+  penpos4(med,     0);  z4r = (3/2, 1/2) nu;
+  penpos5(thin,   90);  z5 = (7/10, 14/15) nu;
+
+  penstroke z1e{left} .. z2e{down} .. z3e .. {up}z4e .. {dir 210}z5e;
+
+  label(6);
+endchar;
+
+"The numeral 1";
+beginchar("1", num_wd, num_ht, 0);
+  penpos1(med, 270);  z1 = (0, 1/2) nu;
+  penpos2(med,   0);  z2l = z3r;
+
+  penpos3(thick, 180);  z3 = (1, 1) nu;
+  penpos4(thick, 180);  z4 = (1, 0) nu;
+
+  penstroke z1e .. {up}z2e;
+  penstroke z3e .. z4e;
+
+  penpos5(med, 270);  z4 = 1/2[z5r, z6r];
+  penpos6(med, 270);  z6r = (3/2, 0) nu;
+
+  penstroke z5e .. z6e;
+
+  label(6);
+endchar;
+
+"The numeral 2";
+beginchar("2", num_wd, num_ht, 0);
+  penpos1(thin,   90);  z1 = (1/2, 1/2) nu;
+  penpos2(med,     0);  z2l = (1/5, 2/3) nu;
+  penpos3(med,   270);  x3 = 1/2[x2,x4]; y3l = straight_ascend * ex;
+  penpos4(thick, 180);  z4 = (5/4, 2/3) nu;
+  penpos5(med,    90);  z5l = (1/3, 0) nu;
+  penpos6(med,     0);  z6l = (0, 1/8) nu;
+  penpos7(med,   240);  z7 = (3/5, 1/8) nu;
+  penpos8(med,   270);  z8r = (1, 0) nu;
+  penpos9(thin,    0);  z9r = (3/2, 1/4) nu;
+
+  penstroke z1e .. z2e .. z3e .. z4e .. tension 1.6
+  .. z5e{left} .. z6e{up} .. z7e .. z8e{right} .. {up}z9e;
+
+  label(9);
+endchar;
+
+"The numeral 3";
+beginchar("3", num_wd, num_ht, 0);
+  penpos1(thin,    0);  z1 = (1/4, 3/4) nu;
+  penpos2(med,   270);  z2l = (3/4, 1) nu;
+  penpos3(thick, 180);  z3 = (13/10, 3/4) nu;
+  penpos4(med,    90);  z4 = (5/8, 1/2) nu;
+
+  penstroke z1e .. z2e{right} .. z3e .. {left}z4e;
+
+  penpos5(med,   270);  z5 = z4;
+  penpos6(thick, 180);  z6l = (3/2, 1/4) nu;
+  penpos7(med,    90);  z7l = (3/4, 0) nu;
+  penpos8(thin,    0);  z8l = (0, 3/10) nu;
+
+  penstroke z5e{right} .. z6e .. z7e .. z8e;
+
+  label(8);
+endchar;
+
+"The numeral 4";
+beginchar("4", num_wd, num_ht, 0);
+  penpos1(thick, 180);  z1 = (3/4, 1) nu;
+  penpos2(med,    90);  z2 = (0, 1/4) nu;
+
+  penstroke z1e{down} .. z2e;
+
+  penpos3(med, 270);  z3 = z2;
+  penpos4(med, 270);  z4 = (3/2, 1/4) nu;
+
+  penstroke z3e .. z4e;
+
+  penpos5(thick, 180);  z5 = (1, 1/2) nu;
+  penpos6(thick, 180);  z6 = (1, 0) nu;
+
+  penstroke z5e .. z6e;
+
+  label(6);
+endchar;
+
+"The numeral 5";
+beginchar("5", num_wd, num_ht, 0);
+  penpos1(med, 270);  z1l = (1/6, 1) nu;
+  penpos2(med, 270);  z2l = (4/3, 1) nu;
+
+  penstroke z1e{dir 340} .. z2e;
+
+  penpos3(thick, 180);  z3r = z1;
+  penpos4(thick, 180);  z4r = (1/6, 1/2) nu;
+
+  penstroke z3e .. z4e;
+
+  penpos5(med,   270);  z5r = z4l;
+  penpos6(thick, 180);  z6l = (3/2, 1/4) nu;
+  penpos7(med,    90);  z7l = (3/4, 0) nu;
+  penpos8(thin,    0);  z8l = (0, 1/4) nu;
+
+  penstroke z5e .. z6e .. z7e .. z8e;
+
+  label(8);
+endchar;
+
+"The numeral 6";
+beginchar("6", num_wd, num_ht, 0);
+  penpos1(thin,   90);  z1r = (5/4, 1) nu;
+  penpos2(thick, 180);  z2r = (0, 1/3) nu;
+  penpos3(med,   270);  z3r = (3/4, 0) nu;
+  penpos4(med,     0);  z4r = (3/2, 1/4) nu;
+  penpos5(med,   180);  z5l = z2l;
+
+  penstroke z1e .. z2e{down} .. z3e .. z4e .. z5e;
+
+  label(5);
+endchar;
+
+"The numeral 7";
+beginchar("7", num_wd, num_ht, 0);
+  penpos1(med, 270);  z1l = (0, 1) nu;
+  penpos2(med, 270);  z2l = (3/2, 1) nu;
+
+  penstroke z1e{dir 340} .. z2e;
+
+  penpos3(thick, 180);  z3l = z2r;
+  penpos4(thick, 180);  z4r = (1/2, 0) nu;
+
+  penstroke z3e .. {down}z4e;
+
+  penpos5(med, 270);
+  penpos6(med, 270);
+  1/2[z5, z6] = (z3 .. {down}z4)
+    intersectionpoint ((0,1/2) nu .. (3/2,1/2) nu);
+  z6 - z5 = (z2 - z1) / 2;
+
+  penstroke z5e .. z6e;
+
+  label(6);
+endchar;
+
+"The numeral 8";
+beginchar("8", num_wd, num_ht, 0);
+  penpos1(thin,   90);  z1r = (9/10, 1) nu;
+  penpos2(thick, 180);  z2 = (1/6, 3/4) nu;
+  penpos3(thick, 210);  z3 = 1/2[z2, z4];
+  penpos4(thick, 180);  z4l = (3/2, 1/4) nu;
+  penpos5(med,    90);  z5l = (3/4, 0)nu;
+  penpos6(med,     0);  z6l = (0, 1/4) nu;
+  penpos7(med,   330);  z7 = 1/2[z6, z8];
+  penpos8(med,     0);  z8 = (4/3, 3/4) nu;
+  penpos9(thin,   90);  z9r = (6/10, 19/20) nu;
+
+  penstroke z1e{left} .. z2e .. z3e .. z4e .. z5e .. z6e .. z7e .. z8e .. z9e;
+
+  label(9);
+endchar;
+
+"The numeral 9";
+beginchar("9", num_wd, num_ht, 0);
+  penpos1(med,    90);  z1r = (3/2, 9/10) nu;
+  penpos2(med,    90);  z2r = (7/8, 1) nu;
+  penpos3(thick, 180);  z3r = (1/6, 3/4) nu;
+  penpos4(med,     0);  z4r = (3/2, 2/3) nu;
+
+  penstroke z1e .. z2e .. z3e .. z4e;
+
+  penpos5(thick, 180);  z5l = (3/2, 19/20) nu;
+  penpos6(thick, 180);  z6l = (3/2, 1/3) nu;
+  penpos7(med,    90);  z7l = (3/4, 0) nu;
+  penpos8(thin,    0);  z8l = (0, 1/4) nu;
+
+  penstroke z5e .. z6e{down} .. z7e{left} .. z8e;
+
+  label(8);
+endchar;
+
+
+%% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %%
+
+%%\sec Punctuation marks.   %{{{1
+
+%% In order to put inter-letter links at the right positions, we had to remove
+%% any spacing onthe right of letters. For this reason, we add a spacing,
+%% proportional to the links' widths, at the left of all punctuatin marks.
+
+"Exclamation mark";
+beginchar("!", ltr_wd(1/2,2), loop_ascend * ex#, 0);
+  penpos1(thick, 180);
+  z1 = ((base_width + 2 link_width) / 2, loop_ascend) * ex;
+  penpos2(med, 180);  z2 = (x1, 3/5 ex);
+  penstroke z1e .. z2e;
+  pickup pencircle scaled dot_size;
+  bot z3 = (x1, 0);
+  drawdot z3;
+  label(3);
+  save_letter(exclam)(x1)
+endchar;
+
+"Spanish opening exclamation";
+beginchar(189, ltr_wd(1/2,2), (loop_ascend - straight_descend) * ex#,
+straight_descend * ex#);
+  addto currentpicture also letter.exclam scaled -1
+    shifted ((1/2 base_width + 2 link_width,
+      loop_ascend - straight_descend) * ex)
+endchar;
+
+"Apostrophe";
+beginchar("'", ltr_wd(1/3,2), straight_ascend * ex#, 0);
+  penpos1(thick, 180);
+  z1 = ((base_width + 3 link_width) / 3, straight_ascend) * ex;
+  penpos2(thin,   90);
+  z2 = ((base_width - 3 link_width) / 3, straight_ascend - 1/2) * ex;
+  penstroke z1e{down} .. z2e;
+  label(2);
+endchar;
+
+"High apostrophe";
+beginchar(18, ltr_wd(1/3,2), loop_ascend * ex#, 0);
+  penpos1(thick, 180);
+  z1 = ((base_width + 3 link_width) / 3, loop_ascend) * ex;
+  penpos2(thin,   90);
+  z2 = ((base_width - 3 link_width) / 3, loop_ascend - 1/2) * ex;
+  penstroke z1e{down} .. z2e;
+  label(2);
+endchar;
+
+"Reverse apostrophe";
+beginchar("`", ltr_wd(1/3,2), straight_ascend * ex#, 0);
+  penpos1(thick, 180);
+  z1 = ((base_width - 3 link_width) / 3, straight_ascend) * ex;
+  penpos2(thin,  270);
+  z2 = ((base_width + 3 link_width) / 3, straight_ascend - 1/2) * ex;
+  penstroke z1e{down} .. z2e;
+  label(2);
+endchar;
+
+"Comma";
+beginchar(",", ltr_wd(1/3,2), ex#, 1/3 ex#);
+  penpos1(thick, 180);  z1 = ((base_width + 3 link_width) / 3, 1/4) * ex;
+  penpos2(thin,   90);  z2l = ((base_width - 3 link_width) / 3, -1/3) * ex;
+  penstroke z1e{down} .. z2e;
+  label(2);
+endchar;
+
+"Hyphen";
+beginchar("-", ltr_wd(5/6,0), ex#, 0);
+  penpos1(thick, 260);  z1 = (1/6, 1/2) u;
+  penpos2(thick, 260);  z2 = (4/6, 1/2) u;
+  penstroke z1e .. z2e;
+  label(2);
+endchar;
+
+"En dash";
+beginchar(21, ltr_wd(1,0), ex#, 0);
+  penpos1(med, 270);  z1 = (0, 1/2) u;
+  penpos2(med, 270);  z2 = (1, 1/2) u;
+  penstroke z1e .. z2e;
+  label(2);
+endchar;
+
+"Em dash";
+beginchar(22, ltr_wd(2,0), ex#, 0);
+  penpos1(med, 270);  z1 = (0, 1/2) u;
+  penpos2(med, 270);  z2 = (2, 1/2) u;
+  penstroke z1e .. z2e;
+  label(2);
+endchar;
+
+"Period";
+beginchar(".", ltr_wd(1/2,2), ex#, 0);
+  pickup pencircle scaled dot_size;
+  bot z1 = ((base_width + 2 link_width) / 2 * ex, 0);
+  drawdot z1;
+  label(1)
+endchar;
+
+"Colon";
+beginchar(":", ltr_wd(1/2,2), ex#, 0);
+  pickup pencircle scaled dot_size;
+  bot z1 = ((base_width + 2 link_width) / 2 * ex, 0);
+  drawdot z1;
+  top z2 = ((base_width + 2 link_width) / 2 * ex, ex);
+  drawdot z2;
+  label(2)
+endchar;
+
+"Semicolon";
+beginchar(";", ltr_wd(1/3,2), ex#, 1/3 ex#);
+  penpos1(thick, 180);  z1 = ((base_width + 3 link_width) / 3, 1/4) * ex;
+  penpos2(thin,   90);  z2l = ((base_width - 3 link_width) / 3, -1/3) * ex;
+  penstroke z1e{down} .. z2e;
+  pickup pencircle scaled dot_size;
+  top z3 = ((base_width + 3 link_width) / 3 * ex, ex);
+  drawdot z3;
+  label(3);
+endchar;
+
+"Question mark";
+beginchar("?", ltr_wd(3/2,2), loop_ascend * ex#, 0);
+  penpos1(med,    90);  z1 = z2 - (2/4, 4/5) u;
+  penpos2(med,   270);  x2 = x4; y2l = loop_ascend * ex;
+  penpos3(thick, 180);  z3l = z1 + (5/4, 1/5) u;
+  penpos4(med,   180);  z4 = (3/5 base_width + 3 link_width, 5/6) * ex;
+  penpos5(thin,  180);  z5 = z4 - (0, 1/3) u;
+  penstroke z1e .. z2e{right} .. z3e .. z4e .. z5e;
+
+  pickup pencircle scaled dot_size;
+  bot z6 = (x4, 0);
+  drawdot z6;
+  label(6);
+
+  save_letter(interg)(x2)
+endchar;
+
+"Spanish opening interrogation";
+beginchar(190, ltr_wd(3/2,2), (loop_ascend - straight_descend) * ex#,
+straight_descend * ex#);
+  addto currentpicture also letter.interg scaled -1
+    shifted ((3/2 base_width + 2 link_width,
+      loop_ascend - straight_descend) * ex);
+endchar;
+
+"Left parenthesis";
+beginchar("(", ltr_wd(1,0), loop_ascend * ex#, 1/2 loop_descend * ex#);
+  penpos1(med,   180);  z1l = (5/6, loop_ascend) u;
+  penpos2(thick, 180);  x2r = 1/6 v; y2 = 1/2[y1,y3];
+  penpos3(med,   180);  z3l = (5/6, -1/2 loop_descend) u;
+  penstroke z1e .. z2e .. z3e;
+  label(3);
+endchar;
+  
+"Right parenthesis";
+beginchar(")", ltr_wd(1,0), loop_ascend * ex#, 1/2 loop_descend * ex#);
+  penpos1(med,   180);  z1r = (1/6, loop_ascend) u;
+  penpos2(thick, 180);  x2l = 5/6 v; y2 = 1/2[y1,y3];
+  penpos3(med,   180);  z3r = (1/6, -1/2 loop_descend) u;
+  penstroke z1e .. z2e .. z3e;
+  label(3);
+endchar;
+
+"Left bracket";
+beginchar("[", ltr_wd(1,0), loop_ascend * ex#, 1/2 loop_descend * ex#);
+  penpos1(med, 90);  z1r = (5/6, loop_ascend) u;
+  penpos2(med, 90);  z2r = (1/6, loop_ascend) u;
+
+  penpos3(thick, 180);  z3r = (1/6, loop_ascend) u;
+  penpos4(thick, 180);  z4r = (1/6, -1/2 loop_descend) u;
+
+  penpos5(med, 270);  z5r = (1/6, -1/2 loop_descend) u;
+  penpos6(med, 270);  z6r = (5/6, -1/2 loop_descend) u;
+
+  if fixed:
+    draw z1 -- z2 -- z5 -- z6 withpen pencircle scaled med;
+  else:
+    penstroke z1e .. z2e;
+    penstroke z3e .. z4e;
+    penstroke z5e .. z6e;
+  fi
+
+  label(6);
+endchar;
+
+"Right bracket";
+beginchar("]", ltr_wd(1,0), loop_ascend * ex#, 1/2 loop_descend * ex#);
+  penpos1(med, 270);  z1l = (1/6, loop_ascend) u;
+  penpos2(med, 270);  z2l = (5/6, loop_ascend) u;
+
+  penpos3(thick, 180);  z3l = (5/6, loop_ascend) u;
+  penpos4(thick, 180);  z4l = (5/6, -1/2 loop_descend) u;
+
+  penpos5(med, 90);  z5l = (5/6, -1/2 loop_descend) u;
+  penpos6(med, 90);  z6l = (1/6, -1/2 loop_descend) u;
+
+  if fixed:
+    draw z1 -- z2 -- z5 -- z6 withpen pencircle scaled med;
+  else:
+    penstroke z1e .. z2e;
+    penstroke z3e .. z4e;
+    penstroke z5e .. z6e;
+  fi
+
+  label(6);
+endchar;
+
+"Left brace";
+beginchar("{", ltr_wd(7/6,0), loop_ascend * ex#, 1/2 loop_descend * ex#);
+  penpos1(med, 90);
+  penpos2(thick, 180);
+  penpos3(med, 90);
+  penpos4(med, 270);
+  penpos5(thick, 180);
+  penpos6(med, 270);
+
+  x1 = x6 = v;
+  y1r = loop_ascend * ex;
+  y6r = -1/2 loop_descend * ex;
+  z3 = z4 = (1/6 v, 1/2[y1,y6]);
+  z2 = 1/2 [z1, z3];
+  z5 = 1/2 [z4, z6];
+
+  penstroke z1e {left} .. z2e .. {left} z3e;
+  penstroke z4e {right} .. z5e .. {right} z6e;
+
+  label(6);
+endchar;
+
+"Right brace";
+beginchar("}", ltr_wd(7/6,0), loop_ascend * ex#, 1/2 loop_descend * ex#);
+  penpos1(med, 270);
+  penpos2(thick, 180);
+  penpos3(med, 270);
+  penpos4(med, 90);
+  penpos5(thick, 180);
+  penpos6(med, 90);
+
+  x1 = x6 = 1/6 v;
+  y1l = loop_ascend * ex;
+  y6l = -1/2 loop_descend * ex;
+  z3 = z4 = (v, 1/2[y1,y6]);
+  z2 = 1/2 [z1, z3];
+  z5 = 1/2 [z4, z6];
+
+  penstroke z1e {right} .. z2e .. {right} z3e;
+  penstroke z4e {left} .. z5e .. {left} z6e;
+
+  label(6);
+endchar;
+
+"Slash";
+beginchar("/", ltr_wd(2,0), loop_ascend * ex#, 1/2 loop_descend * ex#);
+  penpos1(thick, 180);  z1l = (w - 1/6 v, loop_ascend * ex);
+  penpos2(thick, 180);  z2r = (1/6 v, -1/2 loop_descend * ex);
+  penstroke z1e .. z2e;
+  label(2);
+endchar;
+
+"Vertical bar";
+beginchar("|", ltr_wd(1,0), loop_ascend * ex#, 1/2 loop_descend * ex#);
+  penpos1(thick, 180);  z1 = (w/2, loop_ascend * ex);
+  penpos2(thick, 180);  z2 = (w/2, -1/2 loop_descend * ex);
+  penstroke z1e .. z2e;
+  label(2);
+endchar;
+
+"Reverse slash";
+beginchar("\", ltr_wd(2,0), loop_ascend * ex#, 1/2 loop_descend * ex#);
+  penpos1(thick, 180);  z1r = (1/6 v, loop_ascend * ex);
+  penpos2(thick, 180);  z2l = (w - 1/6 v, -1/2 loop_descend * ex);
+  penstroke z1e .. z2e;
+  label(2);
+endchar;
+
+"Ampersand";
+beginchar("&", ltr_wd(3,0), uc_ascend * ex#, 0);
+  penpos1(thick, 180);  z1 = (9/4, 1/2) uu;
+  penpos2(med,    90);  z2l = (11/16, 0) uu;
+  penpos3(med,     0);  z3l = (0, 1/6) uu;
+  penpos5(med,     0);  z5 = (8/5, 13/16) uu;
+  penpos4(med, angle(z5-z3)-90); z4 = 1/2[z3,z5];
+  penpos6(med,    90);  z6r = (9/8, 1) uu;
+  penpos7(thick, 180);  z7 = (3/4, 1/2) uu;
+  penpos8(med,   270);  z8r = (2, 0) uu;
+  penpos9(med,     0);  z9r = (3, 1/5) uu;
+  penstroke z1e .. z2e .. z3e{up} .. z4e .. {up}z5e
+  .. z6e .. z7e .. z8e .. z9e;
+  label(9);
+endchar;
+
+"French opening quote";
+beginchar(19, ltr_wd(11/10,2), ex#, 0);
+  penpos1(thick, 150);  y1r = ex;
+  penpos2(thin,   90);  z2 = (link_width, 1/2) u;
+  penpos3(thick,  30);  y3l = 0;
+  x1l = x3r = w - (link_width + 2/5) * v;
+  penstroke z1e .. {dir 190} z2e;
+  penstroke z3e .. {dir 170} z2e;
+  label(3);
+  addto currentpicture also currentpicture shifted (2/5 v, 0);
+endchar;
+
+"French closing quote";
+beginchar(20, ltr_wd(11/10,2), ex#, 0);
+  penpos1(thick, 210);  y1l = ex;
+  penpos2(thin,  270);  z2 = (w - (link_width + 2/5) * v, ex/2);
+  penpos3(thick, 330);  y3r = 0;
+  x1r = x3l = link_width * v;
+  penstroke z1e .. {dir -10} z2e;
+  penstroke z3e .. {dir 10} z2e;
+  label(3);
+  addto currentpicture also currentpicture shifted (2/5 v, 0);
+endchar;
+
+"Less than sign";
+beginchar("<", ltr_wd(3/2,2), num_ht, 0);
+  penpos1(med, 90);  z1r = (3/2 + link_width, 9/10 straight_ascend) u;
+  penpos2(med, 90);  z2 = (link_width, 1/2 straight_ascend) u;
+  penpos3(med, 90);  z3l = (3/2 + link_width, 1/10 straight_ascend) u;
+  penstroke z1e .. z2e;
+  penstroke z3e .. z2e;
+  label(3);
+endchar;
+
+"Greater than sign";
+beginchar(">", ltr_wd(3/2,2), num_ht, 0);
+  penpos1(med, 270);  z1r = (link_width, 9/10 straight_ascend) u;
+  penpos2(med, 270);  z2 = (3/2 + link_width, 1/2 straight_ascend) u;
+  penpos3(med, 270);  z3l = (link_width, 1/10 straight_ascend) u;
+  penstroke z1e .. z2e;
+  penstroke z3e .. z2e;
+  label(3);
+endchar;
+
+
+%% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %% %%
+
+%%\sec The ligature table.   %{{{1
+
+%% Here comes a crucial part of the French Cursive typeface: the ligature and
+%% kerning table. It has to play two major roles: first of all, it is
+%% responsible of the insertion of inter-letter links, a task for which the
+%% lig/kern system in \TeX\ and \MF\ is thankfully powerful enough. Secondly,
+%% this table is responsible for kerning, which is necessary for some
+%% successions of an uppercase and a lowercase, but also in some cases for
+%% punctuation. 
+
+%%\subsec Macros for ligature tables.   %{{{2
+
+k# := base_width * ex#;
+
+"Right boundary pseudo-character";
+beginchar(23, 0, 0, 0) endchar;
+
+boundarychar := 23;
+
+def word_ends =
+  ".", ",", ";", ":", "'", ")", "]", "/", 20, "-", 21, 22 enddef;
+
+%% The sets of variants of letters.
+
+def var_a = "a",160,161,224,225,226,227,228,229 enddef;
+def var_c = "c",162,163,231 enddef;
+def var_d = "d",164 enddef;
+def var_e = "e",165,166,232,233,234,235 enddef;
+def var_g = "g",167 enddef;
+def var_i = "i",236,237,238,239 enddef;
+def var_l = "l",168,169,170 enddef;
+def var_n = "n",171,172,241 enddef;
+def var_o = "o",174,242,243,244,245,246,248 enddef;
+def var_r = "r",175,176 enddef;
+def var_s = "s",177,178,179 enddef;
+def var_t = "t",180,181 enddef;
+def var_u = "u",182,183,249,250,251,252 enddef;
+def var_y = "y",184,253 enddef;
+def var_z = "z",185,186,187 enddef;
+
+%% The sets of shapes for links.
+
+def sh_small = var_a, var_c, var_d, var_e, var_g, var_o, "q", 247 enddef;
+def sh_loop  = "b", "f", "h", "k", var_l enddef;
+def sh_vert  = var_i, var_r, var_t, var_u, var_z enddef;
+def sh_far   = "j", "p", var_s enddef;
+def sh_hloop = "h", "k" enddef;
+def sh_mn    = "m", var_n, "v", "w", "x", var_y enddef;
+def sh_x     = "x" enddef;
+
+%% Some macros to use these lists.
+
+boolean ligged[], first;
+
+def ligtables (text list) =
+  ligtable
+  for c = list:
+    if not known ligged[byte c]:
+      hide ( ligged[byte c] = true ) c:
+    fi
+  endfor
+enddef;
+
+def link (text list) (expr chr) =
+  hide(first := true)
+  for lft = list:
+    if first: hide(first := false) else: , fi lft |=:| chr endfor
+enddef;
+
+def links (suffix ln) (text sh) =
+  hide (first := true)
+  forsuffixes # = sh:
+    if first: hide(first := false) else: , fi
+    expandafter link expandafter ( scantokens ("sh_" & str #) )(lnk.#.ln)
+  endfor
+enddef;
+
+%%% ligtable ligtables
+%%% penpos link links
+
+%%\subsec Ligatures between lowercase and punctuations.   %{{{2
+
+ligtable "-": "-" =: 21, skipto 0;
+ligtable 21: "-" =: 22, skipto 0;
+
+ligtable "!": "`" =: 189;
+ligtable "?": "`" =: 190;
+
+ligtable "`": "`" kern -2 link_width * k#, skipto 0;
+ligtable "'": "'" kern -2 link_width * k#, skipto 0;
+ligtable 18: "'" =:| "'", skipto 0;
+
+ligtable "<": "<" =: 19;
+ligtable ">": ">" =: 20;
+
+ligtable ||: "(": ")": "[": "]": "{": "}": "/": "|": "\":
+  189: 190: ".": ":": ";": 20: 22:
+0:: 
+  link(sh_far)(lnk.far.low), link(sh_mn)(lnk.mn.beg),
+  skipto 2;
+
+
+%%\subsec Ligatures between lowercase letters.   %{{{2
+
+%% Special cases: the q and the s have a different shape at the end of words,
+%% they have no right link, contrary to the other letters.
+
+ligtables ("q", var_s)
+  for c = 97 upto 122: c |=:| lnk.sq, endfor
+  for c = 160, 161, 162, 163, 165, 166, 167, 168, 170, 171, 172,
+    175, 176, 177, 178, 179, 181, 183, 185, 186, 187: c |=:| lnk.sq, endfor
+  for c = 224 upto 252:
+    if (c <> 230) and (c <> 240): c |=:| lnk.sq, fi endfor
+  253 |=:| lnk.sq;
+
+ligtables ("h", "k")
+  "'" |=: 18, skipto 1;
+
+ligtables (var_a, var_d, var_i, "m", var_n, "p", var_r, var_u, lnk.sq)
+1::
+  for lt = boundarychar, word_ends: lt |=:| lnk.lowmed, endfor
+  skipto 2;
+
+ligtables (lnk.low)
+2::
+  links (low) (small, hloop, loop, vert, far, mn, x);
+
+ligtables (var_l)
+  "'" |=: 18, skipto 3;
+
+ligtables (var_c, var_e, "f", var_g, "j", var_t, "x", var_y, var_z, 247)
+3::
+  links (med) (small, hloop, loop, vert, far, mn, x);
+
+ligtables (lnk.high)
+  for c = var_e: c kern -thin#, endfor
+  skipto 5;
+
+ligtables ("b")
+  "'" |=: 18, skipto 4;
+
+ligtables (var_o, "v", "w")
+4::
+  for c = var_e: c |=:| lnk.high, endfor
+  for c = "-", 21, 22: c kern thin#, endfor
+5::
+  links (high) (small, loop, vert, far, mn);
+
+%%\subsec Ligatures and spacings after uppercase letters.   %{{{2
+
+ligtable "G": "J": "Y": 221:
+  links (med) (small, hloop, loop, vert, far, mn, x);
+
+ligtable "F": "S":
+  lnk.small.low kern -1/2 k#, % small letters are closer
+  lnk.vert.low kern -1/4 k#, % verticals too
+  lnk.far.med kern -1/5 k#, % j, p, s too
+  link(sh_small)(lnk.small.low),
+  skipto 6;
+
+ligtable "I": 204: 205: 206: 207:
+  for l = lnk.loop.high, lnk.vert.low, lnk.mn.beg: l kern 1/8ex#, endfor
+  skipto 6;
+
+ligtable "N": 209:
+  lnk.small.low kern -1/3 k#,
+  lnk.far.med kern -1/5 k#,
+  skipto 6;
+
+ligtable "P":
+  lnk.small.low kern -5/8 k#,
+  lnk.far.med kern -1/3 k#,
+  lnk.vert.low kern -5/12 k#,
+  skipto 6;
+
+ligtable "Q":
+  lnk.mn.beg kern 1/5 k#,
+  link(sh_small)(lnk.small.low),
+  skipto 6;
+
+ligtable "H": "K": "L":
+  lnk.small.low kern 1/8 k#,
+  lnk.mn.beg kern 1/6 k#,
+  skipto 6;
+
+ligtable "B": "C": 199: "D": "M": "R": "T": "V": "W": "X": "Z":
+   "A": 192: 193: 194: 195: 196: 197:
+   "E": 200: 201: 202: 203:
+   "O": 210: 211: 212: 213: 214: 216:
+   "U": 217: 218: 219: 220:
+  lnk.mn.beg kern 1/6 k#,
+6::
+  links (med) (hloop),
+  links (low) (small, loop, vert),
+  links (med) (far),
+  links (beg) (mn);
+
+bye.

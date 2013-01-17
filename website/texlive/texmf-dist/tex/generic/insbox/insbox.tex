@@ -1,0 +1,256 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%      INSBOX --- macros for inserting pictures into paragraphs     %
+%       Micha\l{} Gulczy\'nski, Szczecin, Jan 1996 / Feb 1998       %
+%                     mgulcz@we.tuniv.szczecin.pl                   %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  version 2.2
+%
+%  available macros:
+%    * \InsertBoxC{anybox}
+%        insert a centered box (use int _inside_ a paragraph)
+%    * \InsertBoxL{after_line}{anybox}[correction]
+%    * \InsertBoxR{after_line}{anybox}[correction]
+%        insert a box in the left/right after specified number of lines;
+%        correction specified in square brackets is optional;
+%        both macros should be called _before_ a paragraph
+%    * \MoveBelowBox
+%        start a new paragraph just below the current frame
+%
+%  see the demo.tex file for more information
+%
+
+\catcode`\@ = 11
+%
+%  Margin between the text and the box:
+\newdimen\@InsertBoxMargin
+\@InsertBoxMargin = 2mm
+%
+%  definition of \ParShape, an inproved version of plain \parshape
+%
+\newcount\@numlines    % sum: m_1+...+m_n
+\newcount\@linesleft   % counter used when reading lines of \ParShape
+\def\ParShape{%
+    \@numlines = 0
+    \def\@parshapedata{ }% here we'll collect data for plain \parshape
+    \afterassignment\@beginParShape
+    \@linesleft
+}%
+\def\@beginParShape{%
+    \ifnum \@linesleft = 0
+      \let\@whatnext = \@endParShape
+    \else
+      \let\@whatnext = \@readnextline
+    \fi
+    \@whatnext
+}%
+\def\@endParShape{%
+    \global\parshape = \@numlines \@parshapedata
+}%
+\def\@readnextline#1 #2 #3 {% #1 #2 #3 are: m_i, leftskip_i, rightskip_i
+    \ifnum #1 > 0
+      \bgroup  % I want to keep changes of \dimen0 and \count0 local
+        \dimen0 = \hsize
+        \advance \dimen0 by -#2  % \parshape requires left skip and
+        \advance \dimen0 by -#3  % _length_of_line_ (not right skip!)
+        \count0 = 0
+        \loop
+          \global\edef\@parshapedata{%
+            \@parshapedata    % add to \@parshapedata:
+            #2                % left skip
+            \space            % a space
+            \the\dimen0       % length of line
+            \space            % another space
+          }%
+          \advance \count0 by 1
+          \ifnum \count0 < #1
+        \repeat
+      \egroup
+      \advance \@numlines by #1
+    \fi
+    \advance \@linesleft by -1
+    \@beginParShape
+}%
+%
+%  \InsertBoxC, \InsertBoxL, \InsertBoxR
+%
+\newbox\@boxcontent     % box containing the picture to be inserted
+\newcount\@numnormal    % number of leading lines to typeset normally
+\newdimen\@framewidth   % width of the frame
+\newdimen\@wherebottom  % position of frame's bottom
+\newif\if@byframe       % true if we are just beside the frame
+\@byframefalse
+%
+%
+\def\InsertBoxC#1{%
+  \leavevmode
+  \vadjust{
+    \vskip \@InsertBoxMargin
+    \hbox to \hsize{\hss#1\hss}
+    \vskip \@InsertBoxMargin
+  }%
+}%
+\def\InsertBoxL#1#2{%
+  \@numnormal = #1
+  \setbox\@boxcontent = \hbox{#2}%
+  \let\@side = 0
+  \futurelet \@optionalparameter \@InsertBox
+}
+\def\InsertBoxR#1#2{%
+  \@numnormal = #1
+  \setbox\@boxcontent = \hbox{#2}%
+  \let\@side = 1
+  \futurelet \@optionalparameter \@InsertBox
+}%
+\def\@InsertBox{%
+  \ifx \@optionalparameter [
+    \let\@whatnext = \@@InsertBoxCorrection
+  \else
+    \let\@whatnext = \@@InsertBoxNoCorrection
+  \fi
+  \@whatnext
+}%
+\def\@@InsertBoxCorrection[#1]{%
+  \ifx \@side 0
+    \@@InsertBox{#1}{0}{{\the\@framewidth} 0cm}%
+  \else
+    \@@InsertBox{#1}{1}{0cm {\the\@framewidth}}%
+  \fi
+}%
+\def\@@InsertBoxNoCorrection{%
+  \@@InsertBoxCorrection[0]%
+}%
+\def\@@InsertBox#1#2#3{%
+  \MoveBelowBox
+  \@byframetrue
+  % \@wherebottom = \pagetotal + (\@numnormal * \baselineskip) +
+  %                 (height of \@boxcontent) + (2 * \@InsertBoxMargin)
+  \@wherebottom = \baselineskip
+  \multiply \@wherebottom by \@numnormal
+  \advance \@wherebottom by 2\@InsertBoxMargin
+  \advance \@wherebottom by \ht\@boxcontent
+  \advance \@wherebottom by \pagetotal
+  % I have no idea why, but \InsertBox called at the top of a page
+  % calculates space for the box one line too big
+  \ifdim \pagetotal = 0cm
+    \advance \@wherebottom by -\baselineskip  % ^ reduction
+  \fi
+  % add the correction
+  \advance \@wherebottom by #1\baselineskip
+  % \@framewidth = (width of \@boxcontent} + \@InsertboxMargin
+  \@framewidth = \wd\@boxcontent
+  \advance \@framewidth by \@InsertBoxMargin
+  %
+  \bgroup  % to keep changes of \dimen0 local
+    % check if the box fits in the page
+    \ifdim \pagetotal = 0cm
+      \dimen0 = \vsize
+    \else
+      \dimen0 = \pagegoal
+    \fi
+    \ifdim \@wherebottom > \dimen0
+      % print a warning message ...
+      \immediate\write16{+--------------------------------------------------------------+}%
+      \immediate\write16{| The box will not fit in the page. Please, re-edit your text. |}%
+      \immediate\write16{+--------------------------------------------------------------+}%
+      % ... and mark this place in document with a black box
+      \vrule width \overfullrule
+    \fi
+  \egroup
+  \prevgraf = 0
+  % insert the box in the left (if #2 = 0) or in the right (if #2 = 1)
+  \vbox to 0cm{%
+    \dimen0 = \baselineskip
+    \multiply \dimen0 by \@numnormal
+    \advance \dimen0 by -\baselineskip
+    \setbox0 = \hbox{y}%
+    \vskip \dp0
+    \vskip \dimen0
+    \vskip \@InsertBoxMargin
+    \ifnum #2 = 1
+      \vtop{\noindent \hbox to \hsize{\hss \box\@boxcontent}}%
+    \else
+      \vtop{\noindent \box\@boxcontent}%
+    \fi
+    \vss
+  }%
+  % I have no idea why, but this is really necessary
+  \vglue -\parskip
+  \vskip -\baselineskip
+  % each following paragraph needs to be formatted properly
+  \everypar = {%
+    % are we already below the bottom of the box?
+    \ifdim \pagetotal < \@wherebottom
+      % no...
+      \bgroup  % to keep some changes local
+        % let's calculate parameters for \ParShape
+        \dimen0 = \@wherebottom
+        \advance \dimen0 by -\pagetotal
+        \divide \dimen0 by \baselineskip
+        \count1 = \dimen0
+        \advance \count1 by 1
+        \advance \count1 by -\@numnormal
+        \ifnum #2 = 1
+          \ParShape = 3
+                      {\the\@numnormal}   0cm   0cm
+                      {\the\count1}       0cm   {\the\@framewidth}
+                      1                   0cm   0cm
+        \else
+          \ParShape = 3
+                      {\the\@numnormal}   0cm                  0cm
+                      {\the\count1}       {\the\@framewidth}   0cm
+                      1                   0cm                  0cm
+        \fi
+      \egroup
+    \else
+      % yes!
+      \@restore@    % it's time to end everything
+    \fi
+  }%
+  % this definition isn't very necessary --- just in case the paragraph
+  % following \InsertBoxL or \InsertBoxR has fewer lines that the
+  % first argument of the macro
+  \def\par{%
+      \endgraf
+      \global\advance \@numnormal by -\prevgraf
+      \ifnum \@numnormal < 0
+        \global\@numnormal = 0
+      \fi
+      \prevgraf = 0
+  }%
+}%
+%
+%  call this macro to move the current position just below the
+%  current frame
+%
+\def\MoveBelowBox{%
+  \par
+  \if@byframe
+    \global\advance \@wherebottom by -\pagetotal
+    \ifdim \@wherebottom > 0cm
+      \vskip \@wherebottom
+    \fi
+    \@restore@
+  \fi
+}%
+%
+%  normal settings are as follows:
+%
+\def\@restore@{%
+    \global\@wherebottom = 0cm
+    \global\@byframefalse
+    \global\everypar = {}%
+    \global\let \par = \endgraf
+    \global\parshape = 1 0cm \hsize
+}%
+%
+%  someone told me that in LaTeX there is no \pageno counter;
+%  the counterpart is \c@page
+%
+\ifx \documentclass \@Dont@Know@What@It@Is@
+\else
+  \let \pageno = \c@page
+\fi
+
+
+\catcode`\@ = 12

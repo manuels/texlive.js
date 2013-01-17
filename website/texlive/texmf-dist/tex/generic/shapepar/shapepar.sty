@@ -1,0 +1,1172 @@
+% S H A P E P A R . S T Y
+%
+% Typeset paragraphs in various shapes.
+%
+% Version 2.1  (Sept 2006)
+%
+% Copyright (c) 1993,2002,2006    Donald Arseneau
+% These definitions may be freely transmitted, reproduced, or modified
+% provided that any modifications are clearly identified and this notice
+% is left intact.
+%
+% \shapepar: a macro to typeset paragraphs in a specific shape. The
+% size is adjusted automatically so that the entire shape is filled
+% with text. There can be no displayed math, and no "\vadjust"
+% material (no "\vspace").  These macros work for both LaTeX and plain
+% TeX.  For LaTeX, specify \usepackage{shapepar}, or for either,
+% \input shapepar.sty .  Configuration parameters are set just
+% below here.  Instructions for use are given in the LaTeX document 
+% shapepar.ltx; a short summary is given after \endinput below.
+%
+% ToDo:  
+% Vertical correction for character height applied to shape.
+% Shape-based bounding box and reference point for exact placement
+% Allow multiple paragraphs and displayed math in shape
+% Typeset shape text directly when fixed scale (or even always) (register conflicts)
+% Allow text overflow from fixed scale shapes (for magazine style)
+% More assertive \cutout processing
+% 
+%---------------------
+% make file load whatever status of @ (hold codes in \squarepar temporarily)
+\edef\squarepar
+  {\catcode\string `\string @ \the\catcode `\@
+   \catcode\string `\string $ \the\catcode `$
+   \catcode\string `\string ! \the\catcode `\!
+   \catcode\string `\string ^ \the\catcode `\^}
+\catcode\string`\@=11  \catcode\string`\$=11
+\catcode\string`\^=14  \catcode\string`\!=10
+
+% ------ Configuration parameters ------
+
+% horizontal separation between shaped par and cut-out text
+\newskip\cutoutsep
+\cutoutsep=12pt
+
+% smallest gap allowed; smaller will be eliminated
+\def\SmallestGap{.4em}
+
+% small gap; smaller will be enlarged
+\def\SmallGap{1em}
+
+% smallest segment allowed; smaller will be omitted
+\def\SmallestSegment{.2em}
+
+% How many times will \shapepar try to get the size of the paragraph?
+\chardef\ScaleMaxTries=9
+
+% fineness of cutout matching to lines (number of reference points
+% per line of text)
+\chardef\RefineBaselines=3
+
+% Vertical extension of cutout gap (fraction of \baselineskip)
+\def\cutoutsepstretch{.5}
+
+% --------------------------------------
+\ifx\DeclareOption\undefined\else
+
+ \ProvidesPackage{shapepar}[2006/09/11 v 2.1, Shaped paragraphs]
+ \DeclareOption{quiet}{\catcode`\!=14}
+ \DeclareOption{noisy}{\catcode`\^=10}
+ \ProcessOptions
+
+\fi
+% --------------------------------------
+
+% Define variables.  Use LaTeX names for some, and use aliases to
+% LaTeX allocations and TeX parameters for many others.
+% In the future, the descriptive names may disappear altogether.
+
+\newdimen\SH@scale
+\mathchardef\@dxii=512
+
+\def\@empty{}
+\long\def\@gobble#1{}
+\ifx\@tempdima\undefined \csname newdimen\endcsname \@tempdima \fi
+\ifx\@tempdimb\undefined \csname newdimen\endcsname \@tempdimb \fi
+\ifx\@tempcnta\undefined \csname newcount\endcsname \@tempcnta \fi
+\ifx\@tempcntb\undefined \csname newcount\endcsname \@tempcntb \fi
+\ifx\@tempboxa\undefined \csname newbox\endcsname \@tempboxa \fi
+
+\def\@tempa#1#2#3{%  {"count"|"dimen"|"box"|"skip"}{\myname}{\realname}
+  \ifx\undefined#3\csname new#1\endcsname#2% allocate new one
+  \else\let#2#3\fi % alias is defined, so use it
+ }
+
+\@tempa{box}\SH@boxa\rootbox
+\newbox\SH@boxb                   % global
+\@tempa{count}\SH@ntries\@cla     % global
+\@tempa{dimen}\spec@bot\p@renwd
+\@tempa{dimen}\spec@top\jot
+\@tempa{dimen}\spec@height\@wholewidth
+\@tempa{dimen}\spec@incr\@halfwidth
+\@tempa{dimen}\spec@position\@picht
+\@tempa{dimen}\spec@nextpos\@ovxx
+\@tempa{dimen}\spec@prevpos\@ovyy
+\@tempa{dimen}\spec@hcenter\@xdim
+\@tempa{dimen}\SH@refbase\@ydim
+\@tempa{dimen}\SH@dscale\dimen@i   % global
+\@tempa{dimen}\SH@tottext\@toproom % global
+\@tempa{dimen}\SH@posseg\@ovro
+\@tempa{dimen}\SH@widseg\@ovri
+\@tempa{dimen}\SH@posold\@ovdx
+\@tempa{dimen}\SH@widold\@ovdy
+\@tempa{dimen}\SH@weight\@dashdim
+\@tempa{count}\SH@npslines\interdisplaylinepenalty
+\@tempa{count}\SH@nline\@savsf
+\@tempa{count}\SH@lowline\delimiterfactor
+\@tempa{count}\SH@highline\doublehyphendemerits
+
+\let\SH@margin\@empty
+\let\SH@xoff\z@
+\let\SH@yoff\z@
+
+% ------- Begin main definitions -------
+
+\def\cutout#1#2{%  #1 = r|l  #2 = (  or something else
+  \par \endgraf
+  \lowercase{\def\SH@margin{#1}}%
+  \def\@tempa{#2}\def\@tempb{(}%
+  \ifx\@tempa\@tempb \let\@tempb\SH@cutopt
+  \else \def\@tempb{\SH@cutopt \z@,\z@)#2}%
+  \fi \@tempb
+}
+
+\def\SH@cutopt #1,#2){% #1 = x-offset, #2 = y-offset
+  \def\SH@xoff{#1}\def\SH@yoff{#2}%
+  \edef\SH@cutoutbase{\the\baselineskip}%
+  \ifx\SH@margin\@empty\else
+     \def\@tempa{l}\ifx\SH@margin\@tempa\else \def\@tempa{r}\fi
+     \ifx\SH@margin\@tempa\else
+      \errhelp{The \string\cutout\space is ignored; the \string\shapepar\space
+         will continue. }\errmessage{Shaped Paragraph Error:
+         Cutout side \string"\SH@margin\string" not valid; should be l or r.}%
+      \let\SH@margin\@empty
+  \fi\fi
+  \ifx\SH@margin\@empty\else \begingroup \fi
+}
+
+\def\Shapepar{\ifx\SH@margin\@empty \let\SH@usebox\box \fi \shapepar}
+\let\SH@usebox\unvbox
+
+\def\shapepar#1{\relax % #1 = shape specification or "["
+  \begingroup
+  \ifx\SH@margin\@empty \let\SH@xoff\z@ \let\SH@yoff\z@ \fi
+  \if [\noexpand#1\relax \expandafter\SH@scaledshape
+  \else \SH@scale\z@ \SH@start{#1}\fi
+}
+
+\def\SH@scaledshape #1]{\SH@scale #1\relax \SH@start}
+
+\def\SH@start#1{% #1 = shape specification.  May be a macro.
+  \edef\SH@restog{\global\SH@ntries\the\SH@ntries
+   \global\SH@dscale\the\SH@dscale \global\SH@tottext\the\SH@tottext}%
+  \ifx\SH@usebox\box\else \par \endgraf \fi
+  \xdef\SH@pd{\ifvmode \the\prevdepth \else \z@ \fi}%
+  \let\\\relax \xdef\SH@spec{#1}%
+  \expandafter\SH@checkspec\SH@spec $%  check spec. $
+  \hyphenpenalty10 \exhyphenpenalty10 % optimise
+  \doublehyphendemerits10 \adjdemerits10
+  \hfuzz\maxdimen
+  \setbox\SH@boxa\vbox\bgroup % set whole text on one line
+   \parindent\z@ \leftskip\z@skip % \rightskip set below
+   % \spaceskip .333333emplus.8emminus.15em % optimise stretch
+   \parfillskip\z@ plus\@ne fil
+   \begingroup
+    \linepenalty\@m \let\\\SH@newline
+    \let\par\SH@endpar \hsize\maxdimen \rightskip\spaceskip
+    \pretolerance\m@ne \hyphenpenalty 9000 % make discretionaries
+    \ifx\textwidth\undefined\else \textwidth\hsize
+      \linewidth\hsize \columnwidth\hsize \fi
+    \def\vadjust{{\def\SH@dm{special vertical material}\the\everydisplay}}%
+    \everydisplay{\errhelp{Press RETURN, and hope.}\errmessage
+     {Shaped Paragraph Error: \SH@dm\space is illegal in a shaped paragraph}}%
+    \noindent \penalty\@M \hskip\z@skip % allow hyphenation of first word
+    \ignorespaces}
+
+\def\SH@dm{display-math}
+
+% Explicit \\ commands insert a marker (kern) that will later preserve a line-break
+\def\SH@newline{\unskip\hfill\kern9sp\break\ignorespaces}
+
+\def\SH@endpar{% Insert filler for fixed-scale paragraphs
+    \ifdim\SH@scale>\z@ \def~{\hfil\null\hfil\null\hfil\null\hfil\null}%
+      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\fi
+    \xdef\SH@baseset{\noexpand\baselineskip\the\baselineskip \relax}%
+    \endgraf \endgroup % still inside \vbox and \begingroup
+   \SH@baseset
+%  get tottext = total length / 256 because total length may be > \maxdimen
+   \setbox\@tempboxa\box\voidb@x \global\SH@tottext\z@
+   \SH@sumlines % combine multiple lines -> \@tempboxa; width/256 ->\SH@tottext
+^  \message{total text length = \the\wd\@tempboxa, or 256 x \the\SH@tottext;
+^  \string\baselineskip=\the\baselineskip;}%
+^  {\let\\\relax\message{Spec is: \SH@spec}}%
+^  \message{spec height = \Pointless\spec@height. }%
+   \unskip\unkern\unpenalty\unskip\unkern\unpenalty
+   \setbox\SH@boxa\box\@tempboxa % all the text
+   \ifdim\SH@scale>\z@ % for specified fixed scale: only format once
+     \global\SH@ntries\ScaleMaxTries
+   \else % Automatic scaling.  Get a first-guess scale
+     % Get 1/256 of total segment length into \@tempdima
+     \@tempdima\z@ \spec@prevpos\z@
+     \expandafter\SH@measline\SH@spec \\\delimiter
+^    \message{Spec area/256 = \Pointless\@tempdima}%
+%    scale = 1.01 * sqrt( [text_length/256]*\baselineskip / [spec_area/256] )     
+%    Pull out some large factors from square-root to extend numeric range
+%    available for division.
+     \SH@dscale=1.01\p@ % optimize
+     \loop \if\AbsVal\@tempdima<\p@
+        \multiply\@tempdima\@cclvi \multiply\SH@dscale\sixt@@n
+     \repeat
+     \SH@scale=\Pointless\SH@tottext\baselineskip
+     \fpdivide\SH@scale\@tempdima
+     \sqrtofdim\SH@scale
+     \SH@scale=\Pointless\SH@dscale\SH@scale 
+^    \message{Initial scale = \the\SH@scale}%
+     \global\SH@ntries\z@ % will count maximum \ScaleMaxTries trial scales
+   \fi
+   \global\SH@dscale\z@
+   \SH@parpars \SH@tryparshape}
+
+% Measure the area covered by segments in the shape spec.  Accumulate
+% as length \@tempdima
+
+\def\SH@measline#1#2\\#3{% #1 = this pos, #2 = segments, #3 = next pos
+   \ifx\delimiter#3\expandafter\@gobble\else
+      % Vertical space multiplier -> tempdimb -> \@tempa (temporarily)
+      \@tempdimb #3\p@ \advance\@tempdimb-\spec@prevpos \divide\@tempdimb\@dxii
+      \edef\@tempa{\Pointless\@tempdimb}%
+      \SH@measseg #2t\fam\fam
+      \spec@prevpos#1\p@
+      \expandafter\SH@measline
+   \fi {#3}}
+
+% Recursively measure and accumulate widths of text segments on a line.
+% Invoke as \SH@measseg <segments>t\fam\fam, as the "t\fam\fam" serves
+% as an end-marker. All the widths are scaled by a factor \@tempa and
+% added to \@tempdima.  (Overwrites \@tempdimb.)
+
+\def\SH@measseg#1t#2#3{% #1 = stuff before "t", #2,#3 = posn,wid
+   \ifx \fam #3\else
+     \@tempdimb #3\p@
+     \advance\@tempdima\@tempa\@tempdimb
+     \expandafter\SH@measseg
+   \fi}
+
+% \SH@tryparshape: try a parshape with scale factor \SH@scale for \SH@spec
+% For a given scale, it would take x lines of text to cover the shape,
+% but only an integer number of lines (counted by \SH@nline) will be
+% used.  The excess is evenly distributed at the top and bottom to preserve
+% the symmetry of shapes.  The starting point is thus:
+%
+% spec_top + 1/2 * { spec_height - floor[ (spec_height-delta)/incr ]*incr }
+%
+
+\def\SH@tryparshape{%
+  \advance\SH@scale\SH@dscale % shift scale factor by delta
+^ \message{------------------------------------------------------------------------}%
+! \message{(\the\SH@ntries) Try shape with scale \the\SH@scale. \space
+!    (Delta = \Pointless\SH@dscale). \space }%
+  \spec@incr\baselineskip \fpdivide\spec@incr\SH@scale
+  \spec@position\spec@height \advance\spec@position-.3\spec@incr % height-delta
+  \SH@nline\spec@position \divide\SH@nline\spec@incr % number of lines
+  \spec@position-\SH@nline\spec@incr % - height of n lines
+  \advance\spec@position\spec@height % difference from desired height
+  \divide\spec@position\tw@ % half the excess
+  \advance\spec@position\spec@top % starting position
+  \xdef\spec@firstposition{\the\spec@position}%
+  \SH@widold-\maxdimen
+  \SH@makeparshape}
+
+\def\SH@makeparshape{%
+  \advance\spec@position-\spec@incr % pre-decrement
+  \SH@nline\z@ % initialize counter for lines
+  \spec@prevpos \spec@top % -\maxdimen% \spec@position
+  \let\SH@Prevspec\@empty
+  \let\@elt\relax % simply accumulate lines (reverse order)
+  \gdef\SH@parshape{}\gdef\SH@lines{}\SH@npslines\z@
+% \message{Parsing spec, starting at \Pointless\spec@position. }%
+  \expandafter \SH@doaline \SH@spec \\\delimiter $\\$}
+% this macro ends instead of continuing with \SH@done so TeX will use
+% tail-recursion as \SH@tryparshape is iterated.
+  
+\def\SH@doaline{\SH@updps \SH@widold-\maxdimen
+  \advance\SH@nline\@ne \advance\spec@position\spec@incr
+  \let\\\SH@findpos \\}
+
+% Get spec lines appropriate for given position (\spec@position):
+% \SH@prevspec,\spec@prevpos for spec line above
+% \SH@nextspec,\spec@nextpos for spec line below
+% (lines may contain several segments)
+%
+\def\SH@findpos#1#2\\{%  #1 = spec line vert position, #2 = segments
+  \ifx\delimiter#1\let\\\SH@dopara
+  \else
+     \ifdim#1\p@<\spec@prevpos \SH@backup{#1}\fi % handle backspace
+     \ifdim#1\p@>\spec@position
+        \def\SH@nextspec{#2{}}\spec@nextpos#1\p@ \def\\{\SH@found{#1}#2\\}%
+        \expandafter\def\expandafter\SH@prevspec\expandafter{\SH@Prevspec}%
+     \else
+        \def\SH@Prevspec{#2{}}\spec@prevpos#1\p@
+  \fi\fi \\}
+
+\def\SH@found{% calculate weights to interpolate
+%  \message{ -- \number\SH@nline\space-- SH@found \the\spec@position\space 
+%      between \the\spec@prevpos\space and \the\spec@nextpos. }%
+  \ifdim\spec@position<\spec@prevpos
+    \let\SH@next\SH@doaline
+  \else
+    \SH@weight\spec@position \advance\SH@weight-\spec@prevpos
+    \@tempdimb\spec@nextpos  \advance\@tempdimb-\spec@prevpos
+    \fpdivide\SH@weight\@tempdimb % weight = interpolation factor
+    \let\SH@next\SH@dosegment
+  \fi  
+  \SH@next}
+
+\def\SH@backup#1{%\tracingall
+%  \message{Backup for #1 after \Pointless\spec@prevpos, seeking \Pointless\spec@position. }%
+  \ifdim#1\p@<\spec@position
+     \advance\SH@nline\m@ne 
+     \advance\spec@position-\spec@incr 
+     \advance\spec@prevpos-\spec@incr
+     \SH@backup{#1}%
+  \fi}
+
+% Get the position and width of a segment of text by taking the weighted
+% average of the specifications from above and below (weighted by nearness).
+% We iterate \SH@dosegment while it handles the segments
+% Most of the confusing bits here are hueristics to deal with narrow gaps.
+% If a gap between two texts is less than a space, the texts are joined
+% over the gap.  If the gap is less than 1em, the gap is increased to the
+% average of 1em and the given gap.
+
+\def\SH@dosegment{% do a segment of text on this line
+  \SH@posseg\z@ \SH@widseg\z@
+  \advance\SH@weight-\p@ \SH@weight-\SH@weight % w1 = 1 - w2
+  \SH@getseg A\SH@prevspec % Above
+  \advance\SH@weight-\p@ \SH@weight-\SH@weight % w2 = 1 - w1
+  \SH@getseg B\SH@nextspec % Below
+  \ifdim\SH@widseg>10sp
+     \SH@widseg\Pointless\SH@scale\SH@widseg
+     \advance\SH@posseg-\spec@hcenter
+     \SH@posseg\Pointless\SH@scale\SH@posseg
+     \advance\SH@posseg.5\hsize
+%    Here are the small-gap heuristics.  \@tempdima is the gap and the shift
+     \ifdim\SH@widold>10sp
+        \@tempdima\SH@posseg
+        \advance\@tempdima-\SH@posold \advance\@tempdima-\SH@widold %gap
+        \ifdim\@tempdima<\SmallestGap % gap too small; eliminate
+^          \message{Gap is \the\@tempdima--eliminate. }%
+           \advance\SH@widold\@tempdimb \advance\SH@widold\SH@widseg % no update
+        \else
+           \ifdim\@tempdima<\SmallGap % gap small; enlarge it if text not too small
+              \ifdim\SH@widold>\SmallGap \ifdim\SH@widseg>\SmallGap
+^                   \message{Gap is \the\@tempdima--enlarge}%
+                    \@tempdima-.25\@tempdima \advance\@tempdima.25em
+^                   \message{by 2 x \the\@tempdima. }%
+                    \advance\SH@widold-\@tempdima
+                    \advance\SH@widseg-\@tempdima
+                    \advance\SH@posseg \@tempdima
+           \fi\fi\fi
+           \SH@updps
+        \fi
+     \else % no previous, so no update.  Just hold.
+        \SH@widold\SH@widseg \SH@posold\SH@posseg
+  \fi\fi
+  \ifx\SH@prevspec\@empty \let\SH@next\SH@doaline \fi
+  \ifx\SH@nextspec\@empty \let\SH@next\SH@doaline \fi
+  \SH@next}
+
+\def\SH@updps{% Update parshape with `new' info
+^\message{Segment \Pointless\SH@posold, \Pointless\SH@widold}%
+\ifdim\SH@widold>\SmallestSegment
+! \message{.}%
+  \xdef\SH@parshape{\SH@parshape\the\SH@posold\the\SH@widold\space}%
+  \xdef\SH@lines{\@elt{\the\SH@nline}{\the\SH@posold}{\the\SH@widold}\SH@lines}%
+  \advance\SH@npslines\@ne
+\fi \SH@widold\SH@widseg \SH@posold\SH@posseg}
+   
+\def\SH@getseg#1#2{% A/B, spec
+  \ifx#2\@empty \SH@sperror \fi
+  \expandafter \SH@GetseG #2$#1#2}
+
+\def\SH@GetseG#1#2$#3#4{% command, rest of spec, $, A/B, spec
+   \expandafter \ifx\csname spec#3$#1\endcsname \relax 
+     \SH@sperror
+   \else
+     \csname spec#3$#1\endcsname #2$#4%
+   \fi}
+
+% b{pos}         begin text at a point at horizontal position pos.
+% e{pos}         end text at a point at horizontal position pos.
+% t{pos}{len}    make a block of text at position pos with length len
+% s              split text (begin whitespace)
+% j              join two text blocks (end a gap)
+
+% Behavior of specs Above:
+\def\specA$b#1{\specA$t{#1}{0}}%  b(pos) -> t(pos)(0)
+\def\specA$e#1#2{\csname specA$#2\endcsname}%  e(pos) ignore
+\def\specA$s#1{\csname specA$#1\endcsname}%  s ignore % should never happen
+\def\specA$t#1{\advance\SH@posseg#1\SH@weight \@spec$t jt{#1}}
+
+% Behavior of specs Below:
+\def\specB$e#1{\specB$t{#1}{0}}
+\def\specB$b#1#2{\csname specB$#2\endcsname}
+\def\specB$j#1{\csname specB$#1\endcsname}
+\def\specB$t#1{\advance\SH@posseg#1\SH@weight \@spec$t st{#1}}
+
+\def\@spec$t#1#2#3#4#5{% j|s  t  pos  wid  next
+      \if t#2\else \SH@sperror \fi
+      \advance\SH@widseg#4\SH@weight
+      \if#1#5\relax % next is s (below) or j (above): unite two t
+        \let\@tempa\@spec$t \else \let\@tempa\SH@redefine \fi
+      \@tempa #5}
+
+\def\SH@redefine#1$#2{\def#2{#1}}
+\let\specA$\SH@redefine % bug fix to allow disjoint pieces
+\let\specB$\SH@redefine
+
+\def\SH@dopara#1${%  eat remaining spec and test parshape $
+\global\setbox\SH@boxb\vbox{%
+  \advance\SH@npslines\@ne
+  \parshape\the\SH@npslines\space \SH@parshape \z@ \maxdimen
+  \advance\SH@npslines\m@ne
+! \message{Formatting. }%
+  \noindent \unhcopy\SH@boxa \endgraf
+! \message{Expected \the\SH@npslines\space lines;
+!    got \the\prevgraf\space lines}%
+  \ifnum\prevgraf=\SH@npslines % maybe right size; check last line
+     \ifdim\SH@widseg>\z@ % yes, we can check
+        \ifnum\SH@ntries<\ScaleMaxTries % safe to screw around with \SH@npslines
+           \SH@grablast \@tempdima\wd\SH@boxa \advance\@tempdima 20\p@
+           \ifdim\@tempdima<.8\SH@widseg % final line underfull % optimise
+!             \message{but the last line is too empty. }%
+              \advance\SH@npslines\@ne % flag underfullness
+  \fi\fi\fi\fi
+  \ifnum\prevgraf=\SH@npslines % right size, done
+     \aftergroup\SH@done \global\SH@dscale\z@
+  \else % Try a new scale factor
+     \ifdim\SH@dscale=\z@ % no previous step.  Try to guess a good one
+        \ifnum\prevgraf<\SH@npslines % underfull
+^          \message{First underfull. }%
+           \@tempdima\prevgraf\p@ 
+           \divide\@tempdima\SH@npslines
+        \else % overfull
+^          \message{First overfull. }%
+           \SH@grablast 
+           \@tempdimb-\wd\SH@boxa \advance\@tempdimb-20\p@
+           \divide\@tempdimb\@cclvi
+           \@tempdima\SH@tottext \advance\@tempdimb\@tempdima
+           \fpdivide\@tempdima\@tempdimb 
+^          \message{overfullness: \the\wd\SH@boxa; ratio: \Pointless\@tempdima}%
+        \fi
+        \sqrtofdim\@tempdima
+        \advance\@tempdima-\p@
+        \divide\@tempdima\tw@
+        \global\SH@dscale\Pointless\@tempdima\SH@scale
+        \gdef\SH@fac{1}% % optimise
+     \else % Not first step, scale from previous
+        \ifnum\prevgraf>\SH@npslines % overflow now
+           \ifdim\SH@dscale>\z@  % previous Overflow
+              \global\SH@dscale \SH@fac\SH@dscale
+           \else % overflow now, but previous underflow
+              \gdef\SH@fac{.53}% % optimise
+              \global\SH@dscale -\SH@fac\SH@dscale
+           \fi
+        \else  % underflow now
+           \ifdim\SH@dscale>\z@  % previous Overflow
+              \gdef\SH@fac{.54}% % optimise
+              \global\SH@dscale -\SH@fac\SH@dscale
+           \else % overflow now, but previous underflow
+              \global\SH@dscale \SH@fac\SH@dscale
+           \fi
+        \fi 
+     \fi
+     \ifdim-\SH@dscale>.6\SH@scale
+          \global\SH@dscale -.6\SH@scale  % avoid scale --> 0 !
+     \fi
+     \global\advance\SH@ntries\@ne
+     \ifdim\AbsVal\SH@dscale <.005\p@ \global\SH@ntries\@cclv \fi
+     \ifnum \SH@ntries>\ScaleMaxTries \aftergroup\SH@done
+     \else \aftergroup\SH@tryparshape
+  \fi\fi
+}}% end \vbox,  end macro.  Must not insert anything between braces!
+
+% Get last hbox off list; rebox it into \SH@boxa, omitting final glue
+%
+\def\SH@grablast{\unskip\unkern\unskip\unpenalty
+  \setbox\SH@boxa\lastbox
+  \ifhbox\SH@boxa
+    \setbox\SH@boxa\hbox{\unhbox\SH@boxa\unskip\unskip\unpenalty}%
+  \fi}
+
+\def\SH@parpars{%
+   \lineskiplimit-0\p@ \linepenalty\thr@@
+   \tolerance9999
+   \ifx\emergencystretch\undefined % TeX2
+     \rightskip\z@ plus.5emminus.2em % optimise
+   \else \rightskip\z@skip \emergencystretch 3em % TeX 3
+   \fi \pretolerance\m@ne 
+   \hbadness\@MM \hfuzz\maxdimen % avoid formatting warning messages
+   \SH@baseset
+}
+
+\def\SH@done{\SH@parpars
+  \skip@ 1spplus2\p@ minus\p@
+  \parfillskip.5\maxdimen % this will drag text to the bottom point.
+  \advance\SH@npslines\@ne
+  \SH@reform % reformat paragraph with new parfillskip
+  \ifx\SH@usebox\box % boxed \Shapepar: find min pos
+    \let\@elt\SH@measureh \SH@posold\maxdimen \SH@lines
+  \else
+    \SH@posold\z@
+  \fi
+% {\let\@elt\relax \message{SH@lines: \SH@lines. }}%
+  \SH@nline\m@ne \SH@highline-\@m \SH@lowline\m@ne \let\@elt\SH@restack
+^ \message{Restacking.}%
+  % re-stack segments and re-justify lines; put in \vtop or \vbox appropriately
+  \global\setbox\SH@boxb \ifx\SH@margin\@empty \vbox \else \vtop \fi {%
+     \setbox\SH@boxa\vbox{}\leftskip=\z@ plus55sp minus99sp % optimise
+     \unvbox\SH@boxb
+     \SH@lines \unvbox\SH@boxa
+     \ifnum\SH@highline<\SH@lowline
+       \nobreak
+       % \message{After restack, \the\SH@highline<\the\SH@lowline,}
+       \advance\SH@lowline-\SH@highline
+       % \message{so skip down \the\SH@lowline\space lines. }%
+       \vskip\SH@lowline\baselineskip
+     \fi
+  }% Now we have final \SH@boxb
+  \ifx\SH@margin\@empty % stand-alone
+     \egroup % end original \setbox\SH@boxa\vbox\bgroup; but \SH@boxa is useless
+     \ifx\SH@usebox\unvbox % ordinary \shapepar
+        \unvbox\SH@boxb \prevdepth\SH@pd
+     \else % boxed \Shapepar
+        \vtop{\unvbox\SH@boxb}%
+        \ifvmode
+          \hrule height-\SH@pd width\z@
+          \hbox{\vrule depth\SH@pd width\z@}%
+        \fi
+     \fi
+     \SH@restog % restore global registers
+     \endgroup % forgets many local parameters. \prevdepth is global
+  \else % \cutout\shapepar Placed on margin of cutout text
+     \SH@docutout
+  \fi
+  \let\SH@usebox\unvbox % completely finished!
+  \let\SH@margin\@empty
+  \SH@ignorepar
+}
+
+% Note on height and depth:  
+% Ordinary \shapepar uses \unvbox, which ignores ordinary \baselineskip
+% figuring, so we start the final formatting of the shape with the 
+% prevdepth from outside and above.  We use the depth of the \vbox
+% to set the \prevdepth after unboxing it.  We can't record \prevdepth
+% from inside because we strip off a box from the bottom.
+% \Shapepar emits the shape in a box. The best way to do that is to
+% record the depth of the \vbox, rebox it as a \vtop (emitted) and then,
+% if vertical mode, make a strut with the proper depth. (Merely setting
+% \prevdepth gets the inter-line skips right, but not the placement at
+% the bottom of a page.)
+
+% Finally, \cutout requires a \smashed \vtop (only depth removed due to 
+% the strange behavior of \vtop).
+
+\def\SH@reform{%
+\global\setbox\SH@boxb\vbox\bgroup
+! \message{Reformat paragraph with \string\rightskip = \the\rightskip.}%
+  \advance\parfillskip-\rightskip \advance\parfillskip-\leftskip
+  \parshape\the\SH@npslines\space \SH@parshape \z@ .5\maxdimen
+  %% Maybe use prevdepth from outside, penalty puts \parskip and favors breaks
+  \ifx\SH@margin\@empty \ifx\SH@usebox\unvbox
+     \prevdepth\SH@pd \ifdim\SH@pd>-\@m\p@ \penalty-50 \fi
+  \fi \fi 
+  \noindent \unhcopy\SH@boxa \unskip\unskip\unpenalty 
+  \lower\dp\strutbox\hbox{}% depth-only strut (\@finalstrut not defined in plain TeX)
+  \penalty-\@M\hbox{\kern\maxdimen}\endgraf
+  \ifnum\prevgraf=\SH@npslines % good, it worked.
+    \setbox\SH@boxa\lastbox \unskip\unpenalty % remove mongo last box
+    \egroup % end \SH@boxb, just above
+    \xdef\SH@pd{\the\dp\SH@boxb}%
+  \else % something wrong, increase flexibility and try again
+    \egroup % end \SH@boxb, just above
+    \ifnum\skip@<64 % try again
+       \advance\rightskip\skip@
+       \multiply\skip@\tw@
+       \expandafter\expandafter\expandafter \SH@reform
+  \fi\fi}
+
+\def\SH@measureh#1#2#3{% line num, shift, width
+  \ifdim#2<\SH@posold \SH@posold#2\relax \fi
+}
+
+\def\SH@restack#1#2#3{% line num, shift, width
+  \unpenalty \skip@\lastskip \unskip \unpenalty
+  \advance\skip@\lastskip \unskip \unpenalty\unpenalty
+  \setbox\@tempboxa\lastbox
+  \setbox\SH@boxa\vbox{%
+     \ifhbox\@tempboxa
+        \advance\SH@posold-#2% Trim box for \Shapepar
+        \moveright-\SH@posold \hbox to#3
+        {\hskip\leftskip \unhbox\@tempboxa \unskip \hskip\leftskip}%
+        \nobreak
+     \fi
+     \vskip\skip@
+     \ifnum\SH@nline>\z@ \begingroup
+       \count@=#1 \advance\count@-\SH@nline \advance\count@\@ne
+       \vskip-\count@\baselineskip
+     \endgroup\fi
+     \unvbox\SH@boxa}%
+  \SH@nline#1\relax
+  % Keep track of line num for last box (\SH@highline) and
+  % lowest box on page (\SH@lowline) 
+  \ifnum\SH@highline=-\@m \SH@highline\SH@nline \fi
+  \ifnum\SH@lowline<\SH@nline \SH@lowline\SH@nline \fi
+}
+
+% Find and record parameters about the shape spec:
+% \spec@hcenter:  Horizontal center of spec
+% \spec@top: Vertical position at top of spec
+% \spec@bot: Vertical position at bottom of spec
+% \spec@height: difference between them
+% \spec@left: Horizontal position at leftmost point of spec (macro)
+% \spec@width: Total width of spec (macro)
+% \spec@area: Area covered by spec
+% All in whatever units are used by the spec itself.
+%
+\def\SH@checkspec#1#2#3#4${% h-center, v-origin, "b", rest of spec
+   \ifx b#3\else \SH@sperror \fi
+   \spec@hcenter#1\p@ \spec@top#2\p@
+   \spec@bot-\maxdimen \spec@prevpos-\maxdimen
+   \gdef\SH@spec{{#2}b#4}%
+   %  Measure vertical extrema and check for valid backspacing
+   \let\\\SH@CheckSpecLine
+   \\{#2}b#4\\{-12345.6}\\[$%
+   \ifdim\spec@bot<-\@M\p@ \SH@sperror \fi
+   %  Measure horizontal extrema
+   \spec@height\spec@bot \advance\spec@height-\spec@top
+   \SH@posold\maxdimen \SH@widold-\maxdimen\relax
+   \SH@CheckSpecSeg b#4\delimiter
+   \edef\spec@left{\Pointless\SH@posold}%
+   \advance\SH@widold-\SH@posold \edef\spec@width{\Pointless\SH@widold}%
+^  \message{Spec top: \Pointless\spec@top, bottom: \Pointless\spec@bot, height: 
+^         \Pointless\spec@height, left: \spec@left, width: \spec@width. }%
+}
+
+%  Record vertical positions.
+
+\def\SH@CheckSpecLine#1#2\\{\ifdim#1\p@<-\@M\p@ % finished
+     \def\\[${}% $
+  \else
+     \ifdim#1\p@>\spec@bot \spec@bot #1\p@\relax \fi
+     \ifdim#1\p@<\spec@prevpos % allow backspace only between pieces
+        \if\SH@only@b#2;\@empty \spec@prevpos#1\p@
+        \else \SH@sperror
+           \spec@bot-\p@ \def\\##1[${}% $ eat rest
+        \fi
+     \else \spec@prevpos#1\p@
+  \fi\fi \\}
+
+\def\SH@only@b #1#2{% return bb if only "b" specs until ";"
+  \if b\noexpand#1\expandafter\SH@only@b
+  \else \if ;\noexpand#1bb\else ab\fi
+  \fi}
+  
+%  Record horizontal positions.  These are not used, but they anticipate
+%  a shape-based bounding box.
+
+\def\SH@CheckSpecSeg#1#2#3{%
+  \ifx t#1\relax \SH@SaveSpecSeg{#2}{#3}\else
+  \ifx b#1\relax \SH@SaveSpecSeg{#2}0\else
+  \ifx e#1\relax \SH@SaveSpecSeg{#2}0\fi\fi\fi
+  \ifx\delimiter#3\def\SH@CheckSpecSeg##1##2{}\fi
+  \SH@CheckSpecSeg{#2}{#3}}
+
+\def\SH@SaveSpecSeg#1#2{%
+  \SH@posseg#1\p@\relax
+  \ifdim\SH@posseg<\SH@posold \SH@posold\SH@posseg \fi
+  \advance\SH@posseg#2\p@\relax
+  \ifdim\SH@posseg>\SH@widold \SH@widold\SH@posseg \fi
+  \relax
+}
+
+% Grab all the hboxes in the preceding list, combine their contents in
+% \@tempboxa (removing \rightskip, separating with space), and give 
+% SH@tottext = total_width / 256 (note that the total width may be 
+% greater than \maxdimen)
+%
+\def\SH@sumlines{\SH@grablast 
+\ifhbox\SH@boxa
+  \@tempdima\wd\SH@boxa \divide\@tempdima\@cclvi 
+  \global\advance\SH@tottext\@tempdima
+  \setbox\@tempboxa\hbox{%
+     \unhbox\SH@boxa
+     \ifdim\lastkern=9sp \hfill\break \fi 
+     \ifvoid\@tempboxa\else \unhbox\@tempboxa \fi
+  }% Repeat until complete:
+  \expandafter\SH@sumlines
+\fi}
+
+\def\SH@sperror{\errhelp{It would be amazing if you can continue after
+  this error.}\errmessage
+  {Shaped Paragraph Error:  Error in specification.  Check carefully!}}%
+
+%  Do the cutout in the surrounding text.  Do so by regenerating
+%  the a \parshape (\SH@lines actually) with a smaller line spacing.
+%  Whichever of those lines fall near each line in the outer cutout
+%  text contribute to the outer parshape.
+
+\def\SH@docutout{%
+   % \message{\string\SH@docutout, with initial y-pos=\the\spec@position, scale=\the\SH@scale. }%
+   \spec@position-\SH@yoff\relax \fpdivide\spec@position\SH@scale
+   \advance\spec@position\spec@firstposition
+   % \message{Spec position of first outer line is \the\spec@position. }%
+   % line spacing of surrogate is fraction of the outer baselines.
+   % Determine surrogate's "refined" baseline-skip (\SH@refbase),
+   % its shape-spec increment (\spec@incr) and the number of lines
+   % corresponding to the vertical (expanded) cutout-sep (\SH@highline)
+   % Temporarily, \SH@posold is "shoulder" - height of octagon's corner.
+   \SH@refbase\SH@cutoutbase
+   \@tempdima\cutoutsep
+   \SH@posold.414\cutoutsep
+   \advance\@tempdima\cutoutsepstretch\SH@refbase % not refbase but cutoutbase
+   \advance\SH@posold\cutoutsepstretch\SH@refbase
+   \divide\SH@refbase\RefineBaselines % examine multiple positions per line
+   % \message{Vertical gap \the\@tempdima, with refined spacing \the\SH@refbase. }%
+   \divide\@tempdima\SH@refbase
+   \SH@highline\@tempdima \SH@lowline-\SH@highline
+   \spec@incr\SH@refbase
+   \fpdivide\spec@incr\SH@scale
+   % Pre-calculate excluded octagon shape (\SH@posold is "shoulder")
+   \begingroup
+     \gdef\SH@octcase{}\let\or\relax \SH@nextoctcase
+     \xdef\SH@octcase{\noexpand\ifcase\SH@highline\SH@octcase\z@\noexpand\fi}%
+     %\toks@\expandafter{\SH@octcase}\message{Octagon cases are: \the\toks@ }%
+   \endgroup
+   \SH@lowline-\SH@highline
+   %\message{Range of lines of interest: \the\SH@lowline\space to \the\SH@highline. }%
+   \advance\SH@lowline\@ne \advance\SH@highline\@ne
+   % Generate the surrogate refined-lines shape
+   \def\SH@dopara##1${}%  Don't typeset the refined shape; just gobble to $
+   \SH@makeparshape % Get \SH@lines
+   % Record highest line number in \SH@lines
+   \let\@elt\SH@getmaxline \SH@nline\z@ \SH@lines
+   % Use \SH@widold ("hold") to retain:  x_off +/- (.5 hsize)
+   \SH@widold\SH@xoff \advance\SH@widold\if l\SH@margin-\fi .5\hsize
+   % Use \SH@posold ("hold") for initialization for outermost position
+   \if l\SH@margin\relax
+      \def\@tempb##1##2{##1##2}%
+      \SH@posold -\SH@widold
+   \else 
+      \def\@tempb##1##2{\z@##1}%
+      \SH@posold\hsize \advance\SH@posold-\SH@widold
+   \fi
+   % Build cutout's parshape in \SH@parshape
+   \gdef\SH@parshape{\@empty\@empty\@empty}\SH@npslines\z@
+   \expandafter\let\expandafter\@elt\csname SH@mostopposite\SH@margin\endcsname
+   \SH@cutoutline % Builds parshape
+   % Pull out indentation of first line
+   \afterassignment\SH@dopara % a type of "gobble", see a bit above
+   \@tempdima\SH@parshape $% the $ terminates gobble
+   \advance\@tempdima-\SH@xoff
+   \xdef\SH@xoff{-\the\@tempdima}%
+   % Now finalize the parshape lines
+   \advance\SH@npslines\@ne
+   \xdef\SH@parshape{\number\SH@npslines\space\SH@parshape \z@\hsize}%
+   \egroup % end original \setbox\SH@boxa\vbox\bgroup; but \SH@boxa is useless
+   \SH@restog % restore global registers
+  \endgroup% Have the parshape; end group started by \shapepar
+  \global\setbox\SH@boxb\rlap{%
+    \kern\if\SH@margin l-\fi.5\hsize
+    \kern\SH@xoff
+    \lower\SH@yoff \box\SH@boxb
+  }%
+  % Encourage page break above
+  \@tempdima\dp\SH@boxb
+  \advance\@tempdima-\SH@cutoutbase
+  \advance\@tempdima\cutoutsep
+  \dp\SH@boxb\z@
+  \vskip \z@ plus .3\@tempdima % optimize
+  \penalty \@cclv % optimize
+  \vskip \z@ plus -.3\@tempdima % undo above skip
+  \ifdim20\p@<\@tempdima % optimize
+    \vskip \@tempdima plus 9\p@ % optimize
+    \penalty \@m % optimize
+    \vskip -\@tempdima plus -9\p@ % undo above skip
+  \fi
+  \noindent % Outer text is not indented.  To indent, use \indent.
+  \vadjust{\penalty\@M \vskip\@tempdima
+           \penalty9999 % exercise page builder
+           \vskip-\@tempdima}%
+  \endgroup % end group started by \cutout; out of all groups
+  %\message{Parshape:  \noexpand\parshape\SH@parshape }%
+  \parshape\SH@parshape
+  \box\SH@boxb
+}
+
+% for r  indent = 0pt (done by \@tempb)
+%        width  = leftmost_pos  + x_offset + ( .5\hsize - gap )
+% for l  indent = rightmost_pos + x_offset - ( .5\hsize - gap )
+%        width  = \hsize - indent
+% Because I allow backspacing, I can't go through the spec, building
+% the parshape.  Instead, I have to scan the whole spec, or rather, its
+% instantiation in \SH@lines, for every line of the \parshape...
+% Well, I *could* sort the instantiation first; then I could move
+% though it sequentially.
+%
+% Here I am re-using some scratch variables:
+% \SH@posold = +/- \maxdimen -- starting value of rightmost/leftmost
+% \SH@widold = x_offset +/- ( .5\hsize )
+% \SH@posseg = leftmost/rightmost position
+% \SH@nline  = highest number of \@elt lines in \SH@lines
+
+\def\SH@cutoutline{%
+  \ifnum\SH@lowline>\SH@nline
+    \let\SH@cutoutline\relax
+  \else
+    \SH@posseg\SH@posold
+    \advance\SH@npslines\@ne
+    %\message{SH@cutoutline \the\SH@npslines\space between \the\SH@lowline\space and \the\SH@highline. }%
+    \SH@lines % Use \@elt to get leftmost/rightmost at this line
+    %\message{ posseg \the\SH@posseg, posold \the\SH@posold. }%
+    \advance\SH@posseg \SH@widold
+    {\advance\hsize-\SH@posseg
+    \xdef\SH@parshape{\SH@parshape \@tempb{\the\SH@posseg}{\the\hsize}}}%
+  \fi 
+  \advance\SH@highline\RefineBaselines  \advance\SH@lowline\RefineBaselines
+  \SH@cutoutline}
+
+% choose leftmost position among \SH@posseg and lines near \SH@nline
+\def\SH@mostoppositer#1#2#3{% #1: line, #2: indent, #3: width
+  \ifnum #1<\SH@lowline\else
+     \ifnum #1>\SH@highline\else
+        \advance\SH@highline-#1
+        % \message{Compare #2 #3 at #1. Case \the\SH@highline: \SH@octcase}%
+        \dimen@#2\advance\dimen@-\SH@octcase\relax
+        \ifdim \dimen@<\SH@posseg \SH@posseg\dimen@\fi
+        \advance\SH@highline#1
+  \fi\fi}
+
+% choose rightmost position among \SH@posseg and lines near \SH@nline
+\def\SH@mostoppositel#1#2#3{% #1: line, #2: indent, #3: width
+  \ifnum #1<\SH@lowline\else
+     \ifnum #1>\SH@highline\else
+        \advance\SH@highline-#1
+        \dimen@#2\advance\dimen@#3\advance\dimen@\SH@octcase\relax
+        % \message{Compare #2 #3 at #1. Case \the\SH@highline=\SH@octcase: \the\dimen@}%
+        \ifdim \dimen@>\SH@posseg \SH@posseg\dimen@\fi
+        \advance\SH@highline#1
+  \fi\fi}
+
+%\def\SH@updCOlines{% Update list of lines for cut-out
+%\message{.}%
+%  \xdef\SH@lines{\SH@lines\@elt{\the\SH@nline}{\the\SH@posold}{\the\SH@widold}}%
+%  \advance\SH@npslines\@ne
+%  \SH@widold\SH@widseg \SH@posold\SH@posseg}
+
+\def\SH@getmaxline#1#2#3{\ifnum#1>\SH@nline \SH@nline#1\relax\fi}
+
+\def\SH@nextoctcase{%
+  \SH@posseg\AbsVal\SH@lowline\SH@refbase
+  \SH@widseg\cutoutsep
+  \ifdim\SH@posseg>\SH@posold
+     \advance\SH@widseg-\SH@posseg
+     \advance\SH@widseg \SH@posold
+  \fi
+  \xdef\SH@octcase{\SH@octcase \the\SH@widseg \or}%
+  \advance\SH@lowline\@ne
+  \ifnum\SH@lowline>\SH@highline\else
+  \expandafter\SH@nextoctcase \fi}
+
+% Ignore following spaces and \par
+\def\SH@ignorepar{\afterassignment\SH@ignorepaR \let\SH@next=}
+\def\SH@ignorepaR{%\show\SH@next 
+ \edef\SH@nextspec{\noexpand\SH@next}% Hide \outer macros
+ \ifx\par\SH@next \let\SH@nextspec\SH@ignorepar \fi
+ \expandafter\ifx\space\SH@next \let\SH@nextspec\SH@ignorepar \fi
+ \SH@nextspec}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Take a square root of counter \sqrtcount using Newton's method.
+% Usage: \sqrtcount=<number> \sqrtofcount; gives square root in \sqrtcount
+% To take sqrt of a dimen, do:
+%       \sqrtcount=\thedimen \sqrtofcount
+%       \multiply\sqrtcount by 256 \thedimen=\sqrtcount sp
+% -- see \sqrtofdim
+%
+% (\@tempcnta and \@tempcntb are used and modified.)
+\newcount\sqrtcount
+\def\sqrtofcount{\relax\ifnum\sqrtcount>\z@
+  \@tempcnta\sqrtcount \sqrtcount\@ne
+  \expandafter\squinitial\the\@tempcnta\relax\relax\relax
+  \squiterate
+\else
+  \sqrtcount\@ne 
+\fi}
+\def\squinitial#1#2{\ifx#1\relax \else
+    \ifx #2\relax \multiply\sqrtcount \thr@@ % 3 ~ sqrt(10)
+    \else    \multiply\sqrtcount 10
+    \fi   \expandafter \squinitial
+  \fi}
+\def\squiterate{\@tempcntb\@tempcnta \divide\@tempcntb\sqrtcount
+   %\message{sqrt(\the\@tempcnta) guess: \the\sqrtcount. }%
+   \advance\sqrtcount\@tempcntb \divide\sqrtcount\tw@
+   \advance \@tempcntb -\sqrtcount
+   \ifnum \AbsVal\@tempcntb>\thr@@ % approximate, use 1 for exact
+   \expandafter \squiterate \fi}% expandafter to avoid stack overflows
+
+%  Take sqrt of dimen register, as described above.
+\def\sqrtofdim#1{% #1 = dimen register
+  \sqrtcount#1\sqrtofcount \multiply\sqrtcount\@cclvi #1=\sqrtcount sp\relax}
+
+
+
+
+% Approximate Fixed Point Division of two dimensions
+% 3.14159/2.71828 = 1.15573
+% Two parameters: Numerator and denominator.  The answer is returned
+% in the numerator (which must be a register).  The denominator is
+% unchanged, but it should also be a dimen register. (It may be given 
+% as an explicit *integer* string, "123", which is treated as 0.001877
+% = 123/65536.)   % \@tempcntb is used and altered.
+% 
+\ifx\dimexpr\undefined % Use original TeX's integer \divide
+
+  \def\fpdivide#1#2{\let\FPD@nume#1\@tempcntb#2\relax
+    \FPD@scale\FPD@scale\FPD@scale\FPD@scale
+    \FPD@scale\FPD@scale\FPD@scale\FPD@scale
+    \divide#1\@tempcntb}
+
+  % Rescale numbers to preserve accuracy.  The magnum is the level of
+  % uncertainty. Use a lower power of 2 for more accuracy (2 is most precise).
+  % But if you change it, you must change the repetions of \FPD@scale in
+  % \fpdivide above: magic_number^repetitions = 65536 (16^4 = 4^8 = 65536).
+  %
+  \chardef\FPD@magnum=4
+  \newcount\FPD@hi \FPD@hi=\maxdimen \divide\FPD@hi\FPD@magnum
+
+  \def\FPD@scale{%
+    \ifnum\AbsVal\FPD@nume<\FPD@hi
+      \multiply\FPD@nume\FPD@magnum
+    \else
+      \divide\@tempcntb\FPD@magnum
+    \fi}
+
+\else % Else, use eTeX's \dimexpr
+
+  \def\fpdivide#1#2{\@tempcntb#2\relax
+    #1=\dimexpr #1*\p@/\@tempcntb \relax
+  }
+
+\fi
+
+% take absolute value of TeX number or dimension (dimen must be a register)
+\def\AbsVal#1{\ifnum#1<\z@-\fi#1}
+
+\def\Pointless#1{\expandafter\remove@PT\the#1}
+{\catcode`p=12 \catcode`t=12 \gdef\remove@PT#1pt{#1}}
+
+\squarepar % restore catcodes
+
+% ---------------- Pre-defined shapes --------------------
+% If you have (computer) memory problems, the following shape
+% definitions can be eliminated.
+
+\def\diamondshape{{3}{0}b{3}\\{4}t{0}{6}\\{8}e{3}}
+\def\diamondpar#1{\shapepar\diamondshape $\diamondsuit$ {#1} $\diamondsuit$\par}
+
+\def\squareshape{%
+  {1}%            centerline at x=1
+  {0}b{0}\\%      begin at (0,0)
+  {0}t{0}{2}\\%   text at y=0, width=2
+  {2}t{0}{2}\\%   text at y=2, width=2
+  {2}e{1}%        end at (1,2)
+}
+\def\squarepar#1{\shapepar{\squareshape}#1\par}
+
+\def\rectangleshape#1#2{% <height> <width>
+  {0}% "center" the left edge... sorry, better use \Shapepar
+  {0}b{0}\\%
+  {0}t{0}{#2}\\%
+  {#1}t{0}{#2}\\%
+  {#1}e{0}%
+}
+  
+\def\heartshape{%
+{20}{0}b{13.32}b{26.68}%
+\\{.14}t{10.12}{4.42}t{25.46}{4.42}%
+\\{.7}t{9.14}{7.16}t{23.7}{7.16}%
+\\{1.4}t{8.4}{9.02}t{22.58}{9.02}%
+\\{2.1}t{7.82}{10.42}t{21.76}{10.42}%
+\\{2.8}t{7.36}{11.58}t{21.06}{11.58}%
+\\{3.5}t{6.98}{12.56}t{20.46}{12.56}%
+\\{4.2}t{6.68}{13.32}jt{20}{13.32}%
+\\{4.9}t{6.48}{27.04}%
+\\{5.6}t{6.34}{27.32}%
+\\{6.3}t{6.28}{27.44}%
+\\{7}t{6.26}{27.48}%
+\\{7.7}t{6.27}{27.46}%
+\\{8.4}t{6.32}{27.36}%
+\\{9.1}t{6.4}{27.2}%
+\\{9.8}t{6.52}{26.96}%
+\\{10.5}t{6.68}{26.64}%
+\\{11.9}t{7.12}{25.76}%
+\\{13.3}t{7.72}{24.56}%
+\\{14.7}t{8.51}{22.98}%
+\\{16.1}t{9.5}{21}%
+\\{17.5}t{10.69}{18.62}%
+\\{18.9}t{12.08}{15.84}%
+\\{20.3}t{13.7}{12.6}%
+\\{21.7}t{15.62}{8.76}%
+\\{22.4}t{16.7}{6.6}%
+\\{23.1}t{17.87}{4.26}%
+\\{24.6}e{20}%
+}
+\def\heartpar#1{\shapepar{\heartshape}#1\unskip\unskip\penalty-300
+\ \ $\heartsuit$\par}
+
+\def\circleshape{%
+{0.0}%
+{0.0}b{0}\\%
+{0.017}t{-0.129}{0.259}\\%
+{0.067}t{-0.250}{0.500}\\%
+{0.146}t{-0.354}{0.707}\\%
+{0.250}t{-0.433}{0.866}\\%
+{0.371}t{-0.483}{0.966}\\%
+{0.500}t{-0.500}{1.000}\\%
+{0.629}t{-0.483}{0.966}\\%
+{0.750}t{-0.433}{0.866}\\%
+{0.854}t{-0.354}{0.707}\\%
+{0.933}t{-0.250}{0.500}\\%
+{0.983}t{-0.129}{0.259}\\%
+{1.0}e{0}
+}
+\def\circlepar#1{\Shapepar\circleshape #1\par}
+
+\def\nutshape{%
+{0}%
+{0}b{0}\\%
+{0}t{-12.5}{25}\\%
+{11.65}t{-19.23}{19.23}st{0}{19.23}\\%
+{11.99}t{-19.42}{16.835}t{2.59}{16.835}\\%
+{12.99}t{-20}{15}t{5}{15}\\%
+{14.58}t{-20.92}{13.85}t{7.07}{13.85}\\%
+{16.65}t{-22.11}{13.45}t{8.66}{13.45}\\%
+{19.06}t{-23.51}{13.85}t{9.66}{13.85}\\%
+{21.65}t{-25}{15}t{10}{15}\\%
+{24.24}t{-23.51}{13.85}t{9.66}{13.85}\\%
+{26.65}t{-22.11}{13.45}t{8.66}{13.45}\\%
+{28.72}t{-20.92}{13.85}t{7.07}{13.85}\\%
+{30.31}t{-20}{15}t{5}{15}\\%
+{31.31}t{-19.42}{16.835}t{2.59}{16.835}\\%
+{31.65}t{-19.23}{19.23}jt{0}{19.23}\\%
+{43.3}t{-12.5}{25}\\%
+{43.3}e{0}%
+}
+\def\nutpar#1{\Shapepar\nutshape #1\par}
+
+% Just the nut shape with the central hole erased:
+\def\hexagonshape{%
+{0}%
+{0}b{0}\\%
+{0}t{-12.5}{25}\\%
+{21.65}t{-25}{50}\\%
+{43.3}t{-12.5}{25}\\%
+{43.3}e{0}%
+}
+\def\hexagonpar#1{\Shapepar\hexagonshape #1\par}
+
+\def\CDlabshape{%
+{0}%
+{-5.5}b{0}\\%
+{-5.3}t{-1.47}{2.94}\\%
+{-4.8}t{-2.685}{5.37}\\%
+{-3.9}t{-3.878}{7.756}\\%
+{-2.8}t{-4.734}{9.468}\\%
+{-2.5}t{-4.899}{4.899}st{0}{4.899}\\%
+{-2.2}t{-5.04}{3.853}t{1.187}{3.853}\\%
+{-1.2}t{-5.376}{3.174}t{2.193}{3.174}\\%
+{0}t{-5.5}{3}t{2.5}{3}\\%
+{1.2}t{-5.376}{3.174}t{2.193}{3.174}\\%
+{2.2}t{-5.04}{3.853}t{1.187}{3.853}\\%
+{2.5}t{-4.899}{4.899}jt{0}{4.899}\\%
+{2.8}t{-4.734}{9.468}\\%
+{3.9}t{-3.878}{7.756}\\%
+{4.8}t{-2.685}{5.37}\\%
+{5.3}t{-1.47}{2.94}\\%
+{5.5}e{0}%
+}
+\def\CDlabel#1{\Shapepar[1cm]{\CDlabshape}#1\par}
+
+\def\starshape{%
+{0}%
+{-3}b{0}\\%
+{-.927}t{-.674}{1.348}\\%
+{-.927}t{-2.853}{5.706}\\%
+{.354}t{-1.09}{2.18}\\%
+{1.146}t{-1.347}{1.347}st{0}{1.347}\\%
+{2.427}e{-1.763}e{1.763}%
+}
+\def\starpar#1{\shapepar\starshape #1\par}
+
+\endinput
+
+%-------------------------------------------------------------------
+
+       S H A P E P A R . S T Y    --   Short Instructions
+
+\shapepar is a macro to typeset paragraphs of a specified shape.
+
+See shapepar.ltx (or shapepar.pdf etc) for full instructions.
+
+Loading:
+
+plain TeX:  \input shapepar.sty 
+
+LaTeX:  \usepackage{shapepar}
+
+LaTeX package options: [quiet], [noisy]
+
+Usage:
+
+\shapepar [<scale>]{<shape_spec>} Text of the paragraph...
+
+The <scale> is a length (like \unitlength for the picture environment)
+used for scaling the <shape_spec> to positions on the page.  When the
+<scale> parameter is absent, the scaling is adjusted automatically so 
+that the entire shape is filled with text.
+
+\Shapepar (capital S) is just like \shapepar except the paragraph 
+is boxed and not centered.
+
+\cutout {<side>} (<hoffset>,<voffset>) \shapepar...as above...
+
+This cuts out a section of the surrounding text to fit the shaped par.
+The <side> is l (left) or r (right).  The pair of offsets is optional.
+
+Pre-defined shapes, and commands to use the shape:
+
+\diamondshape, \diamondpar;  \squareshape, \squarepar;  \heartshape, 
+\heartpar;  \circleshape, \circlepar;  \nutshape, \nutpar;  \CDlabshape,
+\CDlabel;  \starshape, \starpar;  \hexagonshape, \hexagonpar.
+
+Shape generator: 
+
+\rectangleshape{height}{width}
+
+Typeset shapepar.ltx (or see shapepar.pdf) for detailed instructions.
+
+
+%-----------------------------------------
+Version 2.1  (Sep 2006)    Repair \\, fix multibox ordering, \rectangleshape,
+                           hexagon.
+Version 2.01 (Jun 2006)    Avoid some numeric overflows.
+Version 2.00 (Dec 2002)    \cutout, disjoint parts, set scale, much rewrite
+Version 1.01 (March 1993)  Small changes from initial release.
+
+%
+%  Test integrity of file:
+%  brackets: round, square, curly, angle:   () [] {} <>
+%  backslash, slash, vertical, at, dollar, and: \ / | @ $ &
+%  hat, grave, acute (apostrophe), quote, tilde:   ^ ` ' " ~

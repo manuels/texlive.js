@@ -1,0 +1,118 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                                                 %
+% Correction to PiCTeX 1.1 9/21/87                %
+% by Andreas Schrell, Wuppertal, FRG, 9/30/91     %
+%                                                 %
+% The bug forces wrong height and position of the %
+% vertical \betweenarrows - structure if the      %
+% coordinate difference is negative.              %
+% You can search for ERROR in this file.          %
+%                                                 %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+{\catcode`!=11
+
+\global
+\def\betweenarrows #1#2 from #3 #4 to #5 #6 {%
+  \!xloc=\!M{#3}\!xunit  \!xxloc=\!M{#5}\!xunit%
+  \!yloc=\!M{#4}\!yunit  \!yyloc=\!M{#6}\!yunit%
+  \!dxpos=\!xxloc  \advance\!dxpos by -\!xloc
+  \!dypos=\!yyloc  \advance\!dypos by -\!yloc
+  \advance\!xloc .5\!dxpos
+  \advance\!yloc .5\!dypos
+%
+  \let\!MBA=\!M%           ** save current coord\dimen mode
+  \!setdimenmode%          ** express locations in dimens
+  \ifdim\!dypos=\!zpt
+    \ifdim\!dxpos<\!zpt \!dxpos=-\!dxpos \fi
+    \put {\!lrarrows{\!dxpos}{#1}}#2{} at {\!xloc} {\!yloc}
+  \else
+    \ifdim\!dxpos=\!zpt
+%     \ifdim\!dypos<\!zpt \!dypos=-\!zpt \fi
+%                                  ^^^^^ ERROR!
+      \ifdim\!dypos<\!zpt \!dypos=-\!dypos \fi
+%                                  ^^^^^^^ CORRECTION!
+      \put {\!udarrows{\!dypos}{#1}}#2{} at {\!xloc} {\!yloc}
+    \fi
+  \fi
+  \let\!M=\!MBA%           ** restore previous c/d mode
+  \ignorespaces}
+
+
+% correction added by Robin Fairbairns (rf10@cam.ac.uk) 1999/09/14
+
+\def\!qjoin (#1,#2) (#3,#4){%
+  \advance\!intervalno by 1
+  \!ifcoordmode
+    \edef\!xmidpt{#1}\edef\!ymidpt{#2}%
+  \else
+    \!dimenA=#1\relax \edef\!xmidpt{\the\!dimenA}%
+%   \!dimenA=#2\relax \edef\!xmidpt{\the\!dimenA}% WRONG
+%                          ^^^^^^^^
+    \!dimenA=#2\relax \edef\!ymidpt{\the\!dimenA}%
+%                          ^^^^^^^^
+  \fi
+  \!xM=\!M{#1}\!xunit  \!yM=\!M{#2}\!yunit   \!rotateaboutpivot\!xM\!yM
+  \!xE=\!M{#3}\!xunit  \!yE=\!M{#4}\!yunit   \!rotateaboutpivot\!xE\!yE
+%
+% ** Find coefficients for x(t)=a_x + b_x*t + c_x*t**2
+  \!dimenA=\!xM  \advance \!dimenA by -\!xS%   ** dimA = I = xM - xS
+  \!dimenB=\!xE  \advance \!dimenB by -\!xM%   ** dimB = II = xE-xM
+  \!xB=3\!dimenA \advance \!xB by -\!dimenB%   ** b=3I-II
+  \!xC=2\!dimenB \advance \!xC by -2\!dimenA%  ** c=2(II-I)
+%
+% ** Find coefficients for y(t)=y_x + b_y*t + c_y*t**2
+  \!dimenA=\!yM  \advance \!dimenA by -\!yS%   
+  \!dimenB=\!yE  \advance \!dimenB by -\!yM%  
+  \!yB=3\!dimenA \advance \!yB by -\!dimenB%  
+  \!yC=2\!dimenB \advance \!yC by -2\!dimenA% 
+%
+% ** Use Simpson's rule to calculate arc length over [0,1/2]:
+% **   arc length = 1/2[1/6 f(0) + 4/6 f(1/4) + 1/6 f(1/2)]
+% ** with f(t) = sqrt(x'(t)**2 + y'(t)**2).
+  \!xprime=\!xB  \!yprime=\!yB%          ** x'(t) = b + 2ct
+  \!dxprime=.5\!xC  \!dyprime=.5\!yC%    ** dt=1/4 ==> dx'(t) = c/2
+  \!getf \!midarclength=\!dimenA
+  \!getf \advance \!midarclength by 4\!dimenA
+  \!getf \advance \!midarclength by \!dimenA
+  \divide \!midarclength by 12
+%
+% ** Get arc length over [0,1].
+  \!arclength=\!dimenA
+  \!getf \advance \!arclength by 4\!dimenA
+  \!getf \advance \!arclength by \!dimenA
+  \divide \!arclength by 12%             ** Now have arc length over [1/2,1]
+  \advance \!arclength by \!midarclength
+  \global\advance \totalarclength by \!arclength
+%
+%
+% ** Check to see if there's anything to plot in this interval
+  \ifdim\!distacross>\!arclength 
+    \advance \!distacross by -\!arclength%   ** nothing 
+%
+  \else
+    \!initinverseinterp%  ** initialize for inverse interpolation on arc length
+    \loop\ifdim\!distacross<\!arclength%     ** loop over points on arc 
+      \!inverseinterp%    ** find  t  such that arc length[0,t] = distacross,
+%                         **   using inverse quadratic interpolation
+%                         ** now evaluate x(t)=(c*t + b)*t + a
+      \!xpos=\!t\!xC \advance\!xpos by \!xB
+        \!xpos=\!t\!xpos \advance \!xpos by \!xS
+%                                             ** evaluate y(t)
+      \!ypos=\!t\!yC \advance\!ypos by \!yB
+        \!ypos=\!t\!ypos \advance \!ypos by \!yS
+      \!plotifinbounds%                       ** plot point if in bounds
+      \advance\!distacross \plotsymbolspacing%** advance arc length for next pt
+      \!advancedashing%                       ** see "linear"
+    \repeat  
+%
+    \advance \!distacross by -\!arclength%    ** prepare for next interval 
+  \fi
+%
+  \!xS=\!xE%              ** shift ending points to starting points
+  \!yS=\!yE
+  \ignorespaces}
+}
+
+\endinput
+

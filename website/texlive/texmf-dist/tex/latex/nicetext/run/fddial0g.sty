@@ -1,0 +1,192 @@
+\ProvidesPackage{fddial0g}[2011/09/13 v0.2 dialogues with fifinddo (UL)] 
+%% copyright (C) 2011 Uwe L\"uck, 
+%%
+%%   http://www.contact-ednotes.sty.de.vu 
+%%
+%% -- author-maintained in the sense of LPPL below -- 
+%% This file can be redistributed and/or modified under 
+%% the terms of the LaTeX Project Public License; either 
+%% version 1.3c of the License, or any later version.
+%% The latest version of this license is in
+%%
+%%     http://www.latex-project.org/lppl.txt
+%%
+%% We did our best to help you, but there is NO WARRANTY. 
+%% Please report bugs, problems, and suggestions via 
+%% 
+%%   http://www.contact-ednotes.sty.de.vu 
+%%
+\RequirePackage{fifinddo}
+
+\catcode`\_=11 
+
+%% == Setting and Using Variables ==
+%% %% aus `fddialog.sty' in `blog/convert/' 2011/09/12:
+\newcommand*{\FDD_set}{set:}
+\newcommand*{\FDD_use}{use:}
+%% |\MakeSet{<id>}{<set>}| declares an internal variable `<id>'
+%% and defines a command `<set>' so that `<set>{<value>}'
+%% will assign <value> to <id>:
+\newcommand*{\MakeSet}[2]{%
+    \@namedef{\FDD_set#1}{#2}%
+    \newcommand*{#2}{\@namedef{\FDD_use#1}}
+}
+%% It would be nice if there were a warning when in an evaluation 
+%% of a variable it turns out that it has not been ``declared" by 
+%% `\MakeSet' or not been set by the according setting command. 
+%% However, all the evaluations seem to happen in expansion 
+%% (e.g., during `\typeout'), so \LaTeX's `\PackageError' 
+%% (not even `\GenericError') is not helpful,
+%% and `\errhelp' cannot be set specifically (in time). 
+%% It may tell more generally about `\MakeSet', but I am not sure 
+%% about what errors can occur in processing the dialogues at all.
+%% At least we can get a real `\errmessage' using something else 
+%% that has not been defined:
+\newcommand*{\FDD_check_use}[1]{%
+    \@ifundefined{\FDD_use#1}%
+        {\@ifundefined{\FDD_set#1}%
+            {\FDD_undeclared_variable `#1'}%
+            {\FDD_undefined_variable  `#1'}}%
+}
+%% |\UseSet{<id>}| expands to <id>'s value. 
+\newcommand*{\UseSet}[1]{%
+    \FDD_check_use{#1}{\csname\FDD_use#1\endcsname}}
+%% |\EvalBooleanSet{<id>}|:
+\newcommand*{\EvalBooleanSet}[1]{%
+    \FDD_check_use{#1}{%
+      \csname
+        \FDD_on_setstring\@gobble{#1}%% \if id
+        \csname\FDD_use#1\endcsname  %% true/false
+      \endcsname
+    }%
+}
+\newcommand*{\FDD_on_setstring}[2]{%
+    \expandafter\FDD_double_xpa\expandafter 
+        #1\expandafter\expandafter\expandafter
+            \string\csname\FDD_set#2\endcsname}
+\def\FDD_double_xpa{\expandafter\expandafter\expandafter}
+%% |\IfEmptySet{<id>}{<if>}{<unless>}|:
+\newcommand*{\IfEmptySet}[1]{%
+    \if^^J\UseSet{#1}^^J\expandafter\@firstoftwo
+    \else\expandafter\@secondoftwo\fi}
+%% TODO present variable names by tokens!? (namemod)
+%%
+%% |\DebugShowSet{<id>}|:
+\newcommand*{\DebugShowVar}[1]{%
+    \expandafter\show\csname\FDD_use#1\endcsname}
+%%
+%% == In/Out Variables ==
+%% |\ResultFile| gets a different meaning here
+%% in order to keep the dialogue nice. 
+\let\UseResultFile\ResultFile 
+\let\ResultFile\relax
+\MakeSet{out-f}{\ResultFile}
+\MakeSet {in-f}{\InputFile}
+\MakeSet{cfg-f}{\CFGname}
+%% == `.cfg' ==
+%% |\TryDialogue{<file-name-base>}{<settings>}|
+%% loads file `<file-name-base>.cfg' if \TeX\ can find it, 
+%% otherwise executes <settings>:
+\newcommand*{\TryDialogueCFG}[2]{%
+    \CFGname{#1}% 
+    \InputIfFileExists{#1.cfg}%
+                      {\typeout{^^J
+                                * using settings from `#1.cfg'. *
+                                ^^J}}%
+                      {#2}%
+}
+%%
+%% == Screen ==
+\newcommand*{\Announce}[1]{%
+  \typeout{%
+    \FD_dialogue_double_line
+    ^^J#1^^J%
+    The screen shows most recent settings commands.^^J%
+    You can modify initial settings in 
+    `\UseSet{cfg-f}.cfg'.^^J}%
+}
+%% |\DialogueLoop| is the last mandatory command in the 
+%% main script file. It needs an earlier definition of 
+%% |\VarShowSettings|. |\LBrk| can be used for a 
+%% screen line break:   %% TODO \MessageBreak \relax!?
+\newcommand*{\DialogueLoop}{%
+    {\def\LBrk{^^J}%
+     \typeout{%
+      \FD_dialogue_double_line^^J%
+      \VarShowSettings                  %% specific to purpose
+      \FD_dialogue_double_line}%
+    }%
+    \typein[\action]%
+           {Run with these settings? 
+            (Y)es? (C)hange? (Otherwise quit.)}% 
+    \csname FDD_action_\action \endcsname 
+}
+\def\FD_dialogue_double_line{%
+    ^^J%
+    ===========================================================}
+%% For defining |\VarShowSettings|:
+\newcommand*{\ShowSet}[1]{% 
+    \FDD_check_use{#1}{%
+%         \expandafter\expandafter\expandafter
+%             \string\csname\FDD_set#1\endcsname
+        \FDD_on_setstring\@empty{#1}%
+        {\UseSet{#1}}%
+    }%
+}
+\newcommand*{\TimesDo}[2]{%
+    \ifnum\number#1>\z@
+       #2\expandafter\@firstofone
+    \else
+         \expandafter\@gobble
+    \fi
+    {\expandafter\TimesDo\expandafter
+        {\number\predecessor_of{#1} }{#2}}%
+}
+\newcommand*{\predecessor_of}[1]{%
+    \ifnum#1>9 
+        \expandafter\twodig_predecessor_of
+    \else 
+        \expandafter\onedig_predecessor_of
+    \fi
+    #1}
+\newcommand*{\onedig_predecessor_of}[1]{%
+      \ifcase #1\or0\or1\or2\or3\or4\or5\or6\or7\or8\or9\fi}
+\newcommand*{\twodig_predecessor_of}[2]{%
+  \ifcase #2 
+    \onedig_predecessor_of#19\or
+      #10\or#11\or#12\or#13\or#14\or#15\or#16\or#17\or#18\or#19\fi}
+
+\newcommand*{\Spaces}[1]{\TimesDo{#1}{\space}}
+
+%%
+%% == Changing Settings == 
+%% When the user types `c' or `C', she is asked to input 
+%% replacement text for the macro |\change|. 
+%% This macro then is executed, and |\DialogueLoop|
+%% is invoked again:
+\newcommand*{\FDD_action_c}{\FDD_change_settings}
+\newcommand*{\FDD_action_C}{\FDD_change_settings}
+\newcommand*{\FDD_change_settings}{%
+    \typein[\change]{^^JType setting command(s).}%
+    \change \DialogueLoop}
+%% == Running with Current Settings ==
+\newcommand*{\FDD_action_y}{\FDD_run_with_settings}
+\newcommand*{\FDD_action_Y}{\FDD_run_with_settings}
+%% When the user types `y' or `Y', the following macro is executed. 
+%% It invokes |\VarRunSettings| that must be defined 
+%% before `\DialogueLoop' is executed:
+\newcommand*{\FDD_run_with_settings}{%
+    \VarRunSettings                     %% specific to purpose
+    \CloseResultFile
+    \typeout{Done.}%
+    \DialogueLoop} 
+%%
+%% == The End ==
+\endinput
+
+== VERSION HISTORY ==
+
+v0.1    2011/08/23  first, uploaded with NICETEXT r0.43 
+v0.2    2011/09/12  merged with something earlier/better, messages 
+        2011/09/13  messages more carefully: ...undefined_var..., 
+                    \EvalBooleanSet, \TimesDo with two digits

@@ -1,0 +1,2953 @@
+%--------------------------------------------
+%
+% Package pgfplotstable
+%
+% Provides support to read and work with abstact numeric tables of the
+% form
+%
+% COLUMN1	COLUMN2 COLUMN3
+% 1 		2		3
+% 4			4		552
+% 1e124		0.00001	1.2345e-12
+% ...
+%
+% Copyright 2007-2010 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%--------------------------------------------
+
+
+% This file provides a high-level table manipulation and typesetting
+% package.
+%
+% see pgfplotstableshared.code.tex for the low level routines.
+
+
+\newif\ifpgfplotstabletypesetdebug
+\newif\ifpgfplotstable@sort
+\newif\ifpgfplotstabletypesetskipcoltypes
+\newif\ifpgfplotstabletypesetresult
+\newif\ifpgfplotstableuserow
+\newif\ifpgfplotstabletypeset@includeoutfiles
+\newif\ifpgfplotstabletypeset@force@remake
+\newif\ifpgfplotstable@disable@rowcolstyles
+
+\let\pgfplotstable@outfile=\w@pgf@writea
+
+\input pgfplotstable.coltype.code.tex
+
+% #1= floating point number
+% #2= TeX code to execute if #1 == 0
+% #3= TeX code to execute if #1 != 0
+\def\pgfplots@ifzero#1#2#3{%
+	\expandafter\pgfmathfloat@decompose@F#1\relax\pgfmathfloat@a@S
+	\ifnum\pgfmathfloat@a@S=0 #2\else#3\fi
+}%
+
+% just make sure no-one complaints if manual example are used without
+% booktabs loaded:
+\pgfutil@ifundefined{toprule}{%
+	\def\toprule{\pgfplots@assert@LaTeX@package@loaded{booktabs}{\string\toprule}}%
+	\def\midrule{\pgfplots@assert@LaTeX@package@loaded{booktabs}{\string\midrule}}%
+	\def\bottomrule{\pgfplots@assert@LaTeX@package@loaded{booktabs}{\string\bottomrule}}%
+}{\relax}%
+
+% keys which are NOT predefined:
+% /pgfplots/table/alias/<col alias>/.initial={<real col>}
+% /pgfplots/table/columns/<col name>/.style={}
+% /pgfplots/table/display columns/<col index>/.style={}
+% /pgfplots/table/create on use/<col name>/.style={create options}
+\pgfkeys{%
+	/pgfplots/table/disable rowcol styles/.is if=pgfplotstable@disable@rowcolstyles,
+	/pgfplots/table/disable rowcol styles/.default=true,
+	/pgfplots/table/row predicate/.code={},
+	/pgfplots/table/skip rows between index/.style 2 args={%
+		/pgfplots/table/row predicate/.append code={%
+			\ifnum##1<#1\relax
+			\else
+				\ifnum##1<#2\relax
+					\pgfplotstableuserowfalse
+				\fi
+			\fi}
+	},
+	/pgfplots/table/select equal part entry of/.style 2 args={%
+		/pgfplots/table/row predicate/.code={%
+			\pgfplotstableuserowtrue
+			\begingroup
+			% this group re-uses counters as temporary variables.
+			\c@pgfplotstable@colindex=\pgfplotstablerows\relax
+			\divide\c@pgfplotstable@colindex by#2\relax
+			\edef\pgfplotstablepartsize{\the\c@pgfplotstable@colindex}%
+			% This here should create empty cells such that
+			% remaining entries are distributed equally:
+			\c@pgfplotstable@rowindex=\c@pgfplotstable@colindex
+			\multiply\c@pgfplotstable@rowindex by#2\relax
+			\ifnum\c@pgfplotstable@rowindex<\pgfplotstablerows\relax
+				\c@pgfplotstable@colindex=\pgfplotstablerows\relax
+				\advance\c@pgfplotstable@colindex by-\c@pgfplotstable@rowindex
+				\advance\c@pgfplotstable@colindex by\pgfplotstablepartsize				
+				\edef\pgfplotstablepartsize{\the\c@pgfplotstable@colindex}%
+			\fi
+			%
+			\multiply\c@pgfplotstable@colindex by#1\relax
+			\ifnum##1<\c@pgfplotstable@colindex\relax
+				\aftergroup\pgfplotstableuserowfalse
+			\else
+				\advance\c@pgfplotstable@colindex by\pgfplotstablepartsize\relax
+				\ifnum##1<\c@pgfplotstable@colindex\relax
+				\else
+					\aftergroup\pgfplotstableuserowfalse
+				\fi
+			\fi
+			\endgroup
+		}%
+	},
+	% #1: colname
+	/pgfplots/table/unique/.code={%
+		\pgfkeys{/pgfplots/table/row predicate/.append code={%
+			\ifnum\pgfplotstablerow=0
+				\ifnum\pgfplotstablecol=0
+					\pgfutil@ifundefined{pgfplotstable@unique@bitlist@backup}{%
+					}{%
+						\pgfplots@error{It seems there are *multiple* 'unique' keys running on one table. That doesn't work correctly, I guess. Consider using '\string\pgfplotstableset{row predicate/.code={}}' to reset it.}%
+					}%
+					% PREPARE ONCE! Assemble the boolean results into
+					% a list which is used for the complete table:
+					\def\pgfplotstable@loc@TMPd{\pgfplotstablegetcolumnfromstruct{#1}\of}%
+					\expandafter\pgfplotstable@loc@TMPd\pgfplotstablename\to\pgfplotstable@unique@col
+					\pgfplotslistnewempty\pgfplotstable@unique@bitlist
+					\let\pgfplotstable@unique@LAST=\pgfutil@empty
+					\pgfplotslistforeachungrouped\pgfplotstable@unique@col\as\pgfplotstable@unique@cur{%
+						\def\pgfplotstable@unique@bit{1}%
+						\ifx\pgfplotstable@unique@LAST\pgfutil@empty
+						\else
+							\ifx\pgfplotstable@unique@LAST\pgfplotstable@unique@cur
+								\def\pgfplotstable@unique@bit{0}%
+							\fi
+						\fi
+						\ifpgfplotstabletypesetdebug
+							\pgfplots@message{unique={#1}: cur == last <=> ( \pgfplotstable@unique@cur\space == \pgfplotstable@unique@LAST ) = \pgfplotstable@unique@bit.}%
+						\fi
+						\expandafter\pgfplotslistpushback\pgfplotstable@unique@bit\to\pgfplotstable@unique@bitlist
+						\let\pgfplotstable@unique@LAST=\pgfplotstable@unique@cur
+					}%
+					\global\let\pgfplotstable@unique@bitlist@backup=\pgfplotstable@unique@bitlist
+				\else
+					\pgfutil@ifundefined{pgfplotstable@unique@bitlist@backup}{%
+						% this sanity checking is NOT fool proof: it
+						% fails if there are different occurances of
+						% unique in the same file
+						\pgfplotstable@error{Sorry, the row predicate /pgfplots/table/unique={#1} has been used in the wrong context: it needs to be invoked for the very first processed column, not column no \pgfplotstablecol. Please provide it as argument to \string\pgfplotstabletypeset[unique={#1}] and not inside of column-specific styles}%
+					}{}%
+				\fi
+				% acquire the assembled list here: we'll do a lot of
+				% popfronts with it.
+				\let\pgfplotstable@unique@bitlist=\pgfplotstable@unique@bitlist@backup
+			\fi
+			\pgfplotslistcheckempty\pgfplotstable@unique@bitlist
+			\ifpgfplotslistempty
+				% should not happen!
+				\pgfplotstableuserowfalse
+			\else
+				\pgfplotslistpopfront\pgfplotstable@unique@bitlist\to\pgfplots@loc@TMPa
+				\if\pgfplots@loc@TMPa0%
+					\pgfplotstableuserowfalse
+				\fi
+			\fi
+			% cleanup:
+			{%
+				\count0=\pgfplotstablecol\relax \advance\count0 by1
+				\ifnum\count0=\pgfplotstablecols\relax
+					\count0=\pgfplotstablerow\relax \advance\count0 by1
+					\ifnum\count0=\pgfplotstablerows\relax
+						\global\let\pgfplotstable@unique@bitlist@backup=\relax
+					\fi
+				\fi
+			}%
+		}}%
+	},%
+	% columns={name1,name2}
+	% or
+	% columns={[index]2,name2,name3,[index]5}
+	/pgfplots/table/columns/.initial=,
+	/pgfplots/table/column name/.initial=\pgfkeysnovalue,
+	%
+	% this thing here allows to MODIFY 'column name'.
+	%
+	% Argument #1 is the current column name, that means after
+	% evaluating 'column name'. If this key changes anything, it
+	% should write its result back into 'column name'.
+	%
+	% That means you can use 'column name' to assign the name as such
+	% and 'assign column name' to generate final TeX code (for example
+	% to insert \multicolumn{1}{c}{#1} or so).
+	% default is empty which means no change.
+	%/pgfplots/table/assign column name/.code={
+	%	\pgfkeyssetvalue{/pgfplots/table/column name}{#1}%
+	%},
+	%
+	%
+	%
+	% A style which inserts \multicolumn{1}{#1}{<column name>} for
+	% each column name.
+	% The column name as such can be set with the 'column name' option.
+	/pgfplots/table/multicolumn names/.style={%
+		/pgfplots/table/assign column name/.code={%
+			\pgfkeyssetvalue{/pgfplots/table/column name}{\multicolumn{1}{#1}{##1}}%
+		}%
+	},
+	/pgfplots/table/multicolumn names/.default=c,
+	/pgfplots/table/dec sep align/.code={%
+		\pgfplots@assert@LaTeX@package@loaded{array}{dec sep align}%
+		\def\pgfplotstable@scisepalign@headeralign{#1}%
+		\pgfkeysalso{%
+			/pgf/number format/assume math mode,
+			/pgf/number format/@dec sep mark={$&$},
+			/pgfplots/table/assign column name/.code={%
+				\pgfkeyssetvalue{/pgfplots/table/column name}{\multicolumn{2}{#1}{##1}}%
+			},%
+			/pgfplots/table/column type={%
+				r<{\pgfplotstableresetcolortbloverhangright}%
+				@{}%
+				l<{\pgfplotstableresetcolortbloverhangleft}%
+			},
+			/pgfplots/table/assign cell content/.code={%
+				\def\pgfmathresult{##1}%
+				\let\continue=\pgfutil@empty
+				% allow special handling:
+				\pgfplots@invoke@pgfkeyscode{/pgfplots/table/dec sep align/process/.@cmd}{##1}%
+				\ifx\continue\pgfutil@empty
+					% nothing has changed. Processed as usual:
+					\ifx\pgfmathresult\pgfutil@empty
+						\def\pgfmathresult{&}%
+					\else
+						% -6.90000001e-01 -> \meaning\pgfmathresult = macro:->-0$&$.69
+						\pgfmathprintnumberto{\pgfmathresult}\pgfmathresult%
+						% now make sure we have math mode for the single
+						% columns:
+						\expandafter\def\expandafter\pgfmathresult\expandafter{\expandafter$\pgfmathresult$}%
+					\fi
+				\fi
+				\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult
+			},
+		}%
+	},
+	/pgfplots/table/dec sep align/.default=c,
+	%
+	% A part of dec sep align which can be used to process special
+	% cases.
+	%
+	% #1: the unprocessed input argument.
+	% PRECONDITION:
+	%   \pgfmathresult contains '#1', not more.
+	%   \continue is empty.
+	%
+	% POSTCONDITION:
+	% 	If \continue is empty, `dec sep align' will continue just as
+	% 	if the 'process' key hadn't been invoked.
+	% 	It will, however, use the current value of \pgfmathresult.
+	%
+	% 	If \continue is NOT empty, for example \def\continue{0}, 
+	% 	`dec sep align' assumes that \pgfmathresult contains the
+	% 	completely typeset cell, including any alignment material.
+	/pgfplots/table/dec sep align/process/.code=,%
+	/pgfplots/table/dec sep align/no unbounded/.style={%
+		% FIXME : this thing doesn't work as intended! It looks ugly!
+		/pgfplots/table/dec sep align/process/.code={%
+			\ifx\pgfmathresult\pgfutil@empty
+			\else
+				\pgfmathfloatparsenumber\pgfmathresult
+				\pgfmathfloatiffinite{\pgfmathresult}{%
+					% do nothing, just communicate the parsed
+					% \pgfmathresult
+				}{%
+					\begingroup
+						\t@pgfplots@toka=\expandafter{\pgfplotstable@scisepalign@headeralign}%
+						\t@pgfplots@tokb={\pgfkeyslet{/pgf/number format/@dec sep mark}\pgfutil@empty\pgfmathprintnumber}%
+						\t@pgfplots@tokc=\expandafter{\pgfmathresult}%
+						\xdef\pgfplotstable@glob@TMPc{%
+							\noexpand\multicolumn{2}{\the\t@pgfplots@toka}%
+								{\the\t@pgfplots@tokb{\the\t@pgfplots@tokc}}%
+						}%
+					\endgroup
+					\let\pgfmathresult=\pgfplotstable@glob@TMPc
+					\def\continue{0}%
+				}%
+			\fi
+		},%
+	},%
+	/pgfplots/table/sci sep align/.code={%
+		\pgfplots@assert@LaTeX@package@loaded{array}{sci sep align}%
+			\pgfkeysalso{%
+			/pgf/number format/assume math mode,
+			/pgf/number format/@sci exponent mark={$&$},
+			/pgfplots/table/assign column name/.code={%
+				\pgfkeyssetvalue{/pgfplots/table/column name}{\multicolumn{2}{#1}{##1}}%
+			},%
+			/pgfplots/table/column type={%
+				r<{\pgfplotstableresetcolortbloverhangright}%
+				@{}%
+				l<{\pgfplotstableresetcolortbloverhangleft}%
+			},
+			/pgfplots/table/assign cell content/.code={%
+				\def\pgfmathresult{##1}%
+				\ifx\pgfmathresult\pgfutil@empty
+					\def\pgfmathresult{&}%
+				\else
+					\pgfmathprintnumberto{##1}\pgfmathresult%
+					\expandafter\pgfutil@in@\expandafter&\expandafter{\pgfmathresult}%
+					% now make sure we have math mode for the single
+					% columns:
+					\ifpgfutil@in@
+						\expandafter\def\expandafter\pgfmathresult\expandafter{\expandafter$\pgfmathresult$}%
+					\else
+						\expandafter\def\expandafter\pgfmathresult\expandafter{\expandafter\pgfutilensuremath\expandafter{\pgfmathresult}&}%
+					\fi
+				\fi
+				\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult
+			},
+		}%
+	},
+	/pgfplots/table/sci sep align/.default=c,
+	%
+	% A style which can be used together with the 'dcolumn' package by
+	% David Carlisle.
+	% #1: the dcolumn type, defaults to 'D{.}{.}{2}'
+	% #2: the column name type, defaults to 'c'
+	/pgfplots/table/dcolumn/.style 2 args={%
+		/pgf/number format/assume math mode,
+		column type={#1},
+		multicolumn names=#2,
+	},
+	/pgfplots/table/dcolumn/.default={D{.}{.}{2}}{c},
+	/pgfplots/table/column type/.initial={c},
+	/pgfplots/table/every even row/.style={},
+	/pgfplots/table/every odd row/.style={},
+	/pgfplots/table/every last row/.style={},
+	/pgfplots/table/every first row/.style={},
+	/pgfplots/table/every head row/.style={},
+	/pgfplots/table/every first column/.style={},
+	/pgfplots/table/every last column/.style={},
+	/pgfplots/table/every even column/.style={},
+	/pgfplots/table/every odd column/.style={},
+	/pgfplots/table/every nth row/.code 2 args={%
+		\pgfplotstabletypeset@append@every@nth@row{#1}{#2}%
+	},
+	/pgfplots/table/every nth row/.style 2 args/.code 2 args={%
+		\pgfplotstabletypeset@append@every@nth@row{#1}{#2}%
+	},
+	/pgfplots/table/before row/.initial=,
+	/pgfplots/table/after row/.initial=,
+	/pgfplots/table/begin table/.initial={\begin{tabular}},
+	/pgfplots/table/end table/.initial={\end{tabular}},
+	/pgfplots/table/outfile/.initial=,
+	/pgfplots/table/include outfiles/.is if=pgfplotstabletypeset@includeoutfiles,
+	/pgfplots/table/include outfiles/.default=true,
+	/pgfplots/table/force remake/.is if=pgfplotstabletypeset@force@remake,
+	/pgfplots/table/force remake/.default=true,
+	/pgfplots/table/write to macro/.initial=,
+	/pgfplots/table/typeset/.is if=pgfplotstabletypesetresult,
+	/pgfplots/table/typeset=true,
+	/pgfplots/table/skip coltypes/.is if=pgfplotstabletypesetskipcoltypes,
+	/pgfplots/table/skip coltypes/.default=true,
+	/pgfplots/table/debug/.is if=pgfplotstabletypesetdebug,
+	/pgfplots/table/debug level/.initial=0,%
+	%
+	% will be redefined by |assign cell content| for every cell:
+	/pgfplots/table/@cell content/.initial=,
+	%
+	% #1: the cells content as it has been found in the input table
+	% this command key should somehow fill |cell content|.
+	/pgfplots/table/assign cell content/.code={%
+		\def\pgfmathresult{#1}%
+		\ifx\pgfmathresult\pgfutil@empty
+		\else
+			\pgfmathprintnumberto{#1}\pgfmathresult%
+		\fi
+		\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult
+	},
+	%
+	% this here is the default formatting. It uses
+	% \pgfmathprintnumber.
+	/pgfplots/table/assign cell content as number/.code={%
+		\def\pgfmathresult{#1}%
+		\ifx\pgfmathresult\pgfutil@empty
+		\else
+			\pgfmathprintnumberto{#1}\pgfmathresult%
+		\fi
+		\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult
+	},
+	/pgfplots/table/numeric type/.code={%
+		\pgfkeysgetvalue{/pgfplots/table/assign cell content as number/.@cmd}\pgfplotstable@loc@TMPa%
+		\pgfkeyslet{/pgfplots/table/assign cell content/.@cmd}\pgfplotstable@loc@TMPa
+	},
+	/pgfplots/table/string type/.style={%
+		/pgfplots/table/assign cell content/.style={%
+			/pgfplots/table/@cell content={##1}%
+		}%
+	},%
+	/pgfplots/table/verb string type/.style={%
+		/pgfplots/table/assign cell content/.code={%
+			\def\pgfplotstable@loc@TMPa{##1}%
+			\pgfplots@command@to@string\pgfplotstable@loc@TMPa\pgfplotstable@loc@TMPa
+			\pgfkeyslet{/pgfplots/table/@cell content}{\pgfplotstable@loc@TMPa}%
+		}%
+	},%
+	/pgfplots/table/numeric as string type/.style={%
+		/pgfplots/table/assign cell content/.code={%
+			\def\pgfmathresult{##1}%
+			\ifx\pgfmathresult\pgfutil@empty
+			\else
+				\pgfmathifisint{##1}{\let\pgfmathresult=\pgfretval}{\pgfmathfloattosci{\pgfretval}}%
+			\fi
+			\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult
+		}%
+	},%
+	/pgfplots/table/date type/.style={%
+		/pgfplots/table/assign cell content/.code={%
+			\begingroup
+			\pgfcalendardatetojulian{##1}\c@pgfplotstable@counta
+			\pgfcalendarjuliantodate{\c@pgfplotstable@counta}\year\month\day
+			\pgfcalendarjuliantoweekday\c@pgfplotstable@counta\c@pgf@countc
+			\edef\weekday{\the\c@pgf@countc }%
+			\edef\weekdayname{\pgfcalendarweekdayname\c@pgf@countc}%
+			\edef\weekdayshortname{\pgfcalendarweekdayshortname\c@pgf@countc}%
+			\edef\monthname{\pgfcalendarmonthname\month}%
+			\edef\monthshortname{\pgfcalendarmonthshortname\month}%
+			\xdef\pgfplots@glob@TMPa{#1}%
+			\endgroup
+			\pgfkeyslet{/pgfplots/table/@cell content}\pgfplots@glob@TMPa%
+		}%
+	},%
+	/pgfplots/table/date type/.default={\year/\month/\day},%
+	/pgfplots/table/set content/.style={%
+		/pgfplots/table/postproc cell content/.style={%
+			/pgfplots/table/@cell content={#1}%
+		}%
+	},%
+	%
+	/pgfplots/table/postproc cell content/.code={},
+	/pgfplots/table/preproc cell content/.code={},
+	%
+	/pgfplots/table/clear infinite/.style={%
+		/pgfplots/table/preproc cell content/.append code={%
+			\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
+			\ifx\pgfmathresult\pgfutil@empty
+			\else
+				\pgfmathfloatparsenumber{\pgfmathresult}%
+				\let\pgfmatharga=\pgfmathresult
+				{%
+				\pgfmathfloatgetflags\pgfmatharga\c@pgfplotstable@counta
+				\xdef\pgfplots@glob@TMPc{\the\c@pgfplotstable@counta}%
+				}%
+				\ifnum\pgfplots@glob@TMPc<3
+					\pgfmathfloattosci@\pgfmathresult
+					\pgfkeyslet{/pgfplots/table/@cell content}{\pgfmathresult}%
+				\else
+					\pgfkeyslet{/pgfplots/table/@cell content}{\pgfutil@empty}%
+				\fi
+			\fi
+		}
+	},
+	/pgfplots/table/string replace/.style 2 args={%
+		/pgfplots/table/preproc cell content/.append code={%
+			\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
+			\def\pgfplots@loc@TMPa{#1}%
+			\ifx\pgfmathresult\pgfplots@loc@TMPa
+				\def\pgfplots@loc@TMPb{#2}%
+				\pgfkeyslet{/pgfplots/table/@cell content}{\pgfplots@loc@TMPb}%
+			\fi
+		}
+	},
+	/pgfplots/table/string replace*/.style 2 args={%
+		/pgfplots/table/preproc cell content/.append code={%
+			\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
+			\def\pgfplots@loc@TMPa{\pgfplotsutilstrreplace{#1}{#2}}%
+			\expandafter\pgfplots@loc@TMPa\expandafter{\pgfmathresult}%
+			\pgfkeyslet{/pgfplots/table/@cell content}{\pgfplotsretval}%
+		}
+	},
+	/pgfplots/table/preproc/expr/.code={%
+		\ifpgfplots@usefpu
+			\pgfkeysalso{/pgf/fpu=true,/pgf/fpu/output format=sci}%
+		\fi
+		\expandafter\def\csname pgfplotstable@preproc@expr@thisrow@\pgfplotstablecolname\endcsname{\pgfkeysvalueof{/pgfplots/table/@cell content}}%
+		\def\thisrow##1{%
+			\pgfutil@ifundefined{pgfplotstable@preproc@expr@thisrow@##1}{%
+				--inaccessable--%
+			}{%
+				\csname pgfplotstable@preproc@expr@thisrow@##1\endcsname
+			}%
+		}%
+		\pgfkeysalso{/pgfplots/table/preproc cell content/.append code={%
+				\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
+				\ifx\pgfmathresult\pgfutil@empty
+				\else
+					\pgfmathparse{#1}%
+					\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult%
+				\fi
+			}%
+		}%
+	},
+	/pgfplots/table/multiply -1/.style={%
+		/pgfplots/table/preproc cell content/.append code={%
+			\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
+			\ifx\pgfmathresult\pgfutil@empty
+			\else
+				\pgfmathfloatparsenumber{\pgfmathresult}%
+				\let\pgfmatharga=\pgfmathresult
+				\pgfmathfloatcreate{2}{1.0}{0}%
+				\let\pgfmathargb=\pgfmathresult
+				\pgfmathfloatmultiply@{\pgfmatharga}{\pgfmathargb}%
+				\pgfmathfloattosci@\pgfmathresult
+				\pgfkeyslet{/pgfplots/table/@cell content}{\pgfmathresult}%
+			\fi
+		}
+	},
+	/pgfplots/table/multiply with/.style={/pgfplots/table/multiply by={#1}},%
+	/pgfplots/table/multiply by/.code={%
+		\pgfmathfloatparsenumber{#1}%
+		\let\pgfplotstable@scale=\pgfmathresult
+		\pgfkeysalso{
+			/pgfplots/table/preproc cell content/.append code={%
+				\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
+				\ifx\pgfmathresult\pgfutil@empty
+				\else
+					\pgfmathfloatparsenumber{\pgfmathresult}%
+					\let\pgfmatharga=\pgfmathresult
+					\pgfmathfloatmultiply@{\pgfmatharga}{\pgfplotstable@scale}%
+					\pgfmathfloattosci@\pgfmathresult
+					\pgfkeyslet{/pgfplots/table/@cell content}{\pgfmathresult}%
+				\fi
+			}%
+		}%
+	},
+	/pgfplots/table/divide by/.code={%
+		\pgfkeysalso{/pgfplots/table/multiply by=#1}%
+		\let\pgfplotstable@divisor=\pgfplotstable@scale
+		\pgfmathfloatcreate{1}{1.0}{0}%
+		\let\pgfplotstable@ONE=\pgfmathresult
+		\pgfmathfloatdivide@{\pgfplotstable@ONE}{\pgfplotstable@divisor}%
+		\let\pgfplotstable@scale=\pgfmathresult
+	},
+	/pgfplots/table/sqrt/.style={%
+		/pgfplots/table/preproc cell content/.append code={%
+			\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
+			\ifx\pgfmathresult\pgfutil@empty
+			\else
+				\pgfmathfloatparsenumber{\pgfmathresult}%
+				\let\pgfmatharga=\pgfmathresult
+				\pgfmathfloatsqrt@{\pgfmatharga}%
+				\pgfmathfloattosci@\pgfmathresult
+				\pgfkeyslet{/pgfplots/table/@cell content}{\pgfmathresult}%
+			\fi
+		}%
+	},
+	/pgfplots/table/empty cells with/.style={%
+		/pgfplots/table/postproc cell content/.append code={%
+			\ifnum\pgfplotstablepartno=0
+				\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
+				\ifx\pgfmathresult\pgfutil@empty
+					\pgfkeyssetvalue{/pgfplots/table/@cell content}{#1}%
+				\fi
+			\fi
+		}%
+	},
+	/pgfplots/table/fonts by sign/.style 2 args={%
+		/pgfplots/table/postproc cell content/.append code={%
+			\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfplotsretval
+			\ifx\pgfplotsretval\pgfutil@empty
+			\else
+				\t@pgfplots@toka=\expandafter{\pgfplotsretval}%
+				\t@pgfplots@tokb={#1}%
+				\t@pgfplots@tokc={#2}%
+				\pgfmathfloatparsenumber{\pgfkeysvalueof{/pgfplots/table/@preprocessed cell content}}%
+				\pgfmathfloatifflags{\pgfmathresult}{-}{%
+					\edef\pgfmathresult{{\the\t@pgfplots@tokc{\the\t@pgfplots@toka}}}%
+				}{%
+					\edef\pgfmathresult{{\the\t@pgfplots@tokb{\the\t@pgfplots@toka}}}%
+				}%
+				\pgfkeyslet{/pgfplots/table/@cell content}{\pgfmathresult}%
+			\fi
+		}%
+	},%
+	%
+	/pgfplots/table/font/.initial=,
+	/pgfplots/table/.search also={/pgf/number format,/pgfplots/table/create col},
+	%--------------------------------------------------
+	% /pgfplots/table/.unknown/.code={%
+	% 	\let\pgfplots@table@curkeyname=\pgfkeyscurrentname
+	% 	\pgfqkeys{/pgf/number format}{\pgfplots@table@curkeyname=#1}%
+	% },%
+	%-------------------------------------------------- 
+	/pgfplots/table/create col/assign first/.style={
+		/pgfplots/table/create col/assign%
+	},
+	/pgfplots/table/create col/assign last/.style={
+		/pgfplots/table/create col/assign%
+	},
+	/pgfplots/table/create col/assign/.style={
+		/pgfplots/table/create col/next content={}%
+	},
+	/pgfplots/table/create col/next content/.initial={},
+	/pgfplots/table/create col/copy/.style={%
+		/pgfplots/table/create col/assign/.code={%
+			\getthisrow{#1}\pgfmathresult
+			\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+		}%
+	},
+	/pgfplots/table/create col/set/.style={%
+		/pgfplots/table/create col/assign/.code={%
+			\def\pgfmathresult{#1}%
+			\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+		}%
+	},%
+	/pgfplots/table/create col/set list/.code={%
+		\pgfplots@assign@list\pgfmathaccumb{#1}%
+		\pgfkeysalso{/pgfplots/table/create col/@from list struct=\pgfmathaccumb}%
+	},%
+	/pgfplots/table/create col/expr accum/.code 2 args={%
+		\ifpgfplots@usefpu
+			\pgfkeysalso{/pgf/fpu=true,/pgf/fpu/output format=sci}%
+		\fi
+		\pgfkeysdef{/pgfplots/table/create col/assign}{%
+			\ifx\pgfmathaccuma\pgfutil@empty
+				\pgfmathparse{#2}%
+				\let\pgfmathaccuma=\pgfmathresult
+			\fi
+			\pgfmathparse{#1}%
+			\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+			\let\pgfmathaccuma=\pgfmathresult
+		}%
+	},
+	/pgfplots/table/create col/expr/.style={%
+		/pgfplots/table/create col/expr accum={#1}{0}%
+	},%
+	/pgfplots/table/create col/copy column from table/.code 2 args={%
+		\pgfplotstablegetcolumn{#2}\of{#1}\to\pgfmathaccumb
+		\pgfkeysalso{/pgfplots/table/create col/@from list struct=\pgfmathaccumb}%
+	},
+	/pgfplots/table/create col/@from list struct/.code={%
+		\pgfplotslistcopy#1\to\pgfmathaccumb
+		\pgfkeysdef{/pgfplots/table/create col/assign}{%
+			\pgfplotslistcheckempty\pgfmathaccumb
+			\ifpgfplotslistempty
+				\pgfkeyslet{/pgfplots/table/create col/next content}\pgfutil@empty%
+			\else
+				\pgfplotslistpopfront\pgfmathaccumb\to\pgfmathresult
+				\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+			\fi
+		}%
+	},
+	/pgfplots/table/create col/linear regression/.code={%
+		\pgfplotstable@linear@regression{#1}%
+		\pgfkeysalso{/pgfplots/table/create col/@from list struct=\pgfplotsretval}%
+	},
+	/pgfplots/table/create col/linear regression/.default=,%
+	/pgfplots/table/create col/linear regression/x/.initial=,%
+	/pgfplots/table/create col/linear regression/y/.initial=,%
+	/pgfplots/table/create col/linear regression/table/.initial=,%
+	/pgfplots/table/create col/linear regression/variance/.initial=,%
+	/pgfplots/table/create col/linear regression/variance list/.initial=,%
+	/pgfplots/table/create col/linear regression/variance src/.initial=,%
+	/pgfplots/table/create col/linear regression/xmode/.initial=,% auto
+	/pgfplots/table/create col/linear regression/ymode/.initial=,% auto
+	/pgfplots/table/create col/quotient/.style={%
+		/pgfplots/table/columns={#1},
+		/pgfplots/table/create col/assign first/.style={%
+			/pgfplots/table/create col/next content=
+		},%
+		/pgfplots/table/create col/assign/.code={%
+			\pgfmathfloatparsenumber{\prevrow{#1}}%
+			\let\pgfmatharga=\pgfmathresult
+			\pgfmathfloatparsenumber{\thisrow{#1}}%
+			\let\pgfmathargb=\pgfmathresult
+			\let\pgfmathaccuma=\pgfmathargb
+			\pgfplots@ifzero\pgfmathargb{%
+				\pgfkeyslet{/pgfplots/table/create col/next content}\pgfutil@empty%
+			}{%
+				\pgfmathfloatdivide@{\pgfmatharga}{\pgfmathargb}%
+				\expandafter\pgfmathfloattosci@\expandafter{\pgfmathresult}%
+				\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+			}%
+		}%
+	},%
+	/pgfplots/table/create col/iquotient/.style={%
+		/pgfplots/table/columns={#1},
+		/pgfplots/table/create col/assign first/.style={%
+			/pgfplots/table/create col/next content=
+		},%
+		/pgfplots/table/create col/assign/.code={%
+			\pgfmathfloatparsenumber{\prevrow{#1}}%
+			\let\pgfmathargb=\pgfmathresult
+			\pgfmathfloatparsenumber{\thisrow{#1}}%
+			\let\pgfmatharga=\pgfmathresult
+			\let\pgfmathaccuma=\pgfmathargb
+			\pgfplots@ifzero\pgfmathargb{%
+				\pgfkeyslet{/pgfplots/table/create col/next content}\pgfutil@empty%
+			}{%
+				\pgfmathfloatdivide@{\pgfmatharga}{\pgfmathargb}%
+				\expandafter\pgfmathfloattosci@\expandafter{\pgfmathresult}%
+				\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+			}%
+		}%
+	},%
+	%
+	% Produces 'log2( \prevrow{#1}/\thisrow{#1} )
+	%
+	% Assumeing that every row contains error(h) = O(h^alpha)
+	% and h_this = h_prev/2, this result in 'alpha', the convergence
+	% rate.
+	/pgfplots/table/create col/dyadic refinement rate/.style={%
+		/pgfplots/table/columns={#1},
+		/pgfplots/table/create col/assign first/.style={%
+			/pgfplots/table/create col/next content=
+		},%
+		/pgfplots/table/create col/assign/.code={%
+			\pgfmathfloatparsenumber{\prevrow{#1}}%
+			\let\pgfmatharga=\pgfmathresult
+			\pgfmathfloatparsenumber{\thisrow{#1}}%
+			\let\pgfmathargb=\pgfmathresult
+			\let\pgfmathaccuma=\pgfmathargb
+			\pgfplots@ifzero\pgfmathargb{%
+				\pgfkeyslet{/pgfplots/table/create col/next content}\pgfutil@empty%
+			}{%
+				\pgfmathfloatdivide@{\pgfmatharga}{\pgfmathargb}%
+				\pgfmathlog@float{\pgfmathresult}%
+				\ifx\pgfmathresult\pgfutil@empty
+				\else
+					\pgfmathmultiply@{1.442695}{\pgfmathresult}%
+				\fi
+				\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+			}%
+		}%
+	},%
+	/pgfplots/table/create col/idyadic refinement rate/.style={%
+		/pgfplots/table/columns={#1},
+		/pgfplots/table/create col/assign first/.style={%
+			/pgfplots/table/create col/next content=
+		},%
+		/pgfplots/table/create col/assign/.code={%
+			\pgfmathfloatparsenumber{\prevrow{#1}}%
+			\let\pgfmathargb=\pgfmathresult
+			\pgfmathfloatparsenumber{\thisrow{#1}}%
+			\let\pgfmatharga=\pgfmathresult
+			\let\pgfmathaccuma=\pgfmathargb
+			\pgfplots@ifzero\pgfmathargb{%
+				\pgfkeyslet{/pgfplots/table/create col/next content}\pgfutil@empty%
+			}{%
+				\pgfmathfloatdivide@{\pgfmatharga}{\pgfmathargb}%
+				\pgfmathlog@float{\pgfmathresult}%
+				\ifx\pgfmathresult\pgfutil@empty
+				\else
+					\pgfmathmultiply@{1.442695}{\pgfmathresult}%
+				\fi
+				\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+			}%
+		}%
+	},%
+	/pgfplots/table/create col/gradient/.style 2 args={%
+		/pgfplots/table/columns={#1,#2},
+		/pgfplots/table/create col/assign first/.code={%
+			\pgfmathfloatparsenumber{\thisrow{#1}}%
+			\let\pgfmathaccuma=\pgfmathresult
+			\pgfmathfloatparsenumber{\thisrow{#2}}%
+			\let\pgfmathaccumb=\pgfmathresult
+			\def\pgfmathresult{}% leave first empty.
+			\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+		},%
+		/pgfplots/table/create col/assign/.code={%
+			\let\pgfmathcur@x=\pgfmathaccuma
+			\let\pgfmathcur@y=\pgfmathaccumb
+			\pgfmathfloatparsenumber{\thisrow{#1}}%
+			\let\pgfmathnext@x=\pgfmathresult
+			\let\pgfmathaccuma=\pgfmathnext@x
+			\pgfmathfloatparsenumber{\thisrow{#2}}%
+			\let\pgfmathnext@y=\pgfmathresult
+			\let\pgfmathaccumb=\pgfmathnext@y
+			\pgfmathfloatsubtract@{\pgfmathnext@x}{\pgfmathcur@x}%
+			\let\pgfmathdiff@x=\pgfmathresult
+			\pgfmathfloatsubtract@{\pgfmathnext@y}{\pgfmathcur@y}%
+			\let\pgfmathdiff@y=\pgfmathresult
+			\pgfplots@ifzero\pgfmathdiff@x{%
+				\pgfkeyslet{/pgfplots/table/create col/next content}\pgfutil@empty%
+			}{%
+				\pgfmathfloatdivide@{\pgfmathdiff@y}{\pgfmathdiff@x}%
+				\expandafter\pgfmathfloattosci@\expandafter{\pgfmathresult}%
+				\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+			}%
+		},%
+	},%
+	/pgfplots/table/create col/gradient loglog/.style 2 args={%
+		/pgfplots/table/columns={#1,#2},
+		/pgfplots/table/create col/assign first/.code={%
+			\pgfmathlog{\thisrow{#1}}%
+			\let\pgfmathaccuma=\pgfmathresult
+			\pgfmathlog{\thisrow{#2}}%
+			\let\pgfmathaccumb=\pgfmathresult
+			\def\pgfmathresult{}% leave first empty.
+			\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+		},%
+		/pgfplots/table/create col/assign/.code={%
+			\let\pgfmathcur@x=\pgfmathaccuma
+			\let\pgfmathcur@y=\pgfmathaccumb
+			\pgfmathlog{\thisrow{#1}}%
+			\let\pgfmathnext@x=\pgfmathresult
+			\let\pgfmathaccuma=\pgfmathresult
+			\pgfmathlog{\thisrow{#2}}%
+			\let\pgfmathnext@y=\pgfmathresult
+			\let\pgfmathaccumb=\pgfmathresult
+			\pgfplots@loop@CONTINUEtrue
+			\ifx\pgfmathcur@x\pgfutil@empty		\pgfplots@loop@CONTINUEfalse\fi
+			\ifx\pgfmathcur@y\pgfutil@empty		\pgfplots@loop@CONTINUEfalse\fi
+			\ifx\pgfmathnext@x\pgfutil@empty	\pgfplots@loop@CONTINUEfalse\fi
+			\ifx\pgfmathnext@y\pgfutil@empty	\pgfplots@loop@CONTINUEfalse\fi
+			\ifpgfplots@loop@CONTINUE
+				\pgfmathsubtract@{\pgfmathnext@x}{\pgfmathcur@x}%
+				\let\pgfmathdiff@x=\pgfmathresult
+				\pgfmathsubtract@{\pgfmathnext@y}{\pgfmathcur@y}%
+				\let\pgfmathdiff@y=\pgfmathresult
+				% FPU is more robust:
+				\pgfmathfloatparsenumber\pgfmathdiff@x\let\pgfmathdiff@x=\pgfmathresult
+				\pgfmathfloatparsenumber\pgfmathdiff@y\let\pgfmathdiff@y=\pgfmathresult
+				\pgfplots@ifzero\pgfmathdiff@x{%
+					\pgfkeyslet{/pgfplots/table/create col/next content}\pgfutil@empty%
+				}{%
+					\pgfmathfloatdivide@{\pgfmathdiff@y}{\pgfmathdiff@x}%
+					\expandafter\pgfmathfloattosci@\expandafter{\pgfmathresult}%
+					\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+				}%
+			\else
+			%	\pgfmathfloatcreate{3}{0.0}{0}%
+			%	\pgfmathfloattosci@\pgfmathresult
+			%	\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+				\pgfkeyslet{/pgfplots/table/create col/next content}\pgfutil@empty%
+			\fi
+		},%
+	},%
+	/pgfplots/table/create col/gradient semilogx/.style 2 args={%
+		/pgfplots/table/columns={#1,#2},
+		/pgfplots/table/create col/assign first/.code={%
+			\pgfmathfloatparsenumber{\thisrow{#1}}
+			\pgfmathfloatln@{\pgfmathresult}%
+			\let\pgfmathaccuma=\pgfmathresult
+			\pgfmathfloatparsenumber{\thisrow{#2}}%
+			\let\pgfmathaccumb=\pgfmathresult
+			\def\pgfmathresult{}% leave first empty.
+			\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+		},%
+		/pgfplots/table/create col/assign/.code={%
+			\let\pgfmathcur@x=\pgfmathaccuma
+			\let\pgfmathcur@y=\pgfmathaccumb
+			\pgfmathfloatparsenumber{\thisrow{#1}}
+			\pgfmathfloatln@{\pgfmathresult}%
+			\let\pgfmathnext@x=\pgfmathresult
+			\let\pgfmathaccuma=\pgfmathresult
+			%
+			\pgfmathfloatparsenumber{\thisrow{#2}}%
+			\let\pgfmathnext@y=\pgfmathresult
+			\let\pgfmathaccumb=\pgfmathresult
+			\pgfmathfloatsubtract@{\pgfmathnext@x}{\pgfmathcur@x}%
+			\let\pgfmathdiff@x=\pgfmathresult
+			\pgfmathfloatsubtract@{\pgfmathnext@y}{\pgfmathcur@y}%
+			\let\pgfmathdiff@y=\pgfmathresult
+			\pgfplots@ifzero\pgfmathdiff@x{%
+				\pgfkeyslet{/pgfplots/table/create col/next content}\pgfutil@empty%
+			}{%
+				\pgfmathfloatdivide@{\pgfmathdiff@y}{\pgfmathdiff@x}%
+				\expandafter\pgfmathfloattosci@\expandafter{\pgfmathresult}%
+				\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+			}%
+		},%
+	},%
+	/pgfplots/table/create col/gradient semilogy/.style 2 args={%
+		/pgfplots/table/columns={#1,#2},
+		/pgfplots/table/create col/assign first/.code={%
+			\pgfmathfloatparsenumber{\thisrow{#1}}%
+			\let\pgfmathaccuma=\pgfmathresult
+			\pgfmathfloatparsenumber{\thisrow{#2}}
+			\pgfmathfloatln@{\pgfmathresult}%
+			\let\pgfmathaccumb=\pgfmathresult
+			\def\pgfmathresult{}% leave first empty.
+			\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+		},%
+		/pgfplots/table/create col/assign/.code={%
+			\let\pgfmathcur@x=\pgfmathaccuma
+			\let\pgfmathcur@y=\pgfmathaccumb
+			\pgfmathfloatparsenumber{\thisrow{#2}}
+			\pgfmathfloatln@{\pgfmathresult}%
+			\let\pgfmathnext@y=\pgfmathresult
+			\let\pgfmathaccumb=\pgfmathresult
+			%
+			\pgfmathfloatparsenumber{\thisrow{#1}}%
+			\let\pgfmathnext@x=\pgfmathresult
+			\let\pgfmathaccuma=\pgfmathresult
+			\pgfmathfloatsubtract@{\pgfmathnext@x}{\pgfmathcur@x}%
+			\let\pgfmathdiff@x=\pgfmathresult
+			\pgfmathfloatsubtract@{\pgfmathnext@y}{\pgfmathcur@y}%
+			\let\pgfmathdiff@y=\pgfmathresult
+			\pgfplots@ifzero\pgfmathdiff@x{%
+				\pgfkeyslet{/pgfplots/table/create col/next content}\pgfutil@empty%
+			}{%
+				\pgfmathfloatdivide@{\pgfmathdiff@y}{\pgfmathdiff@x}%
+				\expandafter\pgfmathfloattosci@\expandafter{\pgfmathresult}%
+				\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+			}%
+		},%
+	},%
+	/pgfplots/table/typeset cell/.code={%
+		\ifnum\c@pgfplotstable@colindex=\c@pgfplotstable@numcols\relax
+			\pgfkeyssetvalue{/pgfplots/table/@cell content}{#1\\}%
+		\else
+			\pgfkeyssetvalue{/pgfplots/table/@cell content}{#1&}%
+		\fi
+	},
+	/pgfplots/table/reset styles/.style={
+		/pgfplots/table/every table/.code=,
+		/pgfplots/table/every odd column/.code=,
+		/pgfplots/table/every even column/.code=,
+		/pgfplots/table/every first column/.code=,
+		/pgfplots/table/every last column/.code=,
+		/pgfplots/table/every head row/.code=,
+		/pgfplots/table/every odd row/.code=,
+		/pgfplots/table/every even row/.code=,
+		/pgfplots/table/every first row/.code=,
+		/pgfplots/table/every last row/.code=,
+		/pgfplots/table/postproc cell content/.code=,
+		/pgfplots/table/preproc cell content/.code=,
+	},
+	/pgfplots/table/colnames from/.initial=,% for \pgfplotstabletranspose
+	/pgfplots/table/input colnames to/.initial=colnames,% for \pgfplotstabletranspose
+	/pgfplots/table/sort/.is if=pgfplotstable@sort,
+	/pgfplots/table/sort/.default=true,
+	/pgfplots/table/sort key/.initial=[index]0,%
+	% the argument of `sort cmp' will be evaluates as style in the key
+	% path /pgfplots/. See pgfplotsutil.code.tex for available
+	% styles.
+	/pgfplots/table/sort cmp/.initial=float <,
+	/pgfplots/table/sort key from/.initial=,
+}
+% 'function graph cut y'={<epsilon>}{<options>}{comma-separated-list of specs where to get yi}
+%
+% fills the column with x1,...,xN such that yi(xi) == epsilon where
+%
+% In other words, it computes cuts points between the line 
+% y == epsilon and one or more other plots yi(x) and returns the 'x'
+% values of the cuts.
+%
+% Example:
+% \pgfplotstableset{
+%	create on use/cut/.style={create col/function graph cut y={7e-4}{x=Basis,ymode=log,xmode=log}{{table=regtable,y=special-L2}}},
+%}
+\pgfkeysdefnargs{/pgfplots/table/create col/function graph cut y}{3}{\pgfplotstable@fgc@init{#1}{#2}{#3}{y}{x}}
+\pgfkeysdefnargs{/pgfplots/table/create col/function graph cut x}{3}{\pgfplotstable@fgc@init{#1}{#2}{#3}{x}{y}}
+\pgfkeys{%
+	/pgfplots/table/create col/function graph cut/xmode/.is choice,
+	/pgfplots/table/create col/function graph cut/xmode/linear/.code={\def\pgfplotstable@fgc@xmode{0}},%
+	/pgfplots/table/create col/function graph cut/xmode/log/.code={\def\pgfplotstable@fgc@xmode{1}},%
+	/pgfplots/table/create col/function graph cut/ymode/.is choice,
+	/pgfplots/table/create col/function graph cut/ymode/linear/.code={\def\pgfplotstable@fgc@ymode{0}},%
+	/pgfplots/table/create col/function graph cut/ymode/log/.code={\def\pgfplotstable@fgc@ymode{1}},%
+	/pgfplots/table/create col/function graph cut/x/.initial=,
+	/pgfplots/table/create col/function graph cut/y/.initial=,
+	/pgfplots/table/create col/function graph cut/table/.initial=,
+	% foreach={\d in {1,2,3,4}}{{table\d}}
+	/pgfplots/table/create col/function graph cut/foreach/.initial=,
+}
+
+
+\pgfkeyslet{/pgfplots/table/TeX comment}\pgfplots@PERCENT@TEXT
+\pgfkeysgetvalue{/pgfplots/table/postproc cell content/.@cmd}\pgfplotstable@postproccellcontent@EMPTY
+
+
+% A helper macro to automatically remove the "hangover" created by
+% 'colortbl'.
+% This allows compatibility between my 'sci sep align' and 'dec sep align' 
+% implementations and \rowcolor. Otherwise, the hangover
+% would overwrite digits near the separator.
+%
+% @remark This does also work if colortbl is not loaded.
+\def\pgfplotstableresetcolortbloverhangright{%
+	\pgfutil@ifundefined{CT@row@color}{\relax}{%
+		\global\let\pgfplots@origrowcolorcmd=\CT@row@color
+		\gdef\CT@row@color{%
+			\pgfplots@origrowcolorcmd
+			\@tempdimc=0pt
+			\global\let\CT@row@color=\pgfplots@origrowcolorcmd
+		}%
+	}%
+}%
+\def\pgfplotstableresetcolortbloverhangleft{%
+	\pgfutil@ifundefined{CT@row@color}{\relax}{%
+		\global\let\pgfplots@origrowcolorcmd=\CT@row@color
+		\gdef\CT@row@color{%
+			\pgfplots@origrowcolorcmd
+			\@tempdimb=0pt
+			\global\let\CT@row@color=\pgfplots@origrowcolorcmd
+		}%
+	}%
+}%
+
+
+% \pgfplotstablesave[<options>]{<\tablename>}{file name}
+\def\pgfplotstablesave{%
+	\pgfutil@ifnextchar[{%
+		\pgfplotstablesave@impl
+	}{%
+		\pgfplotstablesave@impl[]%
+	}%
+}
+
+\def\pgfplotstablesave@impl[#1]#2#3{%
+	\pgfplotstabletypeset[%
+		reset styles,%
+		disable rowcol styles,%
+		begin table={},%
+		end table={},%
+		typeset cell/.code={%
+			\begingroup
+			\t@pgfplots@toka={##1}%
+			\ifcase\pgfplotstableread@OUTCOLSEP@CASE\relax
+				% col sep=SPACE:
+				\t@pgfplots@tokb=\expandafter{\pgfplotstableread@tab}%
+				\pgfplots@ifempty{##1}{%
+					\t@pgfplots@toka={{}}%
+				}{}%
+				\xdef\pgfplots@glob@TMPc{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+			\or
+				% col sep=comma:
+				\t@pgfplots@tokb={,}%
+				\xdef\pgfplots@glob@TMPc{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+			\or
+				% col sep=semicolon:
+				\t@pgfplots@tokb={;}%
+				\xdef\pgfplots@glob@TMPc{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+			\or
+				% col sep=colon:
+				\t@pgfplots@tokb={:}%
+				\xdef\pgfplots@glob@TMPc{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+			\or
+				% col sep=braces:
+				\xdef\pgfplots@glob@TMPc{{\the\t@pgfplots@toka}}%
+			\or
+				% col sep=tab:
+				\xdef\pgfplots@glob@TMPc{\the\t@pgfplots@toka\pgfplotstableread@tab}%
+			\or
+				% col sep=&:
+				\xdef\pgfplots@glob@TMPc{\the\t@pgfplots@toka&}%
+			\fi
+			\endgroup
+			\pgfkeyslet{/pgfplots/table/@cell content}\pgfplots@glob@TMPc%
+		},%
+		before row=,%
+		after row=,%
+		skip coltypes,%
+		typeset=false,%
+		string type,%
+		TeX comment=,%
+		columns=,%
+		font=,%
+		/pgfplots/table/col sep/.is choice,%
+		/pgfplots/table/col sep/space/.code		= {\def\pgfplotstableread@OUTCOLSEP@CASE{0}},%
+		/pgfplots/table/col sep/comma/.code		= {\def\pgfplotstableread@OUTCOLSEP@CASE{1}},%
+		/pgfplots/table/col sep/semicolon/.code	= {\def\pgfplotstableread@OUTCOLSEP@CASE{2}},%
+		/pgfplots/table/col sep/colon/.code		= {\def\pgfplotstableread@OUTCOLSEP@CASE{3}},%
+		/pgfplots/table/col sep/braces/.code	= {\def\pgfplotstableread@OUTCOLSEP@CASE{4}},%
+		/pgfplots/table/col sep/tab/.code		= {\def\pgfplotstableread@OUTCOLSEP@CASE{5}},%
+		/pgfplots/table/col sep/&/.code			= {\def\pgfplotstableread@OUTCOLSEP@CASE{6}},%
+		/pgfplots/table/col sep/ampersand/.code	= {\def\pgfplotstableread@OUTCOLSEP@CASE{6}},%
+		/pgfplots/table/col sep=space,%
+		/pgfplots/table/in col sep/.is choice,%
+		/pgfplots/table/in col sep/space/.code		= {\def\pgfplotstableread@COLSEP@CASE{0}},%
+		/pgfplots/table/in col sep/comma/.code		= {\def\pgfplotstableread@COLSEP@CASE{1}},%
+		/pgfplots/table/in col sep/semicolon/.code	= {\def\pgfplotstableread@COLSEP@CASE{2}},%
+		/pgfplots/table/in col sep/colon/.code		= {\def\pgfplotstableread@COLSEP@CASE{3}},%
+		/pgfplots/table/in col sep/braces/.code		= {\def\pgfplotstableread@COLSEP@CASE{4}},%
+		/pgfplots/table/in col sep/tab/.code		= {\def\pgfplotstableread@COLSEP@CASE{5}},%
+		/pgfplots/table/in col sep/&/.code			= {\def\pgfplotstableread@COLSEP@CASE{6}},%
+		/pgfplots/table/in col sep/ampersand/.code	= {\def\pgfplotstableread@COLSEP@CASE{6}},%
+		/pgfplots/table/in col sep=space,%
+		% WARNING: you NEED a '%' before '#1':
+		#1,%
+		/pgfplots/table/include outfiles=false,
+		/pgfplots/table/outfile={#3}%
+	]{#2}%
+}%
+
+% clears the table. 
+\def\pgfplotstableclear#1{%
+	\let#1=\relax
+	\expandafter\let\csname \string#1@@table@name\endcsname=\relax
+}%
+
+
+% \pgfplotstablenew[<options>]{<numrows>}{<\name>}
+% \pgfplotstablenew*[<options>]{<numrows>}{<\name>}
+%
+% Creates a new table from scratch. 
+%
+% The new table will contain all columns listed in the 'columns' key
+% which must be present in <options>. The starred version
+% \pgfplotstablenew* is not that strict: it will use the current value
+% of the columns key (not matter where and when it has been set).
+%
+% Furthermore, there must be 'create on use' statements for every
+% column which shall be generated. Columns are generated
+% independently, in the order of appearance in 'columns'.
+% The table will contain exactly <numrows> rows.
+\def\pgfplotstablenew{%
+	\begingroup
+	\pgfutil@ifnextchar*{\pgfplotstablenew@star}{\pgfplotstablenew@nostar}}
+\def\pgfplotstablenew@star*{\pgfutil@ifnextchar[{\pgfplotstablenew@impl}{\pgfplotstablenew@impl[]}}%
+\def\pgfplotstablenew@nostar{%
+	% reset columns key:
+	\pgfkeyslet{/pgfplots/table/columns}{\pgfutil@empty}%
+	\pgfutil@ifnextchar[{\pgfplotstablenew@impl}{\pgfplotstablenew@impl[]}}
+
+\def\pgfplotstablenew@impl[#1]#2#3{%
+	\pgfplotsscanlinelengthinitzero
+	% create a temporary column with the desired number of rows:
+	\pgfutil@in@\pgfplotstablegetrowsof{#2}%
+	\ifpgfutil@in@
+		#2%
+		\let\pgfplotstable@loc@TMPa=\pgfmathresult
+	\else
+		\def\pgfplotstable@loc@TMPa{#2}%
+	\fi
+	\pgfplotslistnew#3{@@@@@temporary@column@\\}%
+	\expandafter\pgfplots@assign@list\csname\string#3@@@@@@temporary@column@\endcsname{1,2,...,\pgfplotstable@loc@TMPa}%
+	%
+	% now, create all real columns:
+	\pgfplotstableset{#1,%
+		/pgf/fpu/handlers/empty number/.code 2 args={%
+			\pgfmathfloatcreate{0}{0.0}{0}%
+		}%
+	}%
+	\pgfkeysgetvalue{/pgfplots/table/columns}{\pgfplotstable@colnames}%
+	\ifx\pgfplotstable@colnames\pgfutil@empty
+		\pgfplots@warning{\string\pgfplotstablenew[columns={},...]{#2}{\string#3} has been invoked - but empty tables are currently not really supported, sorry. You will have to live with an artifical column which contains temporary values.}%
+	\else
+		\expandafter\pgfplots@assign@list\expandafter\pgfplotstablenew@cols\expandafter{\pgfplotstable@colnames}%
+		% make sure every requested column exists:
+		\pgfutil@loop
+		\pgfplotslistcheckempty\pgfplotstablenew@cols
+		\ifpgfplotslistempty
+			\pgfplots@loop@CONTINUEfalse
+		\else
+			\pgfplots@loop@CONTINUEtrue
+		\fi
+		\ifpgfplots@loop@CONTINUE
+			\pgfplotslistpopfront\pgfplotstablenew@cols\to\pgfplotstablenew@col
+			\expandafter\pgfplotstablegetcolumnbyname\expandafter{\pgfplotstablenew@col}\of#3\to\pgfplotstable@loc@TMPa
+		\pgfutil@repeat
+		% remove the temporary column:
+		% FIXME this should be done after the '\fi'. But that will
+		% lead to an error because empty tables are currently
+		% unsupported!
+		\pgfplotslistpopfront#3\to\pgfplotstable@loc@TMPa
+	\fi
+	\pgfplotsscanlinelengthcleanup
+	\pgfplotstable@copy@to@globalbuffers#3{newlycreatedtable}%
+	\endgroup
+	\pgfplotstable@copy@globalbuffers@to#3%
+}%
+
+% \pgfplotstablevertcat{<table1>}{<table2>}
+% appends the contents of <table2> to <table1>. To be more precise,
+% only columns which exist already in <table1> will be used.
+%
+% If <table1> is undefined, <table2> will be copied completely to
+% <table1>.
+%
+% #1 a table macro.
+% #2 either a file name or a table macro.
+\long\def\pgfplotstablevertcat#1#2{%
+	\pgfplotstable@isloadedtable{#2}{%
+		\pgfplotstable@isloadedtable{#1}{%
+			% for each column in '#1':
+			\pgfplotslistforeachungrouped#1\as\pgfplotstable@loc@TMPa{%
+				% for each row in the corresponding column of '#2':
+				\expandafter\pgfplotstablegetcolumnbyname\expandafter{\pgfplotstable@loc@TMPa}\of{#2}\to\pgfplotstable@loc@TMPb
+				\pgfplotslistforeachungrouped\pgfplotstable@loc@TMPb\as\pgfplotstable@loc@TMPc{%
+					\t@pgfplots@toka=\expandafter{\pgfplotstable@loc@TMPc}%
+					\edef\pgfplotstable@loc@TMPd{%
+						\noexpand\pgfplotslistpushback{\the\t@pgfplots@toka}\to\expandafter\noexpand\csname\string#1@\pgfplotstable@loc@TMPa\endcsname
+					}%
+					\pgfplotstable@loc@TMPd
+				}%
+			}%
+		}{%
+			\pgfplotstablecopy{#2}\to{#1}%
+		}%
+	}{%
+		% FIXME : restore memory here !? SCOPING BUG
+		\pgfplotstableread{#2}\pgfplotstable@tmptbl
+		\pgfplotstablevertcat{#1}{\pgfplotstable@tmptbl}%
+	}%
+}
+
+% \pgfplotstabletranspose{<\outtable>}{<intable>}
+% \pgfplotstabletranspose[<colname>]{<\outtable>}{<intable>}
+% Defines <\outtable> to be the transposed of <intable>. 
+%
+% If <colname> is not empty, the respective column's entries will be used to
+% make output column names.
+%
+% #1: a table macro name which will be overwritten (redefined)
+% #2: either a file name or a table macro (loaded table).
+\def\pgfplotstabletranspose{%
+	\begingroup
+	\pgfutil@ifnextchar*{%
+		\pgfplotstabletranspose@star%
+	}{%
+		\pgfkeyslet{/pgfplots/table/columns}\pgfutil@empty% clear!
+		\pgfplotstabletranspose@star*%
+	}%
+}
+\def\pgfplotstabletranspose@star*{\pgfutil@ifnextchar[{\pgfplotstabletranspose@opt}{\pgfplotstabletranspose@opt[]}}%
+\long\def\pgfplotstabletranspose@opt[#1]#2#3{%
+	\pgfplotstable@isloadedtable{#3}{%
+		\pgfplotstabletranspose@[#1]{#2}{#3}%
+	}{%
+		\pgfplotstableread{#3}\pgfplotstable@tmptbl
+		\pgfplotstabletranspose@[#1]{#2}{\pgfplotstable@tmptbl}%
+	}%
+}%
+
+
+% Creates a new column named #1 and appends it to table #2.
+%
+% The column entries will be created using the command keys
+% 'create col/assign' 
+% 'create col/assign last'
+%
+% The key 'create col/assign' will be invoked for every row of table #2.
+% It is supposed to assign the key 'create col/next content'.
+% During evaluation of 'create col/assign', the macro '\thisrow{<col name>}' 
+% expands to the current row's value of the column named by <col name>.
+% Furthermore, '\nextrow{<col name>}' expands to the \emph{next} row's
+% value of the designated column.
+%
+% Since the "next row" is not available if we are currently processing
+% the last row, 'create col/assign last' is used in for the last row's
+% value.
+%
+% You can use
+% - \thisrow{<col name>}, 
+% - \getthisrow{<col name>}{\macro}
+% - \nextrow{<col name>}, 
+% - \getnextrow{<col name>}{\macro}
+%
+% FIXME this documentation is incomplete. Please refer to pgfplotstable.pdf .
+\def\pgfplotstablecreatecol{%
+	\pgfutil@ifnextchar[{%
+		\pgfplotstablecreatecol@opt
+	}{%
+		\pgfplotstablecreatecol@opt[]%
+	}%
+}%
+
+
+% Typesets a table.
+%
+% \pgfplotstabletypeset[<options>]<\tablestructure>
+% or
+% \pgfplotstabletypeset[<options>]{<file name>}
+%
+% If you do not select any columns, the complete table is drawn.
+%
+% There are several options and styles which are available in
+% <options>, see the declaration above.
+%
+% ATTENTION: the default implementation employs
+% \begin{tabular}...\end{tabular} and is therefor only usable with
+% LaTeX!
+%
+% You will need to reconfigure the tables.
+%
+% Inside of \pgfplotstabletypeset, the macros
+% \pgfplotstablecol,\pgfplotstablecolname and
+% \pgfplotstablerow will expand to the current column index, column
+% name and row index, respectively.
+\def\pgfplotstabletypeset{%
+	\pgfutil@ifnextchar[{%	
+		\pgfplotstabletypeset@opt
+	}{%
+		\pgfplotstabletypeset@opt[]%
+	}%
+}
+\long\def\pgfplotstabletypeset@opt[#1]{%
+	\begingroup
+	\ifpgfplots@table@options@areset
+	\else
+		\pgfplotstableset{#1}%
+	\fi
+	\pgfplotstablecollectoneargwithpreparecatcodes{%
+		\pgfplotstabletypeset@opt@collectarg[#1]%
+	}%
+}
+\long\def\pgfplotstabletypeset@opt@collectarg[#1]#2{%
+	\pgfplotstable@isloadedtable{#2}%
+		{\pgfplotstabletypeset@opt@[#1]{#2}}%
+		{\pgfplotstabletypesetfile@opt@[#1]{#2}}%
+}
+
+
+% Like \pgfplotstabletypeset, but the first argument is a file name.
+% This is the same now; it will be recognised automatically.
+\let\pgfplotstabletypesetfile=\pgfplotstabletypeset
+\long\def\pgfplotstabletypesetfile@opt@[#1]#2{%
+	%\begingroup <--- is already opened!
+	\ifpgfplots@table@options@areset
+	\else
+		\pgfplotstableset@every@table{#2}{#1}%
+		\pgfplots@table@options@aresettrue
+	\fi
+	\ifpgfplotstabletypeset@force@remake
+		\pgfplotstabletypeset@includeoutfilesfalse
+	\else
+		\ifpgfplotstabletypeset@includeoutfiles
+			\pgfplotstabletypeset@includeoutfilesfalse
+			\pgfkeysgetvalue{/pgfplots/table/outfile}\pgfplotstable@outfilename
+			\ifx\pgfplotstable@outfilename\pgfutil@empty
+			\else
+				\openin\r@pgfplots@reada=\pgfplotstable@outfilename\relax
+				\ifeof\r@pgfplots@reada
+				\else
+					\pgfplotstabletypeset@includeoutfilestrue
+				\fi
+				\closein\r@pgfplots@reada
+			\fi
+		\fi
+	\fi
+	\ifpgfplotstabletypeset@includeoutfiles
+		\input \pgfplotstable@outfilename\relax	
+	\else
+		\pgfplotstableread{#2}\pgfplotstabletypesetfile@opt@@
+		\ifx\pgfplotstabletypesetfile@opt@@\relax
+			% ERROR.
+		\else
+			\pgfplotstabletypeset\pgfplotstabletypesetfile@opt@@
+		\fi
+	\fi
+	\pgfkeysgetvalue{/pgfplots/table/write to macro}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\def\pgfplots@loc@TMPa{\pgfutil@empty}%
+	\else
+		\expandafter\ifx\pgfplots@loc@TMPa\relax
+			% is it really defined? NO! Sanity checking here:
+			\def\pgfplots@loc@TMPa{\pgfutil@empty}%
+		\fi
+	\fi
+	\expandafter\pgfmath@smuggleone\pgfplots@loc@TMPa
+	\endgroup
+}%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% IMPLEMENTATION
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%%%%%%%%%%%%%%
+
+
+% #1: the original value
+% #2: the output macro
+\long\def\pgfplotstabletypeset@getfinalentry#1#2{%
+	\begingroup
+	\def\pgfkeysdefaultpath{/pgfplots/table/}%
+	\def\pgfplotstablepartno{0}%
+	\pgfkeyssetvalue{/pgfplots/table/@cell content}{#1}%
+	\pgfkeyssetvalue{/pgfplots/table/@unprocessed cell content}{#1}%
+	\ifpgfplotstable@disable@rowcolstyles
+	\else
+		\def\pgfplots@loc@TMPb##1{%
+			\edef\pgfplotstable@loc@TMPa{/pgfplots/table/every row ##1\pgfplotstablerow\space column ##1\pgfplotstablecol}%
+			\pgfkeysifdefined{\pgfplotstable@loc@TMPa/.@cmd}{%
+				\expandafter\pgfplotstableset\expandafter{\pgfplotstable@loc@TMPa}%
+			}{}%
+			\edef\pgfplotstable@loc@TMPa{/pgfplots/table/every row ##1\pgfplotstablerow\space column \pgfplotstable@colname@for@styles}%
+			\pgfkeysifdefined{\pgfplotstable@loc@TMPa/.@cmd}{%
+				\expandafter\pgfplotstableset\expandafter{\pgfplotstable@loc@TMPa}%
+			}{}%
+		}%
+		\pgfplots@loc@TMPb{}%
+		% also accept the same with the 'row no' style:
+		\pgfplots@loc@TMPb{no }%
+		\pgfplotstable@debug@notify@cellcontent@afterrowcolstyles%
+	\fi
+	\pgfplotstable@debug@notify@cellcontent%
+	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
+	\pgfkeyslet{/pgfplots/table/@cell content after rowcol styles}\pgfmathresult%
+	\pgfkeysgetvalue{/pgfplots/table/preproc cell content/.@cmd}\pgfplotstable@assigncell
+	\expandafter\pgfplotstable@assigncell\pgfmathresult\pgfeov
+	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
+	\pgfkeyslet{/pgfplots/table/@preprocessed cell content}\pgfmathresult%
+	\pgfplotstable@debug@notify@cellcontent@preprocessed%
+	%
+	\pgfkeysgetvalue{/pgfplots/table/assign cell content/.@cmd}\pgfplotstable@assigncell
+	\expandafter\pgfplotstable@assigncell\pgfmathresult\pgfeov
+	\pgfplotstable@debug@notify@cellcontent@assigned%
+	%
+	\pgfkeysgetvalue{/pgfplots/table/postproc cell content/.@cmd}\pgfplotstable@postproccellcontent
+	\ifx\pgfplotstable@postproccellcontent\pgfplotstable@postproccellcontent@EMPTY
+	\else
+		% apply postprocessing to final cell content.
+		\def\pgfplotstabletypeset@rawinput{#1}%
+		%
+		% This is complicated if there is an '&' in '@cell content',
+		% so handle that specially!
+		%
+		% FIXME also support more than one '&' ?
+		\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
+		\expandafter\pgfutil@in@\expandafter&\expandafter{\pgfmathresult}%
+		\ifpgfutil@in@
+			\expandafter\pgfplotstabletypeset@postproc@separately\pgfmathresult\pgfplotstable@EOI
+		\else
+			\expandafter\pgfplotstable@postproccellcontent\pgfplotstabletypeset@rawinput\pgfeov
+		\fi
+	\fi
+	\pgfplotstable@debug@notify@cellcontent@postprocessed%
+	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+	\let#2=\pgfmathresult
+}%
+
+\def\pgfplotstable@debug@notify@cellcontent{}%
+\def\pgfplotstable@debug@notify@cellcontent@preprocessed{}%
+\def\pgfplotstable@debug@notify@cellcontent@afterrowcolstyles{}%
+\def\pgfplotstable@debug@notify@cellcontent@assigned{}%
+\def\pgfplotstable@debug@notify@cellcontent@postprocessed{}%
+\def\pgfplotstable@debug@notify@preprocess@incol#1{}%
+\def\pgfplotstable@debug@notify@preprocess@col#1{}%
+\def\pgfplotstable@debug@notify@preprocessed@col#1{}%
+\def\pgfplotstable@debug@notify@balancingcell{}%
+
+\def\pgfplotstable@debug@notify@cellcontent@ACTIVE{%
+	\begingroup
+	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
+	\toks0=\expandafter{\pgfmathresult}%
+	\immediate\write16{Row \pgfplotstablerow/out \the\c@pgfplotstable@counta: Before cell content processing: `\the\toks0'}%
+	\endgroup
+}%
+\def\pgfplotstable@debug@notify@cellcontent@preprocessed@ACTIVE{%
+	\begingroup
+	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
+	\toks0=\expandafter{\pgfmathresult}%
+	\immediate\write16{Row \pgfplotstablerow/out \the\c@pgfplotstable@counta: After '@preproc cell content  : `\the\toks0'}%
+	\endgroup
+}%
+\def\pgfplotstable@debug@notify@cellcontent@afterrowcolstyles@ACTIVE{%
+	\begingroup
+	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
+	\toks0=\expandafter{\pgfmathresult}%
+	\immediate\write16{Row \pgfplotstablerow/out \the\c@pgfplotstable@counta: After applying 'every row * column [no] *' styles : `\the\toks0'}%
+	\endgroup
+}%
+\def\pgfplotstable@debug@notify@cellcontent@assigned@ACTIVE{%
+	\begingroup
+	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
+	\toks0=\expandafter{\pgfmathresult}%
+	\immediate\write16{Row \pgfplotstablerow/out \the\c@pgfplotstable@counta: After 'assign cell content    : `\the\toks0'}%
+	\endgroup
+}%
+\def\pgfplotstable@debug@notify@cellcontent@postprocessed@ACTIVE{%
+	\begingroup
+	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult%
+	\toks0=\expandafter{\pgfmathresult}%
+	\immediate\write16{Row \pgfplotstablerow/out \the\c@pgfplotstable@counta: After 'postproc cell content  : `\the\toks0'}%
+	\endgroup
+}
+\def\pgfplotstable@debug@notify@balancingcell@ACTIVE{%
+	\immediate\write16{Row --/out \the\c@pgfplotstable@counta: Inserting empty cell to balance rows}%
+}%
+\def\pgfplotstable@debug@notify@preprocess@incol@ACTIVE#1{%
+	\begingroup
+	\toks0=\expandafter{#1}%
+	\immediate\write16{>=== Loading input column `\the\toks0' <===}%
+	\endgroup
+}%
+\def\pgfplotstable@debug@notify@preprocess@col@ACTIVE#1{%
+	\begingroup
+	\toks0=\expandafter{#1}%
+	\immediate\write16{>=== Preprocessing output column `\the\toks0' <===}%
+	\endgroup
+}%
+\def\pgfplotstable@debug@notify@preprocessed@col@ACTIVE#1{%
+	\begingroup
+	\toks0=\expandafter{#1}%
+	\immediate\write16{>=== output column `\the\toks0' prepared, ok. <===}%
+	\endgroup
+}%
+\def\pgfplotstable@debug@activate{%
+	\ifnum\pgfkeysvalueof{/pgfplots/table/debug level}>0
+		\let\pgfplotstable@debug@notify@preprocess@incol=\pgfplotstable@debug@notify@preprocess@incol@ACTIVE
+		\let\pgfplotstable@debug@notify@preprocess@col=\pgfplotstable@debug@notify@preprocess@col@ACTIVE
+		\let\pgfplotstable@debug@notify@preprocessed@col=\pgfplotstable@debug@notify@preprocessed@col@ACTIVE
+		\let\pgfplotstable@debug@notify@cellcontent=\pgfplotstable@debug@notify@cellcontent@ACTIVE
+		\let\pgfplotstable@debug@notify@cellcontent@preprocessed=\pgfplotstable@debug@notify@cellcontent@preprocessed@ACTIVE
+		\let\pgfplotstable@debug@notify@cellcontent@afterrowcolstyles=\pgfplotstable@debug@notify@cellcontent@afterrowcolstyles@ACTIVE
+		\let\pgfplotstable@debug@notify@cellcontent@assigned=\pgfplotstable@debug@notify@cellcontent@assigned@ACTIVE
+		\let\pgfplotstable@debug@notify@cellcontent@postprocessed=\pgfplotstable@debug@notify@cellcontent@postprocessed@ACTIVE
+		\let\pgfplotstable@debug@notify@balancingcell=\pgfplotstable@debug@notify@balancingcell@ACTIVE
+	\fi
+}%
+
+% This routine invokes 'postproc cell content' for columns which
+% contain the column separator '&'.
+%
+% #1&#2 is the formatted number, the result of 'dec sep align
+% #3 is the (unformatted) input number.
+\def\pgfplotstabletypeset@postproc@separately#1&#2\pgfplotstable@EOI{%
+	\def\pgfmathresult{#1}%
+	\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult
+	\expandafter\pgfplotstable@postproccellcontent\pgfplotstabletypeset@rawinput\pgfeov
+	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfplotstable@entry@a
+	%
+	\def\pgfplotstablepartno{1}%
+	\def\pgfmathresult{#2}%
+	\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult
+	\expandafter\pgfplotstable@postproccellcontent\pgfplotstabletypeset@rawinput\pgfeov
+	\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
+	\t@pgfplots@toka=\expandafter{\pgfplotstable@entry@a}%
+	\t@pgfplots@tokb=\expandafter{\pgfmathresult}%
+	\edef\pgfmathresult{\the\t@pgfplots@toka&\the\t@pgfplots@tokb}%
+	\pgfkeyslet{/pgfplots/table/@cell content}\pgfmathresult
+}
+
+% processes the option 'assign column name'
+\def\pgfplotstabletypeset@assign@final@colname#1#2{%
+	\pgfkeysifdefined{/pgfplots/table/assign column name/.@cmd}{%
+		\pgfkeysdef{/pgfplots/table/column name}{#1}%
+		\pgfkeysvalueof{/pgfplots/table/assign column name/.@cmd}#1\pgfeov
+		\pgfkeysgetvalue{/pgfplots/table/column name}{#2}%
+	}{}%
+}
+\def\pgfplotstabletypeset@nocolname{\pgfkeysnovalue}
+
+% checks if #1 contains invalid chars for pgfkeys and sets
+% \ifpgfutil@in@ to true if that is the case.
+\def\pgfplotstable@checkspecialchars@pgfkeys#1\pgfplotstable@EOI{%
+	\pgfutil@in@/{#1}%
+	\ifpgfutil@in@
+	\else
+		\pgfutil@in@={#1}%
+		\ifpgfutil@in@
+		\else
+			\pgfutil@in@,{#1}%
+		\fi
+	\fi
+}%
+
+% Upon execution, \pgfplotsretval contains a set of /pgfplots/table
+% keys from 'every nth row' styles.
+%
+% @PRECONDITION this macro assumes it is run in \pgfplotstabletypeset.
+\def\pgfplots@each@nth@styles{\let\pgfplotsretval\pgfutil@empty}%
+
+% Defines an 'every nth row' style for an integer #1.
+%
+% #1: integer
+% #2: style arguments
+%
+% All these styles are accumulated into the macro
+% \pgfplots@each@nth@styles. 
+\def\pgfplotstabletypeset@append@every@nth@row#1#2{%
+	\edef\pgfplots@loc@TMPa{#1}%
+	% chech for the special 'each nth row={3[+1]}{...} format:
+	\expandafter\pgfutil@in@\expandafter[\expandafter{\pgfplots@loc@TMPa}%
+	\ifpgfutil@in@
+		\expandafter\pgfplotstabletypeset@append@every@nth@row@getshift\pgfplots@loc@TMPa%
+		\t@pgfplots@toka={#2}%
+		\edef\pgfplots@loc@TMPa{%
+			\noexpand\pgfplotstabletypeset@append@every@nth@row@{\pgfplots@loc@TMPa}{\the\t@pgfplots@toka}{\pgfplots@loc@TMPb}%
+		}%
+		\pgfplots@loc@TMPa
+	\else
+		\expandafter\pgfplotstabletypeset@append@every@nth@row@\expandafter{\pgfplots@loc@TMPa}{#2}{0}%
+	\fi
+}%
+\def\pgfplotstabletypeset@append@every@nth@row@getshift#1[#2]{%
+	\def\pgfplots@loc@TMPa{#1}%
+	\ifnum#2<0
+		\c@pgf@countc=#1\relax
+		\advance\c@pgf@countc by#2
+		\edef\pgfplots@loc@TMPb{\the\c@pgf@countc}%
+	\else
+		\def\pgfplots@loc@TMPb{#2}%
+	\fi
+}%
+% #3 is an additional shift. It is usually 0
+\def\pgfplotstabletypeset@append@every@nth@row@#1#2#3{%
+	\expandafter\def\expandafter\pgfplots@each@nth@styles\expandafter{%
+		\pgfplots@each@nth@styles
+		\expandafter\pgfplotsmathmodint\expandafter{\the\c@pgfplotstable@rowindex}{#1}%
+		\ifnum\pgfmathresult=#3\relax
+			\ifx\pgfplotsretval\pgfutil@empty
+				\def\pgfplotsretval{#2}%
+			\else
+				\expandafter\def\expandafter\pgfplotsretval\expandafter{\pgfplotsretval,%
+					#2}%
+			\fi
+		\fi
+	}%
+}
+
+\def\pgfplotstable@insertemptycells@forbalance{%
+	\pgfutil@loop
+	\ifnum\c@pgfplotstable@counta<\pgfplotstable@firstnumrows\relax
+		\pgfplotstable@debug@notify@balancingcell
+		% let's hope @getfinalentry handles empty strings!
+		\pgfplotstabletypeset@getfinalentry{}{\pgfplotstable@entry}%
+		\expandafter\pgfplotslistpushback\pgfplotstable@entry\to\pgfplotstable@col@processed
+		\pgfplotslistpushback\to\pgfplotstable@col@processed
+		\advance\c@pgfplotstable@counta by1\relax
+	\pgfutil@repeat
+}
+
+% TODO
+% - replace grouped list foreach by popfront-loop and use arrays
+%   directly -> group only the pgfkeys eval
+\long\def\pgfplotstabletypeset@opt@[#1]#2{%
+	%\begingroup <--- is already opened!
+	%--------------------------------------------------
+	% \pgfutil@ifundefined{#2}{%
+	% 	\pgfplots@error{There is no such table '\string#2' loaded into memory. Maybe you meant to use '\string\pgfplotstabletypesetfile{\string#2}' instead of '\string\pgfplotstabletypeset{\string#2}'?}%
+	% 	\pgfplotslistnewempty#2
+	% }{}%
+	%-------------------------------------------------- 
+	\def\pgfplotstablename{#2}% the name of the actual table struct
+	\def\pgfplotstablecolname{\pgfplotstable@colname}%
+	\def\pgfplotstablecol{\the\c@pgfplotstable@colindex}%
+	\def\pgfplotstablerow{\the\c@pgfplotstable@rowindex}%
+	\def\pgfplotstablecols{\the\c@pgfplotstable@numcols}%
+	\def\pgfplotstablerows{\the\c@pgfplotstable@numrows}%
+	\ifpgfplots@table@options@areset
+	\else
+		\pgfplotstablegetname{#2}\pgfplotstable@loc@TMPa
+		\expandafter\pgfplotstableset@every@table\expandafter{\pgfplotstable@loc@TMPa}{#1}%
+	\fi
+	\pgfkeysgetvalue{/pgfplots/table/outfile}\pgfplotstable@outfilename
+	\pgfkeysgetvalue{/pgfplots/table/TeX comment}\pgfplots@TeX@comment
+	\ifpgfplotstabletypeset@force@remake
+		\pgfplotstabletypeset@includeoutfilesfalse
+	\else
+		\ifpgfplotstabletypeset@includeoutfiles
+			\pgfplotstabletypeset@includeoutfilesfalse
+			\ifx\pgfplotstable@outfilename\pgfutil@empty
+			\else
+				\pgfplots@logfileopen{\pgfplotstable@outfilename}%
+				\openin\r@pgfplots@reada=\pgfplotstable@outfilename\relax
+				\ifeof\r@pgfplots@reada \else\pgfplotstabletypeset@includeoutfilestrue \fi
+				\closein\r@pgfplots@reada
+			\fi
+		\fi
+	\fi
+	\ifpgfplotstabletypeset@includeoutfiles
+		\def\pgfplots@loc@TMPa{%
+			\input \pgfplotstable@outfilename\relax
+			\endgroup
+		}%
+	\else
+		\def\pgfplots@loc@TMPa{%
+			\pgfplotstabletypeset@opt@prepare{#2}%
+		}%
+	\fi
+	\pgfplots@loc@TMPa
+}%
+\def\pgfplotstabletypeset@opt@prepare#1{%
+	%
+	% Prepare outfile and debug options:
+	\let\pgfplotstable@notify@finished@line=\pgfutil@empty
+	%
+	% FLUSH assumes that \pgfplotstable@curline is finished. It
+	% appends all its contents as-is to \pgfplotstable@result.
+	%
+	% Furthermore, it calls \pgfplotstable@notify@finished@line which
+	% in turn may invoke additional output routines for the debug and
+	% outfile options.
+	%
+	% Finally, it resets \pgfplotstable@curline.
+	\def\pgfplotstable@curline@FLUSH{%
+		\pgfplotstable@notify@finished@line
+		\t@pgfplots@toka=\expandafter{\pgfplotstable@result}%
+		\t@pgfplots@tokb=\expandafter{\pgfplotstable@curline}%
+		\edef\pgfplotstable@result{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+		\let\pgfplotstable@curline=\pgfutil@empty
+	}%
+	\ifpgfplotstabletypesetdebug
+		\immediate\write16{------- PGFPLOTSTABLE DEBUG MODE: --------}%
+		\expandafter\def\expandafter\pgfplotstable@notify@finished@line\expandafter{\pgfplotstable@notify@finished@line
+			\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
+			\immediate\write16{\the\t@pgfplots@toka\pgfplots@TeX@comment}%
+		}%
+		\pgfplotstable@debug@activate
+	\fi
+	\ifx\pgfplotstable@outfilename\pgfutil@empty
+	\else
+		\immediate\openout\pgfplotstable@outfile=\pgfplotstable@outfilename\relax
+		\expandafter\def\expandafter\pgfplotstable@notify@finished@line\expandafter{\pgfplotstable@notify@finished@line
+			\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
+			\immediate\write\pgfplotstable@outfile{\the\t@pgfplots@toka\pgfplots@TeX@comment}%
+		}%
+	\fi
+	%
+	% Start operation:
+	\pgfkeysgetvalue{/pgfplots/table/columns}{\pgfplotstable@colnames}%
+	\ifx\pgfplotstable@colnames\pgfutil@empty
+		\pgfplotstablegetcolumnlist#1\to\pgfplotstable@colnames
+	\else
+		\expandafter\pgfplotslistnew\expandafter\pgfplotstable@colnames\expandafter{\pgfplotstable@colnames}%
+	\fi
+	%
+	%
+	\ifpgfplotstable@sort
+		% make sure any columns exist (especially create on use). 
+		% this can be done by calling getcolumnbyname once for every
+		% column:
+		\pgfplotslistforeachungrouped\pgfplotstable@colnames\as\pgfplotstable@colname{%
+			\pgfplotstable@is@colname\pgfplotstable@colname
+			\ifpgfplotstableread@foundcolnames
+			\else
+				\pgfplotstablegetcolumnnamebyindex\pgfplotstable@colname\of#1\to\pgfplotstable@colname
+			\fi
+			\expandafter\pgfplotstablegetcolumnbyname\expandafter{\pgfplotstable@colname}\of#1\to\pgfplotstable@col
+		}%
+		\let\pgfplotstable@colname=\relax
+		\let\pgfplotstable@col=\relax
+		%
+		\def\pgfplots@loc@TMPa{%
+			\pgfplotstablesort\pgfplotstable@sortedtbl{#1}%
+			\pgfplotstabletypeset@opt@@{\pgfplotstable@sortedtbl}%
+		}%
+	\else
+		\def\pgfplots@loc@TMPa{%
+			\pgfplotstabletypeset@opt@@{#1}%
+		}%
+	\fi
+	\pgfplots@loc@TMPa
+}
+\def\pgfplotstabletypeset@opt@@#1{%
+	\global\pgfplotslistnewempty\pgfplotstabletypeset@final@colnames
+	\global\pgfplotslistnewempty\pgfplotstabletypeset@final@coltypes
+	\global\pgfplotslistnewempty\pgfplotstabletypeset@final@cols
+	\let\c@pgfplotstable@numcols=\c@pgf@counta
+	\let\c@pgfplotstable@numrows=\c@pgf@countd
+	\let\c@pgfplotstable@rowindex=\c@pgf@countc
+	\let\c@pgfplotstable@colindex=\c@pgf@countb
+	\pgfplotslistsize\pgfplotstable@colnames\to\c@pgfplotstable@numcols
+	\def\pgfplotstable@firstnumrows{-1}%
+	\c@pgfplotstable@numrows=-1\relax
+	\c@pgfplotstable@colindex=0\relax
+	% FOREACH COLUMN:
+	\pgfplotslistforeach\pgfplotstable@colnames\as\pgfplotstable@colname{%
+		\pgfplotstable@debug@notify@preprocess@incol\pgfplotstable@colname
+		%
+		\c@pgfplotstable@rowindex=0\relax
+		\pgfplotstable@is@colname\pgfplotstable@colname
+		\ifpgfplotstableread@foundcolnames
+		\else
+			\pgfplotstablegetcolumnnamebyindex\pgfplotstable@colname\of#1\to\pgfplotstable@colname
+		\fi
+		\expandafter\pgfplotstablegetcolumnbyname\expandafter{\pgfplotstable@colname}\of#1\to\pgfplotstable@col
+		%
+		% Init number of *input* rows here. This may not be the same
+		% as the number of *output* rows (see the row predicate
+		% below).
+		%
+		% Accessable with \pgfplotstablerows in style keys.
+		\ifnum\c@pgfplotstable@numrows=-1\relax
+			\pgfplotslistsize\pgfplotstable@col\to\c@pgfplotstable@numrows
+			\global\c@pgfplotstable@numrows=\c@pgfplotstable@numrows
+		\fi
+		%
+		%
+		% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		% Set keys for columns!
+		\ifodd\c@pgfplotstable@colindex
+			\t@pgfplots@toka={every odd column}%
+		\else
+			\t@pgfplots@toka={every even column}%
+		\fi
+		\ifnum\c@pgfplotstable@colindex=0\relax
+			\t@pgfplots@toka=\expandafter{\the\t@pgfplots@toka,every first column}%
+		\fi
+		% save this now before we increment '\c@pgfplotstable@colindex':
+		\edef\pgfplotstable@displaycolkey{display columns/\the\c@pgfplotstable@colindex/.try,every col no \the\c@pgfplotstable@colindex/.try}%
+		%
+		\global\advance\c@pgfplotstable@colindex by1\relax
+		\ifnum\c@pgfplotstable@colindex=\c@pgfplotstable@numcols
+			\t@pgfplots@toka=\expandafter{\the\t@pgfplots@toka,every last column}%
+		\fi
+		% temporarily restore it: we may need it in row predicates:
+		\global\advance\c@pgfplotstable@colindex by-1\relax
+		\ifpgfplotstable@disable@rowcolstyles
+			% ok, then don't check for 'columns/<name>' and 
+			% 'display columns/<index>':
+			\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka}%
+		\else
+			\t@pgfplots@tokb=\expandafter{\pgfplotstable@colname}%
+			\expandafter\pgfplotstable@checkspecialchars@pgfkeys\the\t@pgfplots@tokb\pgfplotstable@EOI
+			\ifpgfutil@in@
+				\edef\pgfplotstable@colname@for@styles{{\the\t@pgfplots@tokb}}%
+			\else
+				\edef\pgfplotstable@colname@for@styles{\the\t@pgfplots@tokb}%
+			\fi
+			\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,columns/\pgfplotstable@colname@for@styles/.try}%
+			\t@pgfplots@toka=\expandafter{\pgfplotstable@loc@TMPa}%
+			\t@pgfplots@tokb=\expandafter{\pgfplotstable@displaycolkey}%
+			\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,\the\t@pgfplots@tokb}%
+		\fi
+		\expandafter\pgfplotstableset\expandafter{\pgfplotstable@loc@TMPa}%
+		% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		%
+		\pgfkeysgetvalue{/pgfplots/table/column name}{\pgfplotstable@colname@out}%
+		\ifx\pgfplotstable@colname@out\pgfplotstabletypeset@nocolname
+			\let\pgfplotstable@colname@out=\pgfplotstable@colname
+		\fi
+		\expandafter\pgfplotstabletypeset@assign@final@colname\expandafter{\pgfplotstable@colname@out}\pgfplotstable@colname@out
+		%
+		\pgfplotstable@debug@notify@preprocess@col\pgfplotstable@colname@out
+		%
+		\expandafter\pgfplotslistpushbackglobal\pgfplotstable@colname@out\to\pgfplotstabletypeset@final@colnames
+		\pgfkeysgetvalue{/pgfplots/table/column type}{\pgfplotstable@coltype}%
+		\expandafter\pgfplotslistpushbackglobal\pgfplotstable@coltype\to\pgfplotstabletypeset@final@coltypes
+		%
+		\pgfplotslistnewempty\pgfplotstable@col@processed
+		\c@pgfplotstable@counta=0 
+		\pgfplotslistforeachungrouped\pgfplotstable@col\as\pgfplotstable@entry{%
+			\pgfplotstableuserowtrue
+			\edef\pgfplotstable@loc@TMPa{\noexpand\pgfkeysvalueof{/pgfplots/table/row predicate/.@cmd}\the\c@pgfplotstable@rowindex}%
+			\pgfplotstable@loc@TMPa\pgfeov
+			\ifpgfplotstableuserow
+				\ifnum\pgfplotstable@firstnumrows=-1\relax
+				\else
+					\ifnum\c@pgfplotstable@counta<\pgfplotstable@firstnumrows\relax
+					\else
+						\t@pgfplots@toka=\expandafter{\pgfplotstable@entry}%
+						\t@pgfplots@tokb=\expandafter{\pgfplotstable@colname@out}%
+						\pgfplots@warning{Unbalanced cell with content '\the\t@pgfplots@toka' of column '\the\t@pgfplots@tokb' has been skipped: row count \the\c@pgfplotstable@counta+1 > \pgfplotstable@firstnumrows (which is the number of rows in the first column)}%
+						\pgfplotstableuserowfalse
+					\fi
+				\fi
+				\ifpgfplotstableuserow
+					\expandafter\pgfplotstabletypeset@getfinalentry\expandafter{\pgfplotstable@entry}{\pgfplotstable@entry}%
+					\expandafter\pgfplotslistpushback\pgfplotstable@entry\to\pgfplotstable@col@processed
+					\advance\c@pgfplotstable@counta by1\relax
+				\fi
+			\fi
+			\advance\c@pgfplotstable@rowindex by1\relax
+		}%
+		\ifnum\pgfplotstable@firstnumrows=-1\relax
+			\xdef\pgfplotstable@firstnumrows{\the\c@pgfplotstable@counta}%
+		\else
+			% balance columns:
+			\pgfplotstable@insertemptycells@forbalance
+		\fi
+		%
+		\pgfplotstable@debug@notify@preprocessed@col\pgfplotstable@colname@out
+		%
+		\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplotstable@col@processed}\to\pgfplotstabletypeset@final@cols
+		\global\advance\c@pgfplotstable@colindex by1\relax
+	}%
+	%
+	\pgfplotslistcheckempty\pgfplotstabletypeset@final@colnames
+	\ifpgfplotslistempty
+		\let\pgfplotstable@result=\pgfutil@empty
+	\else
+		% Ok, I have now everything which will come into the final table.
+		%
+		% But I have it column-oriented; I need to transpose the storage.
+		%
+		% The following code assembles a
+		% \begin{tabular}{}
+		% ...
+		% \end{tabular}
+		% statement piece after piece.
+		%
+	%\message{I have now \meaning\pgfplotstabletypeset@final@colnames, and \meaning\pgfplotstabletypeset@final@cols.}%
+		% Step 1: column names.
+		\c@pgfplotstable@colindex=0\relax
+		\c@pgfplotstable@rowindex=-1\relax
+		\let\pgfplotstable@result=\pgfutil@empty
+		%
+		\pgfkeysgetvalue{/pgfplots/table/font}{\pgfplotstable@font}%
+		\ifx\pgfplotstable@font\pgfutil@empty
+		\else
+			\t@pgfplots@toka=\expandafter{\pgfplotstable@font}%
+			\edef\pgfplotstable@curline{\noexpand\begingroup\the\t@pgfplots@toka}%
+			\pgfplotstable@curline@FLUSH
+		\fi
+		%
+		\pgfkeysgetvalue{/pgfplots/table/begin table}{\pgfplotstable@entry}%
+		\t@pgfplots@toka=\expandafter{\pgfplotstable@entry}%
+		\edef\pgfplotstable@curline{\the\t@pgfplots@toka}%
+		%
+		\ifpgfplotstabletypesetskipcoltypes
+		\else
+			% STEP 1.1: collect column types:
+			\def\pgfplotstable@resulttypes{}%
+			\pgfplotslistforeachungrouped\pgfplotstabletypeset@final@coltypes\as\pgfplotstable@coltype{%
+				\t@pgfplots@toka=\expandafter{\pgfplotstable@resulttypes}%
+				\t@pgfplots@tokb=\expandafter{\pgfplotstable@coltype}%
+				\edef\pgfplotstable@resulttypes{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+			}%
+			\ifx\pgfplotstable@resulttypes\pgfutil@empty
+			\else
+				\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
+				\t@pgfplots@tokb=\expandafter{\pgfplotstable@resulttypes}%
+				\edef\pgfplotstable@curline{\the\t@pgfplots@toka{\the\t@pgfplots@tokb}}%
+			\fi
+		\fi
+		\ifx\pgfplotstable@curline\pgfutil@empty
+		\else
+			\pgfplotstable@curline@FLUSH
+		\fi
+		%
+		% Step 1.2: Collect FIRST ROW (column names)
+		\begingroup
+		\pgfplotstableset{every head row}%
+		\pgfkeysgetvalue{/pgfplots/table/before row}{\pgfplotstable@before}%
+		\pgfkeysgetvalue{/pgfplots/table/after row}{\pgfplotstable@after}%
+		\t@pgfplots@toka=\expandafter{\pgfplotstable@before}%
+		\t@pgfplots@tokb=\expandafter{\pgfplotstable@after}%
+		\xdef\pgfplots@glob@TMPc{%
+			\noexpand\def\noexpand\pgfplotstable@before{\the\t@pgfplots@toka}%
+			\noexpand\def\noexpand\pgfplotstable@after{\the\t@pgfplots@tokb}%
+		}%
+		\endgroup
+		\pgfplots@glob@TMPc
+		% insert 'before row' here:
+		\t@pgfplots@toka=\expandafter{\pgfplotstable@before}%
+		\t@pgfplots@tokb=\expandafter{\pgfplotstable@curline}%
+		\edef\pgfplotstable@curline{\the\t@pgfplots@tokb\the\t@pgfplots@toka}%
+		%
+		\def\pgfplotstablecolname{\pgfplotstable@colname@out}%
+		\pgfplotslistforeachungrouped\pgfplotstabletypeset@final@colnames\as\pgfplotstable@colname@out{%
+			%
+			\advance\c@pgfplotstable@colindex by1\relax
+			% typeset the cell:
+			\pgfkeysgetvalue{/pgfplots/table/typeset cell/.@cmd}\pgfplots@loc@TMPa
+			\expandafter\pgfplots@loc@TMPa\pgfplotstable@colname@out\pgfeov
+			\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
+			%
+			% append this cell:
+			\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
+			\t@pgfplots@tokb=\expandafter{\pgfmathresult}%
+			\edef\pgfplotstable@curline{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+		}%
+		% insert 'after row' here:
+		\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
+		\t@pgfplots@tokb=\expandafter{\pgfplotstable@after}%
+		\edef\pgfplotstable@curline{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+		%
+		\pgfplotstable@curline@FLUSH
+		%
+	%\message{I have now \meaning\pgfplotstable@result.}%
+		% Step 2: column contents.
+		% I will first convert \pgfplotstabletypeset@final@cols into an array.
+		\c@pgfplotstable@colindex=0\relax
+		\pgfplotsarraynewempty\pgfplotstabletypeset@final@cols@array
+		\pgfplotslistforeachungrouped\pgfplotstabletypeset@final@cols\as\pgfplotstable@col@processed{%
+			\expandafter\pgfplotsarraypushback\expandafter{\pgfplotstable@col@processed}\to\pgfplotstabletypeset@final@cols@array
+		}%
+		% init numrows:
+		\pgfplotsarrayselect\c@pgfplotstable@colindex\of\pgfplotstabletypeset@final@cols@array\to\pgfplotstable@col@processed
+		\pgfplotslistsize\pgfplotstable@col@processed\to\c@pgfplotstable@numrows
+		%
+		% Now, we loop over every column as long as there are still rows
+		% left. We assemble rows while we go.
+		%
+		\c@pgfplotstable@rowindex=0\relax
+		\ifnum\c@pgfplotstable@colindex<\c@pgfplotstable@numcols
+			\pgfplots@loop@CONTINUEtrue
+		\else
+			\pgfplots@loop@CONTINUEfalse
+		\fi
+		\def\pgfplotstablecolname{\pgfplotstable@error{Sorry, you can't evaluate \string\pgfplotstablecolname\space in this context.}}%
+		\pgfutil@loop
+		\ifpgfplots@loop@CONTINUE
+			\pgfplotsarrayselect\c@pgfplotstable@colindex\of\pgfplotstabletypeset@final@cols@array\to\pgfplotstable@col@processed
+			\pgfplotslistcheckempty\pgfplotstable@col@processed
+			\ifpgfplotslistempty
+				% assume that each column has the same number of entries
+				% (normalised tables):
+				\pgfplots@loop@CONTINUEfalse
+			\else
+				\ifnum\c@pgfplotstable@colindex=0\relax
+					% Install styles for the next row.
+					\begingroup
+					\ifodd\c@pgfplotstable@rowindex
+						\t@pgfplots@toka={every odd row}%
+					\else
+						\t@pgfplots@toka={every even row}%
+					\fi
+					\ifnum\c@pgfplotstable@rowindex=0\relax
+						\t@pgfplots@toka=\expandafter{\the\t@pgfplots@toka,every first row}%
+					\fi
+					\ifpgfplotstable@disable@rowcolstyles
+					\else
+						\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,every row no \the\c@pgfplotstable@rowindex/.try}%
+						\t@pgfplots@toka=\expandafter{\pgfplotstable@loc@TMPa}%
+						%
+						\ifnum\c@pgfplotstable@rowindex=0\relax
+						\else
+							% process 'every nth row' styles:
+							\begingroup
+							\pgfplots@each@nth@styles
+							\pgfmath@smuggleone\pgfplotsretval
+							\endgroup
+							\ifx\pgfplotsretval\pgfutil@empty
+							\else
+								\t@pgfplots@tokb=\expandafter{\pgfplotsretval}%
+								\edef\pgfplotstable@loc@TMPa{\the\t@pgfplots@toka,\the\t@pgfplots@tokb}%
+								\t@pgfplots@toka=\expandafter{\pgfplotstable@loc@TMPa}%
+							\fi
+						\fi
+					\fi
+					% misuse as temporary variable:
+					\c@pgfplotstable@colindex=\c@pgfplotstable@rowindex
+					\advance\c@pgfplotstable@colindex by1\relax
+					\ifnum\c@pgfplotstable@colindex=\c@pgfplotstable@numrows
+						\t@pgfplots@toka=\expandafter{\the\t@pgfplots@toka,every last row}%
+					\fi
+					\expandafter\pgfplotstableset\expandafter{\the\t@pgfplots@toka}%
+					\pgfkeysgetvalue{/pgfplots/table/before row}{\pgfplotstable@before}%
+					\pgfkeysgetvalue{/pgfplots/table/after row}{\pgfplotstable@after}%
+					\t@pgfplots@toka=\expandafter{\pgfplotstable@before}%
+					\t@pgfplots@tokb=\expandafter{\pgfplotstable@after}%
+					\xdef\pgfplots@glob@TMPc{%
+						\noexpand\def\noexpand\pgfplotstable@before{\the\t@pgfplots@toka}%
+						\noexpand\def\noexpand\pgfplotstable@after{\the\t@pgfplots@tokb}%
+					}%
+					\endgroup
+					\pgfplots@glob@TMPc
+					% insert 'before row' here:
+					\t@pgfplots@toka=\expandafter{\pgfplotstable@before}%
+					\t@pgfplots@tokb=\expandafter{\pgfplotstable@curline}%
+					\edef\pgfplotstable@curline{\the\t@pgfplots@tokb\the\t@pgfplots@toka}%
+				\fi
+				%
+				%
+				\pgfplotslistpopfront\pgfplotstable@col@processed\to\pgfplotstable@entry
+				\pgfplotsarrayletentry\c@pgfplotstable@colindex\of\pgfplotstabletypeset@final@cols@array=\pgfplotstable@col@processed
+				\advance\c@pgfplotstable@colindex by1\relax
+				% typeset the cell:
+				\pgfkeysgetvalue{/pgfplots/table/typeset cell/.@cmd}\pgfplots@loc@TMPa
+				\expandafter\pgfplots@loc@TMPa\pgfplotstable@entry\pgfeov
+				\pgfkeysgetvalue{/pgfplots/table/@cell content}\pgfmathresult
+				%
+				% append this cell:
+				\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
+				\t@pgfplots@tokb=\expandafter{\pgfmathresult}%
+				\edef\pgfplotstable@curline{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+				%
+				\ifnum\c@pgfplotstable@colindex=\c@pgfplotstable@numcols\relax
+					\c@pgfplotstable@colindex=0\relax
+					% insert 'after row' here:
+					\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
+					\t@pgfplots@tokb=\expandafter{\pgfplotstable@after}%
+					\edef\pgfplotstable@curline{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+					\advance\c@pgfplotstable@rowindex by1\relax
+					\pgfplotstable@curline@FLUSH
+				\fi
+	%\message{I have now \meaning\pgfplotstable@result.}%
+			\fi
+		\pgfutil@repeat
+		\t@pgfplots@toka=\expandafter{\pgfplotstable@curline}%
+		\pgfkeysgetvalue{/pgfplots/table/end table}{\pgfplotstable@entry}%
+		\t@pgfplots@tokb=\expandafter{\pgfplotstable@entry}%
+		\edef\pgfplotstable@curline{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+		\ifx\pgfplotstable@curline\pgfutil@empty
+		\else
+			\pgfplotstable@curline@FLUSH
+		\fi
+		%
+		\ifx\pgfplotstable@font\pgfutil@empty
+		\else
+			\edef\pgfplotstable@curline{\noexpand\endgroup}%
+			\pgfplotstable@curline@FLUSH
+		\fi
+		\ifx\pgfplotstable@outfilename\pgfutil@empty
+		\else
+			\immediate\closeout\pgfplotstable@outfile
+		\fi
+	%\message{I have now \meaning\pgfplotstable@result.}%
+		\def\pgfplotstablecol{\pgfplotstable@error{Sorry, you can't access the \string\pgfplotstablecol\ in this context. It is ONLY valid during the preparation routines (please check the 'display columns/<index>' style in the manual).}}%
+		\def\pgfplotstablerow{\pgfplotstable@error{Sorry, you can't access the \string\pgfplotstablerow\ in this context. It is ONLY valid during the preparation routines (please check the 'every row no <index>' style).}}%
+		\ifpgfplotstabletypesetresult
+			\pgfplotstable@result
+		\fi
+	\fi
+	\pgfkeysgetvalue{/pgfplots/table/write to macro}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\global\let\pgfplots@glob@TMPa=\relax
+	\else
+		\t@pgfplots@toka=\expandafter{\pgfplotstable@result}%
+		\xdef\pgfplots@glob@TMPa{\noexpand\def\expandafter\noexpand\pgfplots@loc@TMPa{\the\t@pgfplots@toka}}%
+	\fi
+	\endgroup
+	\pgfplots@glob@TMPa% execute 'write to macro' if set.
+}%
+
+
+\newif\ifpgfplotstable@isfirstrow
+\newif\ifpgfplotstable@islastrow
+\newif\ifpgfplotstablecreatecol@isreallynew
+
+\def\pgfplotstablecreatecol@opt[#1]#2#3{%
+	\begingroup
+	\def\pgfplotstablename{#3}% the name of the table struct
+	\pgfplotstableset{columns=,#1,%
+		/pgf/fpu/handlers/empty number/.code 2 args={%
+			\pgfmathfloatcreate{0}{0.0}{0}%
+		}%
+	}%
+	\pgfkeysgetvalue{/pgfplots/table/columns}{\pgfplotstable@colnames}%
+	\ifx\pgfplotstable@colnames\pgfutil@empty
+		\pgfplotstablegetcolumnlist#3\to\pgfplotstable@colnames
+	\else
+		\expandafter\pgfplotslistnew\expandafter\pgfplotstable@colnames\expandafter{\pgfplotstable@colnames}%
+	\fi
+	\pgfplotslistnewempty\pgfplotstable@colnames@real
+	\t@pgfplots@toka=\expandafter{#2}% this should handle macro names in '#2'.
+	\edef\pgfplotstable@newcolname{\the\t@pgfplots@toka}%
+	\global\pgfplotstablecreatecol@isreallynewtrue
+	\c@pgf@countd=0
+	\pgfplotslistforeachungrouped\pgfplotstable@colnames\as\pgfplotstable@colname{%
+		\pgfplotstable@is@colname\pgfplotstable@colname
+		\ifpgfplotstableread@foundcolnames
+			\expandafter\pgfplotslistpushback\expandafter{\pgfplotstable@colname}\to\pgfplotstable@colnames@real
+		\else
+			\pgfplotstablegetcolumnnamebyindex\pgfplotstable@colname\of#2\to\pgfplotstable@colname
+			\expandafter\pgfplotslistpushback\expandafter{\pgfplotstable@colname}\to\pgfplotstable@colnames@real
+		\fi
+		\ifx\pgfplotstable@colname\pgfplotstable@newcolname
+			\global\pgfplotstablecreatecol@isreallynewfalse
+		\fi
+		\expandafter\edef\csname pgfplotstablecreate@index@to@name@\the\c@pgf@countd\endcsname{\pgfplotstable@colname}%
+		\advance\c@pgf@countd by1
+	}%
+	\edef\pgfplotstablecols{\the\c@pgf@countd}%
+	\pgfplotstable@isfirstrowtrue
+	\pgfplotstable@islastrowfalse
+	\pgfplotslistnewempty\pgfplotstable@newcol
+	%
+	\let\c@pgfplotstable@numrows=\c@pgf@countd
+	\let\c@pgfplotstable@rowindex=\c@pgf@countc
+	\c@pgfplotstable@numrows=-1\relax
+	\c@pgfplotstable@rowindex=0\relax
+	\def\pgfplotstablerow{\the\c@pgfplotstable@rowindex}%
+	\def\pgfplotstablerows{\the\c@pgfplotstable@numrows}%
+	%
+	\def\prevrow##1{\pgfplotstable@thisrow@impl{##1}{pgfplotstablecreate@prev@}{\pgfplotstable@thisrow@impl@}}%
+	\def\thisrow##1{\pgfplotstable@thisrow@impl{##1}{pgfplotstablecreate@cur@}{\pgfplotstable@thisrow@impl@}}%
+	\def\nextrow##1{\pgfplotstable@thisrow@impl{##1}{pgfplotstablecreate@next@}{\pgfplotstable@thisrow@impl@}}%
+	\def\pgfplotstable@rowno@impl##1##2{%
+		\pgfutil@ifundefined{pgfplotstablecreate@index@to@name@##1}{%
+			\csname ##2row\endcsname{colindex##1}%
+		}{%
+			\csname ##2row\endcsname{\csname pgfplotstablecreate@index@to@name@##1\endcsname}%
+		}%
+	}%
+	\def\prevrowno##1{\pgfplotstable@rowno@impl{##1}{prev}}%
+	\def\thisrowno##1{\pgfplotstable@rowno@impl{##1}{this}}%
+	\def\nextrowno##1{\pgfplotstable@rowno@impl{##1}{next}}%
+	%
+	\def\getprevrow##1##2{\expandafter\let\expandafter##2\csname pgfplotstablecreate@prev@##1\endcsname}%
+	\def\getthisrow##1##2{\expandafter\let\expandafter##2\csname pgfplotstablecreate@cur@##1\endcsname}%
+	\def\getnextrow##1##2{\expandafter\let\expandafter##2\csname pgfplotstablecreate@next@##1\endcsname}%
+	%
+	\pgfplots@loop@CONTINUEtrue
+	% allow this here to accumulate something.
+	\pgfutil@ifundefined{pgfmathaccuma}{%
+		\let\pgfmathaccuma=\pgfutil@empty
+	}{}%
+	\pgfutil@ifundefined{pgfmathaccumb}{%
+		\let\pgfmathaccumb=\pgfutil@empty
+	}{}%
+	\pgfutil@loop% loop over each row until there are no more rows.
+	\ifpgfplots@loop@CONTINUE
+		\ifnum\c@pgfplotstable@numrows=-1\relax
+			\pgfplotslistfront\pgfplotstable@colnames\to\pgfplotstable@colname
+			\expandafter\pgfplotslistsize\csname\string#3@\pgfplotstable@colname\endcsname\to\c@pgfplotstable@numrows
+		\fi
+		\pgfplotslistforeachungrouped\pgfplotstable@colnames\as\pgfplotstable@colname{%
+			\expandafter\pgfplotstableresolvecolname\expandafter{\pgfplotstable@colname}\of#3\to\pgfplotstable@real@colname
+			\ifpgfplotstable@isfirstrow
+				\expandafter\pgfplotslistcheckempty\csname\string#3@\pgfplotstable@real@colname\endcsname
+				\ifpgfplotslistempty
+					% the table is completely empty. break.
+					\pgfplots@loop@CONTINUEfalse
+				\else
+					\expandafter\let\csname pgfplotstablecreate@prev@\pgfplotstable@colname\endcsname=\pgfutil@empty
+					\expandafter\pgfplotslistpopfront\csname\string#3@\pgfplotstable@real@colname\endcsname\to\pgfplotstable@entry
+					\expandafter\let\csname pgfplotstablecreate@cur@\pgfplotstable@colname\endcsname=\pgfplotstable@entry
+				\fi
+			\else
+				\expandafter\let\expandafter\pgfplotstable@prev\csname pgfplotstablecreate@cur@\pgfplotstable@colname\endcsname
+				\expandafter\let\csname pgfplotstablecreate@prev@\pgfplotstable@colname\endcsname=\pgfplotstable@prev
+				%
+				\expandafter\let\expandafter\pgfplotstable@next\csname pgfplotstablecreate@next@\pgfplotstable@colname\endcsname
+				\expandafter\let\csname pgfplotstablecreate@cur@\pgfplotstable@colname\endcsname=\pgfplotstable@next
+			\fi
+			\expandafter\pgfplotslistcheckempty\csname\string#3@\pgfplotstable@real@colname\endcsname
+			\ifpgfplotslistempty
+				\expandafter\let\csname pgfplotstablecreate@next@\pgfplotstable@colname\endcsname=\pgfutil@empty
+				\pgfplotstable@islastrowtrue
+			\else
+				\expandafter\pgfplotslistpopfront\csname\string#3@\pgfplotstable@real@colname\endcsname\to\pgfplotstable@entry
+				\expandafter\let\csname pgfplotstablecreate@next@\pgfplotstable@colname\endcsname=\pgfplotstable@entry
+			\fi
+		}%
+		\ifpgfplots@loop@CONTINUE
+			% Compute content:
+			%
+			\begingroup
+			\ifpgfplotstable@isfirstrow
+				\pgfkeysvalueof{/pgfplots/table/create col/assign first/.@cmd}\pgfeov
+			\else
+				\ifpgfplotstable@islastrow
+					\pgfkeysvalueof{/pgfplots/table/create col/assign last/.@cmd}\pgfeov
+				\else
+					\pgfkeysvalueof{/pgfplots/table/create col/assign/.@cmd}\pgfeov
+				\fi
+			\fi
+			\pgfkeysgetvalue{/pgfplots/table/create col/next content}{\pgfplotstable@entry}%
+			\t@pgfplots@toka=\expandafter{\pgfplotstable@entry}%
+			\t@pgfplots@tokb=\expandafter{\pgfmathaccuma}%
+			\xdef\pgfplots@glob@TMPc{%
+				\noexpand\def\noexpand\pgfplotstable@entry{\the\t@pgfplots@toka}%
+				\noexpand\def\noexpand\pgfmathaccuma{\the\t@pgfplots@tokb}%
+			}%
+			\pgfmath@smuggleone\pgfmathaccumb
+			\endgroup
+			\pgfplots@glob@TMPc
+			\expandafter\pgfplotslistpushback\expandafter{\pgfplotstable@entry}\to\pgfplotstable@newcol
+			%
+			\ifpgfplotstable@islastrow
+				\pgfplots@loop@CONTINUEfalse
+			\fi
+		\fi
+		\pgfplotstable@isfirstrowfalse
+		\advance\c@pgfplotstable@rowindex by1\relax
+	\pgfutil@repeat
+	\global\let\pgfplots@glob@TMPc=\pgfplotstable@newcol
+	\global\let\pgfplots@glob@TMPb=\pgfplotstable@newcolname
+	\endgroup
+	\ifpgfplotstablecreatecol@isreallynew
+		\expandafter\pgfplotslistpushback\expandafter{\pgfplots@glob@TMPb}\to#3%
+	\fi
+	\expandafter\let\csname\string#3@\pgfplots@glob@TMPb\endcsname=\pgfplots@glob@TMPc
+}%
+
+
+%-----------------------------------------------------------
+%
+% Implementation of '/pgfplots/table/create col/function graph cut y':
+%
+%-----------------------------------------------------------
+
+%	create on use/cut/.style={create col/function graph cut y={7e-4}{x=Basis,ymode=log,xmode=log}{{table=regtable,y=special-L2}}},
+% #1 = value of fixed line (I call it epsilon)
+% #2 = options
+% #3 = specification where to get the y from. It is a comma separated
+% list of key-value sets, on set for every y(x) graph which shall be
+% used.
+% #4 = the direction in which the line does NOT vary (either 'x' or 'y')
+% #5 = the direction in which the line DOES vary (either 'x' or 'y')
+\def\pgfplotstable@fgc@init#1#2#3#4#5{%
+	\def\pgfplotstable@fgc@xmode{0}%
+	\def\pgfplotstable@fgc@ymode{0}%
+	%
+	\pgfkeysalso{/pgf/fpu=true}%
+	%
+	\pgfqkeys{/pgfplots/table/create col/function graph cut}{#2}%
+	\pgfkeysgetvalue{/pgfplots/table/create col/function graph cut/table}\pgfplotstable@fgc@table
+	\pgfkeysgetvalue{/pgfplots/table/create col/function graph cut/x}\pgfplotstable@fgc@x
+	\pgfkeysgetvalue{/pgfplots/table/create col/function graph cut/y}\pgfplotstable@fgc@y
+	\ifx\pgfplotstable@fgc@table\pgfutil@empty
+		% no table here, ok.
+	\else
+		% ok, we need to query (or load) a table!
+		\expandafter\pgfplotstable@isloadedtable\expandafter{\pgfplotstable@fgc@table}{%
+			\expandafter\let\expandafter\pgfplotstable@fgc@table\pgfplotstable@fgc@table
+		}{%
+			\expandafter\pgfplotstableread\expandafter{\pgfplotstable@fgc@table}{\pgfplotstable@fgc@table}%
+		}%
+	\fi
+	%
+	\ifnum\csname pgfplotstable@fgc@#4mode\endcsname=1
+		\pgfmathparse{ln(#1)}%
+	\else
+		\pgfmathparse{#1}%
+	\fi
+	\let\pgfplotstable@fgc@eps=\pgfmathresult
+	\pgfplots@assign@list\pgfmathaccumb{#3}%
+	\pgfkeysgetvalue{/pgfplots/table/create col/function graph cut/foreach}\pgfplotstable@fgc@foreach@
+	\ifx\pgfplotstable@fgc@foreach@\pgfutil@empty
+	\else
+		\edef\pgfplotstable@fgc@foreach@process@append{x={\pgfplotstable@fgc@x},y={\pgfplotstable@fgc@y}}%
+		% we have something like 
+		%   foreach={\d in {1,2,3,4}}{table\d}
+		% -> process it!
+		%  This will modify \pgfmathaccumb
+		\expandafter\pgfplotstable@fgc@foreach@process\pgfplotstable@fgc@foreach@\pgfplots@EOI
+		\pgfkeyssetvalue{/pgfplots/table/create col/function graph cut/foreach}{}%
+	\fi
+	%
+	\pgfkeysdef{/pgfplots/table/create col/assign}{%
+%\message{working on next cell ...}%
+		\pgfplotslistcheckempty\pgfmathaccumb
+		\ifpgfplotslistempty
+			\pgfkeyslet{/pgfplots/table/create col/next content}\pgfutil@empty%
+		\else
+			\pgfplotslistpopfront\pgfmathaccumb\to\pgfmathresult
+%\message{working on next cell: \meaning\pgfmathresult ...}%
+			\global\let\pgfplotstable@fgc@foreach=\pgfutil@empty
+			\begingroup
+				% set local keys:
+				\def\pgfplots@loc@TMPa{\pgfqkeys{/pgfplots/table/create col/function graph cut}}%
+				\expandafter\pgfplots@loc@TMPa\expandafter{\pgfmathresult}%
+				% acquire any sources:
+				\pgfkeysgetvalue{/pgfplots/table/create col/function graph cut/table}\pgfplotstable@fgc@table
+				\pgfkeysgetvalue{/pgfplots/table/create col/function graph cut/x}\pgfplotstable@fgc@x
+				\pgfkeysgetvalue{/pgfplots/table/create col/function graph cut/y}\pgfplotstable@fgc@y
+				\pgfkeysgetvalue{/pgfplots/table/create col/function graph cut/foreach}\pgfplotstable@fgc@foreach@
+				\ifx\pgfplotstable@fgc@foreach@\pgfutil@empty
+					\ifx\pgfplotstable@fgc@table\pgfutil@empty
+					\else
+						% ok, we need to query (or load) a table!
+						\expandafter\pgfplotstable@isloadedtable\expandafter{\pgfplotstable@fgc@table}{%
+							\expandafter\let\expandafter\pgfplotstable@fgc@table\pgfplotstable@fgc@table
+						}{%
+							\expandafter\pgfplotstableread\expandafter{\pgfplotstable@fgc@table}{\pgfplotstable@fgc@table}%
+						}%
+					\fi
+					\expandafter\pgfplotstablegetcolumnbyname\expandafter{\pgfplotstable@fgc@x}\of\pgfplotstable@fgc@table\to\pgfplotstable@fgc@x@col
+					\expandafter\pgfplotstablegetcolumnbyname\expandafter{\pgfplotstable@fgc@y}\of\pgfplotstable@fgc@table\to\pgfplotstable@fgc@y@col
+					%
+					% search for epsilon in the y values:
+					\expandafter\pgfplotstable@fgc@findintervalwitheps\expandafter{\csname pgfplotstable@fgc@#4@col\endcsname}{\csname pgfplotstable@fgc@#4mode\endcsname}%
+					\ifx\pgfplotstable@fgc@second\pgfutil@empty
+						\let\pgfmathresult=\pgfutil@empty
+					\else
+						%
+						% acquire the associated x values:
+						\expandafter\pgfplotstable@fgc@getassociated\expandafter{\csname pgfplotstable@fgc@#5@col\endcsname}{\csname pgfplotstable@fgc@#5mode\endcsname}%
+						%
+						% Interpolate:
+						\pgfmathparse{
+							\pgfplotstable@fgc@abscissafirst + 
+							(\pgfplotstable@fgc@eps - \pgfplotstable@fgc@first) / (\pgfplotstable@fgc@second-\pgfplotstable@fgc@first) 
+							* (\pgfplotstable@fgc@abscissasecond - \pgfplotstable@fgc@abscissafirst) }%
+						\if\pgfplotstable@fgc@xmode1
+							\pgfmathfloatexp@{\pgfmathresult}%
+						\fi
+						\pgflibraryfpuifactive{\pgfmathfloattosci{\pgfmathresult}}{}%
+%\message{FGC: found \pgfplotstable@fgc@eps\space in no \pgfplotstable@fgc@index; \pgfplotstable@fgc@first:\pgfplotstable@fgc@second; lastwasless=\pgfplotstable@fgc@lastwasless; abscissa interval = \pgfplotstable@fgc@abscissafirst:\pgfplotstable@fgc@abscissasecond; result = \pgfmathresult}%
+					\fi
+				\else
+					\global\let\pgfplotstable@fgc@foreach=\pgfplotstable@fgc@foreach@
+					\edef\pgfmathresult{x={\pgfplotstable@fgc@x},y={\pgfplotstable@fgc@y}}%
+				\fi
+				%
+				\pgfmath@smuggleone\pgfmathresult
+			\endgroup
+			\ifx\pgfplotstable@fgc@foreach\pgfutil@empty
+				\pgfkeyslet{/pgfplots/table/create col/next content}\pgfmathresult%
+			\else
+				% we have something like 
+				%   foreach={\d in {1,2,3,4}}{table\d}
+				% -> process it!
+				%  This will modify \pgfmathaccumb
+				\let\pgfplotstable@fgc@foreach@process@append=\pgfmathresult
+				\expandafter\pgfplotstable@fgc@foreach@process\pgfplotstable@fgc@foreach\pgfplots@EOI
+			\fi
+		\fi
+	}%
+}%
+
+\def\pgfplotstable@fgc@foreach@process{%
+	\pgfutil@ifnextchar\bgroup
+		{\pgfplotstable@fgc@foreach@process@a}{%
+		\pgfplotstable@fgc@foreach@process@error}%
+}%
+\def\pgfplotstable@fgc@foreach@process@a#1{%
+	\pgfutil@ifnextchar\bgroup
+		{\pgfplotstable@fgc@foreach@process@b{#1}}{%
+		\pgfplotstable@fgc@foreach@process@error}%
+}%
+\def\pgfplotstable@fgc@foreach@process@error#1\pgfplots@EOI{%
+	\def\pgfplots@loc@TMPa{#1}%
+	\pgfplots@command@to@string\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+	\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{Sorry, I expected two arguments for /pgfplots/table/create col/function graph cut/foreach, but I found 'foreach=\pgfplots@loc@TMPb'. Perhaps the braces are not as expected?}\pgfeov%
+}%
+\def\pgfplotstable@fgc@foreach@process@b#1#2#3\pgfplots@EOI{%
+	\global\pgfplotslistnewempty\pgfplots@glob@TMPa
+	\begingroup
+	\foreach #1 {%
+		\edef\pgfplots@loc@TMPa{#2}%
+		\expandafter\pgfplotslistpushfrontglobal\pgfplots@loc@TMPa\to\pgfplots@glob@TMPa
+	}%
+	\endgroup
+	\pgfplotslistforeachungrouped\pgfplots@glob@TMPa\as\pgfplots@loc@TMPa{%
+		\edef\pgfplots@loc@TMPa{table={\pgfplots@loc@TMPa},\pgfplotstable@fgc@foreach@process@append}%
+		\expandafter\pgfplotslistpushfront\pgfplots@loc@TMPa\to\pgfmathaccumb
+	}%
+}%
+
+% #1 : the coordinate list to query
+% #2 : the mode
+%
+% POSTCONDITION:
+% 	- \pgfplotstable@fgc@abscissafirst and	\pgfplotstable@fgc@abscissasecond
+% 	contain the abscissa values
+%
+\def\pgfplotstable@fgc@getassociated#1#2{%
+	\c@pgfplotstable@counta=\pgfplotstable@fgc@index
+	\pgfplotslistselect\c@pgfplotstable@counta\of#1\to\pgfplotstable@fgc@abscissasecond
+	\advance\c@pgfplotstable@counta by-1
+	\pgfplotslistselect\c@pgfplotstable@counta\of#1\to\pgfplotstable@fgc@abscissafirst
+	\pgfmathfloatparsenumber{\pgfplotstable@fgc@abscissafirst}%
+	\let\pgfplotstable@fgc@abscissafirst=\pgfmathresult
+	\pgfmathfloatparsenumber{\pgfplotstable@fgc@abscissasecond}%
+	\let\pgfplotstable@fgc@abscissasecond=\pgfmathresult
+	\if1#2
+		\pgfmathln@{\pgfplotstable@fgc@abscissafirst}%
+		\let\pgfplotstable@fgc@abscissafirst=\pgfmathresult
+		\pgfmathln@{\pgfplotstable@fgc@abscissasecond}%
+		\let\pgfplotstable@fgc@abscissasecond=\pgfmathresult
+	\fi
+}%
+
+% Search for the (first) interval in #1 containing epsilon and return
+% \pgfplotstable@fgc@first and \pgfplotstable@fgc@second.
+%
+% #1 : the list of values.
+% #2 : the mode (0 = linear, 1 = log)
+%
+% PRECONDITION:
+% 	- \pgfplotstable@fgc@eps contains the value to search for
+%
+% POSTCONDITION
+% 	On success,
+% 	- \pgfplotstable@fgc@first and \pgfplotstable@fgc@second contain the interval.
+% 	- \pgfplotstable@fgc@index contains the index of the @second coordinate.
+% 	- \pgfplotstable@fgc@lastwasless is
+% 	     1 if \pgfplotstable@fgc@second < eps
+% 	     0 if \pgfplotstable@fgc@second >= eps
+% 	If there was no such interval,
+% 	\pgfplotstable@fgc@second will be empty.
+\def\pgfplotstable@fgc@findintervalwitheps#1#2{%
+	\global\let\pgfplotstable@fgc@first=\pgfutil@empty
+	\global\let\pgfplotstable@fgc@second=\pgfutil@empty
+	\global\def\pgfplotstable@fgc@lastwasless{2}%
+	\global\def\pgfplotstable@fgc@break{0}%
+	\global\def\pgfplotstable@fgc@index{0}%
+	\pgfplotslistforeach#1\as\pgfplotstable@fgc@val{%
+		\if\pgfplotstable@fgc@break0
+			\pgfmathfloatparsenumber{\pgfplotstable@fgc@val}%
+			\let\pgfplotstable@fgc@val=\pgfmathresult
+			\ifnum#2=1
+				\pgfmathln@{\pgfplotstable@fgc@val}%
+				\let\pgfplotstable@fgc@val=\pgfmathresult
+			\fi
+			\pgfmathfloatlessthan@{\pgfplotstable@fgc@val}{\pgfplotstable@fgc@eps}%
+			\ifpgfmathfloatcomparison
+				\pgfplotstable@fgc@findintervalwitheps@updateresult 01
+			\else
+				\pgfplotstable@fgc@findintervalwitheps@updateresult 10
+			\fi
+		\fi
+	}%
+}
+
+% #1 : the value of \pgfplotstable@fgc@lastwasless for which the loop
+% shall break.
+% #2 : the next value for \pgfplotstable@fgc@lastwasless
+\def\pgfplotstable@fgc@findintervalwitheps@updateresult#1#2{%
+	\if\pgfplotstable@fgc@lastwasless#1
+		% found it !
+		\global\let\pgfplotstable@fgc@second=\pgfplotstable@fgc@val
+		\global\def\pgfplotstable@fgc@break{1}%
+	\else
+		\global\let\pgfplotstable@fgc@first=\pgfplotstable@fgc@val
+		\c@pgfplotstable@counta=\pgfplotstable@fgc@index
+		\advance\c@pgfplotstable@counta by1
+		\xdef\pgfplotstable@fgc@index{\the\c@pgfplotstable@counta}%
+	\fi
+	\global\def\pgfplotstable@fgc@lastwasless{#2}%
+}%
+
+
+
+\def\pgfplotstabletranspose@[#1]#2#3{%
+	%\begingroup is already in \pgfplotstabletranspose
+		\def\pgfplotstable@loc@TMPa{#1}%
+		\ifx\pgfplotstable@loc@TMPa\pgfutil@empty
+		\else
+			\pgfplotstableset{#1}%
+		\fi
+		%
+		\pgfkeysgetvalue{/pgfplots/table/colnames from}\pgfplotstabletranspose@outcolnames
+		\pgfkeysgetvalue{/pgfplots/table/input colnames to}\pgfplotstabletranspose@incolnames
+		\pgfkeysgetvalue{/pgfplots/table/columns}\pgfplotstable@colnames
+		%
+		\ifx\pgfplotstable@colnames\pgfutil@empty
+			\pgfplotstableforeachcolumn{#3}\as\pgfplots@colname{%
+				\t@pgfplots@toka=\expandafter{\pgfplots@colname}%
+				\ifnum\pgfplotstablecol=0
+					\edef\pgfplotstable@colnames{{\the\t@pgfplots@toka}}%
+				\else
+					\t@pgfplots@tokb=\expandafter{\pgfplotstable@colnames}%
+					\edef\pgfplotstable@colnames{\the\t@pgfplots@tokb,{\the\t@pgfplots@toka}}%
+				\fi
+			}%
+		\fi
+		%
+		% sanity checking:
+		\ifx\pgfplotstabletranspose@outcolnames\pgfutil@empty
+		\else
+			\def\pgfplotstabletranspose@outcolnames@foundit{0}%
+			\expandafter\pgfplotsutilforeachcommasep\expandafter{\pgfplotstable@colnames}\as\pgfplots@colname{%
+				\ifx\pgfplots@colname\pgfplotstabletranspose@outcolnames
+					\def\pgfplotstabletranspose@outcolnames@foundit{1}%
+				\fi
+			}%
+			\if1\pgfplotstabletranspose@outcolnames@foundit
+			\else
+				% insert the 'colnames from' column into 'columns':
+				\pgfplots@warning{table transposition: the 'colnames from=\pgfplotstabletranspose@outcolnames' is not part of 'columns'. Adding it.}%
+				\t@pgfplots@toka=\expandafter{\pgfplotstabletranspose@outcolnames}%
+				\t@pgfplots@tokb=\expandafter{\pgfplotstable@colnames}%
+				\edef\pgfplotstable@colnames{\the\t@pgfplots@tokb,{\the\t@pgfplots@toka}}%
+			\fi
+		\fi
+		%
+		% The column NAMES are collected into this list:
+		\global\pgfplotslistnewempty\pgfplotstable@colnames@glob
+		% this thing counts output columns:
+		\let\c@pgfplotstable@numoutcols=\c@pgf@countd
+		\c@pgfplotstable@numoutcols=0
+		\let\c@pgfplotstable@rowindex=\c@pgf@counta
+		\c@pgfplotstable@rowindex=0
+		%
+		\ifx\pgfplotstabletranspose@incolnames\pgfutil@empty
+		\else
+			\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplotstabletranspose@incolnames}\to\pgfplotstable@colnames@glob
+			\def\pgfplots@loc@TMPa{\pgfplotsapplistXnewempty[to global]}%
+			\expandafter\pgfplots@loc@TMPa\csname pgfp@numtable@glob@col@0\endcsname
+			\advance\c@pgfplotstable@numoutcols by1
+		\fi
+		\def\pgfplotstable@isfirstcol{1}%
+		\expandafter\pgfplotsutilforeachcommasep\expandafter{\pgfplotstable@colnames}\as\pgfplots@colname{%
+			\c@pgfplotstable@rowindex=0
+			\ifx\pgfplotstabletranspose@incolnames\pgfutil@empty
+			\else
+				\def\pgfplotstabletranspose@useit{1}%
+				\ifx\pgfplotstabletranspose@outcolnames\pgfutil@empty
+				\else
+					\ifx\pgfplotstabletranspose@outcolnames\pgfplots@colname
+						\def\pgfplotstabletranspose@useit{0}%
+					\fi
+				\fi
+				\if1\pgfplotstabletranspose@useit
+					\expandafter\pgfplotslist@assembleentry\expandafter{\pgfplots@colname}\into\t@pgfplots@tokc
+					\def\pgfplotstableread@TMP{\expandafter\pgfplotsapplistXpushback\expandafter{\the\t@pgfplots@tokc}\to}%
+					\expandafter\pgfplotstableread@TMP\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@rowindex\endcsname
+				\fi
+				\advance\c@pgfplotstable@rowindex by1
+			\fi
+			%
+			\pgfplotstableforeachcolumnelement\pgfplots@colname\of#3\as\pgfplots@cell{%
+				\if1\pgfplotstable@isfirstcol
+					% prepare a new column for the output:
+					\def\pgfplots@loc@TMPa{\pgfplotsapplistXnewempty[to global]}%
+					\expandafter\pgfplots@loc@TMPa\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@rowindex\endcsname
+					%
+					\ifx\pgfplotstabletranspose@outcolnames\pgfutil@empty
+						\edef\pgfplotstable@loc@TMPa{\pgfplotstablerow}%
+						\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplotstable@loc@TMPa}\to\pgfplotstable@colnames@glob
+					\fi
+					\advance\c@pgfplotstable@numoutcols by1
+				\fi
+				\def\pgfplotstabletranspose@useit{1}%
+				\ifx\pgfplotstabletranspose@outcolnames\pgfutil@empty
+				\else
+					\ifx\pgfplotstabletranspose@outcolnames\pgfplots@colname
+						\pgfutil@ifundefined{pgfplotstabletranspose@@\pgfplots@cell}{%
+						}{%
+							\let\pgfplots@loc@TMPa=\pgfplots@cell
+							\pgfplotsthrow{non unique colname}{\pgfplots@loc@TMPa}{Sorry, 'colnames from=\pgfplotstabletranspose@outcolnames' doesn't yield unique column names (`\pgfplots@cell' comes twice)}\pgfeov%
+							\ifx\pgfplots@loc@TMPa\pgfutil@empty
+								\edef\pgfplots@cell{row no \pgfplotstablerow}%
+							\fi
+						}%
+						\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplots@cell}\to\pgfplotstable@colnames@glob
+						\expandafter\def\csname pgfplotstabletranspose@@\pgfplots@cell\endcsname{1}%
+						\def\pgfplotstabletranspose@useit{0}%
+					\fi
+				\fi
+				\if1\pgfplotstabletranspose@useit
+					% append everything to the output column with index
+					% \pgfplotstablerow
+					\expandafter\pgfplotslist@assembleentry\expandafter{\pgfplots@cell}\into\t@pgfplots@tokc
+					\def\pgfplotstableread@TMP{\expandafter\pgfplotsapplistXpushback\expandafter{\the\t@pgfplots@tokc}\to}%
+					\expandafter\pgfplotstableread@TMP\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@rowindex\endcsname
+				\fi
+				\advance\c@pgfplotstable@rowindex by1
+			}%
+			\def\pgfplotstable@isfirstcol{0}%
+		}%
+		%
+		% flush the buffers of the applistX things:
+		\c@pgfplotstable@rowindex=0
+		\pgfutil@loop
+		\ifnum\c@pgfplotstable@rowindex<\c@pgfplotstable@numoutcols
+			\expandafter\pgfplotsapplistXflushbuffers\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@rowindex\endcsname
+			\advance\c@pgfplotstable@rowindex by1
+		\pgfutil@repeat
+		% finalize the global buffers:
+		\def\pgfplotsscanlinelength{-1}%
+		\edef\pgfplots@loc@TMPa{\pgfplotstablenameof{#3}_transposed}%
+		\expandafter\pgfplotstable@copy@to@globalbuffers@simple\expandafter{\pgfplots@loc@TMPa}%
+	\endgroup
+	\pgfplotstable@copy@globalbuffers@to{#2}%
+}%
+
+% #1: keys
+\def\pgfplotstable@linear@regression#1{%
+	\begingroup
+	\pgfqkeys{/pgfplots/table/create col/linear regression}{/pgf/fpu,#1}%
+	\pgfkeysgetvalue{/pgfplots/table/create col/linear regression/x}{\pgfplotstable@xsrc}%
+	\pgfkeysgetvalue{/pgfplots/table/create col/linear regression/y}{\pgfplotstable@ysrc}%
+	\pgfkeysgetvalue{/pgfplots/table/create col/linear regression/table}{\pgfplotstable@table}%
+	\pgfkeysgetvalue{/pgfplots/table/create col/linear regression/xmode}{\pgfplotstable@xmode}%
+	\pgfkeysgetvalue{/pgfplots/table/create col/linear regression/ymode}{\pgfplotstable@ymode}%
+	\pgfkeysgetvalue{/pgfplots/table/create col/linear regression/variance}{\pgfplotstable@variance@colname}%
+	\pgfkeysgetvalue{/pgfplots/table/create col/linear regression/variance list}{\pgfplotstable@variance@list}%
+	\pgfkeysgetvalue{/pgfplots/table/create col/linear regression/variance src}{\pgfplotstable@variance@table}%
+	%
+	\ifx\pgfplotstable@table\pgfutil@empty
+		\pgfutil@ifundefined{pgfplotstablename}{}{% query the name of the actual table struct
+			\let\pgfplotstable@table=\pgfplotstablename
+		}%
+	\fi
+	\ifx\pgfplotstable@table\pgfutil@empty
+		\pgfplots@error{Sorry, I couldn't determine a value for create col/linear regression/table. Which table should I load?}%
+	\fi
+	\ifx\pgfplotstable@xsrc\pgfutil@empty
+		\pgfplotsifinaddplottablestruct{%
+			\pgfutil@ifundefined{pgfplots@plot@tbl@x}{}{%
+				\let\pgfplotstable@xsrc=\pgfplots@plot@tbl@x
+				\ifx\pgfplotstable@ysrc\pgfutil@empty
+					\pgfplotstablegetcolsof\pgfplots@table
+					\ifnum\pgfplotsretval=2
+					\else
+						\pgfplotsthrow{invalid argument}{\pgfplotstable@ysrc}{Sorry, I don't which column should be used as `y' for the linear regression. Please provide 'linear regression={y=<colname>}'}\pgfeov%
+					\fi
+				\fi
+			}%
+		}{}%
+	\fi
+	\ifx\pgfplotstable@xsrc\pgfutil@empty
+		\def\pgfplotstable@xsrc{[index]0}%
+	\fi
+	\ifx\pgfplotstable@ysrc\pgfutil@empty
+		\def\pgfplotstable@ysrc{[index]1}%
+	\fi
+	%
+	\t@pgfplots@toka=\expandafter{\pgfplotstable@table}%
+	\t@pgfplots@tokb=\expandafter{\pgfplotstable@xsrc}%
+	\t@pgfplots@tokc=\expandafter{\pgfplotstable@ysrc}%
+	\edef\pgfplots@loc@TMPa{{\the\t@pgfplots@tokb}\noexpand\of{\the\t@pgfplots@toka}}%
+	\edef\pgfplots@loc@TMPb{{\the\t@pgfplots@tokc}\noexpand\of{\the\t@pgfplots@toka}}%
+	\expandafter\pgfplotstablegetcolumn\pgfplots@loc@TMPa\to\pgfplotstable@X
+	\expandafter\pgfplotstablegetcolumn\pgfplots@loc@TMPb\to\pgfplotstable@Y
+	%
+	\edef\pgfplotstable@xmode{\pgfplotstable@xmode}%
+	\expandafter\pgfplotstable@linear@regression@prepare@mode\expandafter{\pgfplotstable@xmode}{x}%%
+	\edef\pgfplotstable@ymode{\pgfplotstable@ymode}%
+	\expandafter\pgfplotstable@linear@regression@prepare@mode\expandafter{\pgfplotstable@ymode}{y}%%
+	%
+	\ifx\pgfplotstable@variance@list\pgfutil@empty
+		% check 'variance' key (loaded from table)
+		\pgfplotslistnewempty\pgfplotstable@VARIANCE
+		\ifx\pgfplotstable@variance@colname\pgfutil@empty
+		\else
+			\ifx\pgfplotstable@variance@table\pgfutil@empty
+				\t@pgfplots@toka=\expandafter{\pgfplotstable@table}%
+				\t@pgfplots@tokb=\expandafter{\pgfplotstable@variance@table}%
+				\edef\pgfplots@loc@TMPa{{\the\t@pgfplots@tokb}\noexpand\of{\the\t@pgfplots@toka}}%
+				\expandafter\pgfplotstablegetcolumn\pgfplots@loc@TMPa\to\pgfplotstable@VARIANCE
+			\else
+				\t@pgfplots@toka=\expandafter{\pgfplotstable@variance@colname}%
+				\t@pgfplots@tokb=\expandafter{\pgfplotstable@variance@table}%
+				\edef\pgfplotstable@loc@TMPa{%
+					\noexpand\pgfplotstablegetcolumn{\the\t@pgfplots@toka}\noexpand\of{\the\t@pgfplots@tokb}\noexpand\to\noexpand\pgfplotstable@VARIANCE}%
+				\pgfplotstable@loc@TMPa
+			\fi
+		\fi
+	\else
+		% load from list:
+		\expandafter\pgfplotslistnew\expandafter\pgfplotstable@VARIANCE\expandafter{\pgfplotstable@variance@list}%
+	\fi
+	%
+	\pgfplotslistnewempty\pgfplotstable@Xparsed
+	%
+	\pgfmathfloatcreate{0}{0.0}{0}%
+	\let\pgfplotstable@S=\pgfmathresult
+	\let\pgfplotstable@Sxx=\pgfmathresult
+	\let\pgfplotstable@Sx=\pgfmathresult
+	\let\pgfplotstable@Sy=\pgfmathresult
+	\let\pgfplotstable@Sxy=\pgfmathresult
+	\pgfutil@loop
+	\pgfplotslistcheckempty\pgfplotstable@X
+	\ifpgfplotslistempty
+		\pgfplots@loop@CONTINUEfalse
+	\else
+		\pgfplots@loop@CONTINUEtrue
+	\fi
+	\ifpgfplots@loop@CONTINUE
+		\pgfplotslistpopfront\pgfplotstable@X\to\pgfplotstable@x
+		\pgfplotslistpopfront\pgfplotstable@Y\to\pgfplotstable@y
+		%
+		\pgfplotstableparsex{\pgfplotstable@x}%
+		\let\pgfplotstable@x=\pgfmathresult
+		\expandafter\pgfplotslistpushback\pgfmathresult\to\pgfplotstable@Xparsed
+		\pgfplotstableparsey{\pgfplotstable@y}%
+		\let\pgfplotstable@y=\pgfmathresult
+		%
+		\pgfplotslistcheckempty\pgfplotstable@VARIANCE
+		\ifpgfplotslistempty
+			\pgfmathfloatcreate{1}{1.0}{0}%
+			\let\pgfplotstable@invsqr=\pgfmathresult
+		\else
+			\pgfplotslistpopfront\pgfplotstable@VARIANCE\to\pgfplotstable@variance
+			\pgfmathfloatparsenumber{\pgfplotstable@variance}%
+			\let\pgfplotstable@variance=\pgfmathresult
+			\pgfmathfloatmultiply@{\pgfplotstable@variance}{\pgfplotstable@variance}%
+			\let\pgfplotstable@sqr=\pgfmathresult
+			\pgfmathfloatreciprocal@{\pgfplotstable@sqr}%
+			\let\pgfplotstable@invsqr=\pgfmathresult
+		\fi
+		%
+		\pgfmathfloatadd@{\pgfplotstable@S}{\pgfplotstable@invsqr}%
+		\let\pgfplotstable@S=\pgfmathresult
+		%
+		\pgfmathfloatmultiply@{\pgfplotstable@x}{\pgfplotstable@invsqr}%
+		\let\pgfplots@table@accum=\pgfmathresult
+		\pgfmathfloatadd@{\pgfplotstable@Sx}{\pgfplots@table@accum}%
+		\let\pgfplotstable@Sx=\pgfmathresult
+		%
+		\pgfmathfloatmultiply@{\pgfplotstable@x}{\pgfplots@table@accum}%
+		\let\pgfplots@table@accum=\pgfmathresult
+		\pgfmathfloatadd@{\pgfplotstable@Sxx}{\pgfplots@table@accum}%
+		\let\pgfplotstable@Sxx=\pgfmathresult
+		%
+		\pgfmathfloatmultiply@{\pgfplotstable@y}{\pgfplotstable@invsqr}%
+		\let\pgfplots@table@accum=\pgfmathresult
+		\pgfmathfloatadd@{\pgfplotstable@Sy}{\pgfplots@table@accum}%
+		\let\pgfplotstable@Sy=\pgfmathresult
+		%
+		\pgfmathfloatmultiply@{\pgfplotstable@x}{\pgfplots@table@accum}%
+		\let\pgfplots@table@accum=\pgfmathresult
+		\pgfmathfloatadd@{\pgfplotstable@Sxy}{\pgfplots@table@accum}%
+		\let\pgfplotstable@Sxy=\pgfmathresult
+	\pgfutil@repeat
+	%
+	\pgfmathparse{\pgfplotstable@S * \pgfplotstable@Sxx - \pgfplotstable@Sx *\pgfplotstable@Sx}%
+	\let\pgfplotstable@delta=\pgfmathresult
+	%
+	\pgfmathparse{(\pgfplotstable@S * \pgfplotstable@Sxy - \pgfplotstable@Sx * \pgfplotstable@Sy) / \pgfplotstable@delta}%
+	\let\pgfplotstable@a=\pgfmathresult
+	%
+	\pgfmathparse{(\pgfplotstable@Sxx * \pgfplotstable@Sy - \pgfplotstable@Sx * \pgfplotstable@Sxy) / \pgfplotstable@delta}%
+	\let\pgfplotstable@b=\pgfmathresult
+	%
+	\pgfplotslistnewempty\pgfplotstable@RESULT
+	\pgfplotslistforeachungrouped\pgfplotstable@Xparsed\as\pgfplotstable@x{%
+		\pgfmathfloatmultiply@{\pgfplotstable@x}{\pgfplotstable@a}%
+		\let\pgfplotstable@tmp=\pgfmathresult
+		\pgfmathfloatadd@{\pgfplotstable@tmp}{\pgfplotstable@b}%
+		\ifx\pgfplotstableparseylogbase\pgfutil@empty
+		\else
+			\pgfplotstableparseyinv@{\pgfmathresult}%
+		\fi
+		\pgfmathfloattosci{\pgfmathresult}%
+		\expandafter\pgfplotslistpushback\pgfmathresult\to\pgfplotstable@RESULT
+	}%
+	\pgfmathfloattosci\pgfplotstable@a
+	\let\pgfplotstable@a=\pgfmathresult
+	%
+	\pgfmathfloattosci\pgfplotstable@b
+	\let\pgfplotstable@b=\pgfmathresult
+	%
+	\global\let\pgfplotstableregressiona\pgfplotstable@a%
+	\global\let\pgfplotstableregressionb\pgfplotstable@b%
+	\let\pgfplotsretval=\pgfplotstable@RESULT
+	\pgfmath@smuggleone\pgfplotsretval
+	\endgroup
+}%
+\def\pgfplotstable@linear@regression@prepare@mode#1#2{%
+	\expandafter\def\csname pgfplotstableparse#2\endcsname##1{\pgfmathfloatparsenumber{##1}}%
+	\expandafter\def\csname pgfplotstableparse#2logbase\endcsname{}%
+	\edef\pgfplots@loc@TMPa{#1}%
+	\def\pgfplots@loc@TMPb{auto}%
+	\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+		\def\pgfplots@loc@TMPa{}% auto == empty string
+	\fi
+	%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		% `auto' mode.
+		\pgfplotsifinaxis{%
+			\pgfplots@if{pgfplots@#2islinear}{%
+				\def\pgfplots@loc@TMPa{linear}%
+			}{%
+				\def\pgfplots@loc@TMPa{log}%
+			}%
+		}{%
+			\def\pgfplots@loc@TMPa{linear}%
+		}%
+	\fi
+	%
+	\def\pgfplots@loc@TMPb{linear}%
+	\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+	\else
+		\def\pgfplots@loc@TMPb{log}%
+		\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+			\pgfplotsmathdefinemacrolnbase{pgfplotstableparse#2}{\pgfkeysvalueof{/pgfplots/log basis #2}}%
+		\else
+			\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{Sorry, the value '#1' is unexpected for 'linear regression/#2mode'}\pgfeov%
+		\fi
+	\fi
+}%
+
+
+% Sorts table #3 according to options defined in #1 and writes result
+% to #2.
+%
+% \pgfplotstablesort[sort key=<colname>]\result{<input table>}
+% \pgfplotstablesort[sort key=<colname>,sort key source=<\table>]\result{<input table>}
+\def\pgfplotstablesort{\pgfutil@ifnextchar[{\pgfplotstablesort@opt}{\pgfplotstablesort@opt[]}}
+\def\pgfplotstablesort@opt[#1]#2{%
+	\begingroup
+	\pgfplotstableset{#1}%
+	\pgfplotstablecollectoneargwithpreparecatcodes{%
+		\pgfplotstablesort@{#2}%
+	}%
+}
+\def\pgfplotstablesort@#1#2{%
+	\pgfkeysgetvalue{/pgfplots/table/sort key}\pgfplotstable@sort@key@colname
+	\pgfkeysgetvalue{/pgfplots/table/sort key from}\pgfplotstable@sort@key@table
+	\pgfkeysgetvalue{/pgfplots/table/sort cmp}\pgfplotstable@sort@cmp
+	%
+	%
+	\pgfplotstable@isloadedtable{#2}{%
+		\pgfplotstablegetrowsof{#2}%
+		\let\pgfplotstable@numrows=\pgfplotsretval
+		%
+		\pgfplotstabletranspose[input colnames to=,colnames from=]\pgfp@tmp{#2}%
+		\def\pgfplotstable@table{#2}%
+		\let\pgfplotstable@input@colnames=#2\relax
+	}{%
+		\pgfplotstableread{#2}\pgfp@tmp@in
+		\pgfplotstablegetrowsof\pgfp@tmp@in
+		\let\pgfplotstable@numrows=\pgfplotsretval
+		\def\pgfplotstable@table{\pgfp@tmp@in}%
+		\let\pgfplotstable@input@colnames=\pgfp@tmp@in
+		%
+		\pgfplotstabletranspose[input colnames to=,colnames from=]\pgfp@tmp\pgfp@tmp@in
+	}%
+	%
+	\ifx\pgfplotstable@sort@key@colname\pgfutil@empty
+	\else
+		\ifx\pgfplotstable@sort@key@table\pgfutil@empty
+			\t@pgfplots@toka=\expandafter{\pgfplotstable@table}%
+			\t@pgfplots@tokb=\expandafter{\pgfplotstable@sort@key@colname}%
+			\edef\pgfplots@loc@TMPa{{\the\t@pgfplots@tokb}\noexpand\of{\the\t@pgfplots@toka}}%
+			\expandafter\pgfplotstablegetcolumn\pgfplots@loc@TMPa\to\pgfplotstable@sort@key
+		\else
+			\t@pgfplots@toka=\expandafter{\pgfplotstable@sort@key@colname}%
+			\t@pgfplots@tokb=\expandafter{\pgfplotstable@sort@key@table}%
+			\edef\pgfplotstable@loc@TMPa{%
+				\noexpand\pgfplotstablegetcolumn{\the\t@pgfplots@toka}\noexpand\of{\the\t@pgfplots@tokb}\noexpand\to\noexpand\pgfplotstable@sort@key}%
+			\pgfplotstable@loc@TMPa
+		\fi
+	\fi
+	\pgfplotsarraynewempty\pgfplotstable@sort@key@array
+	\pgfplotslistforeachungrouped{\pgfplotstable@sort@key}\as\pgfplotstable@loc@TMPa{%
+		\expandafter\pgfplotsarraypushback\expandafter{\pgfplotstable@loc@TMPa}\to\pgfplotstable@sort@key@array
+	}%
+	%
+	%
+	% use a side effect: columns are integers, they are stored as
+	% '\pgfp@tmp@<index>'. Thus, column names and array indices are
+	% essentially the same! That simplifies the operation and explains
+	% why we transposed the table. 
+	% We simply interprete the transposed table as array. We don't
+	% even need to copy anything.
+	\pgfplotsarrayresize{\pgfp@tmp}{\pgfplotstable@numrows}%
+	% Oh, we also need the index to access the sort key. Well, then we
+	% did not win anything.
+	\pgfplotsarrayforeachungrouped\pgfp@tmp\as\pgfplotstable@loc@TMPa{%
+		\t@pgfplots@toka=\expandafter{\pgfplotstable@loc@TMPa}%
+		\edef\pgfplotstable@loc@TMPa{\pgfplotsarrayforeachindex:{\the\t@pgfplots@toka}}%
+		\pgfplotsarrayletentry{\pgfplotsarrayforeachindex}\of\pgfp@tmp=\pgfplotstable@loc@TMPa
+	}%
+	% extract current row index and row content:
+	\def\pgfplotstable@sort@extractindex##1:##2{%
+		\def\pgfmathresult{##1}%
+		\def\pgfplotstable@row{##2}%
+	}%
+	%
+	\expandafter\pgfplotsset\expandafter{\pgfplotstable@sort@cmp}%
+	\pgfkeysgetvalue{/pgfplots/iflessthan/.@cmd}\pgfplotstable@sort@cmp@routine
+	\def\pgfplotstable@sort@iflt##1##2##3##4{\pgfplotstable@sort@cmp@routine{##1}{##2}{##3}{##4}\pgfeov}%
+	%
+	\pgfkeysdefargs{/pgfplots/iflessthan}{##1##2##3##4}{%
+		\expandafter\pgfplotstable@sort@extractindex##1%
+		\pgfplotsarrayselect{\pgfmathresult}\of\pgfplotstable@sort@key@array\to\pgfplotstable@arga
+		\expandafter\pgfplotstable@sort@extractindex##2%
+		\pgfplotsarrayselect{\pgfmathresult}\of\pgfplotstable@sort@key@array\to\pgfplotstable@argb
+		\pgfplotstable@sort@iflt{\pgfplotstable@arga}{\pgfplotstable@argb}{##3}{##4}%
+	}%
+	\pgfkeysdef{/pgfplots/array/unscope pre}{%
+		% remove the row index:
+		\pgfplotsarrayforeachungrouped\pgfp@tmp\as\pgfplotstable@loc@TMPa{%
+			\expandafter\pgfplotstable@sort@extractindex\pgfplotstable@loc@TMPa%
+			\pgfplotsarrayletentry{\pgfplotsarrayforeachindex}\of\pgfp@tmp=\pgfplotstable@row
+		}%
+		% restore original form:
+		\pgfplotstabletranspose[input colnames to=,colnames from=]\pgfp@tmp@result\pgfp@tmp
+		% technical, transport result out of the current scope ...
+		\pgfplotstable@copy@to@globalbuffers\pgfp@tmp@result{\pgfplotstablenameof\pgfp@tmp}%
+		% ... and use this lowlevel thing to transport the original column names.
+		\global\let\pgfplotstable@colnames@glob=\pgfplotstable@input@colnames
+	}%
+	\pgfkeysdef{/pgfplots/array/unscope post}{}%
+	\pgfplotsarraysort{\pgfp@tmp}%
+	\endgroup
+	\pgfplotstable@copy@globalbuffers@to{#1}%
+}%
+
+\pgfutil@ifundefined{pgfcalendardatetojulian}{%
+	\def\pgfcalendardatetojulian#1#2{\pgfplots@error{Sorry, you need to use \string\usepackage{pgfcalendar} before using date specific methods}}%
+}{}%
+\endinput

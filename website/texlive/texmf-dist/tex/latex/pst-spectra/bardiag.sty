@@ -1,0 +1,699 @@
+%% =============================================
+%% IMPORTANT NOTICE:
+%% 
+%% This program can be redistributed and/or modified under the terms
+%% of the LaTeX Project Public License Distributed from CTAN
+%% archives in directory macros/latex/base/lppl.txt; either
+%% version 1 of the License, or any later version.
+%% 
+%% Only a few abbreviated comments remain here to describe the usage.
+%% Documentation can be found in bardiag.ps or/and bardiag.tex files
+%% =============================================
+%% Copyright 2003 Roman Stepanyan
+%% E-mail: rstepanyan@yahoo.com
+
+
+%TODO
+% Error ``whiskers'': do NOT work with \subtopbaritem !!!!
+
+\NeedsTeXFormat{LaTeX2e}[1995/12/01]
+%
+\ProvidesPackage{bardiag}[2003/12/10 version 0.5] 
+\def\bardiag{BagDiag}
+% This package allows to draw bar diagrams.
+% It is inspired by and build on top of PSTricks
+%
+%
+% Changelog
+% 2003/12/10 version 0.5 (compatible with 0.4, but "shapes"-macroses 
+%                         (bars) have to accept an optional argument!)
+%   "fillstyle" can be supplied to \baritem and friends 
+%      as an optional argument: \baritem[fillstyle=vlines*,linecolor=red]{}...
+%   bardiag DOES NOT load pst-all anymore, only the necessary stuff
+%   use \barspergroup{N} to make life easier (thanks to Kris Dumont)
+%
+%
+% 2003/06/29 version 0.4 (compatible with 0.3)
+%   Error ``whiskers'' are added
+%
+% 2003/06/20 version 0.3 (compatible with 0.2)
+%   ``Horizontal bars'' mode is added.
+%
+% 2003/05/23 version 0.2 (not compatible with 0.1)
+%   Code is completely rewritten. 
+%   All parameters can be real numbers (not integers) thanks to fp.sty
+%   A lot of changes in the interface.
+%
+% 2003/05/10 version 0.1
+%   0.first version :)
+
+
+\RequirePackage{calc}
+\RequirePackage{pstfp}
+\RequirePackage{fp-snap}
+
+
+\RequirePackage{pstricks}
+\RequirePackage{pstcol}
+\RequirePackage{pst-grad}
+\RequirePackage{multido}
+
+\RequirePackage{ifthen}
+
+% * what should be changed through \renewcommand or \setlength
+% @ arguments of functions
+% + internal variables
+
+
+%----------------------------------------
+% Horizontal or vertical bars
+\newcommand{\bdvert}{0}
+\newcommand{\bdhor}{1}
+\newcommand{\bdorientation}{\bdvert}
+
+% Each group is assumed to consist of this number of  bars
+% (subtopbars not included)
+% use \barspergroup{N} to change
+\newcommand{\nbarsingroup}{1}
+\newcommand{\barspergroup}[1]{\renewcommand{\nbarsingroup}{#1}}
+% Sizes of the diag
+% 
+\newcommand{\diagheight}{10}  % units  @
+\newcommand{\diagwidth}{10}   % units  @
+\newlength{\bottomheight}     % cm     @
+% units of length
+\newlength{\xunitlength}      % cm     @
+\newlength{\yunitlength}      % cm     @
+% of the bar
+\newcommand{\dbar}{1}         % units  @
+\newcommand{\dx}{2}           % units  @
+%-----------------------------------------
+% Sizes related to ticks and levellines
+%
+\newcommand{\betweenticks}{1} % units  *
+\newcommand{\numberofticks}{1}%        +
+\newcommand{\MAXnumberofticks}{20}%    *
+%
+% frame and stuff
+\newlength{\ticklength}        % 
+\setlength{\ticklength}{2mm}   % cm    *     
+\newlength{\leftshift}                  
+\setlength{\leftshift}{\ticklength+2mm}  
+                               % cm    * 
+\newlength{\frameXleft}
+\setlength{\frameXleft}{\leftshift}
+\newlength{\frameYbottom}
+\setlength{\frameYbottom}{0pt}
+\newlength{\tickrightedge}     % cm    +
+% text
+\newlength{\textoffset}        %
+\setlength{\textoffset}{-0.2cm}%cm     *
+%caption
+\newlength{\captionoffset}
+\setlength{\captionoffset}{1.5cm}
+%-----------------------------------------
+% ``Counter''-like variables for bars
+\newcommand{\xval}{1}         % units  +
+\newcommand{\xxval}{1}        % units  +
+\newcommand{\xhalf}{1}        % units  +
+%
+% and subbars
+\newcounter{subbar}
+%
+% Number on bars
+% numbers (0,1)
+\newcommand\shownumbers{1}                   % *
+         % otherwise no numbers will appear
+\newcommand\numbercolor{\black\bf}           % *
+\newcommand{\belowtop}{0}                    % constant
+\newcommand{\overtop}{1}                     % constant
+\newcommand{\bottom}{2}                      % constant
+\newcommand\placenumber{\belowtop}           % *
+         % can be: \belowtop, \overtop, \bottom
+\newlength{\numberoffset}
+\setlength{\numberoffset}{2\textoffset}      % cm *
+\newlength{\lefttextoffset}
+\setlength{\lefttextoffset}{\leftshift+2mm}  % cm *
+% Angle of the text written below (if vertical bars) 
+% or to the left (if horizontal) of the item-bars
+\newcommand{\barlabelangle}{90}              % *
+% The same, but for label next to the level line
+\newcommand{\ticklabelangle}{0}              % *
+%----------------------------------------
+% Legend-related vars
+\newcommand{\legendShadow}{0}                % *
+  % shadow color
+\definecolor{legShCol}{gray}{.5}
+\newcommand{\legendShadowColor}{legShCol}    % *
+%----------------------------------------
+% 3D related stuff
+\newcommand{\frameTD}{0} % 3D or not frame   % *
+\newcommand{\tdx}{0.4} % depth of 3d         % *
+\newcommand{\tdy}{1.0}                       % * 
+\newcommand{\tdhor}{\tdx}                    % +
+\newcommand{\tdver}{\tdy}                    % + 
+%-----------------------------------------
+% Error ``whiskers''
+\newcommand{\barerrorterm}{*-|}              % * 
+\newpsstyle{barerrorstyle}{linewidth=2pt,linecolor=black}    
+%-----------------------------------------
+% Styles
+\definecolor{frameBGgray}{gray}{0.9}
+\newpsstyle{diagframestyle}{linewidth=1pt,linecolor=black,fillstyle=none}
+\newpsstyle{tickstyle}{linewidth=1pt,linecolor=black}
+\newpsstyle{levellinestyle}{linewidth=0.2pt,linecolor=blue}
+\newpsstyle{diagTDframestyle}{linewidth=1pt,linecolor=black,fillstyle=none}
+\newpsstyle{diagbgframestyle}{linewidth=1pt,linecolor=black,fillcolor=frameBGgray}
+%-----------------------------------------
+\newcommand{\tmpvar}{1}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Commands to begin a bar diagram
+% \bardiagbegin -> flat frame
+% \bardiagTDbegin -> 3D frame
+\newlength{\bgx}        % +
+\newlength{\bgy}        % +
+\newlength{\bgxa}       % +
+\newlength{\bgya}       % +
+%
+\newcommand{\bardiagrambegin}[7]
+{ % 1       2      3           4     5   6      7            
+  % width,  height,bottom(cm), dbar, dx, xunit, yunit
+  % height(#1) and width(#2) can be any real numbers, 
+  % they are in units of (#6) & (#7)
+
+  \renewcommand{\nbarsingroup}{1}
+
+  % Default \tdy is 5% from the height of the diag
+  \FPdiv{\tmpvar}{#2}{\dbar}%
+  \FPmul{\tdy}{0.05}{\tmpvar}%
+  %
+  \ifthenelse{\bdorientation = \bdvert}%
+   { \renewcommand{\diagheight}{#2}%
+     \renewcommand{\diagwidth}{#1}% 
+     \setlength{\bottomheight}{#3}%
+     \renewcommand{\dbar}{#4}%
+     \renewcommand{\dx}{#5}%
+     \setlength{\xunitlength}{#6}%
+     \setlength{\yunitlength}{#7}%
+     %
+     \renewcommand{\tdhor}{\tdx}%
+     \renewcommand{\tdver}{\tdy}% 
+     %
+     \setlength{\frameXleft}{\leftshift}
+     \setlength{\frameYbottom}{0pt}
+     %
+     \renewcommand{\barlabelangle}{90}
+     %\renewcommand{\ticklabelangle}{0}
+   }%
+   { \renewcommand{\diagheight}{#1}%
+    \renewcommand{\diagwidth}{#2}% 
+    \setlength{\bottomheight}{#3}%
+    \renewcommand{\dbar}{#4}%
+    \renewcommand{\dx}{#5}%
+    \setlength{\xunitlength}{#7}%
+    \setlength{\yunitlength}{#6}%
+    % 
+    \renewcommand{\tdhor}{\tdy}%
+    \renewcommand{\tdver}{\tdx}%
+    %
+    \setlength{\frameXleft}{0pt}
+    \setlength{\frameYbottom}{\leftshift}
+    %
+    \renewcommand{\barlabelangle}{0}
+    %\renewcommand{\ticklabelangle}{0}
+  }% 
+  %
+  %- - - - - - - - - - - - - - - - - - - -
+  % Take care of ticks (not to draw)
+  \ifthenelse{\bdorientation = \bdvert}%
+     {  \FPdiv{\tmpvar}{\diagheight}{\betweenticks}}%
+     {  \FPdiv{\tmpvar}{\diagwidth}{\betweenticks}}%
+  \FPtrunc{\numberofticks}{\tmpvar}{0}%
+  \ifthenelse{\numberofticks > \MAXnumberofticks}%
+         {  \typeout{----- \bardiag WARNING: }%
+            \typeout{Too LARGE number of ticks: \numberofticks. Falling back to \MAXnumberofticks.}%
+            \typeout{TIP: try to change the betweenticks parameter.}%
+            \typeout{If you DO want such a large number of ticks,}%
+            \typeout{change the MAXnumberofticks parameter.}%
+            \typeout{Ignore this warning if you do not use ticks.}%
+            \typeout{-----}%
+            \renewcommand{\numberofticks}{\MAXnumberofticks}%
+            \FPdiv{\betweenticks}{\diagheight}{\numberofticks}%
+         }%
+         {}%
+  %- - - - - - - - - - - - - - - - - - - -
+  % Compute center of the diagram
+  \FPdiv{\hordiagcenter}{\diagwidth}{2}%
+  \FPdiv{\vertdiagcenter}{\diagheight}{2}%
+  %
+  %- - - - - - - - - - - - - - - - - - - -
+  %
+  \psset{xunit=\xunitlength,yunit=\yunitlength}%
+  \ifthenelse{\frameTD = 0}
+  {\begin{pspicture}(-\captionoffset,-\bottomheight)(\diagwidth,\diagheight)}
+  {\setlength{\bgya}{\yunitlength*\real{\diagheight}+\yunitlength*\real{\dbar}*\real{\tdver}}
+   \begin{pspicture}(-\captionoffset,-\bottomheight)(\diagwidth,\bgya)
+  }
+    %\showgrid %#For debug purposes
+    \psset{fillstyle=solid}%
+    \renewcommand{\xval}{0}%
+    \setlength{\tickrightedge}{-\leftshift+\ticklength}%
+    \ifthenelse{\frameTD = 0}%
+      {\renewcommand{\legendShadow}{0}%
+       % let's draw a frame
+       \psframe[style=diagframestyle](-\frameXleft,-\frameYbottom)(\diagwidth,\diagheight)%
+      }%
+      {\renewcommand{\legendShadow}{1}%
+       % background frame
+       \setlength{\bgx}{-\frameXleft+\xunitlength*\real{\dbar}*\real{\tdhor}}%
+       \setlength{\bgxa}{\frameXleft+\bgx+\xunitlength*\real{\diagwidth}}%
+       \setlength{\bgy}{\yunitlength*\real{\dbar}*\real{\tdver}-\frameYbottom}%
+       \setlength{\bgya}{\bgy+\yunitlength*\real{\diagheight}+\frameYbottom}
+       % let's draw it
+       \psframe[style=diagbgframestyle](\bgx,\bgy)(\bgxa,\bgya)%
+       \psline(-\frameXleft,\diagheight)(\bgx,\bgya)%
+       \psline(-\frameXleft,-\frameYbottom)(\bgx,\bgy)%
+       \psline(\diagwidth,-\frameYbottom)(\bgxa,\bgy)%
+       \psline(\diagwidth,\diagheight)(\bgxa,\bgya)%
+       % let's draw the foreground frame
+       \psframe[style=diagTDframestyle](-\frameXleft,-\frameYbottom)(\diagwidth,\diagheight)%
+      }%
+}%
+% - - - - - - - - - - - - - - - - - -
+\newcommand{\bardiagramend}[2]
+{  \ifthenelse{\frameTD = 1}
+    { % let's draw the frame ones again
+     \psframe[style=diagTDframestyle](-\frameXleft,-\frameYbottom)(\diagwidth,\diagheight)
+    }{}
+   \ifthenelse{\bdorientation = \bdvert}
+    {   \rput[c](\hordiagcenter,-0.9\bottomheight){{#1}}
+        \rput[c]{90}(-\captionoffset,\vertdiagcenter){{#2}} % ???? -2cm ?
+    }
+    {   \rput[c](\hordiagcenter,-0.9\bottomheight){{#2}}
+        \rput[c]{90}(-\captionoffset,\vertdiagcenter){{#1}} % ???? -2cm ?
+    }
+  \end{pspicture}
+}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% BARITEMS:
+\newcommand{\ActiveBarPrimitive}{\barRect}
+
+\newcommand{\subtopx}{0}
+\newcommand{\subtopy}{0}
+
+\newcommand{\baritem}[4][fillstyle=solid]{% 
+  % the first (optional) argument is "psstyle options": default=solid
+  % [style], name, value,  color
+  %
+  % \xval and \xxval are left and right edges of a bar
+  % \xhalf is its center
+  %
+  \FPfadd{\xxval}{\xval}{\dbar}  
+  \FPfadd{\tmpvar}{\xval}{\xxval}
+  \FPdiv{\xhalf}{\tmpvar}{2}% ?????????? Get rid of it? 
+
+
+  %
+  % Now we call smth, which draws a ``bar''
+  % it can be rectangular, cylindrical, 2 or 3d - we do not know
+  % I plan \barRect; \barTDRect; \barCylinder; more???
+  % It takes 5 arguments:
+  % \something{\xval}{\yval}{\xxval}{\yyval}{color}
+  %
+  %
+  \ifthenelse{\bdorientation = \bdvert}%is it vertical or horizontal?
+    {\ActiveBarPrimitive[#1]{\xval}{0}{\xxval}{#3}{#4}}%
+    {\ActiveBarPrimitive[#1]{0}{\xval}{#3}{\xxval}{#4}}%
+  %
+  %
+  \printnumber{\xhalf}{#3}{0}{#3}
+  %
+  \FPset{\subtopx}{\xval}
+  \FPset{\subtopy}{#3}
+  %
+  \FPfadd{\tmpvar}{\xval}{\dx}
+  \FPset{\xval}{\tmpvar}
+  %
+  % \xhalf := \xhalf + \dbar * (\nbarsingroup - 1)/2
+
+  \FPfsub{\tmpvar}{\nbarsingroup}{1}
+  \FPdiv{\tmpvar}{\tmpvar}{2}
+  \FPmul{\tmpvar}{\tmpvar}{\dbar}
+  \FPfadd{\xhalf}{\xhalf}{\tmpvar}
+
+  \ifthenelse{\bdorientation = \bdvert}%is it vertical or horizontal?
+    {\printbarlabel{\xhalf}{\textoffset}{\barlabelangle}{#2}}%
+    {\printbarlabel{\textoffset}{\xhalf}{\barlabelangle}{#2}}%
+  \setcounter{subbar}{1}
+}
+
+\newcommand{\barmidx}{0}
+\newcommand{\barerrormargins}[2] % To make asymmetric margins
+% 1st = upper Dy; 2nd = bottom Dy
+{%
+  \ifthenelse{\bdorientation = \bdvert}%is it vertical or horizontal?
+  { \FPdiv{\tmpvar}{\dbar}{2}
+    \FPfadd{\barmidx}{\subtopx}{\tmpvar}
+    \FPfadd{\tmpvar}{\subtopy}{#1}
+    \psline[style=barerrorstyle]{\barerrorterm}(\barmidx,\subtopy)(\barmidx,\tmpvar)
+    %
+    \FPdiv{\tmpvar}{\dbar}{2}
+    \FPfadd{\barmidx}{\subtopx}{\tmpvar}
+    \FPfsub{\tmpvar}{\subtopy}{#2}
+    \psline[style=barerrorstyle]{\barerrorterm}(\barmidx,\subtopy)(\barmidx,\tmpvar)
+  }
+  { \FPdiv{\tmpvar}{\dbar}{2}
+    \FPfadd{\barmidx}{\subtopx}{\tmpvar}
+    \FPfadd{\tmpvar}{\subtopy}{#1}
+    \psline[style=barerrorstyle]{\barerrorterm}(\subtopy,\barmidx)(\tmpvar,\barmidx)
+    %
+    \FPdiv{\tmpvar}{\dbar}{2}
+    \FPfadd{\barmidx}{\subtopx}{\tmpvar}
+    \FPfsub{\tmpvar}{\subtopy}{#2}
+    \psline[style=barerrorstyle]{\barerrorterm}(\subtopy,\barmidx)(\tmpvar,\barmidx)
+  }
+}
+%%%%%%%%%%%%%
+\newcommand{\barerror}[1] % To make symmetric margins
+{
+  \barerrormargins{#1}{#1}
+}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% SUBITEMS
+\newcommand{\subxval}{0}
+\newcommand{\subxxval}{0}
+
+
+\newcommand{\subbaritem}[4][fillstyle=solid]{
+  % [style], name, value,  color
+  %
+  % \subxval and \subxxval are left and right edges of a bar
+  % \subxhalf is its center
+  %
+  \FPfsub{\subxxval}{\xval}{\dx}
+  \FPmul{\tmpvar}{\dbar}{\thesubbar} 
+  \FPfadd{\subxval}{\subxxval}{\tmpvar}
+
+  \FPfadd{\subxxval}{\subxval}{\dbar}  
+  
+  \FPfadd{\tmpvar}{\subxval}{\subxxval}
+  \FPdiv{\subxhalf}{\tmpvar}{2}% ?????????? Get rid of it?
+  %
+  % Now we call smth, which draws a ``bar''
+  % it can be rectangular, cylindrical, 2 or 3d - we do not know
+  % I plan \barRect; \barTDRect; \barCylinder; ???
+  % It takes 5 arguments:
+  % \something{\xval}{\yval}{\xxval}{\yyval}{color}
+  %
+  \ifthenelse{\bdorientation = \bdvert}%is it vertical or horizontal?
+    {\ActiveBarPrimitive[#1]{\subxval}{0}{\subxxval}{#3}{#4}}%
+    {\ActiveBarPrimitive[#1]{0}{\subxval}{#3}{\subxxval}{#4}}%
+  %
+  %
+  \printnumber{\subxhalf}{#3}{0}{#3}
+
+  \FPset{\subtopx}{\subxval}
+  \FPset{\subtopy}{#3}
+
+  %\rput[r]{90}(\subxhalf,\textoffset){#2}
+  \ifthenelse{\bdorientation = \bdvert}%is it vertical or horizontal?
+    {\printbarlabel{\subxhalf}{\textoffset}{\barlabelangle}{#2}}%
+    {\printbarlabel{\textoffset}{\subxhalf}{\barlabelangle}{#2}}%
+  \addtocounter{subbar}{1}
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% TOP SUBITEMS
+
+\newcommand{\subtopxx}{0}   %  +
+\newcommand{\subtopyy}{0}   %  +
+\newcommand{\subtopxhalf}{0}%  +
+
+\newcommand{\subtopbaritem}[4][fillstyle=solid]{
+  % [style], name, value,  color
+  %
+  % 
+  % \subtopxhalf is the center
+  %
+  \FPfadd{\subtopxx}{\subtopx}{\dbar}
+
+  \FPfadd{\subtopyy}{\subtopy}{#3}
+
+  \FPfadd{\tmpvar}{\subtopx}{\subtopxx}
+  \FPdiv{\subtopxhalf}{\tmpvar}{2}% 
+  %
+  \ifthenelse{\bdorientation = \bdvert}%is it vertical or horizontal?
+    {\ActiveBarPrimitive[#1]{\subtopx}{\subtopy}{\subtopxx}{\subtopyy}{#4}}%
+    {\ActiveBarPrimitive[#1]{\subtopy}{\subtopx}{\subtopyy}{\subtopxx}{#4}}%
+  %
+  %
+  \printnumber{\subtopxhalf}{#3}{\subtopy}{\subtopyy}
+  %
+  % it is not supposed to print any label, so,
+  % we do not need to tae care of it.
+  %\rput[r]{90}(\subxhalf,\textoffset){#1}
+  %\addtocounter{subbar}{1}
+  %
+  \FPset{\subtopy}{\subtopyy}
+}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Bar primitives
+\input{bardiag.bar}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Legend
+\newlength{\legendXo}     % this one is an argument of diagLegendbegin
+\newlength{\legendYo}     % the same
+\newlength{\legendWidth}  % the same
+\newlength{\legendHeight} % this will be computed
+%
+\newlength{\legenditemheight}\setlength{\legenditemheight}{7mm}
+\newlength{\legendspacer}\setlength{\legendspacer}{3mm}
+\newlength{\legendRectWidth}\setlength{\legendRectWidth}{6mm}
+\newlength{\legendRectHeight}\setlength{\legendRectHeight}{4mm}
+%
+\newcommand{\diagLegendoptions}[3]
+{ % 1       2           3
+  % bgcolor framecolor  framelinewidth 
+  \newpsstyle{diagLegenditemstyle}{fillstyle=solid,fillcolor=#1,linecolor=#1}
+  \newpsstyle{diagLegendframetyle}{fillstyle=none,linecolor=#2,linewidth=#3}  
+}
+%First we call \diagLegendoptions
+\diagLegendoptions{white}{black}{0.5pt}
+%
+\newlength{\lixcoor}
+\newlength{\liycoor}
+\newlength{\lixxcoor}
+\newlength{\liyycoor}
+%
+\newlength{\liix}  % where to put the rectangle with color
+\newlength{\liiix} % where to put the text
+%
+\newcommand{\diagLegendbegin}[3]
+{%  1           2        3
+ %  Xo(units)   Yo(un)   Width(un)
+ %  (Xo,Yo) are coordinates of the left-up corner
+ \ifthenelse{\bdorientation = \bdvert}%
+ {
+  \setlength{\legendXo}{\xunitlength*\real{#1}}
+  \setlength{\legendYo}{\yunitlength*\real{#2}}
+  \setlength{\legendWidth}{\xunitlength*\real{#3}}
+  \setlength{\legendHeight}{0cm}
+  %
+  \setlength{\lixcoor}{\legendXo}
+  \setlength{\lixxcoor}{\legendXo+\legendWidth}
+  \setlength{\liycoor}{\legendYo}
+  %
+  \setlength{\liix}{\lixcoor+\legendspacer}
+  \setlength{\liiix}{\liix+\legendRectWidth+\legendspacer}
+ }
+ {
+  \setlength{\legendXo}{\xunitlength*\real{#2}}
+  \setlength{\legendYo}{\yunitlength*\real{#1}}
+  \setlength{\legendWidth}{\yunitlength*\real{#3}}
+  \setlength{\legendHeight}{0cm}
+  %
+  \setlength{\lixcoor}{\legendXo}
+  \setlength{\lixxcoor}{\legendXo+\legendWidth}
+  \setlength{\liycoor}{\legendYo}
+  %
+  \setlength{\liix}{\lixcoor+\legendspacer}
+  \setlength{\liiix}{\liix+\legendRectWidth+\legendspacer}
+ }
+}
+
+\newlength{\lShX}
+\newlength{\lShXxx}
+\newlength{\lShY}
+\newlength{\lShYyy}
+
+\newcommand{\diagLegendend}
+{ \ifthenelse{\legendShadow = 1}
+   {\setlength{\lShX}{\legendXo+\xunitlength*\dbar*\real{\tdhor}}
+    \setlength{\lShXxx}{\lixxcoor+\xunitlength*\dbar*\real{\tdhor}}
+    \setlength{\lShY}{\liycoor+\yunitlength*\dbar*\real{\tdver}}
+    \setlength{\lShYyy}{\legendYo+\yunitlength*\dbar*\real{\tdver}}
+    \psframe[fillstyle=solid,linecolor=\legendShadowColor,fillcolor=\legendShadowColor](\lShX,\legendYo)(\lShXxx,\lShYyy)
+    \psframe[fillstyle=solid,linecolor=\legendShadowColor,fillcolor=\legendShadowColor](\lixxcoor,\lShY)(\lShXxx,\lShYyy)
+   }
+   {}
+  \psframe[style=diagLegendframetyle](\legendXo,\liycoor)(\lixxcoor,\legendYo)
+}
+
+
+\newlength{\legendRectXo}
+\newlength{\legendRectX}
+\newlength{\legendRectYo}
+\newlength{\legendRectY}
+%
+\newcommand{\legendPutRect}[2][fillstyle=solid]
+{
+  \setlength{\legendRectXo}{\liix}
+  \setlength{\legendRectYo}{(\liyycoor+\liycoor-\legendRectHeight)/2}
+  %\setlength{\legendRectYo}{(\liyycoor+\liycoor)/2-\legendRectHeight}
+  \setlength{\legendRectX}{\legendRectXo+\legendRectWidth}
+  \setlength{\legendRectY}{\legendRectYo+\legendRectHeight}
+  \psframe[fillcolor=#2,#1](\legendRectXo,\legendRectYo)(\legendRectX,\legendRectY)
+}
+
+
+\newlength{\legendiyc}
+\newcommand{\diagLegenditem}[3][fillstyle=solid]
+{% [1]     2           3
+ % style   item_text   color
+ \addtolength{\legendHeight}{\legenditemheight}
+ \setlength{\liyycoor}{\liycoor}
+ \addtolength{\liycoor}{-\legenditemheight}
+ \psframe[style=diagLegenditemstyle](\lixcoor,\liycoor)(\lixxcoor,\liyycoor)
+ \legendPutRect[#1]{#3}
+ \setlength{\legendiyc}{(\liycoor+\liyycoor)/2}
+ \rput[l](\liiix,\legendiyc){#2}
+}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Util
+\newcommand{\outputparameters}
+{\rput[lt](0,-2\bottomheight){\parbox{10cm}{
+   \begin{tabular}{p{5cm}p{5cm}}
+   Width:         &  \diagwidth \\\hline
+   Height:        &\diagheight \\\hline
+   Width of a bar:& \dx \\\hline
+   Distance between bars:& \dbar\\\hline\hline
+   %X unit length: & \ratio{\xunitlength}{1cm}\\\hline
+   %Y unit length: & \ratio{\yunitlength}{1cm}\\\hline
+   TICKS:\\
+   Between ticks: & \betweenticks\\ 
+   Number of ticks:&\numberofticks (computed)\\ \hline\hline
+   LAST VALS:\\
+   xval: & \xval\\
+   dbar: & \dbar\\
+   xxval:& \xxval\\
+   xhalf:& \xhalf\\ 
+   tmpvar:&\tmpvar\\
+ \end{tabular}}}
+}
+%--------------------------------------------------------------------
+
+\newlength{\ycoordnum}
+%
+\newcommand\printnumber[4]
+{ % 1                  2                                3         4
+  % center of the bar, text(number) (will be centered), bottom y, top y
+  %
+  % we compute the y-position of the text depending on 
+  % the value of the \placenumber parameter
+  % it can be:  \belowtop, \overtop, \bottom
+\ifthenelse{\bdorientation = \bdvert}
+{ 
+ \ifthenelse{\placenumber = \overtop}
+     {\setlength{\ycoordnum}{\yunitlength*\real{#4}-\numberoffset}
+      \ifthenelse{\shownumbers = 1}
+                 {\rput[bc](#1,\ycoordnum){\numbercolor #2}}{}
+     }
+     {%else
+       \ifthenelse{\placenumber = \bottom}
+          {\setlength{\ycoordnum}{\yunitlength*\real{#3}-\numberoffset}
+           \ifthenelse{\shownumbers = 1}
+                      {\rput[bc](#1,\ycoordnum){\numbercolor #2}}
+                      {}
+          }
+          % default->\belowtop
+          {\setlength{\ycoordnum}{{\yunitlength*\real{#4}}+\numberoffset}
+           \ifthenelse{\shownumbers = 1 \AND \lengthtest{\ycoordnum > -\numberoffset}}
+                      {\rput[tc](#1,\ycoordnum){\numbercolor #2}}{}
+          } 
+     }
+}
+{%else, i.e. if it is horisontal
+ %if fact, ``y-coordinate'' \ycoordnum is now along the horizontal axis
+ \ifthenelse{\placenumber = \overtop}
+     {
+      \setlength{\ycoordnum}{\xunitlength*\real{#4}-\numberoffset}
+      \ifthenelse{\shownumbers = 1}
+                 {\rput[l](\ycoordnum,#1){\numbercolor #2}}{}
+     }
+     {%else
+       \ifthenelse{\placenumber = \bottom}
+          {\setlength{\ycoordnum}{\xunitlength*\real{#3}-\numberoffset}
+           \ifthenelse{\shownumbers = 1}
+                      {\rput[l](\ycoordnum,#1){\numbercolor #2}}
+                      {}
+          }
+          % default->\belowtop
+          {\setlength{\ycoordnum}{{\xunitlength*\real{#4}}+\numberoffset}
+           \ifthenelse{\shownumbers = 1 \AND \lengthtest{\ycoordnum > -\numberoffset}}
+                      {\rput[r](\ycoordnum,#1){\numbercolor #2}}{}
+          } %\rput[tc](\ycoordnum,#1){\numbercolor #2}
+     }
+}
+}
+%--------------------------------------------------------------------
+
+\newlength{\ytick}
+\newcommand{\whattoprint}{0}
+%
+\newcommand{\drawlevellines}
+{\ifthenelse{\bdorientation = \bdvert}
+  {\rput[c]{\ticklabelangle}(-\lefttextoffset,0){0}}% this is 0
+  {\rput[c]{\ticklabelangle}(0,-\lefttextoffset){0}}
+   % let's draw ticks; then lines; 
+   % they are controlled by \betweenticks variable
+   % on its basis we have computed \numberofticks above (in \diagbegin)
+   %
+   \multido{\n=1+1}{\numberofticks}{%
+     \ifthenelse{\bdorientation = \bdvert}
+     {\setlength{\ytick}{\yunitlength*\real{\betweenticks}*\n}
+      % tick itself
+      \psline[style=tickstyle](-\leftshift,\ytick)(\tickrightedge,\ytick) 
+      % level lines
+      \psline[style=levellinestyle](\tickrightedge,\ytick)(\diagwidth,\ytick)
+      % numbers!
+      \FPmul{\whattoprint}{\n}{\betweenticks}
+      \FPclip{\whattoprint}{\whattoprint}
+      \rput[r](-\lefttextoffset,\ytick){\whattoprint}
+     }
+     {\setlength{\ytick}{\xunitlength*\real{\betweenticks}*\n}
+      \psline[style=tickstyle](\ytick,-\leftshift)(\ytick,\tickrightedge)
+       \psline[style=levellinestyle](\ytick,\tickrightedge)(\ytick,\diagheight)
+      \FPmul{\whattoprint}{\n}{\betweenticks}
+      \FPclip{\whattoprint}{\whattoprint}
+      \rput[c](\ytick,-\lefttextoffset){\whattoprint}
+     } 
+   }
+}
+%- - - - - - - - - - - - - - - - - - - - 
+\newcommand{\printbarlabel}[4]{
+  % x, y, angle, text
+  \ifthenelse{ #3 = 0 \AND \bdorientation = \bdvert}
+    {\rput[tc]{#3}(#1,#2){{#4}}} 
+    {\rput[r]{#3}(#1,#2){{#4}}}
+}
+%--------------------------------------------------------------------
+%
+\InputIfFileExists{bardiag.cfg}
+       {\typeout{BarDiag: Local configuration file bardiag.cfg loaded}}
+       {\typeout{BarDiag: No local configuration loaded}}
+%
+%--------------------------------------------------------------------

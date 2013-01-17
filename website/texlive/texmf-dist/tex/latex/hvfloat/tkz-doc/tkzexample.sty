@@ -1,0 +1,497 @@
+% Copyright 2009 by Alain Matthes
+%
+%   H I G H L Y   E X P E R I M E N T A L
+%
+% This file may be distributed and/or modified
+%
+% 1. under the LaTeX Project Public License and/or
+% 2. under the GNU Free Documentation License.
+%
+% The author of the original code 
+% of the environment 'codeexample' is Till Tantau
+% from the file pgfmanual-en-macros.tex
+%  (Copyright 2006 by Till Tantau)
+% See the file doc/generic/pgf/licenses/LICENSE for more details.
+% 
+%<--------------------------------------------------------------------------->
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{tkzexample}[2011/06/04 v1.1 c  (code and graphic ) ]
+\RequirePackage{fixltx2e,calc,mdframed,fancyvrb}
+\newif\iftkzcodesaved           
+\DeclareOption{saved}{\tkzcodesavedtrue}
+\ProcessOptions\relax     
+%<--------------------------------------------------------------------------->
+\colorlet{graphicbackground}{white}
+\colorlet{codebackground}{white}
+\colorlet{codeonlybackground}{white}
+\colorlet{numbackground}{white}
+\colorlet{textcodecolor}{black}
+\colorlet{numcolor}{gray}
+%<---------------------------------------------------------------------------> 
+\def\code@style{\small\ttfamily}
+\makeatletter
+\newcounter{code@cnt}%
+
+\ifx\scantokens\@undefined
+  \PackageError{tkzexample}{You need to use extended latex
+    (elatex) or (pdfelatex) to use this package}{}
+\fi
+
+% Define \find@tkzexample such that it doesn't destroy catcodes:
+\begingroup
+\catcode`|=0
+\catcode`[= 1
+\catcode`]=2
+\catcode`\{=12
+\catcode `\}=12
+\catcode`\\=12 |gdef|find@tkzexample#1\end{tkzexample}[|endoftkzexample[#1]]
+|endgroup
+
+\begingroup
+\catcode`|=0
+\catcode`[= 1
+\catcode`]=2
+\catcode`\{=12
+\catcode `\}=12
+\catcode`\\=12 |gdef|find@tkzltxexample#1\end{tkzltxexample}[|endoftkzltxexample[#1]]
+|endgroup
+ 
+% define \returntospace.
+%
+% It should define NEWLINE as {}, spaces and tabs as \space.
+\begingroup
+\catcode`\^=7
+\catcode`\^^M=13
+\catcode`\^^I=13
+\catcode`\ =13%
+\gdef\returntospace{\catcode`\ =13\def {\space}\catcode`\^^I=13\def^^I{\space}\catcode`\^^M=13\def^^M{}}%
+\endgroup
+
+\begingroup
+\catcode`\%=13
+\catcode`\^^M=13
+\gdef\commenthandler{\catcode`\%=13\def%{\@gobble@till@return}}
+\gdef\@gobble@till@return#1^^M{}
+\gdef\@gobble@till@return@ignore#1^^M{\ignorespaces}
+\gdef\typesetcomment{\catcode`\%=13\def%{\@typeset@till@return}}
+\gdef\@typeset@till@return#1^^M{{\def%{\char`\%}\textsl{\char`\%#1}}\par}
+\gdef\typesetcommentnum{\catcode`\%=13\def%{\@typeset@till@return@num}}
+\gdef\@typeset@till@return@num#1^^M{{\def%{\char`\%}\textsl{\char`\%#1}} \@@par} 
+\endgroup
+
+\let\tkz@frameset\colorbox 
+\let\tkz@frameltxset\colorbox
+\newwrite\fileexample
+\newdimen\tkzexamplewidth
+\newdimen\tkz@hsep
+\tkz@hsep=0pt
+\newif\ifcode@execute 
+\newif\ifcode@saved\code@savedfalse
+\newif\ifnum@show \num@showfalse
+\newif\ifcode@overhang
+\newbox\tkzexamplebox
+\newif\ifcode@vbox \code@vboxfalse 
+
+\pgfqkeys{/tkzexample}{%
+  execute code/.is if        = code@execute,
+  show num/.is if            = num@show,
+  overhang/.is if            = code@overhang,
+  code only/.code            = {\code@executefalse},  
+  width/.code                = {\setlength\tkzexamplewidth{#1}},
+  code/.code                 = {\colorlet{codebackground}{#1}},
+  graphic/.code              = {\colorlet{graphicbackground}{#1}},  
+  overhang/.code             = {\code@overhangtrue},
+  num/.code                  = {\num@showtrue\setcounter{code@cnt}{1}},
+  numcolor/.code             = {\colorlet{numcolor}{#1}},
+  numbkgcolor/.code          = {\colorlet{numbackground}{#1}},
+  global  num/.code          = {\num@showtrue},
+  code style/.code           = {\def\code@style{#1}},
+  normal/.code               = {\def\code@size{\normalsize}}, 
+  small/.code                = {\def\code@size{\small}},
+  very  small/.code          = {\def\code@size{\footnotesize}},
+  right margin/.code         = {\def\tkz@rightmargin{#1}},
+  left margin/.code          = {\def\tkz@leftmargin{#1}}, 
+  inner  left margin/.code   = {\def\tkz@innerleftmargin{#1}},
+  inner  right margin/.code  = {\def\tkz@innerrightmargin{#1}},
+  inner  top margin/.code    = {\def\tkz@innertopmargin{#1}},
+  inner  bottom margin/.code = {\def\tkz@innerbottommargin{#1}},
+  line frame width/.code     = {\def\tkz@linewidth{#1}},  
+  frame code/.code           = {\def\tkz@frameset{\fcolorbox{#1}}},
+  frame tex/.code            = {\def\tkz@frameltxset{\fcolorbox{#1}}},
+  above skip/.code           = {\def\tkz@above{#1}},
+  below skip/.code           = {\def\tkz@below{#1}},
+  hsep/.code                 = {\setlength\tkz@hsep{#1}},
+  pre/.code                  = {\def\code@pre{#1}},
+  post/.code                 = {\def\code@post{#1}},
+  latex/.code                = {\setlength\tkzexamplewidth{#1}%
+                               \def\code@preadd{\begin{minipage}{#1}}%
+                               \def\code@postadd{\end{minipage}}},
+  vbox/.code                 = {\code@vboxtrue
+                                \def\code@preadd{\noindent
+                                \vbox\bgroup
+                                \setlength{\hsize}{\linewidth-6pt}%
+                                }%
+                                \def\code@postadd{\egroup}},  
+  every tkzexample/.style={width=6cm},
+}%
+\def\code@size{}%
+\def\code@pre{}%
+\def\code@post{}%
+\def\code@preadd{}%
+\def\code@postadd{}%
+\def\tkz@above{\par}%
+\def\tkz@below{\par}%
+
+% execution du code 
+\def\tkz@result{%
+ \begin{minipage}[t]{\wd\tkzexamplebox}%
+   \hrule width0pt
+   \code@size
+   \box\tkzexamplebox
+   \leavevmode 
+ \end{minipage}% 
+}%
+ 
+\newcommand\tkz@code[1]{%
+\begin{minipage}[t]{\code@width}{%
+\color{textcodecolor}%
+\parskip=\z@
+\hrule width\z@
+\vskip-.25em
+\let\do\@makeother
+\dospecials
+\frenchspacing
+\code@style\code@size
+\obeylines
+\@vobeyspaces
+\@tempswafalse
+\ifnum@show
+   \typesetcommentnum
+   \def\par{%
+         \if@tempswa
+            \leavevmode\null\@@par\penalty\interlinepenalty
+            \everypar{\setlength\fboxsep{1pt}%
+                      \noindent\parskip=0pt%  
+                      \llap{\colorbox{numbackground}{\textcolor{numcolor}{%
+                      \footnotesize\number\value{code@cnt}}}\enspace}%
+                  \stepcounter{code@cnt}}%  
+         \else
+           \@tempswatrue
+           \ifhmode\@@par\penalty\interlinepenalty\fi%
+         \fi
+         }% 
+        \everypar{\setlength\fboxsep{1pt}%  
+                  \noindent\parskip=0pt%  
+                  \llap{\colorbox{numbackground}{\textcolor{numcolor}{%
+                  \footnotesize\number\value{code@cnt}}}\enspace}%   
+                  \stepcounter{code@cnt}%
+                 }%    
+\else
+   \typesetcomment 
+     \def\par{%
+              \if@tempswa
+                 \leavevmode\null\@@par\penalty\interlinepenalty%
+              \else
+                 \@tempswatrue
+                 \ifhmode\@@par\penalty\interlinepenalty\fi%
+              \fi
+             }%
+\fi
+\obeylines
+\ifcode@saved\input{#1}\else#1\fi%
+}% end of content for the minipage 
+\end{minipage}%
+}%
+
+\newcommand\tkz@codesplit[1]{%
+\begin{mdframed}[linewidth        = \tkz@linewidth,
+                 leftmargin       = \tkz@leftmargin,
+                 rightmargin      = \tkz@rightmargin,
+                 backgroundcolor  = codeonlybackground,
+                 innerleftmargin  = \tkz@innerleftmargin,
+                 innertopmargin   = \tkz@innertopmargin]
+\begingroup 
+\color{textcodecolor}%
+\parskip=\z@
+\hrule width0pt
+\let\do\@makeother
+\dospecials
+\frenchspacing
+\code@style\code@size
+\obeylines
+\@vobeyspaces
+\@tempswafalse
+\ifnum@show
+\typesetcommentnum
+\def\par{%
+       \if@tempswa
+           \leavevmode\null\@@par\penalty\interlinepenalty
+           \everypar{\setlength\fboxsep{1pt}% 
+           \noindent\parskip=0pt%
+                     \llap{\colorbox{numbackground}{\textcolor{numcolor}{%
+                  \footnotesize\number\value{code@cnt}}}\enspace}%
+                  \stepcounter{code@cnt}}%  
+       \else
+           \@tempswatrue
+           \ifhmode\@@par\penalty\interlinepenalty\fi
+       \fi
+}% 
+\everypar{\setlength\fboxsep{1pt}%
+          \noindent\parskip=0pt%
+          \llap{\colorbox{numbackground}{\textcolor{numcolor}{%
+          \footnotesize\number\value{code@cnt}}}\enspace}%   
+          \stepcounter{code@cnt}%
+          }% 
+\else
+\typesetcomment%
+\def\par{%
+         \if@tempswa
+             \leavevmode\null\@@par\penalty\interlinepenalty%
+         \else
+             \@tempswatrue
+             \ifhmode\@@par\penalty\interlinepenalty\fi%
+         \fi
+}%
+\fi
+\obeylines  
+\ifcode@saved\input{#1}\else #1\fi
+\endgroup
+\end{mdframed}%
+}%
+
+
+\def\tkzref{\arabic{section}-\arabic{subsection}-\arabic{subsubsection}}%
+\def\tkzFileSavedPrefix{tkzFile}%
+\def\tkz@File@Saved@Name{\tkzFileSavedPrefix-\tkzref}%
+
+\iftkzcodesaved
+\def\tkzexample[#1]{%
+\code@executetrue
+\normalsize
+\pgfkeys{/tkzexample/.cd,
+          right margin        =  0pt,
+          left margin         =  0pt,
+          line frame width    =  0,
+          inner left margin   =  0 pt,
+          inner right margin  =  0 pt,
+          inner top margin    =  6 pt,
+          inner bottom margin =  0 pt} 
+\pgfqkeys{/tkzexample}{every tkzexample,#1}%
+\parindent0pt
+\bgroup
+\VerbatimEnvironment 
+\killienc\begin{VerbatimOut}{\tkz@File@Saved@Name.tex}}%
+\def\endtkzexample{\end{VerbatimOut}%
+\egroup
+\ifcode@execute
+\setbox\tkzexamplebox=\hbox{\input{\tkz@File@Saved@Name.tex}}%
+\ifdim\wd\tkzexamplebox>\tkzexamplewidth%
+   \gdef\code@mid{\parskip2pt\par}%
+%   \hrule
+   %\def\code@mid{\hfill}%
+   \gdef\code@width{\linewidth}%
+\else 
+     \ifdim\tkz@hsep=0pt 
+        \gdef\code@mid{\hfill}%
+     \else
+         \gdef\code@mid{\hskip\tkz@hsep}% 
+     \fi 
+      \gdef\code@width{\linewidth-1.5em-\tkz@hsep-\tkzexamplewidth}%
+    \fi
+     \par\noindent  
+     \code@savedtrue
+       \ifcode@overhang
+         \tkz@frameset{codebackground}{\tkz@code{\tkz@File@Saved@Name.tex}}%
+      \else
+           \tkz@frameltxset{graphicbackground}{\tkz@result}%
+       \fi
+   \else% pas de code    pas clair
+       \gdef\code@mid{\hfill}% 
+       \gdef\code@width{\linewidth}%
+       \gdef\code@end{}%
+    \fi% fin pas de code     
+     \code@mid  
+     \ifcode@overhang\tkz@frameltxset{graphicbackground}{\tkz@result}%
+     \else
+       \tkz@frameset{codebackground}{\tkz@code{\tkz@File@Saved@Name.tex}}%
+      \fi   
+\tkz@below
+}%
+\else% end of code saved code et result ?
+\def\tkzexample[#1]{%
+\begingroup
+\code@executetrue 
+\pgfkeys{/tkzexample/.cd,
+          right margin        =  0pt,
+          left margin         =  0pt,
+          line frame width    =  0,
+          inner left margin   =  0 pt,
+          inner right margin  =  0 pt,
+          inner top margin    =  6 pt,
+          inner bottom margin =  0 pt,} 
+\pgfqkeys{/tkzexample}{every tkzexample,#1}%
+\parindent0pt
+\begingroup
+%\tkz@above
+\let\do\@makeother
+\dospecials
+\obeylines
+\@vobeyspaces
+\catcode`\%=13 %
+\catcode`\^^M=13 %
+\find@tkzexample}% #1 est tout ce qui se trouve dans l'environnement
+\def\endoftkzexample#1{%
+\endgroup
+\ifcode@execute % et \fcode@save ??
+  \setbox\tkzexamplebox=\hbox{%
+        {\commenthandler
+         \protected@xdef\code@temp{#1}}%
+  \catcode`\^^M=9 %
+  {\ignorespaces\code@preadd\code@pre
+   \expandafter\scantokens\expandafter{\code@temp\ignorespaces}%
+   \code@post\code@postadd\ignorespaces}%
+  }%
+  \ifdim\wd\tkzexamplebox>\tkzexamplewidth
+     \def\code@mid{\par}%
+     \def\code@width{\linewidth-6pt}%
+  \else 
+     \ifdim\tkz@hsep=0pt 
+        \def\code@mid{\hfill}%
+     \else
+         \def\code@mid{\hskip\tkz@hsep}% 
+     \fi%
+      \def\code@width{\linewidth-1.5em-\tkz@hsep-\tkzexamplewidth}%
+  \fi%
+   \par\noindent
+   \ifcode@overhang 
+        \tkz@frameset{codebackground}{\tkz@code{#1}}%
+   \else
+        \tkz@frameltxset{graphicbackground}{\tkz@result}%
+    \fi
+\else% pas de code execute
+      \def\code@mid{}% 
+      \def\code@width{\linewidth-6pt}%
+      \def\code@end{}%
+   \fi% fin pas de code
+    \code@mid%
+    \ifcode@overhang%
+       \ifcode@execute\tkz@frameltxset{graphicbackground}{\tkz@result}\fi
+    \else%
+\ifcode@execute\tkz@frameset{codebackground}{\tkz@code{#1}}\else
+  \par\vskip1em
+  \tkz@codesplit{#1}
+  %\tkz@frameset{codebackground}{\tkz@code{#1}}%
+\fi
+    \fi
+   \tkz@below
+  \end{tkzexample}%
+}%
+\def\endtkzexample{\endgroup}%
+\fi
+%<--------------------------------------------------------------------------->
+\pgfqkeys{/tkzltxexample}{%
+  width/.code                = {\setlength\tkzltxexamplewidth{#1}},
+  code/.code                 = {\colorlet{codeonlybackground}{#1}},   
+  show num/.is if            =  num@show,
+  num/.code                  = {\num@showtrue\setcounter{code@cnt}{1}},
+  global  num/.code          = {\num@showtrue},
+  numcolor/.code             = {\colorlet{numcolor}{#1}},
+  numbkgcolor/.code          = {\colorlet{numbackground}{#1}},
+  normal/.code               = {\def\code@size{\normalsize}},
+  small/.code                = {\def\code@size{\small}},
+  very  small/.code          = {\def\code@size{\footnotesize}},
+  right margin/.code         = {\def\tkz@rightmargin{#1}},
+  left margin/.code          = {\def\tkz@leftmargin{#1}}, 
+  inner  left margin/.code   = {\def\tkz@innerleftmargin{#1}},
+  inner  right margin/.code  = {\def\tkz@innerrightmargin{#1}},
+  inner  top margin/.code    = {\def\tkz@innertopmargin{#1}},
+  inner  bottom margin/.code = {\def\tkz@innerbottommargin{#1}},  
+  line frame width/.code     = {\def\tkz@linewidth{#1}},   
+  hsep/.code                 = {\def\tkz@hsep{#1}},
+  typeset listing/.code      = {#1},
+  frame code/.code           = {\def\tkz@frameset{\fcolorbox{#1}}}, 
+  ignorespaces/.code         = {\let\@gobble@till@return =%
+                                \@gobble@till@return@ignore},
+  leave comments/.code       = {\def\code@catcode@hook{\catcode`\%=12}%
+                                \let\commenthandler=\relax%
+                                \let\typesetcomment=\relax},
+  every tkzltxexample/.style = {width=8cm},
+  vbox/.code                 = {\def\code@preadd{\noindent
+                               \vbox\bgroup\setlength{\hsize}{\linewidth}}%
+                               \def\code@postadd{\egroup}}%
+}
+\def\code@size{}%
+% \def\code@pre{}
+\def\code@post{}%
+\def\code@pre{}%
+\def\code@post{}%
+\def\code@catcode@hook{}%
+
+\newdimen\tkzltxexamplewidth
+\newbox\tkzltxexamplebox
+
+\def\tkzltxexample[#1]{%
+\begingroup
+\pgfkeys{/tkzltxexample/.cd,
+          right margin        =  0pt,
+          left margin         =  0pt,
+          line frame width    =  0,
+          inner left margin   =  0 pt,
+          inner right margin  =  0 pt,
+          inner top margin    =  6 pt,
+          inner bottom margin =  0 pt,}
+\pgfqkeys{/tkzltxexample}{every tkzltxexample,#1}%
+\parindent0pt
+\begingroup%
+\let\do\@makeother
+\dospecials
+\obeylines
+\@vobeyspaces
+\catcode`\%=13 %
+\catcode`\^^M=13 %
+\code@catcode@hook%
+\relax%
+\find@tkzltxexample}
+\def\endoftkzltxexample#1{%
+\endgroup%
+\def\code@end{}%
+\par\vskip1em
+\tkz@codesplit{#1}%
+\par
+\code@post
+\end{tkzltxexample}%
+}%
+
+\def\endtkzltxexample{\endgroup}
+
+
+
+\newcommand\killienc{} 
+\@tempcnta128 
+\@whilenum\@tempcnta<\@cclvi\do{% 
+  \edef\killienc{\killienc\catcode\the\@tempcnta=12}% 
+  \advance\@tempcnta\@ne} 
+
+\def\tkz@ref{\arabic{section}-\arabic{subsection}-\arabic{subsubsection}}
+\def\tkz@File@Saved@Name{\tkzFileSavedPrefix-\tkz@ref} 
+\pgfkeys{
+/tkzsavedcode/.cd,
+  prefix/.code    = {\def\tkzFileSavedPrefix{#1}}}  
+
+\newcommand{\tkzSavedCode}[1][]{%
+\pgfkeys{%
+tkzsavedcode/.cd,
+  prefix  = tkzFile}
+\pgfqkeys{/tkzsavedcode}{#1}
+\renewenvironment{tkzexample}[1][]{% 
+\killienc\VerbatimOut{\tkz@File@Saved@Name.tex}}{% 
+\endVerbatimOut}}
+ 
+% \renewenvironment{tkzexample}[1][]{% 
+%  \killienc  \VerbatimOut{tkzeuc-\tkzref.tex}% 
+%   }{% 
+% \endVerbatimOut
+% }   
+% \fi  
+\endinput                                       
+

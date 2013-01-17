@@ -1,0 +1,623 @@
+% This file is part of the Petri-nets packages. See file README for
+% copyright notice.
+
+\message{ ** Petri-nets / draw commands ** }
+\input pnversion
+
+\input pstricks
+\input pst-node
+
+\let\pst=\relax
+
+\catcode`\:=11
+
+%%
+%% option parsing facilities
+%%
+
+\def\expandonce{\expandafter\noexpand}
+
+\outer\def\newopt #1#2{% group/character (+ params and body)
+  \expandafter\ifx\csname setcode:#1\endcsname\relax
+    \expandafter\edef\csname setcode:#1\endcsname{%
+      \noexpand\catcode`\string#2=12 \relax}%
+    \expandafter\edef\csname resetcode:#1\endcsname{%
+      \noexpand\catcode`\string#2=\the\catcode`#2 \relax}%
+  \else
+    \expandafter\edef\csname setcode:#1\endcsname{%
+      \noexpand\catcode`\string#2=12 \relax
+      \expandafter\expandonce\csname setcode:#1\endcsname}%
+    \expandafter\edef\csname resetcode:#1\endcsname{%
+      \noexpand\catcode`\string#2=\the\catcode`#2 \relax
+      \expandafter\expandonce\csname resetcode:#1\endcsname}%
+  \fi
+  \edef\newopt:name{opt:#1\string#2}%
+  \expandafter\expandafter\def\csname\newopt:name\endcsname}
+
+\def\getopt #1#2{% group/macro to run after getting options
+  \def\getopt:end{\csname resetcode:#1\endcsname #2}%
+  \begingroup
+    \edef\getopt:group{opt:#1}%
+    \csname setcode:#1\endcsname
+    \nextopt}
+
+\let\endopt=\endgroup
+
+\def\nextopt{\begingroup
+  \futurelet\next\getopt:next}
+
+\def\getopt:next{\ifcat\next\string*%
+    \aftergroup\getopt:run
+  \else
+    \aftergroup\getopt:end
+  \fi \endgroup}
+
+\def\getopt:run #1{\edef\getopt:name{\getopt:group\string#1}%
+  \expandafter\csname\getopt:name\endcsname}
+
+%%
+%% misc setup
+%%
+
+% pstrick tunning
+\psset{unit=1cm,
+       xunit=1cm,
+       yunit=1cm,
+       linewidth=.5pt,
+       doublesep=.5pt,
+       dimen=iner,
+       labelsep=2pt,
+       arcangle=0,
+       arrowlength=1.4,
+       arrowinset=0,
+       arrowsize=2pt 2}
+
+% nodes sizes
+\newdimen\placesize
+\newdimen\transsize
+\newdimen\storesize
+\newdimen\modulesize
+\newdimen\sourcesize
+
+\def\nodessize #1{%
+  \placesize  = #1
+  \transsize  = #1
+  \storesize  = #1
+  \modulesize = #1
+  \sourcesize = #1
+  \relax}
+
+\nodessize{5mm}
+
+% something to run before when a new net
+\newtoks\everynet \everynet={}
+
+% something to run before typesetting labels
+\newtoks\everylabel \everylabel={}
+
+%%
+%% begin/end a net
+%%
+
+\newopt{net}[#1]{\psset{#1}\nextopt}
+\newopt{net}(#1)(#2){\pspicture(#1)(#2)%
+  \def\net:bottom:left{#1}\def\net:top:right{#2}%
+  % adds white points in order to setup bounding box for a possible
+  % `dvips -E' 
+  \rput(#1){{\white\vrule width 1sp height 1sp depth 0sp}}%
+  \rput(#2){{\white\vrule width 1sp height 1sp depth 0sp}}%
+  \the\everynet}
+
+{\catcode`\^^M=\active \let^^M=\relax %
+\global\def\beginnet{\leavevmode\hbox\bgroup%
+  \let\place=\net:place%
+  \let\trans=\net:trans%
+  \let\store=\net:store%
+  \let\module=\net:module%
+  \let\source=\net:source%
+  \let\text=\net:text%
+  \let\link=\net:link%
+  \let\arc=\net:arc%
+  \let\label=\net:label%
+  \let\showbb=\net:showbb%
+  \def\net:s{empty}%  
+  \catcode`\^^M=\active\let^^M=\relax%
+  \getopt{net}\relax}}
+
+\let\begin:net=\beginnet
+
+\def\endnet{\endpspicture\endopt\egroup
+  \global\let\beginnet=\begin:net}
+
+\newbox\net:box
+
+\def\save:net\leavevmode{\global\setbox\net:box}
+
+\def\savenet{\def\beginnet{\expandafter\save:net\begin:net}}
+
+\def\shownet{{\setbox0\copy\net:box\unhbox0}}
+
+%%
+%% globally used for labels
+%%
+
+\def\net:math #1\net:endmath{$#1$}
+
+%%
+%% draws net bounding box
+%%
+
+{\catcode`\^^M=\active \let^^M=\relax %
+\global\def\net:showbb #1^^M{% options (if any)
+  {\psframe#1(\net:bottom:left)(\net:top:right)}}}
+
+%%
+%% places
+%%
+
+\newopt{net:place}"{\let\net:math\relax \let\net:endmath\relax \nextopt}
+\newopt{net:place}={\psset{doubleline=true}\nextopt}
+\newopt{net:place}!{\psset{linewidth=2pt,linecolor=black}\nextopt}
+\newopt{net:place}[#1]{\psset{#1}\nextopt}
+
+\def\net:place{\getopt{net:place}\net:place:draw}
+
+{\catcode`\^^M=\active \let^^M=\relax %
+\global\def\net:place:draw #1(#2,#3)#4^^M{% options/name/x/y/label
+  \global\edef\net:x{#2}%
+  \global\edef\net:y{#3}%
+  \global\def\net:s{circle}%
+  \cnode(#2,#3){.5\placesize}{#1}%
+  \rput(#2,#3){\hbox{\net:math\the\everylabel #4\net:endmath}}\endopt}}
+
+%%
+%% source
+%%
+
+\def\net:source{\getopt{net:trans}\net:source:draw}
+
+{\catcode`\^^M=\active \let^^M=\relax %
+\global\def\net:source:draw #1(#2,#3)#4^^M{% name/x/y/label
+  \placesize=\sourcesize \transsize=\sourcesize%
+  \place[dimen=outer]#1(#2,#3)
+  \trans #1(#2,#3)#4
+  \endopt}}
+
+%%
+%% transitions
+%%
+
+\newopt{net:trans}"{\let\net:math\relax \let\net:endmath\relax \nextopt}
+\newopt{net:trans}={\psset{doubleline=true}\nextopt}
+\newopt{net:trans}!{\psset{linewidth=2pt,linecolor=black}\nextopt}
+\newopt{net:trans}*{\let\net:trans:draw\net:trans:draw:rectangle
+  \nextopt}
+\newopt{net:trans}[#1]{\psset{#1}\nextopt}
+
+\def\net:trans{\let\net:trans:draw\net:trans:draw:square
+  \getopt{net:trans}\net:trans:draw}
+
+{\catcode`\^^M=\active \let^^M=\relax %
+\global\def\net:trans:draw:square #1(#2,#3)#4^^M{% name/x/y/label
+  \global\edef\net:x{#2}\global\edef\net:y{#3}\global\def\net:s{square}%
+  \rput(#2,#3){\rnode{#1}{\psframebox[framesep=-\pslinewidth]{%
+    \hbox to \transsize{\hss\vbox to \transsize{\vss}}}}}%
+  \rput(#2,#3){\hbox{\net:math\the\everylabel #4\net:endmath}}\endopt}}
+
+{\catcode`\^^M=\active \let^^M=\relax %
+\global\def\net:trans:draw:rectangle #1(#2,#3)#4^^M{% options/name/x/y/label
+  \global\edef\net:x{#2}\global\edef\net:y{#3}\global\def\net:s{rectangle}%
+  {\setbox0=\hbox{\net:math\the\everylabel #4\net:endmath}\dimen0=\ht0 %
+  \advance\dimen0 by \dp0 \advance\dimen0 by 4pt %
+  \global\edef\net:h{\the\dimen0}\dimen0=\wd0 %
+  \advance\dimen0 by 4pt \global\edef\net:w{\the\dimen0}}%
+  \rput(#2,#3){\rnode{#1}{\psframebox[framesep=2pt]{%
+    \hbox{\net:math\the\everylabel #4\net:endmath}}}}\endopt}}
+
+%%
+%% module
+%%
+
+\def\net:module{\getopt{net:trans}\net:module:draw}
+
+{\catcode`\^^M=\active \let^^M=\relax %
+\global\def\net:module:draw #1(#2,#3)#4^^M{% name/x/y/label
+  \psclip{\rput(#2,#3){\rnode{#1}{\psframebox[framesep=-\pslinewidth]{%
+          \hbox to \modulesize{\hss\vbox to \modulesize{\vss}}}}}}%
+    \pscustom{\moveto(#2,#3)%
+      \rlineto(-.2\modulesize,-.2\modulesize)%
+      \movepath(.5\modulesize,-.3\modulesize)}%
+  \endpsclip%
+  \transsize=\modulesize\trans #1(#2,#3)#4
+  \endopt}}
+
+%%
+%% store
+%%
+
+\def\net:store{\getopt{net:place}\net:store:draw}
+
+{\catcode`\^^M=\active \let^^M=\relax %
+\global\def\net:store:draw #1(#2,#3)#4^^M{% name/x/y/label
+  \placesize=\storesize%
+  \psclip{\cnode(#2,#3){.5\placesize}{ }}%
+    \pscustom{\moveto(#2,#3)%
+      \rlineto(.5\storesize,.5\storesize)%
+      \rlineto(-\storesize,-\storesize)%
+      \stroke\moveto(#2,#3)%
+      \rlineto(.5\storesize,-.5\storesize)%
+      \rlineto(-\storesize,\storesize)}%
+  \endpsclip%
+  \place #1(#2,#3)
+  \endopt}}
+
+%%
+%% free text
+%%
+
+\newopt{net:text}"{\let\net:math\relax \let\net:endmath\relax \nextopt}
+\newopt{net:text}[#1]{\psset{#1}\nextopt}
+
+\def\net:text{\getopt{net:text}\net:text:draw}
+
+{\catcode`\^^M=\active \let^^M=\relax %
+\global\def\net:text:draw #1(#2,#3)#4^^M{% options/name/x/y/label
+  \global\edef\net:x{#2}\global\edef\net:y{#3}%
+  \global\def\net:s{rectangle}%
+  {\setbox0=\hbox{\net:math\the\everylabel #4\net:endmath}\dimen0=\ht0 %
+  \advance\dimen0 by \dp0 \advance\dimen0 by 4pt %
+  \global\edef\net:h{\the\dimen0}\dimen0=\wd0 %
+  \advance\dimen0 by 4pt \global\edef\net:w{\the\dimen0}}%
+  \rput(#2,#3){\rnode{#1}{\hbox{\net:math\the\everylabel %
+                                #4\net:endmath}}}\endopt}}
+
+%%
+%% links
+%%
+
+\newopt{net:link}"{\let\net:math\relax \let\net:endmath\relax \nextopt}
+\newopt{net:link}^{\def\net:link:put{\aput}\nextopt}
+\newopt{net:link}_{\def\net:link:put{\bput}\nextopt}
+\newopt{net:link}*{\def\net:link:put{\lput*}\nextopt}
+\newopt{net:link}={\psset{doubleline=true}\nextopt}
+\newopt{net:link}!{\psset{linewidth=2pt,linecolor=black}\nextopt}
+\newopt{net:link}<#1>{\def\net:link:pos{(#1)}\nextopt}
+\newopt{net:link}[#1]{\psset{#1}\nextopt}
+\newopt{net:link}/#1/{\def\net:link:arrows{{#1}}\nextopt}
+
+\def\net:link{\def\net:link:put{\aput}\def\net:s{link}%
+  \def\net:link:arrows{{-}}%
+  \def\net:link:pos{(.5)}\def\net:link:opt{}%
+  \getopt{net:link}\net:link:draw}
+
+{\catcode`\^^M=\active \let^^M=\relax %
+\global\def\net:link:draw #1#2#3^^M{% from/to/label
+  \expandafter\ncarc\net:link:arrows{#1}{#2}%
+  \expandafter\net:link:put\net:link:pos{%
+    \hbox{\net:math\the\everylabel #3\net:endmath}}\endopt}}
+
+\def\net:arc{\link/->/}
+  
+%%
+%% additional labels
+%%
+
+% calls the right label macro
+
+\newopt{net:label}"{\let\net:math\relax \let\net:endmath\relax \nextopt}
+
+\def\net:label{\getopt{net:label}\net:label:call}
+
+\def\net:label:call{\edef\net:label:shape{net:label:\net:s}%
+  \expandafter\csname\net:label:shape\endcsname}
+
+% if no node or link has been drawn, we just ignore the label
+
+{\catcode`\^^M=\active \let^^M=\relax %
+\global\def\net:label:empty #1^^M{}}
+
+% calculates angle which can be an integer, one or two letters.
+
+\def\net:setangle #1{\relax
+  \expandafter\ifx\csname net:angle:#1\endcsname\relax
+    \edef\net:angle{#1}%
+  \else\edef\net:angle{\csname net:angle:#1\endcsname}\fi}
+
+\def\net:angle:r{0}
+\def\net:angle:tr{45} \let\net:angle:rt=\net:angle:tr
+\def\net:angle:t{90}
+\def\net:angle:tl{135} \let\net:angle:lt=\net:angle:tl
+\def\net:angle:l{180}
+\def\net:angle:bl{225} \let\net:angle:lb=\net:angle:b
+\def\net:angle:b{270}
+\def\net:angle:br{315} \let\net:angle:rb=\net:angle:br
+
+% for a circle
+
+{\catcode`\^^M=\active \let^^M=\relax %
+\global\def\net:label:circle #1#2^^M{% pos/text
+  \net:setangle{#1}%
+  \advance\placesize by \labelsep%
+  \uput{.5\placesize}[\net:angle](\net:x,\net:y){%
+    \hbox{\net:math\the\everylabel #2\net:endmath}}\endopt}}
+
+% for a square
+
+{\catcode`\^^M=\active \let^^M=\relax %
+\global\def\net:label:square #1#2^^M{% pos/text
+  \net:setangle{#1}%
+  \begingroup \dimen0=\net:angle pt%
+  \loop \ifdim\dimen0<-45pt \advance\dimen0 by 90pt \repeat%
+  \loop \ifdim\dimen0>45pt \advance\dimen0 by -90pt \repeat%
+  \edef\tmp{\expandafter\clear\the\dimen0}%
+  \cossin\cos\sin\tmp%
+  \realdiv\tmp=\sin/\cos%
+  \realmul\tmp=\tmp*\tmp%
+  \realadd\tmp=1+\tmp%
+  \realsqrt\tmp\tmp%
+  \realmul\tmp=.65*\tmp%
+  \uput{\tmp\transsize}[\net:angle](\net:x,\net:y){%
+    \hbox{\net:math\the\everylabel #2\net:endmath}}\endgroup\endopt}}
+
+% for a rectangle
+
+{\catcode`\^^M=\active \let^^M=\relax %
+\global\def\net:label:rectangle #1#2^^M{% pos/text
+  \net:setangle{#1}%
+  \begingroup \dimen0=\net:angle pt%
+  \loop \ifdim\dimen0<0pt \advance\dimen0 by 360pt \repeat%
+  \loop \ifdim\dimen0>360pt \advance\dimen0 by -360pt \repeat%
+  \ifdim\dimen0>180pt \advance\dimen0 by -180pt \fi%
+  \ifdim\dimen0>90pt \advance\dimen0 by -180pt \dimen0=-\dimen0 \fi%
+  \edef\tmp{\expandafter\clear\the\dimen0}%
+  \cossin\cos\sin\tmp%
+  \edef\w{\expandafter\clear\net:w}%
+  \edef\h{\expandafter\clear\net:h}%
+  \realmul\w=.4*\w% the test below is done using \w, this gives it a
+  \realmul\h=.6*\h% greater importance so is is balanced here.
+  \realmul\ww=\w*\w%
+  \realmul\hh=\h*\h%
+  \realadd\d=\ww+\hh%
+  \realsqrt\d\d%
+  \realmul\dcos=\cos*\d%
+  \ifdim\dcos pt < \w pt %
+    \realdiv\tmp=\h/\sin%
+  \else%
+    \realdiv\tmp=\w/\cos%
+  \fi%
+  \realmul\tmp=1.5*\tmp%
+  \uput{\tmp pt}[\net:angle](\net:x,\net:y){%
+    \hbox{\net:math\the\everylabel #2\net:endmath}}\endgroup\endopt}}
+
+% for a link
+
+\def\net:label:link{\getopt{net:angle}\net:label:link:draw}
+
+{\catcode`\^^M=\active \let^^M=\relax %
+\global\def\net:label:link:draw #1^^M{% from/to/label
+  \expandafter\net:link:put\net:link:pos{%
+    \hbox{\net:math\the\everylabel #1\net:endmath}}\endopt\endopt}}
+
+%%
+%% trigonometric and real number stuff
+%%
+
+% absolute value
+
+\def\realabs #1=|#2|{{%
+  \dregA=#2pt
+  \ifdim \dregA<0pt
+    \dregA=-\dregA
+  \fi
+  \global\edef\tmptrigoA{\expandafter\clear\the\dregA}}%
+  \edef#1{\tmptrigoA}}
+
+% add two reals
+
+\def\realadd #1=#2+#3{{%
+  \dregA=#2pt
+  \dregB=#3pt
+  \advance\dregA by\dregB
+  \global\edef\tmptrigoA{\expandafter\clear\the\dregA}}%
+  \edef#1{\tmptrigoA}}
+
+% substract two reals
+
+\def\realsub #1=#2-#3{%
+  \realadd#1=#2+{-#3}}
+
+% multiply two reals
+
+\def\realmul #1=#2*#3{{%
+  \dregA=#2pt
+  \dregA=#3\dregA
+  \global\edef\tmptrigoA{\expandafter\clear\the\dregA}}%
+  \edef#1{\tmptrigoA}}
+
+% divide two reals
+
+\def\realdiv #1=#2/#3{{%
+  \dregA=#2pt\cregA=\dregA
+  \dregA=#3pt\cregB=\dregA
+  \intdiv\res=\cregA/\cregB
+  \global\edef\tmptrigoA{\res}}%
+  \edef#1{\tmptrigoA}}
+
+% radians -> degrees
+
+\def\todeg #1#2{% #1=deg(#2)
+  \realmul#1=#2*{180}%
+  \realdiv#1=#1/{3.14159265359}}
+
+% degrees -> radian
+
+\def\torad #1#2{% #1=rad(#2)
+  \realmul#1=#2*{3.14159265359}%
+  \realdiv#1=#1/{180}}
+
+% cosinus and sinus
+
+\def\cossin #1#2#3{{% #1=cos(#3) #2=sin(#3)
+  \dregA=#3pt
+  % be sure \dregA is in [-180,180]
+  \loop
+  \ifdim\dregA<-180pt
+    \advance\dregA by 360pt
+  \repeat
+  \loop
+  \ifdim\dregA>180pt
+    \advance\dregA by -360pt
+  \repeat
+  % let's go
+  \ifdim\dregA<-90pt
+    \advance\dregA by 90pt
+    \edef\tmptrigoA{\expandafter\clear\the\dregA}%
+    \torad\rad\tmptrigoA
+    \cordic\negsin\cos\rad
+    \global\edef\tmptrigoA{\cos}%
+    \global\edef\tmptrigoB{-\negsin}%
+  \else\ifdim\dregA>90pt
+    \advance\dregA by -90pt
+    \edef\tmptrigoA{\expandafter\clear\the\dregA}%
+    \torad\rad\tmptrigoA
+    \cordic\sin\negcos\rad
+    \global\edef\tmptrigoA{-\negcos}%
+    \global\edef\tmptrigoB{\sin}%
+  \else
+    \edef\tmptrigoA{\expandafter\clear\the\dregA}%
+    \torad\rad\tmptrigoA
+    \cordic\cos\sin\rad
+    \global\edef\tmptrigoA{\cos}%
+    \global\edef\tmptrigoB{\sin}%
+  \fi\fi}%
+  \edef#1{\tmptrigoA}\edef#2{\tmptrigoB}}
+
+% square root
+
+\def\realsqrt #1#2{{% #1=(#2)^{-1/2}
+  \edef\a{#2}%
+  \edef\an{#2}%
+  \loop
+    \realdiv\anA=\a/\an
+    \realadd\anB=\an+\anA
+    \realdiv\anA=\anB/2
+    \realsub\err=\an-\anA
+    \dregA=\err pt
+  \ifdim \dregA>0.0001pt
+    \edef\an{\anA}%
+  \repeat
+  \global\edef\tmptrigoA{\anA}}%
+  \edef#1{\tmptrigoA}}
+
+%% internal stuff
+
+\newdimen\dregA \newdimen\dregB % \newdimen\dregC
+%\newdimen\dregD \newdimen\dregE \newdimen\dregF
+
+\newcount\cregA \newcount\cregB \newcount\cregC
+\newcount\cregD \newcount\cregE % \newcount\cregF
+
+% arrays of numbers
+
+\def\setarray #1[#2]=#3{\expandafter
+  \edef\csname#1[#2]\endcsname{#3}}
+
+\def\getarray #1=#2[#3]{\edef\tmptrigoA{#2[#3]}%
+  \edef#1{\expandafter\csname\tmptrigoA\endcsname}}
+
+% remove trailing `pt'
+
+{\catcode`\p=12 \catcode`\t=12
+\global\def\clear #1pt{#1}}
+
+% divide two integers
+
+\def\intdiv #1=#2/#3{{%
+  \cregA=#2%
+  \cregB=#3%
+  \ifnum\cregB<0
+    \cregA=-\cregA
+    \cregB=-\cregB
+  \fi
+  \cregD=1
+  \ifnum\cregA<0
+    \cregA=-\cregA
+    \cregD=-1
+  \fi
+  \cregC=\cregA\divide\cregC by\cregB
+  \cregE=\cregC\multiply\cregE by\cregB
+  \advance\cregA by-\cregE
+  \cregE=-1
+  \loop
+    \advance\cregE by1
+  \ifnum\cregE<16
+    \multiply\cregC by2
+    \multiply\cregA by2
+    \ifnum\cregA<\cregB\else
+      \advance\cregC by1
+      \advance\cregA by-\cregB
+    \fi
+  \repeat
+  \divide\cregB by2
+  \ifnum\cregA<\cregB
+    \advance\cregC by1
+  \fi
+  \ifnum\cregD<0
+    \cregC=-\cregC
+  \fi
+  \dregA=\cregC sp
+  \global\edef\tmptrigoA{\expandafter\clear\the\dregA}}%
+  \edef#1{\tmptrigoA}}
+
+% cordic algorithm to compute cos and sin
+
+\def\cordic #1#2#3{{% #1=cos(#3) #2=sin(#3) with #3 \in [-\pi/2,\pi/2]
+  % prepared values
+  \setarray e[0]={.785398163397448}%
+  \setarray e[1]={.463647609000806}%
+  \setarray e[2]={.244978663126864}%
+  \setarray e[3]={.124354994546761}%
+  \setarray e[4]={.0624188099959574}%
+  \setarray e[5]={.0312398334302683}%
+  \setarray e[6]={.0156237286204768}%
+  \setarray e[7]={.00781234106010111}%
+  \setarray e[8]={.00390623013196697}%
+  \setarray e[9]={.00195312251647882}%
+  \setarray e[10]={.000976562189559319}%
+  \setarray e[11]={.000488281211194898}%
+  \setarray e[12]={.000244140620149362}%
+  \setarray e[13]={.00012207031189367}%
+  % init
+  \def\xn{.607252935032446}%
+  \def\yn{0}%
+  \edef\zn{#3}%
+  \cregA=0
+  \cregB=1
+  % cordic loop
+  \loop
+    \realdiv\xtmp=\yn/\cregB
+    \realdiv\ytmp=\xn/\cregB
+    \getarray\ztmp=e[\the\cregA]%
+    \dregA=\zn pt
+    \ifdim\dregA<0pt
+      \realadd\xn=\xn+\xtmp
+      \realsub\yn=\yn-\ytmp
+      \realadd\zn=\zn+\ztmp
+    \else
+      \realsub\xn=\xn-\xtmp
+      \realadd\yn=\yn+\ytmp
+      \realsub\zn=\zn-\ztmp
+    \fi
+  \ifnum\cregA<13
+    \advance\cregA by1
+    \multiply\cregB by2
+  \repeat
+  % terminating
+  \global\edef\tmptrigoA{\xn}\global\edef\tmptrigoB{\yn}}%
+  \edef#1{\tmptrigoA}\edef#2{\tmptrigoB}}
+
+%%
+%% end
+%%
+
+\catcode`\:=12

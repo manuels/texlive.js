@@ -1,0 +1,288 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% clrscode.sty
+
+% $Id: clrscode.sty,v 1.7 2007/03/29 19:12:30 thc Exp $
+% $Log: clrscode.sty,v $
+% Revision 1.7  2007/03/29 19:12:30  thc
+% Added date and version information to the \ProvidesPackage command.
+%
+% Revision 1.6  2005/07/14 20:55:00  thc
+% Added a definition for \numref.  Thanks to Matt Suder(?) and Johan Gade.
+%
+% Revision 1.5  2003/11/11 15:45:37  thc
+% Removed a macro that is no longer needed.
+%
+% Revision 1.4  2003/11/07 20:23:16  thc
+% Fixed a bug that caused incorrect behavior when the \zi command
+% is used for lines beginning with \Until, \Else, \ElseIf, or \ElseNoIf.
+% Thanks for Oliver Ernst for reporting this bug.
+%
+% Revision 1.3  2003/09/26 19:42:54  thc
+% Changed \codeboxwidth from \textwidth to \linewidth so that the package
+% works in twocolumn mode.
+%
+% Revision 1.2  2003/06/19 14:51:17  thc
+% Fixed a bug that caused this package to interact badly with the
+% color package.  Thanks to Janne Rinta-Mänty for reporting this bug
+% and suggesting the fix.
+%
+% Revision 1.1  2003/06/11 15:24:25  thc
+% Initial revision
+%
+
+% See the document "Using the clrscode Package in LaTeX 2e" for
+% examples.
+
+% Package for producing pseudocode in the style of Cormen, Leiserson,
+% Rivest, and Stein, Introduction to Algorithms, Second edition.
+
+% LIMITATION: This package works only if each procedure has at most 99
+% numbered lines of code.
+
+% Each pseudocode procedure is typeset within a codebox environment,
+%   \begin{codebox}...\end{codebox}.
+
+% Normally, the first line within the codebox environment is a \Procname
+% command.  The argument of the \Procname command is a math-mode
+% expression consisting of the procedure name and its parameters.  The
+% name of the procedure itself goes within a \proc command.  Example:
+%   \Procname{$\proc{Matrix-Multiply}(A,B)$}
+% The \Procname command is optional.
+
+% To typeset the name of a procedure (e.g., Matrix-Multiply) in small
+% caps, use the \proc command:
+%   \proc{Matrix-Multiply}
+
+% To typeset the name of a constant (e.g., nil) in small caps, use the
+% \const command:
+%   \const{nil}
+
+% To typeset the name of an identifier (e.g., rank) in regular italics,
+% use the \id command:
+%   \id{rank}
+
+% To typeset the name of a fixed function (e.g., sin) in roman, use the
+% \func command:
+%   \func{sin}
+% (Note that several fixed functions, like sin, are already built into
+% LaTeX.)
+
+% The \proc, \const, \id, and \func commands not only use the correct
+% font, they also perform the important service of interpreting a dash
+% as a hyphen, rather than as a minus sign.  These commands may be used
+% either in or out of math mode.
+
+% Other than the \Procname line, all lines begin with either \li (for a
+% numbered line) or \zi (for an unnumbered line).  The following
+% commands are provided for typesetting keywords and handling automatic
+% indentation:
+
+% Loops: \For, \To, \By, \Downto, \Do, \While, \Repeat, \Until
+% Selection: \If, \Then, \Else, \ElseIf, \ElseNoIf
+% Jumps: \Return, \Error, \Goto
+% Comments: \Comment, \RComment
+% Indentation: \Indentmore, \Flushright
+
+% \label commands appearing in or after the first numbered line in a
+% codebox resolve to the number of the most recent numbered line.
+
+% \twodots produces the ".." notation used for subarrays.
+
+% Written for general distribution by Thomas H. Cormen, June 2003.
+
+% The author grants permission for anyone to use this macro package and
+% to distribute it unchanged without further restriction.  If you choose
+% to modify this package, you must indicate that you have modified it
+% prior to your distributing it.  I don't want to get bug reports about
+% changes that *you* have made!
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\ProvidesPackage{clrscode}[2007/03/29 v1.7 format pseudocode]
+\usepackage{latexsym}			% needed for \Comment symbol
+
+% Commands for typesetting constants, procedure names, identifiers, and
+% fixed functions.
+\newcommand{\const}[1]{\textnormal{\scshape#1}}
+\newcommand{\proc}[1]{\textnormal{\scshape#1}}
+\newcommand{\text@hyphens}{\mathcode`\-=`\-\relax}
+\newcommand{\id}[1]{%
+  \ensuremath{\mathop{\mathit{\text@hyphens#1}}\nolimits}}
+\newcommand{\func}[1]{%
+  \ensuremath{\mathop{\text@hyphens\operator@font#1}\nolimits}}
+
+% Command for typesetting subarray ranges.
+\newcommand{\twodots}{\mathinner{\ldotp\ldotp}}
+
+% The codelinenumber counter counts the current line number.
+\newcounter{codelinenumber}
+
+% The indent counter keeps track of the current indentation level.
+\newcounter{indent}
+
+% The \iffirstcodeline command tells us whether we are about to
+% produce the first line other than the procedure declaration.
+\newif\iffirstcodeline\firstcodelinetrue
+
+% The \zeroli command makes it so that we're about to produce the
+% first line other than the procedure declaration.
+\newcommand{\zeroli}{\setcounter{codelinenumber}{0}%
+\setcounter{indent}{0}%
+\firstcodelinetrue}
+
+% \digitwidth gives the width of a single digit.  All digits are the
+% same width.  We'll need this amount to do the right thing for line
+% numbers.
+\newlength{\digitwidth}
+\settowidth{\digitwidth}{0}
+
+% The \li command bumps the counter, outputs it, and skips some space
+% A \label cmd for a given numbered line is allowed to appear after the
+% \\, as in 
+%	\li $x\gets y$  \label{li:assign-x}
+% But if \li merely set \@currentlabel in the usual way via
+% \refstepcounter, the value of \@currentlabel does not persist outside
+% the current cell.  Solution: use an additional, global variable
+% \@lilabel.
+
+% THC: This next command is magic to me.  I didn't write it.
+\def\@startline{\global\@curtabmar\@nxttabmar\relax
+   \global\@curtab\@curtabmar\setbox\@curline\hbox
+    {}\@startfield\strut}
+
+% \code@init is run at the beginning of a codebox environment.
+\def\code@init{%
+  \zeroli%						  producing the first line
+  \setlength{\tabbingsep}{1em}%   distance between numbers and code
+  % Initialize \@lilabel to allow a pageref \label cmd at the beginning
+  % of the codebox
+  \global\let\@lilabel\@currentlabel
+  \def\@currentlabel{\@lilabel}%
+}
+
+% When we make a codebox, we save the code part into a box before
+% printing it.  We do not actually print the code until we know how many
+% line numbers there are.
+\newsavebox{\savecode}
+
+% The \ifprocname command tells us whether this procedure has been
+% given a name yet.
+\newif\ifprocname\procnamefalse
+
+% Assume that the width of the codebox is the width of the text, minus
+% the width of 2 digits.  We'll correct for that later.
+\newlength{\codeboxwidth}
+\setlength{\codeboxwidth}{\linewidth} % Thanks, David Etherington!
+\addtolength{\codeboxwidth}{-2\digitwidth}
+
+% The "codebox" environment produces an unbreakable section of code
+\newenvironment{codebox}{%
+\global\procnamefalse%            this proc hasn't been given a name yet
+\code@init%                       set up for first line
+\begin{lrbox}{\savecode}%       save the code into a box
+\begin{minipage}[t]{\codeboxwidth}%  it'll be a minipage
+% Set up the tab stops
+\def\ifthentab{\textbf{if} \=\textbf{then} }%
+\begin{tabbing}%
+99\=\ \ifthentab \=\ifthentab \=\ifthentab \=\ifthentab \=\ifthentab
+    \=\textbf{if} \=\+\kill%
+}{%
+% Here's what's run at the end of a codebox environment.  Start by
+% making sure that we have ended at indent level 0.  Otherwise, print a
+% warning.
+\ifnum\value{indent}=0\else\typeout{Warning: Indentation ends at level \theindent\space in codebox on page \thepage.}\fi%
+\end{tabbing}\end{minipage}\end{lrbox}%
+\addtolength{\topsep}{0.5ex}%     for the following trivlist
+\begin{trivlist}\item\parindent=0pt%
+% If there was a procedure name given, print it now but with a little
+% space below, and disallow a page break after the procedure name.
+\@nobreaktrue%
+\ifprocname\saveprocname\rule[-1.25ex]{0pt}{0pt}\\ \fi%
+% Put in the right amount of space, depending on whether we reached
+% double digits in the line numbers.
+\ifnum\value{codelinenumber}>9\hspace*{2\digitwidth}\else\hspace*{1\digitwidth}\fi%
+% Now print the code
+\usebox{\savecode}\end{trivlist}%
+\addtolength{\topsep}{-0.5ex}\global\procnamefalse}
+
+% Use the \Procname macro to give the name of the procedure.
+\newcommand{\Procname}[1]{\global\def\saveprocname{#1}\global\procnametrue}
+
+\newcounter{thisindent}			% counter for recursive indenting code
+\newcommand{\Indent}{\setcounter{thisindent}{\value{indent}}\putindents}
+% \putindents is a recursive macro that indents a number of times given
+% by the counter thisindent.
+\newcommand{\putindents}{\ifnum\value{thisindent}>0\>\>\addtocounter{thisindent}{-1}\putindents\fi}
+
+% For typesetting any keyword in the main text.
+\newcommand{\kw}[1]{\textbf{#1}}
+
+% All of our favorite keywords.
+\newcommand{\For}{\textbf{for} }
+\newcommand{\To}{\textbf{to} }
+\newcommand{\By}{\textbf{by} }
+\newcommand{\Downto}{\textbf{downto} }
+\newcommand{\While}{\textbf{while} }
+\newcommand{\Repeat}{\textbf{repeat}\>\>\addtocounter{indent}{1}}
+\newcommand{\Until}{\kill\addtocounter{indent}{-1}\liprint\>\>\textbf{until}\hspace*{-0.7em}\'}
+\newcommand{\If}{\textbf{if} }
+\newcommand{\Then}{\>\textbf{then}\>\addtocounter{indent}{1}}
+\newcommand{\Else}{\kill\addtocounter{indent}{-1}\liprint\>\textbf{else}\>\addtocounter{indent}{1}}
+\newcommand{\End}{\addtocounter{indent}{-1}}
+\newcommand{\ElseIf}{\kill\addtocounter{indent}{-1}\liprint\textbf{elseif} }
+\newcommand{\ElseNoIf}{\kill\addtocounter{indent}{-1}\liprint\textbf{else} \addtocounter{indent}{1}}
+\newcommand{\Do}{\>\>\textbf{do}\hspace*{-0.7em}\'\addtocounter{indent}{1}}
+\newcommand{\Return}{\textbf{return} }
+\newcommand{\Comment}{$\hspace*{-0.075em}\rhd$ }
+\newcommand{\RComment}{\`\Comment}
+\newcommand{\Goto}{\textbf{goto} }
+\newcommand{\Error}{\textbf{error} } % optionally followed by string argument
+
+% Indent the next line one level more
+\newcommand{\Indentmore}{\addtocounter{indent}{1}}
+
+% Make the next line be flush against the right margin.
+\newcommand{\Flushright}{\`}
+
+\newif\ifnumberedline
+\numberedlinetrue
+
+% The \li command starts a new numbered line.
+\newcommand{\li}{\global\numberedlinetrue%
+\iffirstcodeline\global\firstcodelinefalse\else\\ \fi
+\stepcounter{codelinenumber}%
+\liprint}
+
+% The \lispace command starts a new numbered line with a little extra
+% space above, given by the argument.
+\newcommand{\lispace}[1]{\iffirstcodeline\global\firstcodelinefalse\else\\[#1] \fi
+\stepcounter{codelinenumber}%
+\liprint}
+
+% \liprint actually prints the line number and sets up the indentation.
+\newcommand{\liprint}{\protected@xdef\@lilabel{\thecodelinenumber}%
+\ifnumberedline\thecodelinenumber\fi\'\Indent%
+}
+
+\providecommand{\numref}[1]{%
+  \@ifundefined{r@#1}{000}{%
+    \expandafter\expandafter\expandafter\@firstoftwo
+    \csname r@#1\endcsname
+  }%
+}
+
+% \setlinenumber sets the line number to its argument
+\newcommand{\setlinenumber}[1]{\setcounter{codelinenumber}{\numref{#1}}%
+\addtocounter{codelinenumber}{-1}}
+% \setlinenumberplus sets the line number to its first argument plus its
+% second argument.
+\newcommand{\setlinenumberplus}[2]{\setcounter{codelinenumber}{\numref{#1}}%
+\addtocounter{codelinenumber}{-1}\addtocounter{codelinenumber}{#2}}
+
+% The \zi command starts a new unnumbered line.
+\newcommand{\zi}{\global\numberedlinefalse%
+\iffirstcodeline\global\firstcodelinefalse\else\\ \fi
+\liprint}
+
+\endinput

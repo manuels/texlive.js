@@ -1,0 +1,155 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{fp-eval}[1995/04/03]
+
+%version information
+\def\FP@evalversion{0.9a}
+\message{%
+  `Fixed Point Calculator',%
+  \space\space\space\space%
+  \space\space\space\space%
+  Version \FP@evalversion%
+  \space(C) Michael Mehlich%
+  \space\space\space\space\space\space\space%
+  \space\space\space\space\space\space%
+}
+
+%resolve dependencies
+\RequirePackage{defpattern}
+\RequirePackage{fp-upn}
+
+%%%public area (macros which may be used)%%%
+\def\FPeval#1#2{\FP@eval{#1}{#2}} % #1 := eval(#2)
+
+%%%private fp-area (don't use these macros)%%%
+
+%%%%%make postfix notation from prefix/infix notation
+
+%%%handle constants and function applications
+
+%constants
+\defpattern\FP@gen@app[#2]{#2}
+
+%function applications from prefix to postfix
+\defpattern\FP@gen@app[add #2]{#2 add}
+\defpattern\FP@gen@app[sub #2]{#2 sub}
+\defpattern\FP@gen@app[mul #2]{#2 mul}
+\defpattern\FP@gen@app[div #2]{#2 div}
+\defpattern\FP@gen@app[abs #2]{#2 abs}
+\defpattern\FP@gen@app[neg #2]{#2 neg}
+\defpattern\FP@gen@app[sgn #2]{#2 sgn}
+\defpattern\FP@gen@app[min #2]{#2 min}
+\defpattern\FP@gen@app[max #2]{#2 max}
+\defpattern\FP@gen@app[round #2]{#2 round}
+\defpattern\FP@gen@app[trunc #2]{#2 trunc}
+\defpattern\FP@gen@app[clip #2]{#2 clip}
+\defpattern\FP@gen@app[exp #2]{#2 exp}
+\defpattern\FP@gen@app[ln #2]{#2 ln}
+\defpattern\FP@gen@app[pow #2]{#2 pow}
+\defpattern\FP@gen@app[root #2]{#2 root}
+\defpattern\FP@gen@app[seed #2]{#2 seed}
+\defpattern\FP@gen@app[random #2]{#2 random}
+\defpattern\FP@gen@app[sin #2]{#2 sin}
+\defpattern\FP@gen@app[cos #2]{#2 cos}
+\defpattern\FP@gen@app[sincos #2]{#2 sincos}
+\defpattern\FP@gen@app[tan #2]{#2 tan}
+\defpattern\FP@gen@app[cot #2]{#2 cot}
+\defpattern\FP@gen@app[tancot #2]{#2 tancot}
+\defpattern\FP@gen@app[arcsin #2]{#2 arcsin}
+\defpattern\FP@gen@app[arccos #2]{#2 arccos}
+\defpattern\FP@gen@app[arcsincos #2]{#2 arcsincos}
+\defpattern\FP@gen@app[arctan #2]{#2 arctan}
+\defpattern\FP@gen@app[arccot #2]{#2 arccot}
+\defpattern\FP@gen@app[arctancot #2]{#2 arctancot}
+\defpattern\FP@gen@app[pop #2]{#2 pop}
+\defpattern\FP@gen@app[swap #2]{#2 swap}
+\defpattern\FP@gen@app[copy #2]{#2 copy}
+\defpattern\FP@gen@app[ #2]{\FP@gen@app[#2]}
+
+\def\FP@gen@app@handle#1{\FP@gen@app[#1]}
+
+%%%handle ^, right to left
+\defpattern\FP@gen@exp[#2]{\FP@gen@app@handle{#2}}
+\defpattern\FP@gen@exp[#2^#3]{\FP@gen@exp[#3] \FP@gen@exp[#2] pow}
+
+\def\FP@gen@exp@handle#1{\FP@gen@exp[#1]}
+
+%%%handle * and /, left to right
+
+%handle two or more occurrences of * and /
+\defpattern\FP@gen@mul@splitted[#2|/|#3|#4|#5]{\FP@gen@mul@handle{\FP@gen@exp@handle{#2} \FP@gen@exp@handle{#3} div #4#5}}
+\defpattern\FP@gen@mul@splitted[#2|*|#3|#4|#5]{\FP@gen@mul@handle{\FP@gen@exp@handle{#2} \FP@gen@exp@handle{#3} mul #4#5}}
+
+%split second * or / if exists
+\defpattern\FP@gen@mul@split@two@div[#2|#3|#4|#5|#6]{\FP@gen@mul@splitted[#2|#3|#4|#5|#6]}
+\defpattern\FP@gen@mul@split@two@div[#2|#3|#4/#5|#6|#7]{\FP@gen@mul@splitted[#2|#3|#4|/|#5#6#7]}
+\defpattern\FP@gen@mul@split@two[#2|/|#3]{\FP@gen@exp@handle{#2} \FP@gen@exp@handle{#3} div}
+\defpattern\FP@gen@mul@split@two[#2|*|#3]{\FP@gen@exp@handle{#2} \FP@gen@exp@handle{#3} mul}
+\defpattern\FP@gen@mul@split@two[#2|#3|#4/#5]{\FP@gen@mul@splitted[#2|#3|#4|/|#5]}
+\defpattern\FP@gen@mul@split@two[#2|#3|#4*#5]{\FP@gen@mul@split@two@div[#2|#3|#4|*|#5]}
+
+%split first * or / if exists
+\defpattern\FP@gen@mul@split@one@div[#2|#3|#4]{\FP@gen@mul@split@two[#2|#3|#4]}
+\defpattern\FP@gen@mul@split@one@div[#2/#3|#4|#5]{\FP@gen@mul@split@two[#2|/|#3#4#5]}
+\defpattern\FP@gen@mul@split@one[#2]{\FP@gen@exp@handle{#2}}
+\defpattern\FP@gen@mul@split@one[#2/#3]{\FP@gen@mul@split@two[#2|/|#3]}
+\defpattern\FP@gen@mul@split@one[#2*#3]{\FP@gen@mul@split@one@div[#2|*|#3]}
+
+%generate code for a series of * and /
+\def\FP@gen@mul@handle#1{\FP@gen@mul@split@one[#1]}
+
+%%%handle + and -, left to right
+
+%handle two or more occurrences of + and -
+\defpattern\FP@gen@add@splitted[#2|-|#3|#4|#5]{\FP@gen@add@handle{\FP@gen@mul@handle{#2} \FP@gen@mul@handle{#3} sub #4#5}}
+\defpattern\FP@gen@add@splitted[#2|+|#3|#4|#5]{\FP@gen@add@handle{\FP@gen@mul@handle{#2} \FP@gen@mul@handle{#3} add #4#5}}
+
+%split second + or - if exists
+\defpattern\FP@gen@add@split@two@minus[#2|#3|#4|#5|#6]{\FP@gen@add@splitted[#2|#3|#4|#5|#6]}
+\defpattern\FP@gen@add@split@two@minus[#2|#3|#4-#5|#6|#7]{\FP@gen@add@splitted[#2|#3|#4|-|#5#6#7]}
+\defpattern\FP@gen@add@split@two[#2|-|#3]{\FP@gen@mul@handle{#2} \FP@gen@mul@handle{#3} sub}
+\defpattern\FP@gen@add@split@two[#2|+|#3]{\FP@gen@mul@handle{#2} \FP@gen@mul@handle{#3} add}
+\defpattern\FP@gen@add@split@two[#2|#3|#4-#5]{\FP@gen@add@splitted[#2|#3|#4|-|#5]}
+\defpattern\FP@gen@add@split@two[#2|#3|#4+#5]{\FP@gen@add@split@two@minus[#2|#3|#4|+|#5]}
+
+%split first + or - if exists
+\defpattern\FP@gen@add@split@one@minus[#2|#3|#4]{\FP@gen@add@split@two[#2|#3|#4]}
+\defpattern\FP@gen@add@split@one@minus[#2-#3|#4|#5]{\FP@gen@add@split@two[#2|-|#3#4#5]}
+\defpattern\FP@gen@add@split@one[#2]{\FP@gen@mul@handle{#2}}
+\defpattern\FP@gen@add@split@one[#2-#3]{\FP@gen@add@split@two[#2|-|#3]}
+\defpattern\FP@gen@add@split@one[#2+#3]{\FP@gen@add@split@one@minus[#2|+|#3]}
+
+%generate code for a series of + and -
+\def\FP@gen@add@handle#1{\FP@gen@add@split@one[#1]}
+
+%%%handle , and : as argument lists for functions with surrounding ( and )
+\defpattern\FP@gen@komma[#2]{\FP@gen@add@handle{#2}}
+\defpattern\FP@gen@komma[#2,#3]{\FP@gen@komma[#2] \FP@gen@komma[#3] }
+\defpattern\FP@gen@komma[#2:#3]{\FP@gen@komma[#2] \FP@gen@komma[#3] }
+
+%%%generate code for each paranthesis
+\def\FP@gen@code#1{\FP@gen@komma[#1]}
+
+%%%handle paranthesis
+\defpattern\FP@kl@handle@one[#2|#3|#4]{\FP@kl@handle[#2 \FP@gen@code{#3}#4]}
+\defpattern\FP@kl@handle@one[#2|#3(#4|#5]{\FP@kl@handle@one[#2(#3|#4|#5]}
+
+\defpattern\FP@kl@handle[#2]{\FP@gen@code{#2}}
+\defpattern\FP@kl@handle[#2(#3)#4]{%
+  \FP@kl@handle@one[#2|#3|#4]%
+}
+
+\defpattern\FP@gen[#2]{\FP@kl@handle[#2]}
+\defpattern\FP@gen[#2(-#3]{\FP@gen[#2(0-#3]}
+\defpattern\FP@gen[#2(+#3]{\FP@gen[#2(#3]}
+\defpattern\FP@gen[#2( #3]{\FP@gen[#2(#3]}
+
+\def\FP@mkupn#1{%
+  \expandafter\FP@gen\expandafter[#1]%
+}
+
+%%%%%compute expression via upn
+\def\FP@eval#1#2{%
+  \FP@beginmessage{EVAL}%
+  \FPupn{#1}{\FP@mkupn{#2}}%
+  \FP@endmessage{}%
+}

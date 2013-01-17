@@ -1,0 +1,237 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{fp-upn}[1996/10/21]
+
+%version information
+\def\FP@upnversion{2.1c}
+\message{%
+  `UPN Fixed Point Calculator',%
+  \space\space\space\space%
+  Version \FP@upnversion%
+  \space(C) Michael Mehlich%
+  \space\space\space\space\space\space\space%
+  \space\space\space\space\space\space%
+}
+
+%resolve dependencies
+\RequirePackage{fp}
+\RequirePackage{defpattern}
+
+%%%public area (macros which may be used)%%%
+\def\FPupn#1#2{\FP@@@upn{#1}{#2}} % #1 := eval(#2)
+
+%%%private fp-area (don't use these macros)%%%
+
+%routines for stack manipulation
+
+\edef\FP@stack{()}
+
+\defpattern\FP@@@putstack[(#2)#3]{\edef\FP@stack{(#3,#2)}}
+\defpattern\FP@@@putstack[()#2]{\edef\FP@stack{(#2)}}
+\def\FP@@putstack(#1)#2{\FP@@@putstack[(#1)#2]}
+\def\FP@putstack#1{\expandafter\FP@@putstack\FP@stack{#1}}
+
+\defpattern\FP@@@getstack[(#2)#3]{\edef\FP@stack{()}\edef#2{#3}}
+\defpattern\FP@@@getstack[(#2)#3,#4]{\edef\FP@stack{(#4)}\edef#2{#3}}
+\defpattern\FP@@@getstack[(#2)]{\FP@errmessage{UPN stack is empty}}
+\def\FP@@getstack(#1)#2{\FP@@@getstack[(#2)#1]}
+\def\FP@getstack#1{\expandafter\FP@@getstack\FP@stack{#1}}
+
+%local debug macro
+\def\FP@upn@debug#1{\FP@debug{upn: #1}}
+\def\FP@upnc@debug#1{\FP@upn@debug{calculating\space\string"#1\string"}}
+\def\FP@upnc@constant#1{\FP@upn@debug{constant\space\space\space\space\string"#1\string"}}
+\def\FP@upnc@result#1{\FP@upn@debug{result\space\space\space\space\space\space\string"#1\string"}}
+
+%call fp-functions with parameters from stack
+\def\FP@const#1{%
+  \FP@upnc@constant{#1}%
+  \expandafter\FP@putstack\csname FP#1\endcsname%
+}
+\def\FP@nullop#1{%
+  \FP@upnc@debug{#1()}%
+  \csname FP#1\endcsname\FP@valc%
+  \FP@upnc@result{\FP@valc}%
+  \FP@putstack\FP@valc%
+}
+\def\FP@monop#1{%
+  \FP@getstack\FP@vala%
+  \FP@upnc@debug{#1(\FP@vala)}%
+  \csname FP#1\endcsname\FP@valc\FP@vala%
+  \FP@upnc@result{\FP@valc}%
+  \FP@putstack\FP@valc%
+}
+\def\FP@monopb#1{%
+  \FP@getstack\FP@vala%
+  \FP@upnc@debug{#1(\FP@vala)}%
+  \csname FP#1\endcsname\FP@valc\FP@vald\FP@vala%
+  \FP@upnc@result{\FP@valc}%
+  \FP@putstack\FP@vald\FP@putstack\FP@valc%
+}
+\def\FP@binop#1{%
+  \FP@getstack\FP@vala\FP@getstack\FP@valb%
+  \FP@upnc@debug{\FP@vala\space #1 \FP@valb}%
+  \csname FP#1\endcsname\FP@valc\FP@vala\FP@valb%
+  \FP@upnc@result{\FP@valc}%
+  \FP@putstack\FP@valc%
+}
+\def\FP@binopv#1{%
+  \FP@getstack\FP@vala\FP@getstack\FP@valb%
+  \FP@upnc@debug{\FP@valb\space #1 \FP@vala}%
+  \csname FP#1\endcsname\FP@valc\FP@valb\FP@vala%
+  \FP@upnc@result{\FP@valc}%
+  \FP@putstack\FP@valc%
+}
+\def\FP@binopb#1{%
+  \FP@getstack\FP@vala\FP@getstack\FP@valb%
+  \FP@upnc@debug{#1(\FP@valb:\FP@vala)}%
+  \csname FP#1\endcsname\FP@valc\FP@valb\FP@vala%
+  \FP@upnc@result{\FP@valc}%
+  \FP@putstack\FP@valc%
+}
+\def\FP@binopc#1{%
+  \FP@getstack\FP@vala\FP@getstack\FP@valb%
+  \FP@upnc@debug{\FP@valb-th #1 of \FP@vala}%
+  \csname FP#1\endcsname\FP@valc\FP@vala\FP@valb%
+  \FP@upnc@result{\FP@valc}%
+  \FP@putstack\FP@valc%
+}
+\def\FP@binopd#1{%
+  \FP@getstack\FP@vala\FP@getstack\FP@valb%
+  \FP@upnc@debug{#1(\FP@valb,\FP@vala)}%
+  \csname FP#1\endcsname\FP@valc\FP@vala\FP@valb%
+  \FP@upnc@result{\FP@valc}%
+  \FP@putstack\FP@valc%
+}
+
+%the calculation loop
+
+%put value to stack
+\def\FP@put#1\@upnend{%
+  \FP@upnc@result{#1}%
+  \FP@putstack{#1}%
+}
+
+\defpattern\FP@upn[#2#3]{%
+  \ifx#2\@undefined%
+    \FP@upnc@debug{#2#3}%
+    \expandafter\expandafter\expandafter\FP@put\csname #2#3\endcsname\@upnend%
+  \else\ifcat\noexpand#2\relax%
+    \FP@upnc@debug{\string#2#3}%
+    \expandafter\FP@put#2#3\@upnend%
+  \else\ifcat#22\relax%
+    \FP@upnc@debug{\string#2#3}%
+    \expandafter\FP@put#2#3\@upnend%
+  \else%
+    \FP@upnc@debug{#2#3}%
+    \expandafter\expandafter\expandafter\FP@put\csname #2#3\endcsname\@upnend%
+  \fi\fi\fi%
+}
+
+%binary functions from fp-basic
+\defpattern\FP@upn[+]{\FP@binop{add}}
+\defpattern\FP@upn[add]{\FP@binopv{add}}
+\defpattern\FP@upn[-]{\FP@binop{sub}}
+\defpattern\FP@upn[sub]{\FP@binopv{sub}}
+\defpattern\FP@upn[*]{\FP@binop{mul}}
+\defpattern\FP@upn[mul]{\FP@binopv{mul}}
+\defpattern\FP@upn[/]{\FP@binop{div}}
+\defpattern\FP@upn[div]{\FP@binopv{div}}
+
+%unary functions from fp-basic
+\defpattern\FP@upn[abs]{\FP@monop{abs}}
+\defpattern\FP@upn[neg]{\FP@monop{neg}}
+\defpattern\FP@upn[sgn]{\FP@monop{sgn}}
+
+%binary functions from fp-addons
+\defpattern\FP@upn[min]{\FP@binopd{min}}
+\defpattern\FP@upn[max]{\FP@binopd{max}}
+
+%functions from fp-snap
+\defpattern\FP@upn[round]{\FP@binopb{round}}
+\defpattern\FP@upn[trunc]{\FP@binopb{trunc}}
+\defpattern\FP@upn[clip]{\FP@monop{clip}}
+
+%functions from fp-exp
+\defpattern\FP@upn[e]{\FP@const{e}}
+\defpattern\FP@upn[exp]{\FP@monop{exp}}
+\defpattern\FP@upn[ln]{\FP@monop{ln}}
+\defpattern\FP@upn[pow]{\FP@binopc{pow}}
+\defpattern\FP@upn[root]{\FP@binopc{root}}
+
+%functions from fp-random
+\defpattern\FP@upn[seed]{%
+  \FP@getstack\FP@vala\FPseed=\FP@vala%
+}
+\defpattern\FP@upn[random]{\FP@nullop{random}}
+
+%functions from fp-trigo
+\defpattern\FP@upn[pi]{\FP@const{pi}}
+\defpattern\FP@upn[sin]{\FP@monop{sin}}
+\defpattern\FP@upn[cos]{\FP@monop{cos}}
+\defpattern\FP@upn[sincos]{\FP@monopb{sincos}}
+\defpattern\FP@upn[tan]{\FP@monop{tan}}
+\defpattern\FP@upn[cot]{\FP@monop{cot}}
+\defpattern\FP@upn[tancot]{\FP@monopb{tancot}}
+\defpattern\FP@upn[arcsin]{\FP@monop{arcsin}}
+\defpattern\FP@upn[arccos]{\FP@monop{arccos}}
+\defpattern\FP@upn[arcsincos]{\FP@monopb{arcsincos}}
+\defpattern\FP@upn[arctan]{\FP@monop{arctan}}
+\defpattern\FP@upn[arccot]{\FP@monop{arccot}}
+\defpattern\FP@upn[arctancot]{\FP@monopb{arctancot}}
+
+%stack manipulators
+\defpattern\FP@upn[pop]{%
+  \FP@getstack\FP@vala%
+  \FP@upn@debug{removing top number \string"\FP@vala\string"}%
+}
+\defpattern\FP@upn[swap]{%
+  \FP@getstack\FP@vala\FP@getstack\FP@valb%
+  \FP@upn@debug{exchanging top numbers \string"\FP@vala\string" and \string"\FP@valb\string"}%
+  \FP@putstack\FP@vala\FP@putstack\FP@valb%
+} 
+\defpattern\FP@upn[copy]{%
+  \FP@getstack\FP@vala%
+  \FP@upn@debug{duplicating top number \string"\FP@vala\string"}%
+  \FP@putstack\FP@vala\FP@putstack\FP@vala%
+}
+
+%left-to-right loop 
+\defpattern\FP@upn[#2 #3]{\FP@upn[#2]\FP@upn[#3]}
+\defpattern\FP@upn[#2 ]{\FP@upn[#2]}
+\defpattern\FP@upn[ #2]{\FP@upn[#2]}
+
+%get result from stacks with one value only
+\defpattern\FP@@upn@result[(#2)#3]{\edef#2{#3}}
+\defpattern\FP@@upn@result[(#2)]{\FP@errmessage{UPN stack is empty}\edef#2{0}}
+\defpattern\FP@@upn@result[(#2)#3,#4]{\FP@errmessage{Evaluation results in multiple values}\edef#2{#3}}
+\def\FP@upn@result(#1)#2{\FP@@upn@result[(#2)#1]}
+
+%save result of upn-expression to macro
+\def\FP@saveval[#1#2]{%
+  \ifx#1\@undefined%
+    \let#1\FP@tmp%
+  \else\ifcat\noexpand#1\relax%
+    \let#1\FP@tmp%
+  \else%
+    \expandafter\let\csname #1#2\endcsname\FP@tmp%
+  \fi\fi%
+}
+
+%the main routine
+\def\FP@@upn#1#2{%
+  \bgroup%
+    \FP@upn@debug{+++ computing upn-expression \string"#2\string"}%
+    \edef\FP@tmp{[#2]}%
+    \expandafter\FP@upn\FP@tmp%
+    \FP@upn@debug{+++ result of upn-expression is \string"\FP@stack\string"}%
+    \expandafter\FP@upn@result\FP@stack\FP@tmp%
+    \global\let\FP@tmp\FP@tmp%
+  \egroup%
+  \FP@saveval[#1]%
+}
+
+\def\FP@@@upn#1#2{%
+  \FP@beginmessage{UPN}%
+  \FP@@upn{#1}{#2}%
+  \FP@endmessage{}%
+}

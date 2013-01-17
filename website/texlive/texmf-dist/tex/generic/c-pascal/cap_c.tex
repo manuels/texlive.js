@@ -1,0 +1,181 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%     CAP  ---  Macros for typesetting programs in C and Pascal     %
+%       Micha\l{} Gulczy\'nski, Szczecin, Feb 1997 / Feb 1998       %
+%                     mgulcz@we.tuniv.szczecin.pl                   %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  version 1.2d
+%    Added DVIPS color support (actually, any output is replaced with
+%    a macro call to \@Output --- search for it to see the changes)
+%     -- by Danilo {\v S}egan, mm01142@alas.matf.bg.ac.yu
+%  version 1.2
+%    This file contains macros for typesetting programs in C.
+%    It belongs to the CAP package. Do not distribute separately.
+%
+%    All font definitions are located in the cap_comm.tex file.
+%
+
+%
+%      set of keywords; they must be separated with spaces
+%      a space must precede the first one and follow the last one, too
+%
+\def\KeywordsC{
+void char int float double enum long short signed unsigned far near huge
+auto register extern static volatile inline const typedef
+new delete sizeof struct union
+for do while if else switch case default break continue return goto
+asm cdecl pascal interrupt
+class private public protected this friend virtual template operator
+catch throw try
+}
+\catcode`\@ = 11
+%
+%      that's where we begin
+%
+\def\BeginC{%
+  \@PrepareCPas
+  \@LetsStartC
+}%
+% Some people in Poland use so-called ``slash notation''
+% to represent certain Polish letters --- in this situation
+% slash is an active character. On the other hand we use slash
+% in pathnames: directory/subdirectory/file. I made this part
+% sooo complicated, bacause I had to neutralise slash in
+% \InputC.
+\def\@InputC#1{%
+  \message{(C++: #1}%
+  \openin\@InFile = #1
+  \@PrepareCPas
+  % The file is read line by line and each line is typeset
+  % just like a separate program. Therefore the size of program
+  % typeset using this macro is (almost) unlimited.
+  \loop
+    \global\read\@InFile to \@TextOfProgram
+    \@WriteTextOfProgramC
+  \if \neof\@InFile \repeat
+  \closein\@InFile
+  \endgroup    % this group was begun by \@PrepareCPas
+  \endgroup    % this group was begun by \InputC
+  \message{)}%
+}
+\def\InputC{%
+  \begingroup
+  \catcode`\/ = 11
+  \@InputC
+}
+%
+%      delimiter \EndC will be ordinary text
+%
+{ \catcode`\|=0   \catcode`\\=12
+  |gdef|@LetsStartC#1\EndC{%
+    |gdef|@TextOfProgram{#1}%
+    |@WriteTextOfProgramC
+    |endgroup    % this group was begun by \@PrepareCPas
+  }
+}
+%
+%      macro \@TextOfProgram contains the whole text of program
+%
+\def\@WriteTextOfProgramC{%
+  \expandafter\@ReadCharC\@TextOfProgram\@EndOfProgram
+}
+%
+%      heart of the program -- the argument is a single char
+%
+\def\@ReadCharC#1{%
+  % this macro calls itself until the argument #1 is \@EndOfProgram
+  \if\@Identical{\string#1}{\string\@EndOfProgram}%
+    \let\@WhatNext = \relax
+  \else
+    \let\@WhatNext = \@ReadCharC
+    \global\@CharCode = `#1\relax
+    \ifcase \@WhereAmI
+      %%%%%%%%%%%%%%%%%%%
+      % \@NothingSpecial:
+      %%%%%%%%%%%%%%%%%%%
+      \ifnum \@PrevChar=`\/
+        \ifnum \@CharCode=`\/
+          \global\@WhereAmI = \@ShortComment
+          \@CommentState
+          \@Output{\char47}%
+        \else
+          \ifnum \@CharCode=`\*
+            \global\@WhereAmI = \@LongComment
+            \@CommentState
+          \fi
+        \fi
+        \@Output{\char47}%
+      \fi
+      % the longest possible string containing only letters and digits
+      % is either a keyword or an identifier
+      \if\@DigitLetter{\@CharCode}%
+        \edef\@Word{\@Word#1}%
+      \else
+        \if\@Identical{\@Word}{}%
+        \else
+          \@WriteWord{\@Word}{\KeywordsC}%
+          \def\@Word{}%
+        \fi
+        \ifnum \@CharCode=`\#
+          \global\@WhereAmI = \@Directive
+          \@DirectiveState
+        \fi
+        \ifnum \@CharCode=`\"
+          \global\@WhereAmI = \@Text
+          \@TextState
+        \fi
+        \ifnum \@CharCode=`\/
+        \else
+          \@WriteChar{#1}%
+        \fi
+      \fi
+    \or
+      %%%%%%%%%
+      % \@Text:
+      %%%%%%%%%
+      \@WriteChar{#1}%
+      \ifnum \@CharCode=`\"
+        \global\@WhereAmI = \@NothingSpecial
+        \@SymbolState
+      \fi
+    \or
+      %%%%%%%%%%%%%%
+      % \@Directive:
+      %%%%%%%%%%%%%%
+      \@WriteChar{#1}%
+      \ifnum \@CharCode=13
+        \global\@WhereAmI = \@NothingSpecial
+        \@SymbolState
+      \fi
+    \or
+      %%%%%%%%%%%%%%%%%
+      % \@ShortComment:
+      %%%%%%%%%%%%%%%%%
+      \@WriteChar{#1}%
+      \ifnum \@CharCode=13
+        \global\@WhereAmI = \@NothingSpecial
+        \@SymbolState
+      \fi
+    \or
+      %%%%%%%%%%%%%%%%
+      % \@LongComment:
+      %%%%%%%%%%%%%%%%
+      \@WriteChar{#1}%
+      \ifnum \@PrevChar=`\*
+        \ifnum \@CharCode=`\/
+          \global\@WhereAmI = \@NothingSpecial
+          \@SymbolState
+          \@CharCode = 32
+        \fi
+      \fi
+    \fi
+    \global\@PrevChar = \@CharCode
+  \fi
+  \@WhatNext
+}
+
+\ifx \@PrepareCPas \@Dont@Know@What@It@Is
+  \input cap_comm
+\fi
+
+\catcode`\@ = 12

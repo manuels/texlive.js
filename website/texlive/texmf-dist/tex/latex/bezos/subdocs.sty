@@ -1,0 +1,152 @@
+% +--------------------------------------------------+
+% | Documentation in clear text follows              |
+% +--------------------------------------------------+
+%
+%% Copyright (C) 2009 Javier Bezos
+%% All Rights Reserved
+%% http://www.tex-tipografia.com
+%%
+%% This work may be distributed and/or modified under the conditions
+%% of the LaTeX Project Public License, either version 1.3 of this
+%% license or (at your option) any later version.  The latest version
+%% of this license is in
+%%     http://www.latex-project.org/lppl.txt
+%% and version 1.3 or later is part of all distributions of LaTeX
+%% version 2003/12/01 or later.
+%%
+%% This work has the LPPL maintenance status "maintained".
+%%
+%% This Current Maintainer of this work is Javier Bezos.
+%%
+%% This work consists of this file.
+%
+% Usage
+% ~~~~~
+%
+% This is a tentative package aiming to provide a different approach
+% for multidocument works (mainly, books with a document per chapter).
+% Unlike the \include mechanism, every subdocument is a complete LaTeX
+% document and can be typeset separately.  What the package does is
+% sharing the aux files.  It's still an alpha version, and no attempt
+% has been done yet to make it to work with, say, hyperref.
+%
+% This approach has the following advantages:
+% 1) Packages can be loaded just when a part requires them.
+% 2) Generated pdf/dvi/ps files are kept.
+%
+% You need a driver tex file containing a \subdocuments command
+% listing the files. With an optional argument you can set
+% its behaviour:
+% 
+% \subdocuments[clear=double]{file1, file2, file3}
+%
+% The option clear=double adds an empty page at the end to give a even
+% number of pages.  clear=single doesn't and it's the default.  Spaces
+% and new lines before and after commas are ignored, as well as empty
+% items.  It relies on the keyval package, so names containing = must
+% be given within braces.
+%
+% This file can be used as a shared preample, with common settings
+% for all the documents.
+%
+% Documents must have the folowing line:
+%
+% \usepackage[master]{subdocs}
+%
+% where master is the name of the file described above.
+%
+% Since every subdocument reads all the aux files, \tableofcontents
+% may be used where desired. 
+%
+% Code
+% ~~~~
+
+\ProvidesPackage{subdocs}[2009/06/12 v0.1 Subdocuments]
+
+\RequirePackage{keyval}
+
+% Los dos siguientes son lo encargados de hacer lo que
+% normalmente hace \include.
+
+\AtBeginDocument{%
+  \if@filesw
+    \immediate\write\@auxout{\noexpand\sdoc@readaux}%
+  \fi}
+
+% At end of document we write the counters using writeckpt
+% but with \@partaux redirected to \@auxout. Like \include
+% there is a \clearpage
+
+\AtEndDocument{%
+  \sdoc@clear
+  \let\@partaux\@auxout
+  \@writeckpt{\jobname}}
+
+\def\@wckptelt#1{%
+  \immediate\write\@partaux{%
+    \string\sdoc@setcounter{#1}{\the\@nameuse{c@#1}}}}
+
+\def\sdoc@setcounter#1{%
+  \@ifundefined{c@#1}%
+    {\@gobble}%
+    {\setcounter{#1}}}
+
+% Optional arguments
+
+\def\sdoc@opt@clearsingle{\let\sdoc@clear\clearpage}
+\def\sdoc@opt@cleardouble{\let\sdoc@clear\cleardoublepage}
+\sdoc@opt@clearsingle
+
+\define@key{sdoc@options}{clear}{\@nameuse{sdoc@opt@clear#1}}
+
+% 
+
+\let\sdoc@loadaux\@empty
+
+\newcommand\subdocuments[2][]{%
+  \let\sdoc@save@kverrx\KV@errx
+  \def\KV@errx##1{% \@tempa contains the file name
+    {\let\sdoc@elt\relax % local
+     \edef\sdoc@a{\expandafter\strip@prefix\meaning\@tempa}%
+     \protected@xdef\sdoc@loadaux{\sdoc@loadaux\sdoc@elt{\sdoc@a}}}}%
+  \setkeys{sdoc@files}{#2}%
+  \let\KV@errx\sdoc@save@kverrx
+  \setkeys{sdoc@options}{#1}}
+
+% A "recursive" call. When a \jobname.aux file is
+% read the first thing is (or should be) \sdoc@readaux.
+% It reads all the aux files, and exits from the current
+% aux without further reading because it is already read.
+% This requires a file could \input itself, but, does
+% that work in all distributions?
+
+\def\sdoc@elt#1{%
+  \InputIfFileExists{#1.aux}{}%
+    {\PackageWarningNoLine{subdocs}{No file #1.aux -- Data may be wrong}}%
+  \sdoc@setcp{#1}}%
+
+\def\sdoc@readaux{%
+  \global\let\sdoc@readaux\relax
+  \sdoc@loadaux
+  \global\let\sdoc@readaux\sdoc@readaux@x
+  \endinput}
+
+\let\sdoc@readaux@x\sdoc@readaux
+
+\def\sdoc@setcp#1{%
+  \def\sdoc@a{#1}\edef\sdoc@b{\jobname}%
+  \ifx\sdoc@a\sdoc@b
+    \PackageInfo{subdocs}{Ignoring counters from #1 on, }%
+    \global\let\sdoc@setcp\@gobble
+  \else
+    \csname cp@#1\endcsname
+  \fi}
+
+% The master file name must be saved because it may contain
+% \usepackage's, not allowed before \ProcessOptions.
+
+\DeclareOption*{\edef\sdoc@a{\CurrentOption}}
+\ProcessOptions
+\InputIfFileExists{\sdoc@a}{}{}%
+
+\endinput

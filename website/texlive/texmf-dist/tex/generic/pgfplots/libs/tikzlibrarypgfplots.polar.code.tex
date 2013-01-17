@@ -1,0 +1,735 @@
+%--------------------------------------------
+%
+% Package pgfplots, library for polar coordinates.
+%
+% Copyright 2010 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%  A polar axis lives in (ANGLE,LENGTH).
+%  That is
+%    x == ANGLE
+%    y == LENGTH
+%
+%
+
+\pgfplotsdefineaxistype[polar]{polar}{%
+	\pgfplots@polaraxis@activate
+}%
+
+\newif\ifpgfplots@polaraxis@rellimits
+
+\pgfplotsset{
+	/pgfplots/every polar axis/.style={
+		grid=major,
+		xtick pos=right,
+		ytick pos=right,
+		every axis title shift=1.2\baselineskip,
+		legend style={anchor=center},
+	},
+	/pgfplots/xticklabel in circle/.style={
+		xtick align=inside,
+		xticklabel style={
+			rotate=90,
+			sloped like x axis={%
+				execute for upside down={\tikzset{anchor=north east}},
+				%allow upside down,
+				reset nontranslations=false},
+			anchor=south west,
+			%font=\tiny,
+		}
+	},
+}
+
+\def\pgfplots@polaraxis@activate{%
+	\let\pgfplotsqpointxy@cart=\pgfplotsqpointxy
+	\let\pgfplotsqpointxy=\pgfplotsqpointxy@polaraxis
+	\let\pgfplotsqpointxy@orthogonal=\pgfplotsqpointxy
+%	\def\pgfplotsqpointxyz##1##2##3{\pgfplotsqpointxy{##1}{##2}}% FIXME
+	\let\pgfplotspointouternormalvectorofaxis@=\pgfplotspointouternormalvectorofaxis@polaraxis
+	\def\pgfplotspointouternormalvectorofaxis@ifdependson@v##1##2##3{##2}%
+	\def\pgfplots@drawtickgridlines@INSTALLCLIP@onorientedsurf##1{}%
+	\let\pgfplots@clippath@prepare@for@axistype=\pgfplots@clippath@prepare@for@axistype@polaraxis
+	\let\pgfplots@handle@invalid@range@defaultlimits=\pgfplots@handle@invalid@range@defaultlimits@polar%
+	\let\pgfplots@check@invalid@range=\pgfplots@check@invalid@range@polar
+	\let\pgfplotspointonorientedsurfaceabwithbshift=\pgfplotspointonorientedsurfaceabwithbshift@polaraxis
+	\let\pgfplots@drawgridlines@onorientedsurf@fromto=\pgfplots@drawgridlines@onorientedsurf@fromto@polar
+	\let\pgfplotspoint@initialisation@axes=\pgfplotspoint@initialisation@axes@polar%
+	\let\pgfplotspoint@initialisation@units=\pgfplotspoint@initialisation@units@polar
+	\let\pgfplotsaxisifcontainspoint=\pgfplotsaxisifcontainspoint@polar
+	\let\pgfplots@prepare@axis@API=\pgfplots@prepare@axis@API@polar
+	\def\axisdefaultheight{\axisdefaultwidth}%
+	\let\pgfplots@initsizes=\pgfplots@initsizes@polar
+	\let\pgfplots@limits@ready=\pgfplots@limits@ready@polar
+	\let\pgfplots@assign@default@tick@foraxis@normalizetickdist=\pgfplots@assign@default@tick@foraxis@normalizetickdist@polar
+	\let\pgfplots@show@ticklabel@=\pgfplots@show@ticklabel@@polar
+	\let\pgfplots@enlarge@limit@for=\pgfplots@enlarge@limit@for@polar
+	\def\pgfplots@xtick@disable@last@tick{0}%
+	\let\pgfplots@xtick@check@tickshow=\pgfplots@xtick@check@tickshow@polar%
+	\let\pgfplots@set@options@sanitize=\relax
+	\let\pgfplots@set@options@sanitizemode=\relax
+	\let\pgfplotscoordmathnotifydatascalesetfor=\pgfplotscoordmathnotifydatascalesetfor@polar
+	%
+	% this here is set *before* 'every polar axis' is invoked.
+	\pgfplotsset{
+		enlarge x limits=false,
+	}%
+	\expandafter\def\expandafter\pgfplots@notify@options@are@set\expandafter{%
+		\pgfplots@notify@options@are@set
+		\pgfplotsset{separate axis lines}%
+	}%
+	\def\pgfplots@xticklabel@pos{}%
+	\def\pgfplots@yticklabel@pos{}%
+	\def\pgfplots@zticklabel@pos{}%
+	\def\pgfplots@init@ticklabelaxisspecfor##1##2{}%
+	\def\pgfplots@init@ticklabelaxisspec@twodim@for##1##2{}%
+	\def\pgfplots@xticklabelaxisspec{v10}%
+	\def\pgfplots@yticklabelaxisspec{0v0}%
+	\def\pgfplots@zticklabelaxisspec{00v}%
+	%
+	% cartesian cs
+	\tikzdeclarecoordinatesystem{cartesian}{\edef\pgfplots@loc@TMPa{##1}\expandafter\pgfplotspointcartesian@\pgfplots@loc@TMPa\pgfplots@coord@end}%
+	%
+}%
+
+\let\pgfplots@prepare@axis@API@orig=\pgfplots@prepare@axis@API
+\def\pgfplots@prepare@axis@API@polar{%
+	\pgfplots@prepare@axis@API@orig
+	\let\pgfplotsaxisupdatelimitsforcoordinatetwodim=\pgfplotsaxisupdatelimitsforcoordinatetwodim@polar
+	\let\pgfplotsaxisupdatelimitsforcoordinatethreedim=\pgfplotsaxisupdatelimitsforcoordinatetwodim@polar
+}%
+
+\def\pgfplotsaxisupdatelimitsforcoordinatetwodim@polar#1#2#3{%
+	%
+	%
+	% Update limits:
+	% I do not respect x limits (since they are periodic).
+	% Consequently, I do not respect the clip limits options here (I
+	% suppose it is useless)
+	%
+	% for y (radius) limits, I always use the ABSOLUTE value:
+	\pgfmathfloatabs@{#2}%
+	\let\pgfplots@loc@limit=\pgfmathresult
+	%
+	\ifpgfplots@autocompute@ymax
+		\ifpgfplots@yislinear
+			\pgfplotsmathfloatmax{\pgfplots@ymax}{\pgfplots@loc@limit}%
+			\global\let\pgfplots@ymax=\pgfmathresult
+		\else
+			\pgfplotsmathmax{\pgfplots@ymax}{\pgfplots@loc@limit}%
+			\global\let\pgfplots@ymax=\pgfmathresult
+		\fi
+	\fi
+	%
+	% Compute data range:
+	\pgfplotsmathfloatmin{\pgfplots@data@xmin}{#1}%
+	\global\let\pgfplots@data@xmin=\pgfmathresult
+	\pgfplotsmathfloatmax{\pgfplots@data@xmax}{#1}%
+	\global\let\pgfplots@data@xmax=\pgfmathresult
+	\pgfplotsmathfloatmin{\pgfplots@data@ymin}{#2}%
+	\global\let\pgfplots@data@ymin=\pgfmathresult
+	\pgfplotsmathfloatmax{\pgfplots@data@ymax}{#2}%
+	\global\let\pgfplots@data@ymax=\pgfmathresult
+%\pgfplots@message{Updated limits: (\pgfplots@xmin,\pgfplots@ymin) rectangle  (\pgfplots@xmax,\pgfplots@ymax).}%
+%
+%\tracingmacros=0\tracingcommands=0
+}%
+\def\pgfplotsaxisifcontainspoint@polar#1#2{%
+	\begingroup
+	\pgfmath@basic@mod@{\pgfplots@current@point@x}{360}%
+	\pgf@xa=\pgfmathresult pt %
+	%
+	\pgf@ya=\pgfplots@current@point@y pt %
+	\ifdim\pgf@ya<0pt
+		% absolute value:
+		\pgf@ya=-\pgf@ya
+	\fi
+%\message{ifcontainspoint(\the\pgf@xa,\pgfplots@current@point@y) limits = [\pgfplots@xmin@mod:\pgfplots@xmax@mod] x [\the\pgfplots@ymin@reg,\the\pgfplots@ymax@reg]^^J}%
+	% 
+	% I assume that \pgfplots@[xyz]min@reg and min@reg are registers
+	% containing the limits.
+	\pgfplots@loop@CONTINUEfalse
+	\ifdim\pgf@ya<\pgfplots@ymin@reg
+	\else
+		\ifdim\pgf@ya>\pgfplots@ymax@reg
+		\else
+			\if1\b@pgfplots@polar@limit@around@zero
+				% check condition 
+				%     x <= max || x >= min
+				% <=> ! (x > max && x < min)
+				\pgfplots@loop@CONTINUEtrue
+				\ifdim\pgf@xa>\pgfplots@xmax@mod pt %
+					\ifdim\pgf@xa<\pgfplots@xmin@mod pt %
+						\pgfplots@loop@CONTINUEfalse
+					\fi
+				\fi
+			\else
+				\ifdim\pgf@xa<\pgfplots@xmin@mod pt %
+				\else
+					\ifdim\pgf@xa>\pgfplots@xmax@mod pt %
+					\else
+						\pgfplots@loop@CONTINUEtrue
+					\fi
+				\fi
+			\fi
+		\fi
+	\fi
+	\ifpgfplots@loop@CONTINUE
+		\def\pgfplots@loc@TMPa{#1}%
+	\else
+		\def\pgfplots@loc@TMPa{#2}%
+	\fi
+	\expandafter\endgroup\pgfplots@loc@TMPa%
+}
+
+\def\pgfplots@check@invalid@range@polar{%
+	%
+	% A polar axis allows \addplot3, but it ignores the third
+	% coordinate.
+	\pgfplots@threedimfalse
+	%
+	\pgfplots@limits@are@computedtrue
+	\ifx\pgfplots@xmin\pgfplots@invalidrange@xmin
+		\pgfplotscoordmath{x}{zero}%
+		\let\pgfplots@xmin=\pgfmathresult
+	\fi
+	\ifx\pgfplots@xmax\pgfplots@invalidrange@xmax
+		\pgfplotscoordmath{x}{parsenumber}{360}%
+		\let\pgfplots@xmax=\pgfmathresult
+	\fi
+	\ifx\pgfplots@ymin\pgfplots@invalidrange@ymin
+		\pgfplotscoordmath{y}{zero}%
+		\let\pgfplots@ymin=\pgfmathresult
+	\fi
+	\ifx\pgfplots@ymax\pgfplots@invalidrange@ymax
+		\pgfplots@limits@are@computedfalse
+	\fi
+	\ifpgfplots@limits@are@computed
+		\ifx\pgfplots@data@xmin\pgfplots@invalidrange@xmin
+			\global\let\pgfplots@data@xmin=\pgfplots@xmin
+		\fi
+		\ifx\pgfplots@data@xmin\pgfplots@invalidrange@xmax
+			\global\let\pgfplots@data@xmax=\pgfplots@xmax
+		\fi
+		\ifx\pgfplots@data@ymin\pgfplots@invalidrange@ymin
+			\global\let\pgfplots@data@ymin=\pgfplots@ymin
+		\fi
+		\ifx\pgfplots@data@ymin\pgfplots@invalidrange@ymax
+			\global\let\pgfplots@data@ymax=\pgfplots@ymax
+		\fi
+		\ifpgfplots@clip@limits
+		\else
+			% there is a rare change that min > max.
+			% Handle that ...
+			\pgfplotscoordmath{x}{min}{\pgfplots@xmin}{\pgfplots@xmax}%
+			\global\let\pgfplots@xmin=\pgfmathresult
+			\pgfplotscoordmath{x}{max}{\pgfplots@xmin}{\pgfplots@xmax}%
+			\global\let\pgfplots@xmax=\pgfmathresult
+			%
+			\pgfplotscoordmath{y}{min}{\pgfplots@ymin}{\pgfplots@ymax}%
+			\global\let\pgfplots@ymin=\pgfmathresult
+			\pgfplotscoordmath{y}{max}{\pgfplots@ymin}{\pgfplots@ymax}%
+			\global\let\pgfplots@ymax=\pgfmathresult
+			%
+			\ifpgfplots@threedim
+				\pgfplotscoordmath{z}{min}{\pgfplots@zmin}{\pgfplots@zmax}%
+				\global\let\pgfplots@zmin=\pgfmathresult
+				\pgfplotscoordmath{z}{max}{\pgfplots@zmin}{\pgfplots@zmax}%
+				\global\let\pgfplots@zmax=\pgfmathresult
+			\fi
+		\fi
+	\else
+		\pgfplots@handle@invalid@range
+	\fi
+}%
+
+\def\pgfplotspointcartesian@#1,#2\pgfplots@coord@end{%
+	\pgfpointxy@orig{#1}{#2}%
+}%
+\def\pgfplotscoordmathnotifydatascalesetfor@polar#1{%
+	\def\pgfplotscoordmathnotifydatascalesetfor##1{}%
+	\edef\pgfplotscoordmathnotifydatascalesetfor@{#1}%
+	\def\pgfplotscoordmathnotifydatascalesetfor@@{x}%
+	\ifx\pgfplotscoordmathnotifydatascalesetfor@@\pgfplotscoordmathnotifydatascalesetfor@
+		\pgfplotscoordmath{#1}{datascaletrafo set params}{0}{0}%
+	\else
+		\def\pgfplotscoordmathnotifydatascalesetfor@@{y}%
+		\ifx\pgfplotscoordmathnotifydatascalesetfor@@\pgfplotscoordmathnotifydatascalesetfor@
+			\pgfplotscoordmath{#1}{datascaletrafo set shift}{0}%
+		\fi
+	\fi
+	\let\pgfplotscoordmathnotifydatascalesetfor=\pgfplotscoordmathnotifydatascalesetfor@polar
+}%
+
+% #1: the "a" value on the oriented surf
+% #2: the "b" value. 
+% #3: the shift along the normal.
+%
+\def\pgfplotspointonorientedsurfaceabwithbshift@polaraxis#1#2#3{%
+	% implement the shift in "b" direction explicitly:
+	%
+	\pgfplotspointonorientedsurfaceab{#1}{#2}%
+	\edef\pgfplots@loc@TMPe{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+	\pgfpointadd
+		{\pgfplots@loc@TMPe}%
+		{%
+			\begingroup
+			% I need a '-' here because for polaraxis axes, the "b" axis
+			% points to the *outside* instead of the inside.
+			\pgf@xa=-#3\relax
+			\if r\pgfkeysvalueof{/pgfplots/\pgfplotspointonorientedsurfaceB\space dir/value}%
+				% oh. a reversed axis.
+				\pgf@xa=-\pgf@xa
+			\fi
+			\edef\pgfmathresult{\pgf@sys@tonumber\pgf@xa}%
+			\pgfmath@smuggleone\pgfmathresult
+			\endgroup
+			\let\pgfplots@loc@TMPa=\pgfmathresult
+			\pgfqpointscale{\pgfplots@loc@TMPa}{%
+				\if x\pgfplotspointonorientedsurfaceB
+					% the angle.
+					% FIXME : datascaling!
+					% FIXME : aspect ratios!
+					\pgfmath@basic@sin@{#2}%
+					\pgf@x=-\pgfmathresult pt
+					\pgfmath@basic@cos@{#2}%
+					\pgf@y=\pgfmathresult pt
+				\else
+					% the length.
+					% FIXME : datascaling!
+					% FIXME : aspect ratios!
+					% perhaps pgfpointpolarxy?
+					\if y\pgfplotspointonorientedsurfaceB
+						\pgfqpointpolar{#1}{1pt}%
+					\else
+						\pgfpointorigin
+					\fi
+				\fi
+			}%
+		}%
+}
+
+
+\def\pgfplotsqpointxy@polaraxis#1#2{%
+	\pgf@process{%
+		\pgfplotsmathpoltocartbasic{#1}{#2}\x\y
+		\pgfqpointxy@orig\x\y
+%\message{pgfplotsqpointxy{#1}{#2} ---> (\x,\y) ---> (\the\pgf@x,\the\pgf@y)}%
+	}%
+}%
+\def\pgfplots@clippath@prepare@for@axistype@polaraxis{%
+	\def\pgfplots@clippath@install##1{%
+		\pgfpathmoveto
+			{\pgfplotsqpointxy\pgfplots@xmin\pgfplots@ymax}%
+		\pgfpatharcaxes{\pgfplots@xmin}{\pgfplots@xmax}
+			{\pgfqpointxy@orig{\pgfplots@ymax}{0}}%
+			{\pgfqpointxy@orig{0}{\pgfplots@ymax}}%
+		\if1\pgfplots@xtick@disable@last@tick
+			% we have min angle = max angle.
+			\ifdim\pgfplots@ymin pt=0pt
+			\else
+				\pgfseteorule
+				\pgfpathmoveto
+					{\pgfplotsqpointxy\pgfplots@xmin\pgfplots@ymin}%
+				\pgfpatharcaxes{\pgfplots@xmin}{\pgfplots@xmax}
+					{\pgfqpointxy@orig{\pgfplots@ymin}{0}}%
+					{\pgfqpointxy@orig{0}{\pgfplots@ymin}}%
+			\fi
+		\else
+			% we have min angle != max angle.
+			\ifdim\pgfplots@ymin pt=0pt
+				% Ok, then pass through origin:
+				\pgfpathlineto\pgfplotspointaxisorigin
+			\else
+				% complicated special case.
+				\pgfpathlineto
+					{\pgfplotsqpointxy\pgfplots@xmax\pgfplots@ymin}%
+				\pgfpatharcaxes{\pgfplots@xmax}{\pgfplots@xmin}
+					{\pgfqpointxy@orig{\pgfplots@ymin}{0}}%
+					{\pgfqpointxy@orig{0}{\pgfplots@ymin}}%
+			\fi
+			\pgfpathclose
+		\fi
+		\pgfplots@clippath@use@{##1}%
+	}%
+}%
+
+\def\pgfplotspointouternormalvectorofaxis@polaraxis#1#2#3\relax{%
+	\if v#1%
+		\pgfplotspointouternormalvectorofaxisgetv{#1#2#3}%
+		% in direction of the length.
+		\ifx\pgfplotsretval\pgfutil@empty
+			\def\pgfplotsretval{0}%
+		\fi
+		% FIXME : datascaling!
+		% FIXME : aspect ratios!
+		% perhaps pgfpointpolarxy?
+		\pgfqpointpolar{\pgfplotsretval}{1pt}%
+	\else
+		\if v#2%
+			\if#10%
+				\def\pgfplotsretval{\pgfplots@xmin}%
+			\else
+				\def\pgfplotsretval{\pgfplots@xmax}%
+			\fi
+			% in direction of the angle.
+			% FIXME : datascaling!
+			% FIXME : aspect ratios!
+			\pgfmath@basic@sin@{\pgfplotsretval}%
+			\pgf@x=-\pgfmathresult pt
+			\pgfmath@basic@cos@{\pgfplotsretval}%
+			\pgf@y=\pgfmathresult pt
+		\else
+			\pgfqpoint{0pt}{1pt}%
+		\fi
+	\fi
+	%\pgf@process{\pgfpointnormalised{}}%
+	\pgf@process{}%
+	\endgroup
+}%
+
+\def\pgfplotspoint@initialisation@axes@polar{%
+	%
+	\begingroup
+	\pgfplotsqpointxy{\pgfplots@xmin}{\pgfplots@ymin}%
+	\xdef\pgfplotspointminminmin{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+	%
+	\pgfplotsqpointxy{\pgfplots@xmax}{\pgfplots@ymax}%
+	\xdef\pgfplotspointxaxis{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+	%
+	% the length of the "angle" axis is 2*pi*r .
+	% The radius, however, is the length of (0,ymax) which is (0pt,\pgf@xx*ymax):
+	\pgfmath@basic@multiply@{\pgf@sys@tonumber\pgf@xx}{\pgfplots@ymax}%
+	\pgfmathmultiply@{\pgfmathresult}{6.28318530717959}% 2*pi * r
+	\if0\pgfplots@xtick@disable@last@tick
+		% oh: minangle != maxangle. We have a partial circle. 
+		% compute the arc length (<360 deg)
+		\pgf@xa=\pgfplots@xmax pt
+		\advance\pgf@xa by-\pgfplots@xmin pt
+		\divide\pgf@xa by360
+		\ifdim\pgf@xa<1pt
+			\edef\pgfplots@loc@TMPa{\pgf@sys@tonumber\pgf@xa}%
+			\pgfmathmultiply@{\pgfmathresult}{\pgfplots@loc@TMPa}%
+		\fi
+	\fi
+	\xdef\pgfplotspointxaxislength{\pgfmathresult pt}%
+	%
+	\pgfpointdiff
+		{\pgfplotsqpointxy{\pgfplots@xmax}{\pgfplots@ymin}}%
+		{\pgfplotsqpointxy{\pgfplots@xmax}{\pgfplots@ymax}}%
+	\xdef\pgfplotspointyaxis{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+	\pgfmathveclen{\pgf@x}{\pgf@y}%
+	\xdef\pgfplotspointyaxislength{\pgfmathresult pt}%
+	%
+	\global\let\pgfplotspointzaxis=\pgfpointorigin
+	\gdef\pgfplotspointzaxislength{0pt}%
+	\endgroup
+	%
+}
+\let\pgfplotspoint@initialisation@units@orig=\pgfplotspoint@initialisation@units
+\def\pgfplotspoint@initialisation@units@polar{%
+	\def\pgfplotspointunitx{%
+		\pgfplotspointouternormalvectorofaxisgetv{v10}% angle varying, radius at outer pos
+		\ifx\pgfplotsretval\pgfutil@empty
+			\def\pgfplotsretval{0}%
+		\fi
+		\pgfmath@basic@sin@{\pgfplotsretval}%
+		\pgf@x=-\pgfmathresult pt
+		\pgfmath@basic@cos@{\pgfplotsretval}%
+		\pgf@y=\pgfmathresult pt
+	}%
+	\def\pgfplotsunitxlength{1}%
+	\def\pgfplotsunitxinvlength{1}%
+	%
+	\def\pgfplotspointunity{%
+		\pgfqpointpolar{\pgfplots@xmin}{1pt}%
+	}%
+	\def\pgfplotsunitylength{1}%
+	\def\pgfplotsunityinvlength{1}%
+}%
+
+\def\pgfplots@drawgridlines@onorientedsurf@fromto@polar#1{%
+	\if x\pgfplotspointonorientedsurfaceA
+		\pgfpathmoveto{\pgfplotspointonorientedsurfaceab{#1}{\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname}}%
+		\pgfpathlineto{\pgfplotspointonorientedsurfaceab{#1}{\csname pgfplots@\pgfplotspointonorientedsurfaceB max\endcsname}}%
+	\else
+		\if y\pgfplotspointonorientedsurfaceA\relax
+			\pgfpathmoveto{\pgfplotspointonorientedsurfaceab{#1}{\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname}}%
+			\pgf@x=#1\pgf@xx
+			\pgf@y=#1\pgf@yy
+			\edef\pgfplots@loc@TMPa{\the\pgf@x\space and \the\pgf@y}%
+			\def\pgfplots@loc@TMPb{\pgfpatharc{\pgfplots@xmin}{\pgfplots@xmax}}%
+			\expandafter\pgfplots@loc@TMPb\expandafter{\pgfplots@loc@TMPa}%
+		\else
+		\fi
+	\fi
+}%
+
+\def\pgfplots@initsizes@polar{%
+	% I copy-pasted most of this code, up to just one position where
+	% I introduced the modified scaling for polar axes
+	%----------------------------------
+	% INIT.
+	%
+	%
+	\pgfmath@basic@mod@{\pgfplots@xmin}{360}%
+	\let\pgfplots@xmin@mod=\pgfmathresult
+	\pgfmath@basic@mod@{\pgfplots@xmax}{360}%
+	\let\pgfplots@xmax@mod=\pgfmathresult
+	\ifdim\pgfplots@xmax@mod pt>\pgfplots@xmin@mod pt
+		\def\b@pgfplots@polar@limit@around@zero{0}%
+	\else
+		\def\b@pgfplots@polar@limit@around@zero{1}%
+	\fi
+	%
+	\pgfplots@xmin@reg=\pgfplots@xmin pt %
+	\pgfplots@xmax@reg=\pgfplots@xmax pt %
+	%
+	%
+	\pgfplots@ymin@reg=\pgfplots@ymin pt %
+	\pgfplots@ymax@reg=\pgfplots@ymax pt %
+	\ifpgfplots@threedim
+		\pgfplots@zmin@reg=\pgfplots@zmin pt %
+		\pgfplots@zmax@reg=\pgfplots@zmax pt %
+	\fi
+	%
+	%
+	%-----------------------------------------
+	% PROCESS THE 'width' and 'height' options
+	%-----------------------------------------
+	%
+	%
+	\pgfkeysgetvalue{/pgfplots/view/az}{\pgfplots@view@az}%
+	\pgfkeysgetvalue{/pgfplots/view/el}{\pgfplots@view@el}%
+	\ifpgfplots@threedim
+		\def\pgfplots@tmpZscale{1pt}%
+	\else
+		\def\pgfplots@tmpZscale{0pt}%
+		\let\pgfplots@view@el=\pgfutil@empty
+		\let\pgfplots@view@az=\pgfutil@empty
+	\fi
+	\ifx\pgfplots@view@az\pgfutil@empty
+		%\let\pgfplots@rectangle@width=\pgfutil@empty
+		%\let\pgfplots@rectangle@height=\pgfutil@empty
+		\def\pgfplots@view@dir@threedim@x{0}%
+		\def\pgfplots@view@dir@threedim@y{0}%
+		\def\pgfplots@view@dir@threedim@z{1}%
+		%
+		% FIXME HERE COMES THE polar MODIFICATION
+		%--------------------------------------------------
+		% \pgfpointdiff
+		% 	{\pgfplotsqpointxy{\pgfplots@xmin}{\pgfplots@ymin}}
+		% 	{\pgfplotsqpointxy{\pgfplots@xmax}{\pgfplots@ymax}}%
+		%-------------------------------------------------- 
+		% instead of scaling from (min) (max), we only need the UPPER
+		% bound -- in both, x and y directions (since we have a cycle.
+		% Furthermore, we need it twice since we are interested in the
+		% diameter, not the radius.
+		\global\pgf@x=\pgfplots@ymax pt % radius
+		\global\multiply\pgf@x by2      % diameter
+		\global\pgf@y=\pgf@x            % same for y
+		%
+		% only used temporarily in this macro to compute the correct
+		% length for unit vectors:
+		\edef\pgfplots@initsizes@axisdiag@x{\the\pgf@x}%
+		\edef\pgfplots@initsizes@axisdiag@y{\the\pgf@y}%
+		%
+		\ifx\pgfplots@x\pgfutil@empty
+			\ifx\pgfplots@width\pgfutil@empty
+				\pgfplots@error{INTERNAL LOGIC ERROR! WIDTH NOT SET}%
+			\fi
+			\pgfplots@initsizes@getXscale\pgfplots@initsizes@axisdiag@x\into\pgfplots@tmpXscale
+			%\ifpgfplots@scale@only@axis
+			%	\let\pgfplots@rectangle@width=\pgfplots@width
+			%\fi
+		\else
+			\def\pgfplots@tmpXscale{1}%
+		\fi
+		%
+		\ifx\pgfplots@y\pgfutil@empty
+			\ifx\pgfplots@height\pgfutil@empty
+				\pgfplots@error{INTERNAL LOGIC ERROR! HEIGHT NOT SET}%
+			\fi
+			\pgfplots@initsizes@getYscale\pgfplots@initsizes@axisdiag@y\into\pgfplots@tmpYscale
+			%\ifpgfplots@scale@only@axis
+			%	\let\pgfplots@rectangle@height=\pgfplots@height
+			%\fi
+		\else
+			\def\pgfplots@tmpYscale{1}%
+		\fi
+		%
+		\edef\pgfplots@tmpXscale{\pgfplots@tmpXscale pt}%
+		\edef\pgfplots@tmpYscale{\pgfplots@tmpYscale pt}%
+		%
+		\pgfplots@initsizes@setunitvector{x}{0}{\pgfplots@tmpXscale}{\pgfplots@tmp@xisaxisparallel}%
+		\pgfplots@initsizes@setunitvector{y}{1}{\pgfplots@tmpYscale}{\pgfplots@tmp@yisaxisparallel}%
+		\pgfplots@initsizes@setunitvector{z}{2}{\pgfplots@tmpZscale}{\pgfplots@loc@TMPc}%
+	\else
+		% 3D case is currently always initialised by `view':
+		\let\pgfplots@x=\pgfutil@empty
+		\let\pgfplots@y=\pgfutil@empty
+		\let\pgfplots@z=\pgfutil@empty
+		\pgfplotssetaxesfromazel{\pgfplots@view@az}{\pgfplots@view@el}{\pgfplots@tmp@xisaxisparallel}%
+		\if1\pgfplots@tmp@xisaxisparallel%
+			\def\pgfplots@tmp@yisaxisparallel{1}%
+		\fi
+	\fi
+%\message{Pgfplots debug: initialised unit vectors to x=(\the\pgf@xx,\the\pgf@xy), y=(\the\pgf@yx,\the\pgf@yy), z=(\the\pgf@zx,\the\pgf@zy). }%
+	%
+	\let\pgfplotsmathfloatviewdepthxyz@=\pgfplotsmathfloatviewdepthxyz@infigure
+	\let\pgfplotsmathviewdepthxyz@=\pgfplotsmathviewdepthxyz@infigure
+	%
+	\pgfplotsmath@ifzero{\pgfplots@x@veclength}{\pgfplots@hide@xtrue\pgfplots@shownothingof@xtrue}{}%
+	\pgfplotsmath@ifzero{\pgfplots@y@veclength}{\pgfplots@hide@ytrue\pgfplots@shownothingof@ytrue}{}%
+	\ifpgfplots@threedim
+		\pgfplotsmath@ifzero{\pgfplots@z@veclength}{\pgfplots@hide@ztrue\pgfplots@shownothingof@ztrue}{}%
+	\else
+		\if1\pgfplots@tmp@xisaxisparallel%
+			\if1\pgfplots@tmp@yisaxisparallel%
+				% Optimize for axis-parallel case!
+				% puh. Did not make any measureable difference!? Ok...
+				\let\pgfplotsqpointxy=\pgfplotsqpointxy@orthogonal
+			\fi
+		\fi
+	\fi
+	%
+	% FIXME : unit vector ratio / axis equal
+}
+
+\def\pgfplots@handle@invalid@range@defaultlimits@polar{%
+	\def\pgfplots@loc@TMPa{0}%
+	\ifx\pgfplots@xmin\pgfplots@invalidrange@xmin
+		\def\pgfplots@loc@TMPa{1}%
+	\fi
+	\ifx\pgfplots@xmax\pgfplots@invalidrange@xmax
+		\def\pgfplots@loc@TMPa{1}%
+	\fi
+	\if\pgfplots@loc@TMPa1%
+		\pgfplotscoordmath{x}{parsenumber}{0}%
+		\global\let\pgfplots@xmin=\pgfmathresult
+		\pgfplotscoordmath{x}{parsenumber}{360}%
+		\global\let\pgfplots@xmax=\pgfmathresult
+		\global\let\pgfplots@data@xmin=\pgfplots@xmin
+		\global\let\pgfplots@data@xmax=\pgfplots@xmax
+	\fi
+	%
+	\pgfplotscoordmath{y}{parsenumber}{0}%
+	\global\let\pgfplots@ymin=\pgfmathresult
+	\pgfplotscoordmath{y}{parsenumber}{1}%
+	\global\let\pgfplots@ymax=\pgfmathresult
+	\global\let\pgfplots@data@ymin=\pgfplots@ymin
+	\global\let\pgfplots@data@ymax=\pgfplots@ymax
+}
+
+\let\pgfplots@show@ticklabel@@orig=\pgfplots@show@ticklabel@
+\def\pgfplots@show@ticklabel@@polar#1#2{%
+	\def\pgfmathresult{#2}%
+	\if#1x%
+		\ifdim#2pt>360pt
+			\pgfmath@basic@mod@{#2}{360}%
+		\fi
+	\fi
+	\def\pgfplots@loc@TMPa{\pgfplots@show@ticklabel@@orig{#1}}%
+	\expandafter\pgfplots@loc@TMPa\expandafter{\pgfmathresult}%
+}%
+
+\let\pgfplots@xtick@check@tickshow@orig=\pgfplots@xtick@check@tickshow%
+\def\pgfplots@xtick@check@tickshow@polar{%
+	\if1\pgfplots@xtick@disable@last@tick
+		\pgfplotsmath@ifapproxequal@dim
+			{\pgfplots@tmpa}{\pgfplots@xmax pt}
+			{\pgfplots@loc@tick@placement@tolerance}
+			{%
+				\pgfplots@tickshowfalse
+			}{%
+				\pgfplots@xtick@check@tickshow@orig
+			}%
+	\else
+		\pgfplots@xtick@check@tickshow@orig
+	\fi
+}
+
+\let\pgfplots@enlarge@limit@for@orig=\pgfplots@enlarge@limit@for
+\def\pgfplots@enlarge@limit@for@polar#1{%
+	\if#1x%
+		% ignore 'enlarge x limits' (degrees).
+	\else
+		% allow 'enlarge y limits', but only for UPPER radius
+		\def\bool@pgfplots@loc@enlargelimits@min{0}%
+		\pgfplots@enlarge@limit@for@orig{#1}%
+	\fi
+}%
+
+\let\pgfplots@assign@default@tick@foraxis@normalizetickdist@orig=\pgfplots@assign@default@tick@foraxis@normalizetickdist
+\def\pgfplots@assign@default@tick@foraxis@normalizetickdist@polar#1#2{%
+	\if#1x%
+		% special handling for the angles:
+		\begingroup
+		\pgfmathfloattofixed{#2}%
+		\let\H=\pgf@xb
+		\H=\pgfmathresult pt
+		% only allow step sizes of
+		% 90, 45, 30, 15, 10, 5.
+		%
+		% Prefer the LARGER step size during the snap-to-nearest.
+		% The following decision boundaries are heuristics and have no
+		% mathematical foundation.
+		\ifdim\H>67pt
+			\H=90pt
+		\else
+			\ifdim\H>30pt
+				\H=45pt
+			\else
+				\ifdim\H>18pt
+					\H=30pt
+				\else
+					\ifdim\H>10pt
+						\H=15pt
+					\else
+						\ifdim\H>6pt
+							\H=10pt
+						\else
+							\H=5pt
+						\fi
+					\fi
+				\fi
+			\fi
+		\fi
+		\edef\pgfplots@loc@TMPa{\pgf@sys@tonumber\H}%
+		\pgfmathfloatparsenumber{\pgfplots@loc@TMPa}%
+		\pgfmath@smuggleone\pgfmathresult
+		\endgroup
+	\else
+		\pgfplots@assign@default@tick@foraxis@normalizetickdist@orig{#1}{#2}%
+	\fi
+}%
+
+\let\pgfplots@limits@ready@orig=\pgfplots@limits@ready
+\def\pgfplots@limits@ready@polar{%
+	\pgfplots@limits@ready@orig
+	%
+	% Avoid tick labels at upper *and* lower angle range if both are the
+	% same:
+	\pgfmath@basic@subtract@{\pgfplots@xmax}{\pgfplots@xmin}%
+	\pgfmath@basic@mod@{\pgfmathresult}{360}%
+	\pgfplotsmath@ifapproxequal@dim
+		{\pgfmathresult pt}{0pt}%
+		{0.002pt}
+		{%
+			\def\pgfplots@xtick@disable@last@tick{1}%
+		}{%
+		}%
+	%
+}%
+\endinput

@@ -1,0 +1,940 @@
+% --------------------------------------------------------------------------
+% the FNPCT package
+% 
+%   footnote kerning
+% 
+% 2012/06/01
+% --------------------------------------------------------------------------
+% Clemens Niederberger
+% Web:    https://bitbucket.org/cgnieder/fnpct/
+% E-Mail: contact@mychemistry.eu
+% --------------------------------------------------------------------------
+% Copyright 2012 Clemens Niederberger
+% 
+% This work may be distributed and/or modified under the
+% conditions of the LaTeX Project Public License, either version 1.3
+% of this license or (at your option) any later version.
+% The latest version of this license is in
+%   http://www.latex-project.org/lppl.txt
+% and version 1.3 or later is part of all distributions of LaTeX
+% version 2005/12/01 or later.
+% 
+% This work has the LPPL maintenance status `maintained'.
+% 
+% The Current Maintainer of this work is Clemens Niederberger.
+% --------------------------------------------------------------------------
+% If you have any ideas, questions, suggestions or bugs to report, please
+% feel free to contact me.
+% --------------------------------------------------------------------------
+% the package is inspired by the following question on TeX.SE:
+%   http://tex.stackexchange.com/q/56094/5049
+% --------------------------------------------------------------------------
+\RequirePackage { xparse , l3keys2e , scrlfile }
+\ProvidesExplPackage
+  {fnpct}
+  {2012/06/01}
+  {0.2a}
+  {footnote kerning}
+
+% --------------------------------------------------------------------------
+% SETTING THINGS UP:
+% this is plain's \nobreak:
+\cs_new:Npn \fnpct_no_break: { \tex_penalty:D \c_ten_thousand }
+
+% messages:
+\cs_new:Npn \fnpct_dont_mess_around:
+  {
+    \iow_log:n { ................................................. }
+    \iow_log:n { . ~ fnpct~info: }
+    \iow_log:n { . }
+    \iow_log:n { . ~ All~right,~not~messing~around.~:( }
+    \iow_log:n { . ~ But~I'd~really~love~to~(http://www.youtube.com/watch?v=Bqz876VkwwY). }
+    \iow_log:n { ................................................. }
+  }
+
+\msg_set:nnn { fnpct } { already-adapted }
+  {
+    The~command~\token_to_str:N #1 \tl_use:N \c_space_tl has~already~been~
+    adapted. \\
+    I~will~do~nothing~instead.
+  }
+
+\bool_new:N \l_fnpct_strict_bool
+
+\cs_new:Npn \fnpct_message:nx #1#2
+  {
+    \bool_if:NTF \l_fnpct_strict_bool
+      { \msg_error:nnx { fnpct } { #1 } }
+      { \msg_warning:nnx { fnpct } { #1 } }
+    { #2 }
+  }
+
+% rigid lengths:
+\dim_new:N \l_fnpct_after_comma_dim
+\dim_set:Nn \l_fnpct_after_comma_dim { -.06em }
+\dim_new:N \l_fnpct_after_dot_dim
+\dim_set:Nn \l_fnpct_after_dot_dim { -.06em }
+\dim_new:N \l_fnpct_before_comma_dim
+\dim_set:Nn \l_fnpct_before_comma_dim { -.16em }
+\dim_new:N \l_fnpct_before_dot_dim
+\dim_set:Nn \l_fnpct_before_dot_dim { -.16em }
+\dim_new:N \l_fnpct_before_footnote_dim
+\dim_set:Nn \l_fnpct_before_footnote_dim { .06em }
+\dim_new:N \l_fnpct_normal_mark_width_dim
+\dim_set:Nn \l_fnpct_normal_mark_width_dim { 1em }
+\dim_new:N \l_fnpct_normal_indent_dim
+\dim_set:Nn \l_fnpct_normal_indent_dim { 1.5em }
+\dim_new:N \l_fnpct_normal_parindent_dim
+\dim_set:Nn \l_fnpct_normal_parindent_dim { 1em }
+
+% multiple footnote input and output variables:
+\tl_new:N \l_fnpct_multiple_footnotes_delimiter_tl
+\tl_set:Nn \l_fnpct_multiple_footnotes_delimiter_tl { ; }
+\tl_new:N \l_fnpct_multiple_footnote_separator_tl
+% check for KOMA-Script's or anyone's \multfootsep:
+\cs_if_exist:NTF \multfootsep
+  { \tl_set:Nn \l_fnpct_multiple_footnote_separator_tl { \multfootsep } }
+  { \tl_set:Nn \l_fnpct_multiple_footnote_separator_tl { , } }
+
+% basic booleans for punctuation order switch and multiple footnotes
+\bool_new:N \l_fnpct_punct_after_bool
+\bool_new:N \l_fnpct_dont_mess_around_bool
+\bool_new:N \l_fnpct_multiple_default_bool
+\bool_new:N \l_fnpct_multiple_footnotes_bool
+\bool_new:N \l_fnpct_reverse_switch_bool
+\bool_new:N \l_fnpct_bigfoot_default_top_bool
+\bool_new:N \l_fnpct_normal_marks_bool
+
+% default punctuation marks for switching:
+\tl_new:N \l_fnpct_punctuation_marks_tl
+\tl_set:Nn \l_fnpct_punctuation_marks_tl { ., }
+\prop_new:N \l_fnpct_punctuation_marks_after_prop
+\prop_new:N \l_fnpct_punctuation_marks_before_prop
+\prop_put:Nnn \l_fnpct_punctuation_marks_after_prop { . } { \l_fnpct_after_dot_dim }
+\prop_put:Nnn \l_fnpct_punctuation_marks_after_prop { , } { \l_fnpct_after_comma_dim }
+\prop_put:Nnn \l_fnpct_punctuation_marks_before_prop { . } { \l_fnpct_before_dot_dim }
+\prop_put:Nnn \l_fnpct_punctuation_marks_before_prop { , } { \l_fnpct_before_comma_dim }
+
+\cs_new:Npn \fnpct_rm_punctuation:n #1
+  {
+    \tl_remove_all:Nn \l_fnpct_punctuation_marks_tl { #1 }
+    \prop_del:Nn \l_fnpct_punctuation_marks_after_prop { #1 }
+    \prop_del:Nn \l_fnpct_punctuation_marks_before_prop { #1 }
+  }
+
+\tl_new:N \l_fnpct_last_punct_mark_tl
+
+\cs_new:Npn \fnpct_add_punctuation:n #1
+  { \fnpct_add_punctuation_aux:w #1 [ \q_no_value ] \q_no_value \q_stop }
+\cs_generate_variant:Nn \fnpct_add_punctuation:n { V }
+
+\cs_new:Npn \fnpct_add_punctuation_aux:w #1[#2]#3 \q_stop
+  {
+    \quark_if_no_value:nTF { #2 }
+      {
+        % there is no option at all
+        \tl_map_inline:nn { #1 }
+          {
+            \tl_put_right:Nn \l_fnpct_punctuation_marks_tl { ##1 }
+            \prop_put:Nnn \l_fnpct_punctuation_marks_after_prop { ##1 } { 0pt }
+            \prop_put:Nnn \l_fnpct_punctuation_marks_before_prop { ##1 } { 0pt }
+            \tl_set:Nx \l_fnpct_last_punct_mark_tl { ##1 }
+          }
+      }
+      {
+        \tl_if_blank:nTF { #1 }
+          {
+            % #2 is a second option (= before space)
+            \prop_put:NVn \l_fnpct_punctuation_marks_before_prop
+              \l_fnpct_last_punct_mark_tl { #2 }
+          }
+          {
+            % #2 is a first option (= after space), #1 might be more than one token:
+            \tl_if_single_token:nTF { #1 }
+              {
+                \tl_put_right:Nn \l_fnpct_punctuation_marks_tl { #1 }
+                \prop_put:Nnn \l_fnpct_punctuation_marks_after_prop { #1 } { #2 }
+                \prop_put:Nnn \l_fnpct_punctuation_marks_before_prop { #1 } { 0pt }
+                \tl_set:Nx \l_fnpct_last_punct_mark_tl { #1 }
+              }
+              {
+                \int_zero:N \l_tmpa_int
+                \tl_map_inline:nn { #1 }
+                  {
+                    \tl_put_right:Nn \l_fnpct_punctuation_marks_tl { ##1 }
+                    \int_compare:nTF { \l_tmpa_int < ( \tl_length:n { #1 } - 1 ) }
+                      {
+                        \prop_put:Nnn \l_fnpct_punctuation_marks_after_prop { ##1 } { 0pt }
+                        \prop_put:Nnn \l_fnpct_punctuation_marks_before_prop { ##1 } { 0pt }
+                      }
+                      {
+                        \prop_put:Nnn \l_fnpct_punctuation_marks_after_prop { ##1 } { #2 }
+                        \prop_put:Nnn \l_fnpct_punctuation_marks_before_prop { ##1 } { 0pt }
+                      }
+                    \tl_set:Nx \l_fnpct_last_punct_mark_tl { ##1 }
+                    \int_incr:N \l_tmpa_int
+                  }
+              }
+          }
+      }
+    % is there more?
+    \tl_if_eq:nnF { #3 } { [\q_no_value]\q_no_value }
+      {
+        \quark_if_no_value:nF { #3 }
+          {
+            \tl_set:Nn \l_tmpa_tl { #3 }
+            \tl_remove_all:Nn \l_tmpa_tl { [\q_no_value]\q_no_value }
+            \fnpct_add_punctuation:V \l_tmpa_tl
+          }
+      }
+  }
+
+% options:
+\keys_define:nn { fnpct }
+  {
+    strict                .bool_set:N = \l_fnpct_strict_bool ,
+    strict                .default:n  = true ,
+    after-comma-space     .dim_set:N  = \l_fnpct_after_comma_dim ,
+    after-dot-space       .dim_set:N  = \l_fnpct_after_dot_dim ,
+    before-comma-space    .dim_set:N  = \l_fnpct_before_comma_dim ,
+    before-dot-space      .dim_set:N  = \l_fnpct_before_dot_dim ,
+    after-punct-space     .code:n     =
+      \prop_map_inline:Nn \l_fnpct_punctuation_marks_after_prop
+        { \prop_put:Nnn \l_fnpct_punctuation_marks_after_prop { ##1 } { #1 } } ,
+    before-punct-space    .code:n     =
+      \prop_map_inline:Nn \l_fnpct_punctuation_marks_before_prop
+        { \prop_put:Nnn \l_fnpct_punctuation_marks_before_prop { ##1 } { #1 } } ,
+    before-footnote-space .dim_set:N  = \l_fnpct_before_footnote_dim ,
+    punct-after           .bool_set:N = \l_fnpct_punct_after_bool ,
+    punct-after           .default:n  = true ,
+    dont-mess-around      .code:n     =
+      \prop_map_inline:Nn \l_fnpct_punctuation_marks_after_prop
+        { \prop_put:Nnn \l_fnpct_punctuation_marks_after_prop { ##1 } { 0pt } }
+      \prop_map_inline:Nn \l_fnpct_punctuation_marks_before_prop
+        { \prop_put:Nnn \l_fnpct_punctuation_marks_before_prop { ##1 } { 0pt } }
+      \dim_zero:N \l_fnpct_before_footnote_dim
+      \bool_set_true:N \l_fnpct_punct_after_bool
+      \bool_set_true:N \l_fnpct_dont_mess_around_bool
+      \fnpct_dont_mess_around: ,
+    mult-fn-delim         .tl_set:N   = \l_fnpct_multiple_footnotes_delimiter_tl ,
+    mult-fn-sep           .tl_set:N   = \l_fnpct_multiple_footnote_separator_tl ,
+    multiple              .bool_set:N = \l_fnpct_multiple_default_bool ,
+    multiple              .default:n  = true ,
+    bigfoot-default-top   .bool_set:N = \l_fnpct_bigfoot_default_top_bool ,
+    bigfoot-default-top   .default:n  = true ,
+    normal-marks          .bool_set:N = \l_fnpct_normal_marks_bool ,
+    normal-marks          .default:n  = true ,
+    normal-mark-width     .dim_set:N  = \l_fnpct_normal_mark_width_dim ,
+    normal-indent         .dim_set:N  = \l_fnpct_normal_indent_dim ,
+    normal-parindent      .dim_set:N  = \l_fnpct_normal_parindent_dim ,
+    verb-format           .tl_set:N   = \l_fnpct_verbatim_format_tl ,
+    add-punct-marks       .code:n     = \fnpct_add_punctuation:n { #1 }  ,
+    remove-punct-marks    .code:n     =
+      \tl_map_function:nN { #1 } \fnpct_rm_punctuation:n
+  }
+
+\ProcessKeysOptions { fnpct }
+
+% --------------------------------------------------------------------------
+% MAIN INTERNAL FOOTNOTE FUNCTION:
+% write the notes:
+\cs_new:Npn \fnpct_write_note:Nnnn #1#2#3#4
+  {
+    \IfNoValueTF { #2 }
+      { #1 { #4 } }
+      {
+        \IfNoValueTF { #3 }
+          { #1 [ #2 ] { #4 } }
+          { #1 [ #2 ] [ #3 ] { #4 } }
+      }
+  }
+
+% check for punctuation:
+\cs_new:Npn \fnpct_check_punctuation:TF #1#2
+  { \fnpct_check_punctuation_auxi:nTF { 0 } { #1 } { #2 } }
+
+\cs_new:Npn \fnpct_check_punctuation_auxi:nTF #1#2#3
+  {
+    \tl_set:Nx \l_fnpct_current_punct_mark_tl
+      { \tl_head:N \l_fnpct_punctuation_marks_tl }
+    \peek_meaning_remove:VTF \l_fnpct_current_punct_mark_tl
+      { #2 }
+      {
+        \fnpct_check_punctuation_auxii:nnn { #1 }
+          { \fnpct_check_punctuation_auxi:VTF \l_tmpa_int { #2 } { #3 } }
+          { #3 }
+      }
+  }
+
+\cs_new:Npn \fnpct_check_punctuation_auxii:nnn #1#2#3
+  {
+    \int_set:Nn \l_tmpa_int { #1 }
+    \int_incr:N \l_tmpa_int
+    \tl_set:Nx \l_tmpb_tl { \int_to_arabic:n { \l_tmpa_int } }
+    \tl_set:Nx \l_fnpct_punctuation_marks_tl
+      { \tl_tail:N \l_fnpct_punctuation_marks_tl }
+    \tl_put_right:Nx \l_fnpct_punctuation_marks_tl
+      { \l_fnpct_current_punct_mark_tl }
+    \int_compare:nTF { \l_tmpa_int < \tl_length:V \l_fnpct_punctuation_marks_tl }
+      { #2 }
+      { #3 }
+  }
+\cs_generate_variant:Nn \fnpct_check_punctuation_auxi:nTF { V }
+\cs_generate_variant:Nn \peek_meaning_remove:NTF { V }
+
+% check which mode is active:
+\cs_new:Npn \fnpct_punct_if_after:TF #1#2
+  {
+    \bool_if:nTF
+      {
+        \bool_xor_p:nn
+          { \l_fnpct_punct_after_bool }
+          { \l_fnpct_reverse_switch_bool }
+      }
+      { #1 }
+      { #2 }
+  }
+
+\cs_new:Npn \fnpct_punct_if_after:T #1
+  {
+    \bool_if:nT
+      {
+        \bool_xor_p:nn
+          { \l_fnpct_punct_after_bool }
+          { \l_fnpct_reverse_switch_bool }
+      }
+      { #1 }
+  }
+
+% this is where the magic happens:
+%   #1: original command
+%   #2: optional argument of original command
+%   #3: second optional argument of original command
+%   #4: mandatory argument of original command
+%   #5: boolean flag for starred version
+\cs_new_protected:Npn \fnpct_handle_note:Nnnnn #1#2#3#4#5
+  {
+    % if a punctuation mark follows remove it, insert dot, skip back
+    % and then insert footnote
+    \fnpct_no_break:
+    \bool_if:NF \l_fnpct_dont_mess_around_bool
+      { \IfBooleanT { #5 } { \bool_set_true:N \l_fnpct_reverse_switch_bool } }
+    \fnpct_check_punctuation:TF
+      {
+        % A: after=1 && reverse=0
+        %    after=0 && reverse=1
+        % B: after=1 && reverse=1
+        %    after=0 && reverse=0
+        \fnpct_punct_if_after:TF
+          { \fnpct_no_break: \skip_horizontal:N \l_fnpct_before_footnote_dim }
+          {
+            \tl_use:N \l_fnpct_current_punct_mark_tl
+            \fnpct_no_break:
+            \prop_get:NVNT \l_fnpct_punctuation_marks_after_prop
+              \l_fnpct_current_punct_mark_tl \l_tmpa_dim
+              { \skip_horizontal:N \l_tmpa_dim }
+          }
+        \fnpct_write_note:Nnnn #1 { #2 } { #3 } { #4 }
+        \fnpct_write_inner:N #1
+        \fnpct_punct_if_after:T
+          {
+            \prop_get:NVNT \l_fnpct_punctuation_marks_before_prop
+              \l_fnpct_current_punct_mark_tl \l_tmpa_dim
+              { \skip_horizontal:N \l_tmpa_dim }
+            \fnpct_no_break:
+            \tl_use:N \l_fnpct_current_punct_mark_tl
+          }
+        \bool_set_false:N \l_fnpct_reverse_switch_bool
+      }
+      {
+        % what about multiple footnotes? (their usage is discouraged with
+        % this package, but anyway...)
+        % this check should probably/maybe be removed (?!)
+        \tl_set:Nx \l_tmpa_tl { \cs_to_str:N #1 }
+        \prop_get:NVN \g_fnpct_adapted_notes_prop \l_tmpa_tl \l_tmpb_tl
+        \exp_args:No
+        \peek_meaning:NTF \l_tmpb_tl
+          {
+            \bool_set_true:N \l_fnpct_multiple_footnotes_bool
+            % else insert space and then note
+            \fnpct_no_break: \skip_horizontal:N \l_fnpct_before_footnote_dim
+            \fnpct_write_note:Nnnn #1 { #2 } { #3 } { #4 }
+            \fnpct_write_inner:N #1
+            \fnpct_no_break:
+            \textsuperscript { \l_fnpct_multiple_footnote_separator_tl }
+            % \bool_set_false:N \l_fnpct_reverse_switch_bool
+          }
+          {
+            % else insert space and then note
+            \bool_if:NTF \l_fnpct_multiple_footnotes_bool
+              { \bool_set_false:N \l_fnpct_multiple_footnotes_bool }
+              { \fnpct_no_break: \skip_horizontal:N \l_fnpct_before_footnote_dim }
+            \fnpct_write_note:Nnnn #1 { #2 } { #3 } { #4 }
+            \fnpct_write_inner:N #1
+            \bool_set_false:N \l_fnpct_reverse_switch_bool
+          }
+      }
+  }
+\cs_generate_variant:Nn \fnpct_handle_note:Nnnnn { cnnnn }
+
+% --------------------------------------------------------------------------
+% MULTIPLE FOOTNOTES
+\seq_new:N \l_fnpct_multiple_footnotes_seq
+\cs_generate_variant:Nn \seq_set_split:Nnn { NVn }
+
+% #1: original note command
+% #2: star
+% #3: multiple notes separated by \l_fnpct_multiple_footnotes_delimiter_tl
+\cs_new_protected:Npn \fnpct_mult_note:Nnn #1#2#3 
+  {
+    \bool_if:NF \l_fnpct_dont_mess_around_bool
+      { \IfBooleanT { #2 } { \bool_set_true:N \l_fnpct_reverse_switch_bool } }
+    % split input:
+    \seq_set_split:NVn \l_fnpct_multiple_footnotes_seq
+      \l_fnpct_multiple_footnotes_delimiter_tl
+      { #3 }
+    \fnpct_no_break:
+    % look for punctuation mark and do magic:
+    \fnpct_check_punctuation:TF
+      {
+        \fnpct_punct_if_after:TF
+          { \fnpct_no_break: \skip_horizontal:N \l_fnpct_before_footnote_dim }
+          {
+            \tl_use:N \l_fnpct_current_punct_mark_tl
+            \fnpct_no_break:
+            \prop_get:NVNT \l_fnpct_punctuation_marks_after_prop
+              \l_fnpct_current_punct_mark_tl \l_tmpa_dim
+              { \skip_horizontal:N \l_tmpa_dim }
+          }
+        \fnpct_write_notes:N #1
+        \fnpct_punct_if_after:T
+          {
+            \prop_get:NVNT \l_fnpct_punctuation_marks_before_prop
+              \l_fnpct_current_punct_mark_tl \l_tmpa_dim
+              { \skip_horizontal:N \l_tmpa_dim }
+            \fnpct_no_break:
+            \tl_use:N \l_fnpct_current_punct_mark_tl
+          }
+        \bool_set_false:N \l_fnpct_reverse_switch_bool
+      }
+      {
+        % else insert space and notes:
+        \tl_set:Nx \l_tmpa_tl { \cs_to_str:N #1 }
+        \prop_get:NVN \g_fnpct_adapted_notes_prop \l_tmpa_tl \l_tmpb_tl
+        \exp_args:No
+        \peek_meaning:NTF \l_tmpb_tl
+          {
+            \bool_set_true:N \l_fnpct_multiple_footnotes_bool
+            \fnpct_no_break: \skip_horizontal:N \l_fnpct_before_footnote_dim
+            \fnpct_write_notes:N #1
+            \bool_set_false:N \l_fnpct_reverse_switch_bool
+            \textsuperscript { \l_fnpct_multiple_footnote_separator_tl }
+          }
+          {
+            \bool_if:NTF \l_fnpct_multiple_footnotes_bool
+              { \bool_set_false:N \l_fnpct_multiple_footnotes_bool }
+              { \fnpct_no_break: \skip_horizontal:N \l_fnpct_before_footnote_dim }
+            \fnpct_write_notes:N #1
+            \bool_set_false:N \l_fnpct_reverse_switch_bool
+          }
+      }
+  }
+\cs_generate_variant:Nn \fnpct_mult_note:Nnn { cnn }
+
+% #1: original note command
+\cs_new_protected:Npn \fnpct_write_notes:N #1
+  {
+    \int_zero:N \l_tmpa_int
+    \seq_map_inline:Nn \l_fnpct_multiple_footnotes_seq
+      {
+        \fnpct_read_note_with_option:w ##1 \q_stop { #1 }
+        \int_incr:N \l_tmpa_int
+      }
+  }
+
+% this shouldn't be a document command but is an really easy way to make
+% biblatex's \footcite et.al. compatible with the `multiple' option
+%   #1: optional star => only invoke \footnotetext
+%   #2: optional argument to original note command
+%   #3: second optional argument to original note command
+%   #4: mandatory argument to original note command
+%   #5: original note command
+\bool_new:N \g_fnpct_only_text_bool
+\NewDocumentCommand \fnpct_read_note_with_option:w { soo+u{\q_stop}m }
+  {
+    % FIXME: change \seq_length into \seq_count when it has been renamed
+    \bool_if:nT
+      {
+        \int_compare_p:n { \l_tmpa_int > 0 }
+         &&
+         \int_compare_p:n { \l_tmpa_int < \seq_length:N \l_fnpct_multiple_footnotes_seq }
+      }
+      {
+        \IfBooleanTF { #1 }
+          { \tex_unskip:D  }
+          { \textsuperscript { \l_fnpct_multiple_footnote_separator_tl } }
+      }
+    \IfBooleanTF { #1 }
+      {
+        % TODO: maybe provide option to change \footnotetext? Or do it
+        % automatically?
+        \bool_gset_true:N \g_fnpct_only_text_bool
+        \IfNoValueTF { #2 }
+          { \footnotetext { #4 } }
+          { \footnotetext [ #2 ] { #4 } }
+      }
+      { \fnpct_write_note:Nnnn #5 { #2 } { #3 } { #4 } }
+    \fnpct_write_inner:N #5
+  }
+
+% --------------------------------------------------------------------------
+% NESTED FOOTNOTES:
+% 1 layer of nesting...
+\prop_new:N \g_fnpct_inner_footnote_prop
+\prop_new:N \g_fnpct_inner_footnote_hyperref_prop
+\cs_generate_variant:Nn \prop_gput:Nnn { Nxn , Nxo }
+
+% this shouldn't be a document command! But for the time being I'll stick to
+% this easy solution...
+\NewDocumentCommand \fnpct_inner_footnote:w { o+m }
+  {
+    \IfNoValueTF { #1 }
+      {
+        % TODO: maybe detect what type of note we're in and use the appropriate mark?
+        % Or provide a user interface to choose the appropriate mark?
+        \fnpct_orig_footnotemark:w
+        \prop_gput:Nxn \g_fnpct_inner_footnote_prop { \thefootnote } { #2 }
+        \bool_if:NT \l_fnpct_hyperref_bool
+          {
+             \prop_gput:Nxo \g_fnpct_inner_footnote_hyperref_prop
+               { \thefootnote } { \Hy@footnote@currentHref }
+          }
+      }
+      {
+        \fnpct_orig_footnotemark:w [ #1 ]
+        \prop_gput:Nnn \g_fnpct_inner_footnote_prop { #1 } { #2 }
+          \bool_if:NT \l_fnpct_hyperref_bool
+          {
+             \prop_gput:Nno \g_fnpct_inner_footnote_hyperref_prop
+               { #1 } { \Hy@footnote@currentHref }
+          }
+      }
+  }
+
+\cs_new:Npn \fnpct_write_inner:N #1
+  {
+    \token_if_eq_meaning:NNF #1 \fnpct_inner_footnote:w
+      {
+        \prop_map_inline:Nn \g_fnpct_inner_footnote_prop
+          {
+            \footnotetext [ ##1 ]
+              {
+                \bool_if:NT \l_fnpct_hyperref_bool
+                  {
+                    \prop_get:NnN \g_fnpct_inner_footnote_hyperref_prop
+                      { ##1 } \l_tmpa_tl
+                    \Hy@raisedlink
+                      { \exp_args:No \hyper@@anchor { \l_tmpa_tl } }
+                  }
+                ##2
+              }
+          }
+        \prop_gclear:N \g_fnpct_inner_footnote_prop
+      }
+  }
+
+\cs_new:Npn \writeinnernotes
+  { \fnpct_write_inner:N X }
+
+% --------------------------------------------------------------------------
+% MANUAL KERNING:
+\cs_new:Npn \kfp
+  {
+    \bool_if:NTF \l_fnpct_punct_after_bool
+      { \skip_horizontal:N \l_fnpct_before_dot_dim }
+      { \skip_horizontal:N \l_fnpct_after_dot_dim }
+  }
+\cs_new:Npn \kfc
+  {
+    \bool_if:NTF \l_fnpct_punct_after_bool
+      { \skip_horizontal:N \l_fnpct_before_comma_dim }
+      { \skip_horizontal:N \l_fnpct_after_comma_dim }
+  }
+
+% --------------------------------------------------------------------------
+% NORMAL MARKS:
+\AtBeginDocument
+  {
+    \bool_if:NT \l_fnpct_normal_marks_bool
+      {
+        \cs_if_exist:NF \KOMAoption
+          { \RequirePackage { scrextend } }
+        \deffootnote
+          [ \l_fnpct_normal_mark_width_dim ]
+          { \l_fnpct_normal_indent_dim }
+          { \l_fnpct_normal_parindent_dim }
+          { \thefootnotemark . \enskip }
+      }
+  }
+
+% --------------------------------------------------------------------------
+% LET'S MAKE IT EASIER TO ADAPT EXISTIUNG FUNCTIONS:
+\prop_new:N \g_fnpct_adapted_notes_prop
+\cs_generate_variant:Nn \prop_put:Nnn { Nxn }
+
+% COPY, RENEW AND CREATE MULT
+% standard \footnote[<mark>]{<text>} like commands
+% #1: old new name
+% #2: internal name of old definition
+% #3: mult-variant
+%
+% \footnote[<mark>]{<text>} like:
+\cs_new:Npn \fnpct_renew_and_mult:NNN #1#2#3
+  {
+    \prop_gput:Nxn \g_fnpct_adapted_notes_prop { \cs_to_str:N #2 } { #1 }
+    \cs_new_eq:NN #2 #1
+    \fnpct_create_mult_variant:NN #3 #2
+    \bool_if:NTF \l_fnpct_multiple_default_bool
+      { \cs_set_eq:NN #1 #3 }
+      {
+        \RenewDocumentCommand #1 { so+m }
+          { \fnpct_handle_note:Nnnnn #2 { ##2 } { \NoValue } { ##3 } { ##1 } }
+      }
+  }
+\cs_generate_variant:Nn \fnpct_renew_and_mult:NNN { ccc , NcN }
+
+\cs_new:Npn \fnpct_renew_and_mult_no_opt:NNN #1#2#3
+  {
+    \prop_gput:Nxn \g_fnpct_adapted_notes_prop { \cs_to_str:N #2 } { #1 }
+    \cs_new_eq:NN #2 #1
+    \fnpct_create_mult_variant:NN #3 #2
+    \bool_if:NTF \l_fnpct_multiple_default_bool
+      { \cs_set_eq:NN #1 #3 }
+      {
+        \RenewDocumentCommand #1 { s+m }
+          { \fnpct_handle_note:Nnnnn #2 { \NoValue } { \NoValue } { ##2 } { ##1 } }
+      }
+  }
+\cs_generate_variant:Nn \fnpct_renew_and_mult_no_opt:NNN { ccc }
+
+% renew but don't create mult-variant:
+\cs_new:Npn \fnpct_renew:NN #1#2
+  {
+    \prop_gput:Nxn \g_fnpct_adapted_notes_prop { \cs_to_str:N #2 } { #1 }
+    \cs_new_eq:NN #2 #1
+    \RenewDocumentCommand #1 { so+m }
+      { \fnpct_handle_note:Nnnnn #2 { ##2 } { \NoValue } { ##3 } { ##1 } }
+  }
+\cs_generate_variant:Nn \fnpct_renew:NN { cc ,Nc }
+
+% new
+\cs_new:Npn \fnpct_new:NN #1#2
+  {
+    \prop_gput:Nxn \g_fnpct_adapted_notes_prop { \cs_to_str:N #2 } { #1 }
+    \NewDocumentCommand #1 { so+m }
+      { \fnpct_handle_note:Nnnnn #2 { ##2 } { \NoValue } { ##3 } { ##1 } }
+  }
+\cs_generate_variant:Nn \fnpct_new:NN { cc , Nc }
+
+% \note[<mark>][<oarg>]{<text>} like:
+\cs_new:Npn \fnpct_renew_and_mult_opt:NNN #1#2#3
+  {
+    \prop_gput:Nxn \g_fnpct_adapted_notes_prop { \cs_to_str:N #2 } { #1 }
+    \cs_new_eq:NN #2 #1
+    \fnpct_create_mult_variant:NN #3 #2
+    \bool_if:NTF \l_fnpct_multiple_default_bool
+      { \cs_set_eq:NN #1 #3 }
+      {
+        \RenewDocumentCommand #1 { soo+m }
+          { \fnpct_handle_note:Nnnnn #2 { ##2 } { ##3 } { ##4 } { ##1 } }
+      }
+  }
+\cs_generate_variant:Nn \fnpct_renew_and_mult_opt:NNN { ccc , NcN }
+
+\cs_new:Npn \fnpct_renew_opt:NN #1#2
+  {
+    \prop_gput:Nxn \g_fnpct_adapted_notes_prop { \cs_to_str:N #2 } { #1 }
+    \cs_new_eq:NN #2 #1
+    \RenewDocumentCommand #1 { soo+m }
+      { \fnpct_handle_note:Nnnnn #2 { ##2 } { ##3 } { ##4 } { ##1 } }
+  }
+\cs_generate_variant:Nn \fnpct_renew_opt:NN { cc , Nc }
+
+% \note{<arg>} like
+\cs_new:Npn \fnpct_renew_no_opt:NN #1#2
+  {
+    \prop_gput:Nxn \g_fnpct_adapted_notes_prop { \cs_to_str:N #2 } { #1 }
+    \cs_new_eq:NN #2 #1
+    \RenewDocumentCommand #1 { s+m }
+      { \fnpct_handle_note:Nnnnn #2 { \NoValue } { \NoValue } { ##2 } { ##1 } }
+  }
+\cs_generate_variant:Nn \fnpct_renew_no_opt:NN { cc ,Nc }
+
+% \note like
+\cs_new:Npn \fnpct_renew_no_arg:NN #1#2
+  {
+    \prop_gput:Nxn \g_fnpct_adapted_notes_prop { \cs_to_str:N #2 } { #1 }
+    \cs_new_eq:NN #2 #1
+    \RenewDocumentCommand #1 { s }
+      { \fnpct_handle_note:Nnnnn #2 { \NoValue } { \NoValue } { } { ##1 } }
+  }
+\cs_generate_variant:Nn \fnpct_renew_no_arg:NN { cc }
+
+% create mult-variant
+\cs_new:Npn \fnpct_create_mult_variant:NN #1#2
+  {
+    \NewDocumentCommand #1 { s+m }
+      { \fnpct_mult_note:Nnn #2 { ##1 } { ##2 } }
+  }
+
+% \footnotemark[<mark>] like commands:
+\cs_new:Npn \fnpct_renew_mark:NN #1#2
+  {
+    \prop_gput:Nxn \g_fnpct_adapted_notes_prop { \cs_to_str:N #2 } { #1 }
+    \cs_new_eq:NN #2 #1
+    \RenewDocumentCommand #1 { so }
+     { \fnpct_handle_note:Nnnnn #2 { ##2 } { \NoValue } { } { ##1 } }
+  }
+\cs_generate_variant:Nn \fnpct_renew_mark:NN { cc , Nc }
+
+% user commands:
+\NewDocumentCommand \AdaptNote { mm }
+  {
+    \cs_if_exist:cTF { fnpct_orig_ \cs_to_str:N #1 :w }
+      { \fnpct_message:nx { already-adapted } { #1 } }
+      { \fnpct_renew_and_mult:NcN #1 { fnpct_orig_ \cs_to_str:N #1 :w } #2 }
+  }
+
+\NewDocumentCommand \AdaptNoteNoMult { m }
+  {
+    \cs_if_exist:cTF { fnpct_orig_ \cs_to_str:N #1 :w }
+      { \fnpct_message:nx { already-adapted } { #1 } }
+      { \fnpct_renew:Nc #1 { fnpct_orig_ \cs_to_str:N #1 :w } }
+  }
+
+\NewDocumentCommand \AdaptNoteOpt { mm }
+  {
+    \cs_if_exist:cTF { fnpct_orig_ \cs_to_str:N #1 :w }
+      { \fnpct_message:nx { already-adapted } { #1 } }
+      { \fnpct_renew_and_mult_opt:NcN #1 { fnpct_orig_ \cs_to_str:N #1 :w } #2 }
+  }
+
+\NewDocumentCommand \AdaptNoteOptNoMult { m }
+  {
+    \cs_if_exist:cTF { fnpct_orig_ \cs_to_str:N #1 :w }
+      { \fnpct_message:nx { already-adapted } { #1 } }
+      { \fnpct_renew_opt:Nc #1 { fnpct_orig_ \cs_to_str:N #1 :w } }
+  }
+
+\NewDocumentCommand \AdaptNoteMark { m }
+  {
+    \cs_if_exist:cTF { fnpct_orig_ \cs_to_str:N #1 :w }
+      { \fnpct_message:nx { already-adapted } { #1 } }
+      { \fnpct_renew_mark:Nc #1 { fnpct_orig_ \cs_to_str:N #1 :w } }
+  }
+
+% --------------------------------------------------------------------------
+% DO THE REDEFINING:
+%
+% before we start make the testing more comfortable:
+\cs_new:Npn \fnpct_treatment:nn #1#2
+  { \@ifpackageloaded { #1 } { #2 } { } }
+\cs_new:Npn \fnpct_special_treatment:nn #1#2
+  { \@ifpackageloaded { #1 } { #2 } { \AfterPackage * { #1 }  { #2 } } }
+
+% and now get going:
+\AtBeginDocument
+  {
+    \@ifpackageloaded { hyperref }
+      { \bool_set_true:N \l_fnpct_hyperref_bool  }
+      {
+        \cs_if_exist:NF \AfterBeginDocument
+          { \cs_new:Npn \AfterBeginDocument #1 { #1 } }
+      }
+    \AfterBeginDocument
+      {
+        \AdaptNote \footnote \multfootnote
+        \AdaptNoteMark \footnotemark
+        \fnpct_new:NN \innernote \fnpct_inner_footnote:w
+        %% the `endnotes' package:
+        \fnpct_treatment:nn { endnotes }
+          {
+            \AdaptNote \endnote \multendnote
+            \AdaptNoteMark \endnotemark
+          }
+        %% the `sidenotes' package:
+        \fnpct_treatment:nn { sidenotes }
+          {
+            \AdaptNote \sidenote \multsidenote
+            \AdaptNoteMark \sidenotemark
+            \AdaptNoteOpt \sidecite \multsidecite
+          }
+        %% the `parnotes' package:
+        \fnpct_treatment:nn { parnotes } { \AdaptNote \parnote \multparnote }
+        %% the `pagenote' package:
+        \fnpct_treatment:nn { pagenote }
+          {
+            \bool_if:NT \l_fnpct_makepagenote_bool
+              { \AdaptNote \pagenote \multpagenote }
+          }
+        %% the `tablefootnote' package:
+        \fnpct_treatment:nn { tablefootnote }
+          {
+            \fnpct_renew_and_mult_no_opt:NNN \tablefootnote
+              \fnpct_orig_tablefootnote:w \multtablefootnote
+          }
+        %% the `bigfoot' package:
+        \fnpct_treatment:nn { bigfoot }
+          {
+            \prop_map_inline:Nn \l_fnpct_footnote_class_prop
+              {
+                \fnpct_renew_and_mult:ccc { footnote#2 }
+                  { fnpct_orig_footnote#2:w } { multfootnote#2 }
+                \fnpct_renew_mark:cc { footnotemark#2 } { fnpct_orig_footnotemark#2:w }
+              }
+            % re-set basics:
+            \cs_set_eq:NN \footnote \footnotedefault
+            \cs_set_eq:NN \footnotemark \footnotemarkdefault
+            \cs_set_eq:NN \multfootnote \multfootnotedefault
+          }
+        %% the `fixfoot' package:
+        \fnpct_treatment:nn { fixfoot }
+          {
+            \prop_map_inline:Nn \l_fnpct_footnote_fixfoot_prop
+              { \fnpct_renew_no_arg:cc { #2 } { fnpct_orig_fix_#2:w } }
+          }
+        %% the `sepfootnotes' package:
+        \fnpct_treatment:nn { sepfootnotes }
+          {
+            \prop_map_inline:Nn \l_fnpct_sepfootnote_foot_classes_prop
+              {
+                \fnpct_renew_and_mult_no_opt:ccc { #2note }
+                  { fnpct_orig_sep_#2:w } { #2multnote }
+                \fnpct_renew_no_opt:cc { #2notemark } { fnpct_orig_sep_#2_mark:w }
+              }
+            \prop_map_inline:Nn \l_fnpct_sepfootnote_end_classes_prop
+              {
+                \fnpct_renew_and_mult_no_opt:ccc { #2note }
+                  { fnpct_orig_sep_#2:w } { #2multnote }
+                \fnpct_renew_no_opt:cc { #2notemark } { fnpct_orig_sep_#2_mark:w }
+              }
+          }
+      }
+  }
+
+% the `bigfoot' package neads special treatment:
+\prop_new:N \l_fnpct_footnote_class_prop
+\fnpct_special_treatment:nn { bigfoot }
+  {
+    % hook into \DeclareNewFootnote so we can redefine all footnote
+    % classes defined be users
+    \cs_new_eq:NN \fnpct_new_footnote:w \DeclareNewFootnote
+    \RenewDocumentCommand \DeclareNewFootnote { omo }
+      {
+        \prop_put:Nnn \l_fnpct_footnote_class_prop { #2 } { #2 }
+        \IfNoValueTF { #1 }
+          {
+            \IfNoValueTF { #3 }
+              { \fnpct_new_footnote:w { #2 } }
+              { \fnpct_new_footnote:w { #2 } [ #3 ] }
+          }
+          {
+            \IfNoValueTF { #3 }
+              { \fnpct_new_footnote:w [ #1 ] { #2 } }
+              { \fnpct_new_footnote:w [ #1 ]{ #2 } [ #3 ] }
+          }
+      }
+    \bool_if:NT \l_fnpct_bigfoot_default_top_bool
+      { \DeclareNewFootnote { default } }
+  }
+
+% as does the `fixfoot' package
+\prop_new:N \l_fnpct_footnote_fixfoot_prop
+\fnpct_special_treatment:nn { fixfoot }
+  {
+    % hook into \DeclareFixedFootnote so we can redefine all footnote
+    % classes defined be users
+    \cs_new_eq:NN \fnpct_new_fixnote:w \DeclareFixedFootnote
+    \RenewDocumentCommand \DeclareFixedFootnote { smm }
+      {
+        \prop_put:Nnx \l_fnpct_footnote_fixfoot_prop { #2 }
+          { \cs_to_str:N #2 }
+        \IfBooleanTF { #1 }
+          { \fnpct_new_fixnote:w * { #2 } { #3 } }
+          { \fnpct_new_fixnote:w { #2 } { #3 } }
+      }
+  }
+
+% and the `pagenote' package:
+\bool_new:N \l_fnpct_makepagenote_bool
+\fnpct_special_treatment:nn { pagenote }
+  {
+    \tl_put_left:Nn \makepagenote
+      { \bool_set_true:N \l_fnpct_makepagenote_bool }
+  }
+
+% aaand... the `sepfootnotes' package:
+\prop_new:N \l_fnpct_sepfootnote_foot_classes_prop
+\prop_new:N \l_fnpct_sepfootnote_end_classes_prop
+\fnpct_special_treatment:nn { sepfootnotes }
+  {
+    \cs_new_eq:NN \fnpct_orig_new_footnotes:n \newfootnotes
+    \cs_new_eq:NN \fnpct_orig_new_endnotes:n \newendnotes
+    \cs_new_eq:NN \fnpct_orig_new_symbolnotes:w \newsymbolfootnotes
+    \RenewDocumentCommand \newfootnotes { m }
+      {
+        \prop_put:Nnn \l_fnpct_sepfootnote_foot_classes_prop { #1 } { #1 }
+        \fnpct_orig_new_footnotes:n { #1 }
+      }
+    \RenewDocumentCommand \newendnotes { m }
+      {
+        \prop_put:Nnn \l_fnpct_sepfootnote_end_classes_prop { #1 } { #1 }
+        \fnpct_orig_new_endnotes:n { #1 }
+      }
+  }
+
+% --------------------------------------------------------------------------
+% SETUP COMMAND:
+\NewDocumentCommand \setfnpct { m }
+  { \keys_set:nn { fnpct } { #1 } }
+
+\tex_endinput:D
+
+% --------------------------------------------------------------------------
+% HISTORY:
+2012/05/18 v0.1alpha  - various changes still possible without announcement
+                        until declared `v0.1'
+2012/05/19 v0.1beta   - considered ready for public use, needs feedback, though
+2012/05/20 v0.1beta-a - minor changes
+2012/05/20 v0.1beta-b - added `pagenote' support
+                      - added `tablefootnote' support
+2012/05/20 v0.1beta-c - optional star argument to \multfootnote that only invokes
+                        \footnotetext
+                      - option `dont-mess-around': disable switching and kerning
+2012/05/21 v0.1beta-d - \innernote for nesting
+                      - `hyperref' support
+                      - bugfix in \multfootnote
+2012/05/21 v0.1beta-e - `sepfootnotes' support
+2012/05/22 v0.1beta-f - reorganized code
+2012/05/22 v0.1       - a bit more cleaning up of the code
+                      - completed documentation
+                      - ready for CTAN
+2012/05/23 v0.1a      - \AdaptNoteNoMult, \AdaptNoteOpt, \AdaptNoteOptNoMult
+                      - support `sidenotes' package
+                      - better support for citing commands
+                      - error checking in the \AdaptNote<sth> commands
+                      - package option `strict'
+2012/05/26 v0.2       - added possibility to add punctuation marks to the
+                        switching/kerning mechansim (or remove them)
+2012/06/01 v0.2a      - * switches behaviour also with `punct-after=true'
+                      - `dont-mess-around' disables *
+ 
+% --------------------------------------------------------------------------
+% NOTES:
+- `footnote' package => not compatible => see todo
+- `ednotes' package  => not tested; who knows?
+
+% --------------------------------------------------------------------------
+% TODO:
+- solve incompatibility with the `footnote' package
+- get this working (??) => http://tex.stackexchange.com/questions/54288/nested-endnotes

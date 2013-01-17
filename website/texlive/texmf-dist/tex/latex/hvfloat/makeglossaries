@@ -1,0 +1,1070 @@
+#!/usr/bin/env perl
+
+# File    : makeglossaries
+# Author  : Nicola Talbot
+# Version : 2.04 (2011/06/21)
+# Description: simple Perl script that calls makeindex or xindy.
+# Intended for use with "glossaries.sty" (saves having to remember
+# all the various switches)
+
+# This file is distributed as part of the glossaries LaTeX package.
+# Copyright 2007 Nicola L.C. Talbot
+# This work may be distributed and/or modified under the
+# conditions of the LaTeX Project Public License, either version 1.3
+# of this license or any later version.
+# The latest version of this license is in
+#   http://www.latex-project.org/lppl.txt
+# and version 1.3 or later is part of all distributions of LaTeX
+# version 2005/12/01 or later.
+#
+# This work has the LPPL maintenance status `maintained'.
+#
+# The Current Maintainer of this work is Nicola Talbot.
+
+# This work consists of the files glossaries.dtx and glossaries.ins 
+# and the derived files glossaries.sty, mfirstuc.sty,
+# glossary-hypernav.sty, glossary-list.sty, glossary-long.sty,
+# glossary-super.sty, glossaries.perl.
+# Also makeglossaries and makeglossaries.
+
+my $version="2.04 (2012-05-19)";
+
+# History:
+# v2.04 (2012-04-19):
+#   * fixed bug in &scan_aux
+# v2.03 (2011-04-12):
+#   * added warning about possibly needing 'nomain' package option
+# v2.02 (2011-04-2):
+#   * Prints version number at start of run unless -q
+#   * Added more diagnostics.
+# v2.01 (2010-09-29):
+#   * Added 'use warnings'
+# v2.0 (2010-06-30) :
+#   * Made file handle local in &scan_aux
+# v1.9 (2010-06-14) :
+#   * Check for \@input
+# v1.8 (2009-11-03) :
+#   * Create an empty output file if the input file is empty
+#     without calling xindy/makeindex
+# v1.7 (2009-09-23) :
+#   * Issue warning rather than error when empty/non existant file 
+#     checks fail
+# v1.6 (2009-05-24) :
+#   * main glossary no longer automatically added
+#     (only added if information in aux file)
+#   * if file extension is specified, check added to ensure it
+#     corresponds to a known glossary extension.
+#   * added file existance test and file empty test
+# v1.5 (2008-12-26) :
+#   * added support for xindy
+#   * picks up ordering information from aux file
+# v1.4 (2008-05-10) :
+#   * added support for filenames with spaces.
+# v1.3 (2008-03-08) :
+#   * changed first line from /usr/bin/perl -w to /usr/bin/env perl
+#     (Thanks to Karl Berry for suggesting this.)
+# v1.2 (2008-03-02) :
+#   * added support for --help and --version
+#   * improved error handling
+# v1.1 (2008-02-13) :
+#   * added -w and strict
+#   * added check to ensure .tex file not passed to makeglossaries
+#
+# v1.0 (2007-05-10) : Initial release.
+
+use Getopt::Std;
+use strict;
+# v2.01 added the following line
+use warnings;
+use vars qw($opt_q $opt_t $opt_o $opt_s $opt_p $opt_g $opt_c $opt_r
+   $opt_l $opt_i $opt_L $opt_n $opt_C);
+
+
+$Getopt::Std::STANDARD_HELP_VERSION = 1;
+
+# v1.5 added -L <lang> for xindy (but language can be specified in 
+# .tex file)
+# v1.5 added -n (print the command that would be issued but
+# don't actually run the command)
+getopts('s:o:t:p:L:C:ilqrcgn');
+
+unless ($#ARGV == 0)
+{
+   die "makeglossaries: Need exactly one file argument.\n",
+       "Use `makeglossaries --help' for help.\n";
+}
+
+# v2.02: added:
+print "makeglossaries version $version\n" unless ($opt_q);
+
+# v2.02: added:
+my $xdynotist = 1;
+my $needcompatibilitymode=2;
+
+# define known extensions
+
+# v1.6: removed adding main glossary here as there's no guarantee
+# that it's been used. If it has been used, the information will
+# be picked up later in the aux file
+my %exttype = (
+#   main => {in=>'glo', out=>'gls', 'log'=>'glg'},
+ );
+
+# v1.5 define require languages for xindy
+
+my %language = ();
+my %codepage = ();
+
+my $ext = '';
+my $name = $ARGV[0];
+
+# modified this to make sure users don't try passing the
+# tex file:
+if (length($ARGV[0]) > 3 and substr($ARGV[0],-4,1) eq ".")
+{
+  $name = substr($ARGV[0],0,length($ARGV[0])-4);
+
+  $ext = substr($ARGV[0],-3,3);
+
+  if (lc($ext) eq 'tex')
+  {
+     die("Don't pass the tex file to makeglossaries:\n"
+        ."either omit the extension to make all the glossaries, "
+        ."or specify one of the glossary files, e.g. $name.glo, to "
+        ."make just that glossary.\n")
+  }
+}
+
+# v2.01 add check to see if aux file exists
+
+unless (-e "$name.aux")
+{
+   die "Auxiliary file '$name.aux' doesn't exist. Have you run LaTeX?\n";
+}
+
+my $istfile = "";
+
+# should letter ordering be used? (v1.5 added)
+
+my $letterordering = defined($opt_l);
+
+# check aux file for other glossary types
+# and for ist file name
+
+&scan_aux($name);
+
+# has the style file been specified?
+unless ($istfile)
+{
+   die "No \\\@istfilename found in '$name.aux'.\n",
+       "Did your LaTeX run fail?\n",
+       "Did your LaTeX run produce any output?\n",
+       "Did you remember to use \\makeglossaries?\n";
+}
+
+# v1.5 save the general xindy switches
+
+my $xdyopts = '';
+
+# v2.01 replaced 'unless ($opt_L eq "")' with 'if ($opt_L)'
+if ($opt_L)
+{
+  $xdyopts .= " -L $opt_L";
+}
+
+# save all the general makeindex switches
+
+my $mkidxopts = '';
+
+if ($opt_i)
+{
+   $mkidxopts .= " -i";
+}
+
+if ($letterordering)
+{
+   $mkidxopts .= " -l";
+   $xdyopts .= " -M ord/letorder";
+}
+
+if ($opt_q)
+{
+# v2.01 removed following lines. (This script now deals with
+# printing messages to STDOUT.)
+   #$mkidxopts .= " -q";
+   #$xdyopts .= " -q";
+}
+
+if ($opt_r)
+{
+   $mkidxopts .= " -r";
+}
+
+if ($opt_c)
+{
+   $mkidxopts .= " -c";
+}
+
+if ($opt_g)
+{
+   $mkidxopts .= " -g";
+}
+
+# v2.01 replaced 'unless ($opt_p eq "")' with 'if ($opt_p)'
+if ($opt_p)
+{
+   $mkidxopts .= " -p $opt_p";
+}
+
+# v2.01 replaced 'unless ($opt_s eq "")' with 'if ($opt_s)'
+if ($opt_s)
+{
+   # v2.01 check if user has specified -s <file>.ist but aux file
+   # indicates .xdy ought to be used and vice-versa. Also check if
+   # requested style file exists
+
+   unless (-e $opt_s)
+   {
+      die "\n",
+         "Requested style file '$opt_s' doesn't exist.\n\n";
+   }
+
+   if ($istfile=~/\.xdy$/ and $opt_s!~/\.xdy$/)
+   {
+      die "\n",
+        "The auxiliary file indicates that you should be using xindy,\n",
+        "but you have specified makeindex style file '$opt_s'\n",
+        "Make sure you don't specify 'xindy' as a package option if\n",
+        "you want to use makeindex.\n\n",
+        "\\usepackage[makeindex]{glossaries}\n\n";
+   }
+   elsif ($istfile!~/\.xdy$/ and $opt_s=~/\.xdy$/)
+   {
+      die "\n",
+        "The auxiliary file indicates that you should be using\n",
+        "makeindex, but you have specified xindy style file '$opt_s'.\n",
+        "Make sure you specify 'xindy' as a package option if you\n",
+        "want to use xindy.\n\n",
+        "\\usepackage[xindy]{glossaries}\n\n";
+   }
+
+   $istfile = $opt_s;
+}
+
+# Use xindy if style file ends with .xdy otherwise use makeindex
+
+my $usexindy = ($istfile=~m/\.xdy\Z/);
+
+if ($ext)
+{
+   # an extension has been specified, so only process
+   # the specified file
+
+   # v1.6 %thistype is no longer given a default value
+   my %thistype;
+
+   my $thislang = "";
+   my $thiscodepage = "";
+
+   foreach my $type (keys %exttype)
+   {
+      if ($exttype{$type}{'in'} eq $ext)
+      {
+         %thistype = %{$exttype{$type}};
+
+         $thislang = $language{$type};
+
+         $thiscodepage = $codepage{$type};
+
+         last;
+      }
+   }
+
+   # v1.6 If %thistype hasn't been defined, then the given
+   # extension doesn't correspond to any known glossary type
+
+   # v2.01 replaced deprecated 'defined(%thistype)' with %thistype
+   unless (%thistype)
+   {
+      die "The file extension '$ext' doesn't correspond to any\n",
+          "known glossary extension. Try running makeglossaries\n",
+          "without an extension, e.g. makeglossaries \"$name\".\n";
+   }
+
+   my $outfile;
+
+# v2.01 replaced 'if ($opt_o eq "")' with 'unless ($opt_o)'
+   unless ($opt_o)
+   {
+      $outfile = "$name.$thistype{out}";
+   }
+   else
+   {
+      $outfile = $opt_o;
+   }
+
+   my $transcript;
+
+# v2.01 replaced 'if ($opt_t eq "")' with 'unless ($opt_t)'
+   unless ($opt_t)
+   {
+      $transcript = "$name.$thistype{'log'}";
+   }
+   else
+   {
+      $transcript = $opt_t;
+   }
+
+# v2.01 remove old transcript file
+
+   unless ($opt_n)
+   {
+      unlink($transcript);
+   }
+
+   if ($usexindy)
+   {
+      &xindy("$name.$ext", $outfile, $transcript,$istfile,
+        $thislang, $thiscodepage, $xdyopts, $opt_q, $opt_n);
+   }
+   else
+   {
+      &makeindex("$name.$ext",$outfile,$transcript,$istfile,
+                 $mkidxopts,$opt_q, $opt_n);
+   }
+}
+else
+{
+   # no file extension specified so process all glossary types
+
+   foreach my $type (keys %exttype)
+   {
+      my %thistype = %{$exttype{$type}};
+
+      my $inputfile = "$name.$thistype{in}";
+
+      my $outfile;
+
+# v2.01 changed 'if ($opt_o eq "")' with 'unless ($opt_o)'
+      unless ($opt_o)
+      {
+         $outfile = "$name.$thistype{out}";
+      }
+      else
+      {
+         $outfile = $opt_o;
+      }
+
+      # v1.7 print warnings to STDOUT instead of STDERR
+
+      # v1.6 added file existance test
+      unless (-e $inputfile)
+      {
+         print "Warning: File '$inputfile' doesn't exist.\n",
+             "*** Skipping glossary '$type'. ***\n";
+         next;
+      }
+
+      unless (-r $inputfile)
+      {
+         print "Warning: No read access for '$inputfile' $!\n",
+             "*** Skipping glossary '$type'. ***\n";
+         next;
+      }
+
+      my $transcript;
+
+# v2.01 changed 'if ($opt_t eq "")' with 'unless ($opt)'
+      unless ($opt_t)
+      {
+         $transcript = "$name.$thistype{'log'}";
+      }
+      else
+      {
+        $transcript = $opt_t;
+      }
+
+      # v1.6 added file empty test
+      if (-z $inputfile)
+      {
+         my $message =
+             "Warning: File '$inputfile' is empty.\n".
+             "Have you used any entries defined in glossary '$type'?\n";
+
+         if ($type eq 'main')
+         {
+            $message .=
+               "Remember to use package option 'nomain' if you\n".
+               "don't want to use the main glossary.\n";
+         }
+
+         warn $message;
+
+         # Write warning to transcript file.
+
+         if (open TRANSFD, ">$transcript")
+         {
+            print TRANSFD $message;
+            close TRANSFD;
+         }
+
+         # create an empty output file and move on to the next glossary
+
+         if (open OFD, ">$outfile")
+         {
+            print OFD "\\null\n";
+            close OFD;
+         }
+         else
+         {
+            print STDERR "Unable to create '$outfile' $!\n";
+         }
+
+         next;
+      }
+
+# v2.01 remove old transcript file
+
+      unless ($opt_n)
+      {
+         unlink($transcript);
+      }
+
+      if ($usexindy)
+      {
+         &xindy($inputfile,$outfile,$transcript,$istfile,
+                $language{$type},$codepage{$type},
+                $xdyopts,$opt_q,$opt_n);
+      }
+      else
+      {
+         &makeindex($inputfile,$outfile,$transcript,
+                    $istfile,$mkidxopts,$opt_q,$opt_n);
+      }
+   }
+}
+
+sub scan_aux{
+  my $name = shift;
+
+  # v2.0 added
+  local(*AUXFILE);
+
+  if (open AUXFILE, "$name.aux")
+  {
+     while (<AUXFILE>)
+     {
+        # v1.9 added
+        if (m/\\\@input{(.+)\.aux}/)
+        {
+           &scan_aux($1);
+
+           # v2.04 added
+           # (Fix provided by Daniel Grund) 
+           next;
+        }
+
+        if (m/\\\@newglossary\s*\{(.*)\}{(.*)}{(.*)}{(.*)}/)
+        {
+           $exttype{$1}{'log'} = $2;
+           $exttype{$1}{'out'} = $3;
+           $exttype{$1}{'in'}  = $4;
+
+           unless ($opt_q)
+           {
+              print "added glossary type '$1' ($2,$3,$4)\n";
+           }
+        }
+
+        if (m/\\\@istfilename\s*{([^}]*)}/)
+        {
+           $istfile = $1;
+
+           # check if double quotes were added to \jobname
+           $istfile=~s/^"(.*)"\.ist$/$1.ist/;
+        }
+
+        # v1.5 added
+        if (m/\\\@xdylanguage\s*{([^}]+)}{([^}]*)}/)
+        {
+           $language{$1} = $2;
+        }
+
+        # v1.5 added
+        if (m/\\\@gls\@codepage\s*{([^}]+)}{([^}]*)}/)
+        {
+           $codepage{$1} = $2;
+        }
+
+        # v1.5 added
+        # Allow -l switch to override specification in aux file
+        unless (defined($opt_l))
+        {
+           if (m/\\\@glsorder\s*{([^}]+)}/)
+           {
+              my $ordering = $1;
+
+              if ($ordering eq "word")
+              {
+                 $letterordering = 0;
+              }
+              elsif ($ordering eq "letter")
+              {
+                 $letterordering = 1;
+              }
+              else
+              {
+                 print STDERR
+                   "Unknown ordering '$ordering'\n",
+                   "Assuming word ordering\n";
+                 $letterordering = 0;
+              }
+           }
+        }
+     }
+
+     close AUXFILE;
+  }
+  else
+  {
+     print STDERR "Unable to open $name.aux: $!\n";
+  }
+}
+
+# v2.01 new subroutine run_app added
+sub run_app{
+   my($appname, $appargs, $trans, $quiet, $dontexec) = @_;
+
+   local(*STATUS);
+
+   my $status   = '';
+   my $warnings = '';
+   my $errno = 0;
+   my $log = '';
+
+   print "$appname $appargs\n" if ($dontexec or not $quiet);
+
+   return if ($dontexec);
+
+   if (open (STATUS, "$appname $appargs 2>&1 |"))
+   {
+      while (<STATUS>)
+      {
+         print unless ($quiet);
+
+         $warnings .= $_ if (/WARNING:/);
+
+         $status .= $_ unless (/^[\w]+ing/ or /^Finished/ or /^Usage:/);
+
+         $log .= $_;
+      }
+
+      close STATUS;
+   }
+   else
+   {
+      $warnings = "WARNING: Unable to fork $appname: $!\n";
+
+      print STDERR $warnings, "Retrying without redirection.\n";
+
+      $status = `$appname $appargs`;
+
+      $log = $status;
+
+      print $status unless ($quiet);
+   }
+
+   if ($?)
+   {
+      $errno = $?;
+
+      if (open LOGFILE, ">>$trans")
+      {
+         print LOGFILE "\n\n*** Unable to execute: '$appname $appargs' ***\n\n";
+         print LOGFILE "Status report:\n\n";
+         print LOGFILE "$log";
+         close LOGFILE;
+      }
+      else
+      {
+         print STDERR "Unable to open '$trans' $!\n";
+      }
+   }
+
+   if ($log=~/\(0 entries accepted,/)
+   {
+      # Attempt to diagnose what's gone wrong
+
+      if (open TRANS, $trans)
+      {
+         while (<TRANS>)
+         {
+            if (/Unknown specifier ;/)
+            {
+               $errno = $xdynotist;
+
+               last;
+            }
+         }
+
+         close TRANS;
+      }
+
+   }
+
+   return ($status, $warnings, $errno);
+}
+
+sub makeindex{
+   my($in,$out,$trans,$ist,$rest,$quiet,$dontexec) = @_;
+
+   my $args = "$rest -s \"$ist\" -t \"$trans\" -o \"$out\" \"$in\"";
+
+# v2.01 replaced code with call to &run_app
+
+   my ($status, $warnings, $errno) 
+     = &run_app('makeindex', $args, $trans, $quiet, $dontexec);
+
+   return if ($dontexec);
+
+   if ($errno)
+   {
+      my $diagnostic = '';
+
+      if ($errno = $xdynotist)
+      {
+         $diagnostic =
+           "Style name indicates makeindex, but may be in xindy format.\n"
+          . "Remember to use \\setStyleFile to specify the name\n"
+          . "of the style file rather than redefining \\istfilename\n"
+          . "explicitly.";
+      }
+
+      die "\n***Call to makeindex failed***\n", 
+        ($diagnostic ?
+          "\nPossible cause of problem:\n\n".  $diagnostic . "\n\n":
+          "\n"
+        ),
+        "Check '$trans' for details\n";
+   }
+}
+
+sub xindy{
+   my($in,$out,$trans,$ist,$language,$codepage,$rest,$quiet,
+     $dontexec) = @_;
+   my($args, $langparam, $main, $retry);
+   my($module);
+
+   $module = $ist;
+   $module=~s/\.xdy\Z//;
+
+   unless (defined($language))
+   {
+      $language = '';
+   }
+
+   # map babel names to xindy names
+   if ($language eq "frenchb")
+   {
+      $language = "french";
+   }
+   elsif ($language=~/^n?germanb?$/)
+   {
+      $language = "german";
+   }
+   elsif ($language eq "magyar")
+   {
+      $language = "hungarian";
+   }
+   elsif ($language eq "lsorbian")
+   {
+      $language = "lower-sorbian";
+   }
+   elsif ($language eq "norsk")
+   {
+      $language = "norwegian";
+   }
+   elsif ($language eq "portuges")
+   {
+      $language = "portuguese";
+   }
+   elsif ($language eq "russianb")
+   {
+      $language = "russian";
+   }
+   elsif ($language eq "slovene")
+   {
+      $language = "slovenian";
+   }
+   elsif ($language eq "ukraineb")
+   {
+      $language = "ukrainian";
+   }
+   elsif ($language eq "usorbian")
+   {
+      $language = "upper-sorbian";
+   }
+
+   if ($language)
+   {
+     $langparam = "-L $language";
+   }
+   else
+   {
+     $langparam = "";
+   }
+
+   # most languages work with xindy's default codepage, but
+   # some don't, so if the codepage isn't specific, check
+   # the known cases that will generate an error
+   # and supply a default. (For all other cases, it's up to the 
+   # user to supply a codepage.)
+
+# v2.01 changed 'if ($codepage eq "")' to 'unless ($codepage)'
+   unless ($codepage)
+   {
+      if ($language eq 'dutch')
+      {
+         $codepage = "ij-as-ij";
+      }
+      elsif ($language eq 'german')
+      {
+         $codepage = "din";
+      }
+      elsif ($language eq 'gypsy')
+      {
+         $codepage = "northrussian";
+      }
+      elsif ($language eq 'hausa')
+      {
+         $codepage = "utf";
+      }
+      elsif ($language eq 'klingon')
+      {
+         $codepage = "utf";
+      }
+      elsif ($language eq 'latin')
+      {
+         $codepage = "utf";
+      }
+      elsif ($language eq 'mongolian')
+      {
+         $codepage = "cyrillic";
+      }
+      elsif ($language eq 'slovak')
+      {
+         $codepage = "small";
+      }
+      elsif ($language eq 'spanish')
+      {
+         $codepage = "modern";
+      }
+      elsif ($language eq 'vietnamese')
+      {
+         $codepage = "utf";
+      }
+   }
+
+   my $codepageparam = "";
+
+   if ($codepage)
+   {
+      $codepageparam = "-C $codepage";
+   }
+
+   $main = join(' ',
+      "-I xindy",
+      "-M \"$module\"",
+      "-t \"$trans\"",
+      "-o \"$out\"",
+      "\"$in\"");
+
+   $args = join(' ', $rest, $langparam, $codepageparam, $main);
+
+# v2.01 replaced code with call to &run_app
+
+   my ($status, $warnings, $errno) 
+     = &run_app('xindy', $args, $trans, $quiet, $dontexec);
+
+   return if ($dontexec);
+
+   if ($status=~/Cannot locate xindy module for language ([^\s]+) in codepage ([^\s]+)/)
+   {
+      $args = join(' ', $rest, $langparam, $main);
+
+      unless ($quiet)
+      {
+         my $message = "$&\nRetrying using default codepage.\n";
+
+         print STDERR $message;
+
+         $retry .= $message;
+      }
+
+      ($status, $warnings, $errno) 
+         = &run_app('xindy', $args, $trans, $quiet, $dontexec);
+
+   }
+
+   if ($status=~/Cannot locate xindy module for language ([^\s]+)/
+    and $1 ne 'general')
+   {
+      $args = join(' ', $rest, "-L general", $main);
+
+      unless ($quiet)
+      {
+         my $message = "$&\nRetrying with -L general\n";
+
+         print STDERR $message;
+         $retry .= $message;
+      }
+
+      ($status, $warnings, $errno) 
+         = &run_app('xindy', $args, $trans, $quiet, $dontexec);
+
+   }
+
+   if ($errno)
+   {
+      # attempt further diagnostic
+
+      my $diagnostic = '';
+
+      if ($status=~/index 0 should be less than the length of the string/m)
+      {
+         $diagnostic = 
+           "Sort key required for entries only containing command names";
+      }
+      elsif ($status=~/variable % has no value/m)
+      {
+         $diagnostic =
+            "Style name has xdy extension, but may be in makeindex format.\n"
+          . "Remember to use \\setStyleFile to specify the name\n"
+          . "of the style file rather than redefining \\istfilename\n"
+          . "explicitly.";
+      }
+      elsif ($status=~/Possible read-error due to ill-formed string " :sep/m)
+      {
+         $diagnostic = 
+            "You may have missed a \" character in a command such as \\GlsAddXdyLocation";
+      }
+      elsif (not $language)
+      {
+         # If the language hasn't been set, then it may be
+         # because the document doesn't contain
+         # \printglossaries/\printglossary or it may be
+         # because the user has a customized style file that
+         # contains the language settings.
+
+          $diagnostic = 
+          "No language detected.".
+          "\nHave you remembered to use \\printglossary\n".
+          "or \\printglossaries in your document?";
+
+          if ($in eq 'glo')
+          {
+             # or it may be that the user doesn't want to use the main
+             # glossary and has forgotten to suppress it with the
+             # "nomain" package option
+
+             $diagnostic .= 
+             "\nRemember to use package option 'nomain' if you don't\n".
+             "want to use the main glossary.";
+          }
+      }
+
+      die "\n***Call to xindy failed***\n", 
+          ($diagnostic ? 
+          "\nPossible cause of problem:\n\n".  $diagnostic . "\n\n":
+          "\n"),
+          "Check '$trans' for details\n";
+   }
+
+   # Check xindy warnings
+
+   if ($status=~/^WARNING:/m)
+   {
+      my $diagwarn = '';
+
+      if ($status=~/did not match any location-class/m)
+      {
+         $diagwarn = "You may have forgotten to add a location \n"
+                   . "class with \\GlsAddLocation or you may have \n"
+                   . "the format incorrect.\n";
+
+      }
+
+      if ($status=~/unknown attribute `pageglsnumberformat'/m)
+      {
+         $diagwarn .= "You may need to add 'compatible-2.07' package "
+                   .  "option.\n";
+      }
+
+      if ($diagwarn)
+      {
+         warn "\n**Warning:**\n\n", $diagwarn, "\n";
+
+         $warnings .= "\nmakeglossaries diagnostic messages:\n\n"
+                   . $diagwarn;
+      }
+   }
+
+   if ($retry or $warnings)
+   {
+      if (open LOGFILE, ">>$trans")
+      {
+         print LOGFILE "\n$warnings";
+
+         if ($retry)
+         {
+            print LOGFILE "\nmakeglossaries messages:\n\n", $retry;
+         }
+
+         close LOGFILE;
+      }
+      else
+      {
+         print STDERR "Unable to open '$trans' $!\n";
+      }
+   }
+}
+
+sub HELP_MESSAGE{
+   print "\nSyntax : makeglossaries [options] <filename>\n\n";
+   print "For use with the glossaries package to pass relevant\n";
+   print "files to makeindex or xindy\n\n";
+   print "<filename>\tBase name of glossary file(s). This should\n";
+   print "\t\tbe the name of your main LaTeX document without any\n";
+   print "\t\textension.\n";
+   print "\n General Options:\n";
+   print "-o <gls>\tUse <gls> as the output file.\n";
+   print "-q\t\tQuiet mode\n";
+   print "-s <sty>\tEmploy <sty> as the style file\n";
+   print "-t <log>\tEmploy <log> as the transcript file\n";
+   print "-n\tPrint the command that would normally be executed,\n",
+         "\tbut don't execute it\n";
+
+   print "\n Xindy Options:\n";
+   print "-L <language>\tUse <language>.\n";
+
+   print "\n Makeindex Options:\n";
+   print "-c\t\tCompress intermediate blanks\n";
+   print "-g\t\tEmploy German word ordering\n";
+   print "-l\t\tLetter ordering\n";   
+   print "-p <num>\tSet the starting page number to be <num>\n";
+   print "-r\t\tDisable implicit page range formation\n";
+   print "\nSee makeindex documentation for further details on these ";
+   print "options\n";
+}
+
+sub VERSION_MESSAGE{
+   print "Makeglossaries Version $version\n";
+   print "Copyright (C) 2007 Nicola L C Talbot\n";
+   print "This material is subject to the LaTeX Project Public License.\n";
+}
+
+1;
+
+=head1 NAME
+
+makeglossaries  - Calls makeindex/xindy for LaTeX documents using glossaries package
+
+=head1 SYNOPSIS
+
+B<makeglossaries> [B<-o> I<file>] [B<-q>] [B<-s> I<file>]
+[B<-t> I<file>] [B<-L> I<language>] [B<-c>] [B<-g>] [B<-l>]
+[B<-p> I<num>] [B<-r>] [B<--version>] [B<--help>] I<filename>
+
+=head1 DESCRIPTION
+
+B<makeglossaries> is designed for use with LaTeX documents that
+use the glossaries package. The mandatory argument I<filename> should
+be the name of the LaTeX document without the .tex extension. 
+B<makeglossaries> will read the auxiliary file to determine whether
+B<makeindex> or B<xindy> should be called. All the information
+required to be passed to the relevant indexing application should
+also be contained in the auxiliary file, but may be overridden by
+the option arguments to B<makeglossaries>.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<-q>
+
+Quiet mode. Reduces chatter to standard output.
+
+=item B<-o> I<file>
+
+Use I<file> as the output file. (Only suitable for documents 
+containing a single glossary, otherwise each glossary will be
+overridden.)
+
+=item B<-s> I<file>
+
+Use I<file> as the style file. Note that if you use this option,
+you need to know whether B<makeindex> or B<xindy> will be called, as
+they have different style files.
+
+=item B<-t> I<file>
+
+Use I<file> as the transcript file.
+
+=item B<-L> I<language>
+
+This option only has an effect if B<xindy> is called. Sets the
+language. See B<xindy> documentation for further details.
+
+=item B<-c>
+
+Compress intermediate blanks (B<makeindex> only).
+
+=item B<-g>
+
+Employ German word ordering (B<makeindex> only).
+
+=item B<-l>
+
+Letter ordering (B<makeindex> only).
+
+=item B<-p> I<num>
+
+Sets the starting page number to be I<num> (B<makeindex> only).
+
+=item B<-r>
+
+Disable implicit page range formation (B<makeindex> only).
+
+=item B<--version>
+
+Prints version number and exits.
+
+=item B<--help>
+
+Prints help message and exits.
+
+=back
+
+=head1 REQUIRES
+
+Perl, Getopt::Std, and makeindex or xindy (depending on glossaries
+package options).
+
+=head1 LICENSE
+
+This is free software distributed under the LaTeX Project Public 
+License. There is NO WARRANTY.
+See L<http://www.latex-project.org/lppl.txt> for details.
+
+=head1 AUTHOR
+
+Nicola L. C. Talbot,
+L<http://theoval.cmp.uea.ac.uk/~nlct/>
+
+=head1 RECOMMENDED READING
+
+The glossaries manual:
+
+	texdoc glossaries
+
+=cut

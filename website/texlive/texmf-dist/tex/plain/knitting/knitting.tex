@@ -1,0 +1,793 @@
+% knitting.tex
+%
+% Provides commands useful for writing knitting patterns in plain TeX
+%
+% author: Ariel Barton
+%
+% Copyright Ariel Barton, 2010
+%
+% This work may be distributed and/or modified under the
+% conditions of the LaTeX Project Public License, either
+% version 1.3 of this license or (at your option) any
+% later version.
+% The latest version of the license is in
+%    http://www.latex-project.org/lppl.txt
+% and version 1.3 or later is part of all distributions of
+% LaTeX version 2003/06/01 or later.
+%
+% This work has the LPPL maintenance status "author-maintained".
+%
+% The complete list of files considered part of this work is in
+% the file `knitting-doc.pdf' and its source code `knitting-doc.tex'.
+%
+% Version: 2
+
+% Date: 2010/08/29
+
+%\pdfmapfile{+knitfont.map}
+
+\ifnum\catcode`\@=\catcode`A \else
+  \chardef\catcountknit=\catcode`@
+  \catcode`@=11
+\fi
+
+\newif \ifchartsonly \chartsonlyfalse
+\newif \ifgrid
+\newif \ifresetrn \resetrntrue
+\newif \ifleftrn@knit
+\newif \ifshowrn@knit \showrn@knittrue
+\newif \ifpdf@knit
+\newif \ifcountingout@knit
+\pdf@knittrue
+\ifx \pdfoutput \undefined \pdf@knitfalse \fi
+\ifx \pdfoutput \relax     \pdf@knitfalse \fi
+
+% This defines pdfTeX-friendly or dvips-friendly grays.
+% Change them to use your driver's syntax if you insist on
+% not using pdfTeX.
+
+% For black lines, just say \let\knitlinecolor \relax
+\ifpdf@knit
+    \ifnum \pdftexversion < 140
+    \def\purlgray {\pdfliteral {0.65 g 0.65 G}\aftergroup\makenormalcolorknit}
+    \def\gridcolor {\pdfliteral {0.3 g 0.3 G}\aftergroup\makenormalcolorknit}
+    \def\knitlinecolor {\pdfliteral {0.7 0 0 rg 0.7 0 0 RG}\aftergroup\makenormalcolorknit}
+    \def\rncolor{\pdfliteral {0.55 0 0 rg 0.55 0 0 RG}\aftergroup\makenormalcolorknit}
+    \def\rnarrowcolor{\pdfliteral {0.35 0 0 rg 0.35 0 0 RG}\aftergroup\makenormalcolorknit}
+    \def\makenormalcolorknit{\ifcase \passnum@knit \pdfliteral {0.65 g 0.65 G}\or \pdfliteral {0.3 g 0.3 G}\else \pdfliteral {0 g 0 G}\fi}
+    \else
+    \def\purlgray {\pdfcolorstack 0 push {0.65 g 0.65 G}\aftergroup\makenormalcolorknit}
+    \def\gridcolor {\pdfcolorstack 0 push {0.3 g 0.3 G}\aftergroup\makenormalcolorknit}
+    \def\knitlinecolor {\pdfcolorstack 0 push {0.7 0 0 rg 0.7 0 0 RG}\aftergroup\makenormalcolorknit}
+    \def\rncolor{\pdfcolorstack 0 push {0.55 0 0 rg 0.55 0 0 RG}\aftergroup\makenormalcolorknit}
+    \def\rnarrowcolor{\pdfcolorstack 0 push {0.35 0 0 rg 0.35 0 0 RG}\aftergroup\makenormalcolorknit}
+    \def\makenormalcolorknit{\pdfcolorstack 0 pop}
+    \fi
+\else
+    \def\purlgray {\special{color push gray 0.65}\aftergroup\makenormalcolorknit}
+    \def\gridcolor {\special{color push gray 0.3}\aftergroup\makenormalcolorknit}
+    \def\knitlinecolor {\special{color push rgb 0.7 0 0}\aftergroup\makenormalcolorknit}
+    \def\rncolor{\special{color push rgb 0.55 0 0}\aftergroup\makenormalcolorknit}
+    \def\rnarrowcolor{\special{color push rgb 0.35 0 0}\aftergroup\makenormalcolorknit}
+    \def\makenormalcolorknit{\special{color pop}}
+\fi
+
+% If grayscale really just isn't working at all,
+% go down and redefine \changeknitsize
+
+\newdimen \leftgap@knit
+\newdimen \bgshift@knit
+\newdimen \chartwidth@knit
+\newdimen \stitchcountwidth@knit
+\newdimen \rnleftwd@knit
+\newdimen \rnrightwd@knit
+\newdimen \fontsize@knit
+
+\newbox\bgbox@knit
+\newbox\fgbox@knit
+\newbox\ggbox@knit
+
+\newcount \rownumber
+\newcount \tempcount@knit
+\newcount \rownumberskip \rownumberskip = 1
+\newcount \stitchcountin
+\newcount \stitchcountinprev
+\newcount \stitchcountout
+
+\def \passnum@knit{2}
+\def \stitchwd{\fontdimen6\ff@knit}
+\def \stitchht{\fontdimen5\ff@knit}
+\def \stitchdp{\fontdimen8\ff@knit}
+% fontdimen9 is the LaTeX stitch height
+\def \gridwidth{\fontdimen10\ff@knit}
+\def \knitlinewd{\fontdimen11\ff@knit}
+\def \narrowincraise@knit{\fontdimen12\the\font}
+\def \fontvoffset@knit{\fontdimen13\the\font}
+\def \purlextend@knit{\fontdimen14\ff@knit}
+\def \rownumberwd{\fontdimen6\ff@knit}
+
+\def \changeknitsize#1{\fontsize@knit = #1
+    \font\knitsf = cmss10 at \fontsize@knit
+    \font\knitrm = cmr10 at \fontsize@knit
+    \font\knitsfsmall@knit = cmss8 at 0.8\fontsize@knit
+    \font\cablesf@knit = cmss8 at 0.8\fontsize@knit
+    \font\cablesfsmall@knit = ecss0600 at 0.6\fontsize@knit
+    % I would use cmss as the sans serif font here,
+    % but cmss6 doesn't exist.
+    %
+    \font\gff@knit = knitgn at \fontsize@knit
+    \font\wff@knit = knitwn at \fontsize@knit
+    \font\nff@knit = knitnn at \fontsize@knit
+    %
+    \font\ggf@knit = knitgg at \fontsize@knit
+    \font\wgf@knit = knitwg at \fontsize@knit
+    \font\raiseff@knit = knitnr at \fontsize@knit
+    \font\lowerff@knit = knitnl at \fontsize@knit
+    %
+    \font\gpf@knit = knitgp at \fontsize@knit
+    \font\wpf@knit = knitwp at \fontsize@knit
+    \font\npf@knit = knitnp at \fontsize@knit
+    %
+    \font \nstsout@knit = knitn_sc_out at \fontsize@knit
+    \font  \nstsin@knit = knitn_sc_in  at \fontsize@knit
+    \font \gstsout@knit = knitg_sc_out at \fontsize@knit
+    \font  \gstsin@knit = knitg_sc_in  at \fontsize@knit
+    \font \wstsout@knit = knitw_sc_out at \fontsize@knit
+    \font  \wstsin@knit = knitw_sc_in  at \fontsize@knit
+    %
+    %%% Use the following if you can't get the grays to work.
+    %%% In this case, don't use \Purl or \purlbox.
+    % \let \gridpf@knit \nullfont
+    % \let \widepf@knit \nullfont
+    % \let \nogridpf@knit \nullfont
+    % \let \purlgray \relax
+}
+\let \ngf@knit \nullfont
+
+\def \ff@knit{\csname \series@knit ff@knit\endcsname}
+\def \gf@knit{\csname \series@knit gf@knit\endcsname}
+\def \pf@knit{\csname \series@knit pf@knit\endcsname}
+\def \stsout@knit{\csname \series@knit stsout@knit\endcsname}
+\def \stsin@knit{\csname \series@knit stsin@knit\endcsname}
+
+\def \purlpass{\futurelet\next@knit\purlpass@@knit}
+\def \gridpass{\futurelet\next@knit\gridpass@@knit}
+\def \mainpass{\futurelet\next@knit\mainpass@@knit}
+\def \countpass{\futurelet\next@knit\mainpass@@knit}
+\def \purlpass@@knit{\ifx\next@knit[\def\nextstep@knit{\purlpass@knit}\else\def\nextstep@knit{\purlpass@knit[]}\fi\nextstep@knit}
+\def \gridpass@@knit{\ifx\next@knit[\def\nextstep@knit{\gridpass@knit}\else\def\nextstep@knit{\gridpass@knit[]}\fi\nextstep@knit}
+\def \mainpass@@knit{\ifx\next@knit[\def\nextstep@knit{\mainpass@knit}\else\def\nextstep@knit{\mainpass@knit[]}\fi\nextstep@knit}
+\def \countpass@@knit{\ifx\next@knit[\def\nextstep@knit{\countpass@knit}\else\def\nextstep@knit{\countpass@knit[]}\fi\nextstep@knit}
+\def \purlpass@knit[#1]#2{\ifnum\passnum@knit = 0 #2\else #1\fi}
+\def \gridpass@knit[#1]#2{\ifnum\passnum@knit = 1 #2\else #1\fi}
+\def \mainpass@knit[#1]#2{\ifnum\passnum@knit = 2 #2\else #1\fi}
+\def \countpass@knit[#1]#2{\ifnum\passnum@knit = 3 #2\else #1\fi}
+
+\changeknitsize{10pt}
+
+\def \knitnogrid{\gridfalse\def\series@knit{n}}
+\def \knitgrid{\gridtrue \def\series@knit{g}}
+\def \knitwide{\gridtrue \def\series@knit{w}}
+
+\knitgrid
+
+\def \textknit#1{\leavevmode\hbox{\ff@knit
+    \rlap{\pf@knit \purlgray \def\passnum@knit{0}#1}%
+    \ifgrid\rlap{\gf@knit \gridcolor \def\passnum@knit{1}#1}\fi
+    \def\passnum@knit{2}#1}}
+
+\def \do@endofpar@knit#1{\def\par{#1\endgraf\let\par\endgraf}}
+
+% Special symbols
+
+\def  \narrowdecrease#1{\genbobble@knit{#1}{1}{-\narrowincraise@knit}\adjuststitchcount[#1]{0}\adjuststitchcount[-1]{0}}
+\def \pnarrowdecrease#1{\genbobble@knit{#1}{2}{-\narrowincraise@knit}\adjuststitchcount[#1]{0}\adjuststitchcount[-1]{0}}
+\def  \narrowincrease#1{\genbobble@knit{#1}{3}{\narrowincraise@knit}\adjuststitchcount[0]{#1}\adjuststitchcount[0]{-1}}
+\def \pnarrowincrease#1{\genbobble@knit{#1}{4}{\narrowincraise@knit}\adjuststitchcount[0]{#1}\adjuststitchcount[0]{-1}}
+\def \bobble#1{\genbobble@knit{#1}{0}{0pt}}
+
+\def\genbobble@knit#1#2#3{\char#2 \ifnum \passnum@knit = 2
+    \llap{\vbox to\stitchht{\vss \vskip\stitchdp \vskip\fontvoffset@knit \hbox to \stitchwd{\hfil\knitsfsmall@knit #1\hfil}\vskip #3\vss}}\fi}
+
+\def \wideincrease#1{\strut@knit
+    \ifnum\passnum@knit = 3 \narrowincrease{#1}\else
+    \hbox to #1\stitchwd{\char25
+    	\hskip-0.1pt\leaders\hbox{\char22}\hfil\hskip-0.1pt
+    	\char29
+    	\hskip-0.1pt\leaders\hbox{\char22}\hfil\hskip-0.1pt
+    	\char26}\fi}
+\def \widedecrease#1{\strut@knit
+    \ifnum #1 = 5 \char31 \else
+    \ifnum\passnum@knit = 3 \narrowdecrease{#1}\else
+    \hbox to #1\stitchwd{\char27
+    	\hskip-0.1pt\leaders\hbox{\char22}\hfil\hskip-0.1pt
+    	\char30
+    	\hskip-0.1pt\leaders\hbox{\char22}\hfil\hskip-0.1pt
+    	\char28}\fi\fi}
+
+% Standard chart commands
+
+% \obeylines is normally defined with \let^^M\par, not \def^^M{\par};
+% doing it this way makes it cooperate with \do@endofpar.
+
+{\catcode`\^^M = \active \catcode`\| = \active
+\global\def\commands@knit{%
+    \let\[\pnarrowincrease
+    \let\]\pnarrowdecrease
+    \let\<\narrowincrease
+    \let\>\narrowdecrease
+    \let\@\bobble
+    \let \! \barthin@knit
+    \let \| \bar@knit
+    \let |  \bar@knit
+    \let \_ \horizline@knit
+    \let \= \horizlinewide@knit
+    \let \- \horizlinenarrow@knit
+    \let\overline\overline@knit
+    \let\underline\underline@knit
+    \let\rn\rn@knit
+    \let\rnbox\rnbox@knit
+    \let\rnboxleft\rnboxleft@knit
+    \let\rnboxright\rnboxright@knit
+    \let\rnleft\rnleft@knit
+    \let\rnright\rnright@knit
+    \let\nonumber\relax
+    \let\par\endgraf %Just in case someone's redefined it
+    \leftgap@knit=0pt
+    \def~{\ifnum\passnum@knit=3 \else \ifvmode \advance \leftgap@knit by \stitchwd
+        \else \kern \stitchwd \fi \fi}%
+    \def^^M{\par}%
+    \def\\{\par}%
+    }%
+}
+
+\def \strut@knit{\vrule width 0pt height \stitchht depth \stitchdp}
+
+% Drawing lines on the chart
+
+\def \horizline@knit{\ifnum\passnum@knit<3 \ifvmode\nonumber\leavevmode\fi \dimen0 =   \stitchwd \advance \dimen0 \knitlinewd
+    \ifnum\passnum@knit = 2
+    \hskip -0.5\knitlinewd\smash{{\knitlinecolor \vrule width \dimen0 height 0.5\knitlinewd depth 0.5\knitlinewd}}\hskip -0.5\knitlinewd
+    \else\hskip \stitchwd \fi\fi}
+\def \horizlinenarrow@knit#1{\ifnum\passnum@knit<3 \ifvmode\nonumber\leavevmode\fi \dimen0 = #1\stitchwd \advance \dimen0 \gridwidth
+    \ifnum\passnum@knit = 2
+    \hskip -0.5\gridwidth \smash{{\knitlinecolor \vrule width \dimen0 height 0.5\knitlinewd depth 0.5\knitlinewd}}\hskip -0.5\gridwidth
+    \else\hskip #1\stitchwd \fi\fi}
+\def \horizlinewide@knit#1{\ifnum\passnum@knit<3 \ifvmode\nonumber\leavevmode\fi \dimen0 = #1\stitchwd \advance \dimen0 \knitlinewd
+    \ifnum\passnum@knit = 2
+                         \smash{{\knitlinecolor \vrule width \dimen0 height 0.5\knitlinewd depth 0.5\knitlinewd}}
+    \else\hskip \dimen0 \fi\fi}
+
+\def \bar@knit{\ifnum\passnum@knit < 3 \leavevmode
+    \ifgrid
+        \ifnum \passnum@knit = 0
+        \hbox{\knitlinecolor \vrule width \knitlinewd depth \stitchdp height \stitchht}%
+        \else
+        \kern \knitlinewd
+        \fi
+    \else
+        \ifnum \passnum@knit = 2
+        \hbox{\knitlinecolor \vrule width \knitlinewd depth \stitchdp height \stitchht}%
+        \else
+        \kern \knitlinewd
+        \fi
+    \fi\fi}
+
+\def \barthintop@knit{0pt}
+\def \barthinbot@knit{0pt}
+
+\def \barthin@knit{\leavevmode\strut@knit
+    \ifnum \passnum@knit = 2
+    \dimen2 = \stitchht \advance \dimen2 \barthintop@knit
+    \dimen3 = \stitchdp \advance \dimen3 \barthinbot@knit
+    \smash{\hbox to 0pt{\hss \knitlinecolor \vrule width \knitlinewd depth \dimen3 height \dimen2\hss}}%
+    \fi}
+
+\def \overline@knit{\futurelet\next@knit\overline@@knit}
+\def \overline@@knit{\ifx\next@knit*%
+    \def\nextstep@knit{\overlinestar@knit}\else
+    \def\nextstep@knit{\overlinenostar@knit}\fi\nextstep@knit}
+
+\def \overlinenostar@knit#1{\leavevmode{\def\barthintop@knit{\knitlinewd}%
+    \setbox0 = \hbox{#1}%
+    \ifgrid
+    \ifnum \passnum@knit = 0
+        \dimen1=\wd0 \advance\dimen1 by \gridwidth
+        {\rlap{\raise\ht0\hbox{\hskip -0.5\gridwidth\knitlinecolor \vrule width \dimen1 height \knitlinewd depth 0pt}}}%
+    \else
+        \raise\ht0\hbox{\vrule width 0pt height \knitlinewd depth 0pt}%
+    \fi
+    \else
+    \ifnum \passnum@knit = 2
+        \dimen1=\wd0 \advance\dimen1 by \gridwidth
+        {\rlap{\raise\ht0\hbox{\hskip -0.5\gridwidth\knitlinecolor \vrule width \dimen1 height \knitlinewd depth 0pt}}}%
+    \else
+        \dimen0=\ht0 \advance \dimen0 \knitlinewd
+        \vrule width 0pt height \dimen0 depth 0pt
+    \fi \fi
+    #1}}
+
+\def \overlinestar@knit#1#2{\leavevmode{\def\barthintop@knit{0.5\knitlinewd}% The #1 is to eat the *
+    \setbox0 = \hbox{#2}%
+    \ifnum \passnum@knit = 2
+        \dimen1=\wd0 \advance\dimen1 by \gridwidth
+        \smash{\rlap{\raise\ht0\hbox{\hskip -0.5\gridwidth\knitlinecolor \vrule width \dimen1 height 0.5\knitlinewd depth 0.5\knitlinewd}}}%
+    \fi
+    #2}}
+
+\def \underline@knit{\futurelet\next@knit\underline@@knit}
+\def \underline@@knit{\ifx\next@knit*%
+    \def\nextstep@knit{\underlinestar@knit}\else
+    \def\nextstep@knit{\underlinenostar@knit}\fi\nextstep@knit}
+
+\def \underlinenostar@knit#1{\leavevmode{\def\barthinbot@knit{\knitlinewd}%
+    \setbox0 = \hbox{#1}%
+    \ifgrid
+    \ifnum \passnum@knit = 0
+        \dimen1=\wd0 \advance\dimen1 by \gridwidth
+        \rlap{\raise-\dp0\hbox{\hskip -0.5\gridwidth\knitlinecolor \vrule width \dimen1 height 0pt depth \knitlinewd \hskip -0.5\gridwidth}}%
+    \else
+        \rlap{\raise-\dp0\hbox{\vrule width 0pt height 0pt depth \knitlinewd}}%
+    \fi
+    \else
+    \ifnum \passnum@knit = 2
+        \dimen1=\wd0 \advance\dimen1 by \gridwidth
+        \rlap{\raise-\dp0\hbox{\hskip -0.5\gridwidth\knitlinecolor \vrule width \dimen1 height 0pt depth \knitlinewd \hskip -0.5\gridwidth}}%
+    \else
+        \rlap{\raise-\dp0\hbox{\vrule width 0pt height 0pt depth \knitlinewd}}%
+    \fi \fi
+    #1}}
+
+\def \underlinestar@knit#1#2{\leavevmode{\def\barthinbot@knit{0.5\knitlinewd}%
+    \setbox0 = \hbox{#2}%
+    \ifnum \passnum@knit = 2
+        \dimen1=\wd0 \advance\dimen1 by \gridwidth
+        \smash{\rlap{\raise-\dp0\hbox{\hskip -0.5\gridwidth\knitlinecolor \vrule width \dimen1 height 0.5\knitlinewd depth 0.5\knitlinewd \hskip -0.5\gridwidth}}}%
+    \fi
+    #2}}
+
+% Fancy cabling
+
+\def \overcableleft@knit#1{%
+    \setbox0=\hbox{#1}%
+    \rlap{#1}%
+    \hbox to \wd0{\leaders\hbox to \stitchwd{\hfil\char5}\hfil\hskip\stitchwd\char10}}
+\def \undercableleft@knit#1{%
+    \setbox0=\hbox{#1}%
+    \rlap{#1}%
+    \hbox to \wd0{\leaders\hbox to \stitchwd{\hfil\char6}\hfil\hskip\stitchwd\char9}}
+\def \undercableright@knit#1{%
+    \setbox0=\hbox{#1}%
+    \rlap{#1}%
+    \hbox to \wd0{\char13\char12\hskip\stitchwd\leaders\hbox to \stitchwd{\char8\hfil}\hfil}}
+\def \overcableright@knit#1{%
+    \setbox0=\hbox{#1}%
+    \rlap{#1}%
+    \hbox to \wd0{\char14\char11\hskip\stitchwd\leaders\hbox to \stitchwd{\char7\hfil}\hfil}}
+
+\def \cableleft#1#2{\leavevmode{\knitnogrid
+    \ifcase\passnum@knit
+    \hbox{\pf@knit #1#2}
+    \or
+    \setbox0=\hbox{\pf@knit #1#2}
+    \vrule width \wd0 height 0pt depth 0pt \vrule width 0pt height \ht0 depth \dp0
+    \or
+    \hbox{\let\knitsf \cablesf@knit \let \knitsfsmall@knit \cablesfsmall@knit {\lowerff@knit \overcableleft@knit{#1}}{\raiseff@knit \undercableright@knit{#2}}}
+    \else
+    #1#2\fi}}
+\def \cableright#1#2{\leavevmode{\knitnogrid
+    \ifcase\passnum@knit
+    \hbox{\pf@knit #1#2}
+    \or
+    \setbox0=\hbox{\pf@knit #1#2} \vrule width \wd0 height 0pt depth 0pt \vrule width 0pt height \ht0 depth \dp0
+    \or
+    \hbox{\let \knitsf \cablesf@knit \let \knitsfsmall@knit \cablesfsmall@knit {\raiseff@knit \undercableleft@knit{#1}}{\lowerff@knit \overcableright@knit{#2}}}
+    \else
+    #1#2\fi}}
+
+% Knit, purl, knitboxes
+
+\def \knit#1{\strut@knit\hbox to #1\stitchwd{\leaders\hbox{-}\hfil}}
+\def \purl#1{\strut@knit\hbox to #1\stitchwd{\leaders\hbox{=}\hfil}}
+
+\def \knitboxbackground{}
+\def \purlboxbackground{\purlgray }
+\def \purlboxforeground{}
+\def \knitboxforeground{}
+
+\def \Knit{\futurelet\next@knit\Knit@knit}
+\def \Knit@knit{\ifx\next@knit[%
+    \def\nextstep@knit{\Knit@@knit}\else
+    \def\nextstep@knit{\Knit@@knit[0]}\fi\nextstep@knit}
+\def \Knit@@knit[#1]#2#3{\strut@knit
+    \setbox0 = \hbox{\knitsf #2}%
+    \ifcase \passnum@knit
+        \ifx \empty \knitboxbackground
+        \vrule width #3\stitchwd height 0pt depth 0pt
+        \else
+        {\knitboxbackground \purlbackground{\vrule width #3\stitchwd depth \stitchdp height \stitchht}}\fi
+    \or
+    \rlap{\hbox to #3\stitchwd{\leaders\hbox{\char5}\hfil}}%
+    \hbox to #3\stitchwd{\leaders\hbox to \stitchwd{\char6\hfil\char6}\hskip #1\stitchwd plus 1fil \hskip\wd0\leaders\hbox to \stitchwd{\char6\hfil\char6}\hfil}%
+    \or
+    \hbox to #3\stitchwd{%
+        {\knitboxforeground\leaders\hbox{-}\hskip #1\stitchwd plus 1fil }%
+        \lower\stitchdp\vbox to\stitchht{\vss\vskip\fontvoffset@knit\hbox{\knitsf #2}\vss\vskip\stitchdp}
+        {\knitboxforeground\leaders\hbox{-}\hfil}}%
+    \or
+    \hbox to #3\stitchwd{\hfil}
+    \fi}
+\def \Purl{\futurelet\next@knit\Purl@knit}
+\def \Purl@knit{\ifx\next@knit[%
+    \def\nextstep@knit{\Purl@@knit}\else
+    \def\nextstep@knit{\Purl@@knit[0]}\fi\nextstep@knit}
+\def \Purl@@knit[#1]#2#3{\strut@knit
+    \setbox0 = \hbox{\knitsf #2}%
+    \ifcase \passnum@knit
+        \ifx \empty \purlboxbackground
+        \vrule width #3\stitchwd height 0pt depth 0pt
+        \else
+        {\purlboxbackground \purlbackground{\vrule width #3\stitchwd depth \stitchdp height \stitchht}}\fi
+    \or
+    \rlap{\hbox to #3\stitchwd{\leaders\hbox{\char5}\hfil}}%
+    \hbox to #3\stitchwd{\leaders\hbox to \stitchwd{\char6\hfil\char6}\hskip #1\stitchwd plus 1fil \hskip\wd0\leaders\hbox to \stitchwd{\char6\hfil\char6}\hfil}%
+    \or
+    \hbox to #3\stitchwd{%
+        {\purlboxforeground\leaders\hbox{=}\hskip #1\stitchwd plus 1fil }%
+        \lower\stitchdp\vbox to\stitchht{\vss\vskip\fontvoffset@knit\hbox{\knitsf #2}\vss\vskip\stitchdp}
+        {\purlboxforeground\leaders\hbox{=}\hfil}}%
+    \or
+    \hbox to #3\stitchwd{\hfil}
+    \fi}
+
+\def \knitbox{\futurelet\next@knit\knitbox@knit}
+\def \knitbox@knit{\ifx\next@knit[%
+    \def\nextstep@knit{\knitbox@@knit}\else
+    \def\nextstep@knit{\knitbox@@knit[0]}\fi\nextstep@knit}
+\def \knitbox@@knit[#1]#2#3{\strut@knit
+    \ifcase \passnum@knit
+        \ifx \empty \knitboxbackground
+        \vrule width #3\stitchwd height 0pt depth 0pt
+        \else
+        {\knitboxbackground \purlbackground{\vrule width #3\stitchwd depth \stitchdp height \stitchht}}\fi
+    \or
+    \hbox to #3\stitchwd{\char6\leaders\hbox{\char5}\hfil\char6}%
+    \or
+    \hbox to #3\stitchwd{\hskip #1\stitchwd plus 1fil \lower\stitchdp\vbox to\stitchht{\vss\vskip\fontvoffset@knit\hbox{\knitsf #2}\vss\vskip\stitchdp}\hfil}
+    \or
+    \hbox to #3\stitchwd{\hfil}
+    \fi}
+\def \purlbox{\futurelet\next@knit\purlbox@knit}
+\def \purlbox@knit{\ifx\next@knit[%
+    \def\nextstep@knit{\purlbox@@knit}\else
+    \def\nextstep@knit{\purlbox@@knit[0]}\fi\nextstep@knit}
+\def \purlbox@@knit[#1]#2#3{\strut@knit
+    \ifcase \passnum@knit
+        \ifx \empty \purlboxbackground
+        \vrule width #3\stitchwd height 0pt depth 0pt
+        \else
+        {\purlboxbackground \purlbackground{\vrule width #3\stitchwd depth \stitchdp height \stitchht}}\fi
+    \or
+    \hbox to #3\stitchwd{\char6\leaders\hbox{\char5}\hfil\char6}%
+    \or
+    \hbox to #3\stitchwd{\hskip #1\stitchwd plus 1fil \lower\stitchdp\vbox to\stitchht{\vss\vskip\fontvoffset@knit\hbox{\knitsf #2}\vss\vskip\stitchdp}\hfil}%
+    \or
+    \hbox to #3\stitchwd{\hfil}%
+    \fi}
+
+\def \purlbackground#1{\leavevmode\setbox0=\hbox{#1}%
+    \dimen0 = \wd0 \advance\dimen0 2\purlextend@knit
+    \dimen1 = \stitchht \advance\dimen1 \purlextend@knit
+    \dimen2 = \stitchdp \advance\dimen2 \purlextend@knit
+    \ifnum \passnum@knit = 0  \kern-\purlextend@knit
+        \vrule width 0pt height \ht0 depth \dp0
+        \smash{\vrule width \dimen0 height \dimen1 depth \dimen2}%
+        \kern-\purlextend@knit
+        \else\box0\fi}
+
+% Row number commands
+
+\def \numberrow#1#2#3{\ifnum\passnum@knit=3 \ifvmode\vskip\stitchht\fi\else
+    \ifvmode\nonumber\leavevmode\fi
+    \strut@knit
+    \count255=#1
+    \hbox to \stitchwd{\hss\ifnum \passnum@knit = 2 \rncolor \knitrm#1\fi\hss}%
+    \ifnum #1 > #3
+        \advance\count255 -1
+        \loop \ifnum \count255>#3
+        \tempcount@knit = \count255
+        \divide\tempcount@knit #2
+        \multiply \tempcount@knit #2
+        \ifnum\tempcount@knit = \count255
+        \hbox to \stitchwd{\hss\ifnum \passnum@knit = 2 \rncolor \knitrm\the\count255 \fi \hss}%
+        \else
+        \kern\stitchwd
+        \fi
+        \advance\count255 -1
+        \repeat
+    \else
+        \advance\count255 1
+        \loop \ifnum \count255<#3
+        \tempcount@knit = \count255
+        \divide\tempcount@knit #2
+        \multiply \tempcount@knit #2
+        \ifnum\tempcount@knit = \count255
+        \hbox to \stitchwd{\hss\ifnum \passnum@knit = 2 \rncolor \knitrm\the\count255 \fi \hss}%
+        \else
+        \kern\stitchwd
+        \fi
+        \advance\count255 1
+        \repeat
+    \fi
+    \hbox to \stitchwd{\hss\ifnum \passnum@knit = 2 \rncolor \knitrm#3\fi \hss}%
+    \fi}
+
+\def \rnoddonly{\def\rncore@knit##1{\ifshowrn@knit \ifodd\rownumber\csname print##1rownumber\endcsname{\therownumber}\fi\fi}}
+\def \rnevenonly{\def\rncore@knit##1{\ifshowrn@knit \ifodd\rownumber\else\csname print##1rownumber\endcsname{\therownumber}\fi\fi}}
+\def \rnnormal{\def\rncore@knit##1{\ifshowrn@knit \csname print##1rownumber\endcsname{\therownumber}\fi}}
+
+\def \rncore@knit#1{\ifshowrn@knit \csname print#1rownumber\endcsname{\therownumber}\fi}
+\def \rnstep@knit{\ifshowrn@knit
+                 \ifnum \passnum@knit = 2 \global\advance\rownumber -\rownumberskip\relax\fi
+                 \ifnum \passnum@knit = 0 \global\advance\rownumber -\rownumberskip\relax\fi
+                 \else\global\showrn@knittrue\fi}
+
+\def \printrownumber#1{{\rncolor \knitrm #1}}
+\def \printrightrownumber#1{\knitleftarrowhead{\rncolor \knitrm #1}}
+\def \printleftrownumber#1{{\rncolor \knitrm #1}\knitrightarrowhead}
+\def \knitrightarrowhead{{\rnarrowcolor \char125}}
+\def \knitleftarrowhead{{\rnarrowcolor \char123}}
+
+\def \therownumber{\number\rownumber}
+
+\def \rn@knit{\ifnum \passnum@knit < 3 \leavevmode
+    \hbox to \rownumberwd{\hss\ifnum \passnum@knit = 2 \rncore@knit{}\fi\rnstep@knit\hss}\fi}
+\def \rnleft@knit{\ifnum \passnum@knit < 3 \leavevmode
+    \setbox0 = \hbox{\ifnum \passnum@knit = 2 \rncore@knit{left}\fi\rnstep@knit}
+    \dimen0 = \wd0 %\advance \dimen0 -\rownumberwd
+    \ifchartsonly\advance \dimen0 1pt\fi
+    \ifdim \dimen0 > \rnleftwd@knit \global\rnleftwd@knit = \dimen0 \fi
+    \hbox to 0pt{\hss\box0}\fi}
+\def \rnright@knit{\ifnum \passnum@knit < 3 \leavevmode
+    \setbox0 = \hbox{\ifnum \passnum@knit = 2 \rncore@knit{right}\fi\rnstep@knit}
+    \dimen0 = \wd0 %\advance \dimen0 -\rownumberwd
+    \ifchartsonly\advance \dimen0 1pt\fi
+    \ifdim \dimen0 > \rnrightwd@knit \global\rnrightwd@knit = \dimen0 \fi
+    \hbox to 0pt{\box0\hss}\fi}
+
+\def \rnbox@knit#1{\ifnum \passnum@knit < 3 \leavevmode
+    \hbox to \rownumberwd{\hss\ifnum \passnum@knit = 2 {\printrownumber{#1}}\fi\hss}\fi}
+\def \rnboxleft@knit#1{\ifnum \passnum@knit < 3 \leavevmode
+    \setbox0 = \hbox{\ifnum \passnum@knit = 2 {\printleftrownumber{#1}}\fi}
+    \dimen0 = \wd0 %\advance \dimen0 -\rownumberwd
+    \ifchartsonly\advance \dimen0 1pt\fi
+    \ifdim \dimen0 > \rnleftwd@knit \global\rnleftwd@knit = \dimen0 \fi
+    \hbox to 0pt{\hss\box0}\fi}
+\def \rnboxright@knit#1{\ifnum \passnum@knit < 3 \leavevmode
+    \setbox0 = \hbox{\ifnum \passnum@knit = 2 {\printrightrownumber{#1}}\fi}
+    \dimen0 = \wd0 %\advance \dimen0 -\rownumberwd
+    \ifchartsonly \advance \dimen0 1pt \fi
+    \ifdim \dimen0 > \rnrightwd@knit \global\rnrightwd@knit = \dimen0 \fi
+    \hbox to 0pt{\box0\hss}\fi}
+
+% The chart commands
+
+\def \chart{\futurelet\next@knit\chart@@knit}
+\def \chart@@knit{\ifx\next@knit[%
+    \def\nextstep@knit{\smallpage@knit\obeylines \catcode`\|=\active \chart@knit}\else
+    \def\nextstep@knit{\smallpage@knit\obeylines \catcode`\|=\active \chart@knit[]}\fi\nextstep@knit}
+
+% Some special stuff for chartsonly mode
+\let\extracommands@knit\relax
+\def \smallpage@knit{\noindent\hbox\bgroup}
+\let\endsmallpage@knit\egroup
+
+% The chart command proper
+\long\def\chart@knit[#1]#2{%
+    \global \chartwidth@knit = 0pt
+    \ifresetrn \rownumber = 0 \else \tempcount@knit = \rownumber \fi
+    \setbox\bgbox@knit=\vbox{\def\passnum@knit{0}\hsize=\maxdimen
+        \pf@knit
+        \lineskip=0pt
+        \parskip=0pt
+        \baselineskip=0pt
+        \parindent=0pt
+        \emergencystretch = \stitchwd
+        \leftskip=0pt
+        \rightskip=0pt
+        \parfillskip=0pt plus 1fil
+        \ifresetrn\else\let\rnstep@knit\relax\fi
+        \commands@knit\extracommands@knit
+        \def\nonumber{\global\showrn@knitfalse}%
+        \csname auto#1@knit\endcsname #2\par}%
+    \ifresetrn \tempcount@knit = -\rownumber \fi
+    \ifgrid
+    \setbox\ggbox@knit=\vbox{\def\passnum@knit{1}\hsize=\maxdimen
+        \gf@knit
+        \lineskip=0pt
+        \parskip=0pt
+        \baselineskip=0pt
+        \parindent=0pt
+        \emergencystretch = \stitchwd
+        \leftskip=0pt
+        \rightskip=0pt
+        \parfillskip=0pt plus 1fil
+        \commands@knit\extracommands@knit
+        \def\nonumber{\global\showrn@knitfalse}%
+        \csname auto#1@knit\endcsname #2\par}%
+    \fi
+    \rownumber = \tempcount@knit
+    \global \rnleftwd@knit = 0pt
+    \global \rnrightwd@knit = 0pt
+    \setbox\fgbox@knit=\vbox{\def\passnum@knit{2}\hsize=\maxdimen
+        \ff@knit
+        \lineskip=0pt
+        \parskip=0pt
+        \baselineskip=0pt
+        \parindent=0pt
+        \emergencystretch = \stitchwd
+        \leftskip=0pt
+        \rightskip=0pt
+        \parfillskip=0pt plus 1fil
+        \commands@knit\extracommands@knit
+        \def\nonumber{\global\showrn@knitfalse}%
+        \csname auto#1@knit\endcsname #2\par}%
+    \global\advance \chartwidth@knit \rnleftwd@knit
+    \global\advance \chartwidth@knit \rnrightwd@knit
+    \hbox to \chartwidth@knit{\hskip \rnleftwd@knit
+    \rlap{\purlgray \box\bgbox@knit}%
+    \ifgrid\rlap{\gridcolor \box\ggbox@knit}\fi
+    \ifchartsonly
+    \dimen2 = \dp \fgbox@knit \dimen3 = \ht \fgbox@knit
+    \advance\dimen2 0.5\gridwidth \advance\dimen3 0.5\gridwidth
+    \vrule width 0pt height \dimen3 depth \dimen2
+    \fi
+    % If we are doing charts only, we want to enlarge things enough that
+    % we can see the grid on all sides.
+    % But if we aren't, we want adjacent charts to merge seamlessly
+    % because using separate charts is the only way to allow charts to
+    % break across pages.
+    \box\fgbox@knit%
+    \hss}%
+    \endsmallpage@knit
+    }
+
+% Special charts only macros
+
+\def \chartsonly{\chartsonlytrue
+    \ifpdf@knit\else\errmessage{\chartsonly should only be used with pdfTeX.}\fi%
+    \hoffset=-1in
+    \voffset=-1in
+    \vsize = 120in
+    \def\smallpage{\vfil\break
+        \global\chartwidth@knit=0pt
+        \setbox0 = \vbox\bgroup
+            \def\smallpage@knit{\let\endsmallpage@knit\egroup \noindent \hbox\bgroup}%
+        }
+    \def\endsmallpage{\egroup%
+        %
+        \pdfpagewidth=\wd0
+        %
+        \dimen0=\ht0 \advance \dimen0 by \dp0
+        \pdfpageheight=\dimen0
+        %
+        \ifdim \pdfpageheight > \vsize
+        {\newlinechar=`|
+        \message{||You need to increase \string\vsize.}
+        \message{What do you want such a big chart for, anyway?||}}
+        \fi
+        %
+        \box0
+        \vfil\break
+        }
+    \let\smallpage@knit\smallpage
+    \let\endsmallpage@knit\endsmallpage
+    \def\extracommands@knit{%
+        \leftskip = 0.5\gridwidth
+        \rightskip = 0.5\gridwidth
+        }
+}
+\let\smallpage\begingroup
+\let\endsmallpage\endgroup
+
+% Autonumbering macros
+
+\def \everypar@knit{\hskip\leftgap@knit \leftgap@knit=0pt \relax}
+
+\def         \auto@knit{\let\nonumber\relax \everypar={\everypar@knit\do@endofpar@knit{\adjustchartwidth@knit}}}
+\def     \autoleft@knit{\everypar={\everypar@knit\rnleft@knit\do@endofpar@knit{\adjustchartwidth@knit}}}
+\def    \autoright@knit{\everypar={\everypar@knit\do@endofpar@knit{\rnright@knit\adjustchartwidth@knit}}}
+\def  \autooddleft@knit{\everypar={\everypar@knit
+    \ifodd \rownumber
+    	\rnleft@knit\do@endofpar@knit{\adjustchartwidth@knit}%
+    \else %\hskip\rownumberwd 
+    	\do@endofpar@knit{\rnright@knit\adjustchartwidth@knit}\fi}}
+\def \autooddright@knit{\everypar={\everypar@knit
+    \ifodd \rownumber %\hskip\rownumberwd 
+    	\do@endofpar@knit{\rnright@knit\adjustchartwidth@knit}%
+    \else\rnleft@knit\do@endofpar@knit{\adjustchartwidth@knit}\fi}}
+\def     \autoboth@knit{\everypar={\everypar@knit\rnleft@knit\global\advance\rownumber 1 \do@endofpar@knit{\rnright@knit\adjustchartwidth@knit}}}
+\let\autoevenleft@knit\autooddright@knit
+\let\autoevenright@knit\autooddleft@knit
+
+\def \adjustchartwidth@knit{\endgraf
+    \ifnum \passnum@knit = 2 \setbox0=\lastbox
+    \setbox1=\hbox{\unhcopy0\unskip}%
+    \box0
+    \ifdim\wd1 >\chartwidth@knit \global\chartwidth@knit=\wd1\fi\fi}
+
+% Stitch-counting macros
+
+\def \adjuststitchcount{\futurelet\next@knit\adjuststitchcount@knit}
+\def \adjuststitchcount@knit{\ifx\next@knit[%
+    \def\nextstep@knit{\adjuststitchcount@@knit}\else
+    \def\nextstep@knit{\adjuststitchcount@@knit[\relax]}\fi\nextstep@knit}
+\def \adjuststitchcount@@knit[#1]#2{%
+    \leavevmode\ifnum\passnum@knit=3 \null
+    \ifcountingout@knit \kern #2\stitchwd \else \ifx#1\relax \kern#2\stitchwd \else \kern #1\stitchwd \fi \fi \null\fi}
+
+\def \stitchcountwarningbar{\ifnum \stitchcountinprev = \stitchcountout \else \vrule width \overfullrule \fi}
+
+\def \countstitches#1{%
+    \global\stitchcountinprev = \stitchcountin
+    \setbox0 = \hbox{\def\passnum@knit{3}\countingout@knittrue \stsout@knit #1}%
+    \stitchcountout = \wd0
+    \dimen0 = 0.5\stitchwd \advance \stitchcountout \dimen0
+    \global\divide \stitchcountout \stitchwd
+    \setbox1 = \hbox{\def\passnum@knit{3}\countingout@knitfalse \stsin@knit #1}%
+    \stitchcountin = \wd1
+    \dimen1 = 0.5\stitchwd \advance \stitchcountin \dimen1
+    \global\divide \stitchcountin \stitchwd
+    \ifnum\stitchcountinprev < -99
+        \global\stitchcountinprev = \stitchcountout
+    \fi
+    }
+
+\def \stitchcountchart{\futurelet\next@knit\stitchcountchart@knit}
+\def \stitchcountchart@knit{\ifx\next@knit[%
+    \def\nextstep@knit{\stitchcountchart@@knit}\else
+    \def\nextstep@knit{\stitchcountchart@@knit[]}\fi\nextstep@knit}
+\def \stitchcountchart@@knit[#1]{\begingroup \catcode`\|=\active \def\chartrn@knit{#1}\obeylines \afterassignment \printstitchcountchart@knit \toks0 =}
+
+\def \printstitchcountchart@knit{\smallpage@knit\hbox{%
+    \ifx\relax\printleftstitchcount\else\ifx \empty \printleftstitchcount\else
+        \let\printstitchcount@knit\printleftstitchcount
+        \def\stitchcountside@knit{0}\makestitchcounts@knit \fi\fi
+    \chart[\chartrn@knit]{\the\toks0}%
+    \ifx\relax\printrightstitchcount\else\ifx \empty \printrightstitchcount\else
+        \let\printstitchcount@knit\printrightstitchcount
+        \def\stitchcountside@knit{1}\makestitchcounts@knit\fi\fi
+    }\endsmallpage@knit
+    \endgroup}
+
+{\obeylines
+\gdef\countstitcheseachrow@knit#1^^M{%
+    \countstitches{#1}%
+    \setbox0=\hbox{\def\passnum@knit{2}\strut@knit \printstitchcount@knit\stitchcountwarningbar}%
+    \setbox1=\hbox{#1}%
+    \ifdim \wd0 > \stitchcountwidth@knit \global\stitchcountwidth@knit = \wd0 \fi
+    \hbox to 0pt{\ifnum\stitchcountside@knit = 0 \hss\fi
+        \vrule width 0pt height \ht1 depth \dp1 \smash{\box0}%
+        \ifnum\stitchcountside@knit = 1 \hss\fi}%
+    \par}}
+
+\def\makestitchcounts@knit{\hbox{\setbox1=\vbox{\stitchcountin = -1001 \global\stitchcountwidth@knit=0pt
+    \parindent=0pt
+    \def\passnum@knit{3}
+    \ff@knit
+    \commands@knit
+    \everypar={\countstitcheseachrow@knit} \offinterlineskip
+    \the\toks0
+    }%
+    \ifnum\stitchcountside@knit = 0
+    \hskip \stitchcountwidth@knit\rlap{\box1}%
+    \else
+    \rlap{\box1}\hskip \stitchcountwidth@knit
+    \fi
+}}
+
+\def \printleftstitchcount{{\rncolor \knitrm(\the\stitchcountout\ sts) }}
+\def \printrightstitchcount{}
+
+\catcode`\@=\catcountknit
+

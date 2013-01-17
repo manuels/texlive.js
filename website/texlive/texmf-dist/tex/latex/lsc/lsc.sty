@@ -1,0 +1,1967 @@
+% % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % %
+% $Id: lsc.sty,v 1.34 2006/02/23 12:57:15 berndw Exp $
+%
+% LSC -- A LaTeX style for typesetting Live Sequence Charts
+% 
+% Author: Bernd Westphal <westphal@informatik.uni-oldenburg.de> 
+% 
+% Copyright (c) 2005-2006 Bernd Westphal.  All rights reserved.
+%
+% % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % %
+%
+% This work may be distributed and/or modified under the conditions of
+% the LaTeX Project Public License, either version 1.3 of this license
+% or (at your option) any later version.
+% The latest version of this license is in
+%   http://www.latex-project.org/lppl.txt
+% and version 1.3 or later is part of all distributions of LaTeX
+% version 2005/12/01 or later.
+%
+% This work has the LPPL maintenance status `maintained'.
+% 
+% The Current Maintainer of this work is the copyright holder.
+%
+% This work consists of the files README, lsc.sty, lsc.tex, lsc.bib.
+%
+% % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % % %
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{lsc}[2005/12/30 Typesetting LSCs]
+
+\RequirePackage{ifthen,pstricks,pst-node}
+
+% Structure:
+%
+% - global constants:
+%
+%   Commands and lengths that parameterise the appearance of LSCs in general.
+%   If one knows what one is doing, one may redefine them, e.g. to obtain
+%   smaller or wider instance line boxes. 
+%
+% - constant within lsc environment:
+%
+%   Commands and lengths that are set anew in each Lsc/FullLsc environment and
+%   remain constant within this environment, e.g. the total width and height
+%   of the pspicture environment.  There's typically no sense in changing any
+%   of these.
+%
+% - constant within instance:
+%
+%   Commands and lengths that are set anew in each lscinst/lsccreateinst
+%   environment and remain constant within this environment, e.g. whether this
+%   instance line needs a footer or not.  There's typically no sense in
+%   changing any of these.
+%
+% - global variables
+%
+%   Commands and lengths that are redefined during construction of the Lsc.
+%   Currently only the current X and Y drawing position.
+%
+% - "local" variables
+%
+%   Commands and lengths that are used by single commands, e.g. to compute the
+%   dimension of pre-chart kandisses or timer hourglasses.
+%
+% - helper macros
+%
+%   Many exported commands are actually only checking parameters for well-
+%   formedness and then call helper macros which do the work.  Some work
+%   macros even have own helper macros to factor out common code.
+%   There's typically no sense in calling any of these from user code.
+%
+% - exported interface
+%
+%   The commands and environments that are provided to the user.
+%
+% Notes:
+%
+% - things with multiple ends, like message arrows, local invariants, wide
+%   conditions etc. share the following philosophy:
+%
+%    - they get an ID by the user and internally define macros whose name
+%      comprises the ID and which typically capture the corresponding X and Y
+%      coordinates
+%
+%    - when the element is drawn, these macros are used and afterwards cleared
+
+% % globally constant: % % % % % % % % % % % % % % % % % % % % % % % % % % % %
+
+\newcommand{\lsc@true}{true}
+\newcommand{\lsc@false}{false}
+
+%% width for a single instance line and height of a single location
+%
+\newlength{\lscLocationWidth}
+\pssetlength{\lscLocationWidth}{3}
+\newlength{\lscLocationHeight}
+\pssetlength{\lscLocationHeight}{1}
+
+%% the height of the black footer boxes in MSC-mode is determined by a \rule
+%  of height \lscFooterHeightFactor * \lscLocationHeight
+%
+%  Note: this is a command, not a length, hence it is set by, e.g.,
+%  \renewcommand{\lscFooterHeightFactor}{0.10}
+%
+\newcommand{\lscFooterHeightFactor}{0.20}
+
+%% half width of the square around the kill symbol 'X'
+%
+\newlength{\lscKillLength}
+\pssetlength{\lscKillLength}{0.33}
+
+%% position of local invariants to the left of the LSC
+%
+\newlength{\lsc@liL}
+\pssetlength{\lsc@liL}{0.2\lscLocationWidth}
+
+%% offset of the dotted line indicating coregion and width of the coregion
+%  line
+%
+\newlength{\lsc@coregoffset}
+\pssetlength{\lsc@coregoffset}{0.15}
+%
+\newlength{\lsc@coregwidth}
+\pssetlength{\lsc@coregwidth}{1pt}
+
+%% offset of message labels from the message arrows
+%
+\newlength{\lsc@labelsep}
+\pssetlength{\lsc@labelsep}{1.5pt}
+
+%% radius of dots used to indicate exclusive/inclusive beginning and ending
+%  of local invariants
+%
+\newlength{\lsc@dotradius}
+\pssetlength{\lsc@dotradius}{0.1}
+
+%% radius of circles used to mark atoms
+%
+\newlength{\lsc@atomradius}
+\pssetlength{\lsc@atomradius}{0.35}
+
+%% radius of circles used to mark simultaneous regions
+%
+\newlength{\lsc@simregradius}
+\pssetlength{\lsc@simregradius}{0.125}
+
+%% vertical distance between baseline of the label text and the create arrow
+%
+\newlength{\lsc@createoffset}
+\pssetlength{\lsc@createoffset}{0.3}
+\newlength{\lsc@instheadframesep}
+\pssetlength{\lsc@instheadframesep}{2pt}
+
+%% parameters of the hourglass used for timers:
+%
+%  I         _______
+%  I         \     /
+%  I          \   /
+%  I           \ /
+%  I<-----------X    -
+%  I           / \   |
+%  I          /   \  | hgheight
+%  I         /_____\ _
+%  I        |-w-|
+%  |--hgoffset--|
+%
+\newlength{\lsc@hgwidth}
+\pssetlength{\lsc@hgwidth}{0.125}
+\newlength{\lsc@hgheight}
+\pssetlength{\lsc@hgheight}{1.5\lsc@hgwidth}
+\newlength{\lsc@hgoffset}
+\pssetlength{\lsc@hgoffset}{4\lsc@hgwidth}
+
+%% parameters of the instance head boxes and precharts:
+%  a \rule of depth \lsc@instheadruledepth and height \lsc@instheadruleheight
+%  defines the shape of the instance head box, the \lsc@pccorrection is the
+%  length _above_ 0 (this is the bottom end of the instance head boxes) that
+%  the upper line of the prechart or universal/existential box should lie s.t.
+%  it comprises the instance head nicely.
+%  \lsc@pccorrection could have been defined as follows (and is not for
+%  historical reasons):
+%
+%     -\lsc@instheadruledepth
+%     + \lsc@instheadruleheight
+%     + \lsc@distancebetweeninstanceheadbox and prechart
+%
+\newlength{\lsc@instheadruledepth}
+\pssetlength{\lsc@instheadruledepth}{-0.8ex}
+\newlength{\lsc@instheadruleheight}
+\pssetlength{\lsc@instheadruleheight}{3ex}
+\newlength{\lsc@pccorrection}
+\pssetlength{\lsc@pccorrection}{5.55ex}
+
+%% half width of environment instance line
+%
+\newlength{\lsc@envlinewidth}
+\pssetlength{\lsc@envlinewidth}{0.1}
+
+%% baselineskip correction within the name/ac/am/i box
+%
+\newlength{\lsc@acamboxblskipcorrection}
+\setlength{\lsc@acamboxblskipcorrection}{-1.00\smallskipamount}
+
+%% width, colour, and linestyle of the line used to draw cuts
+%
+\newlength{\lscCutWidth}
+\setlength{\lscCutWidth}{3pt}
+%
+\newcommand{\lscCutColour}{red}
+%
+\newcommand{\lscCutLinestyle}{solid}
+
+%% strings for comparison in \if\else\fi
+%
+\def\lsc@hot{hot}%
+\def\lsc@cold{cold}%
+%
+\def\lsc@l{l}%
+\def\lsc@r{r}%
+%
+\def\lsc@ra{ra}%
+\def\lsc@rb{rb}%
+\def\lsc@la{la}%
+\def\lsc@lb{lb}%
+%
+\def\lsc@b{b}%
+\def\lsc@f{f}%
+%
+\def\lsc@incl{incl}%
+\def\lsc@excl{excl}%
+%
+\def\lsc@noboxSD{noboxSD}%
+\def\lsc@SD{SD}%
+\def\lsc@MSC{MSC}%
+\def\lsc@esymSD{esymSD}%
+\def\lsc@esymMSC{esymMSC}%
+%
+\def\lsc@universal{universal}%
+\def\lsc@existential{existential}%
+\def\lsc@none{none}%
+%
+\def\lsc@empty{}%
+\def\lsc@weak{weak}%
+\def\lsc@permissive{permissive}%
+\def\lsc@strict{strict}%
+%
+\def\lsc@initial{initial}%
+\def\lsc@invariant{invariant}%
+\def\lsc@iterative{iterative}%
+
+
+% % constant within lsc environment: % % % % % % % % % % % % % % % % % % % % %
+
+%% position of local invariants to the right of the LSC
+%
+\newlength{\lsc@liR}
+
+%% width of all instance lines within current pspicture (the pspicture may be
+%  wider if there is a prechart)
+%
+\newlength{\lsc@width}
+
+%% boundaries of current lsc's pspicture coordinate system
+%
+\newlength{\lsc@ulX}
+\newlength{\lsc@ulY}
+\newlength{\lsc@lrX}
+\newlength{\lsc@lrY}
+
+
+% % constant within instance:  % % % % % % % % % % % % % % % % % % % % % % % %
+
+%% true if the instance should be drawn in MSC, false if SD style requested
+%
+\newboolean{lsc@MSC}
+
+
+% % global variables:  % % % % % % % % % % % % % % % % % % % % % % % % % % % %
+
+%% current x/y position in the pspicture set up by the lsc environment
+%  (variables)
+%
+\newlength{\lsc@X}
+\newlength{\lsc@Y}
+
+
+% % "local" variables: % % % % % % % % % % % % % % % % % % % % % % % % % % % %
+
+%% used by many macros that draw condtion "kandises":
+%
+%    _________________________
+%   /                         \
+%  /                           \ _
+%  \                           / | kheight
+%   \_________________________/  _
+%   |   kwidth   |
+%  |   kxwidth   |
+%
+%  _______________
+%  \
+%   \
+%   /
+%  /______________
+%  |  kxxwidth   |
+%   |  kxwidth   |
+%
+%
+% kdepth is only a helper to compute the kheight, kxxwidth is only use by the
+% puzzle pieces for wide conditions.
+%
+\newsavebox{\lsc@kbox}
+\newlength{\lsc@kdepth}
+\newlength{\lsc@kwidth}
+\newlength{\lsc@kheight}
+\newlength{\lsc@kxwidth}
+\newlength{\lsc@kxxwidth}
+
+%% used for the computation of boundaries in FullLsc 
+%
+\newsavebox{\lsc@acambox}
+\newlength{\lsc@acamheight}
+
+%% used by the macro drawing local invariants
+%
+\newlength{\lsc@liX}
+\newlength{\lsc@licondY}
+
+%% used by the macro drawing the surrounding frame
+%
+\newlength{\lsc@frameheight}
+\newlength{\lsc@frametop}
+
+%% used for positioning the destination end of create arrows 
+%
+\newlength{\lsc@createinstX}
+\newlength{\lsc@createinstY}
+\newlength{\lsc@createinstW}
+
+%% used in \lsc@namedCut to compute the vertical difference between last and
+%  current cut (if this is small, don't draw the vertical line)
+%
+\newlength{\lsc@cutvdiff}
+
+%% used by the macro drawing coregions
+%
+\newlength{\lsc@crX}
+
+
+% % helper macros: % % % % % % % % % % % % % % % % % % % % % % % % % % % % % %
+
+%% define height and depth of instance head boxes
+%
+\newcommand{\lsc@instheadrule}%
+  {\rule[\lsc@instheadruledepth]{0ex}{\lsc@instheadruleheight}}
+
+%% draw the "kandis" for conditions -- used for single-instance conditions and
+%  local invariants, not for conditions spanning multiple instance lines;
+%  drawback: the angle of vertexes is kept constant, this causes the "kandis"
+%  to grow wider with higher content
+%
+% \lsc@kandis[<psset-commands>]{<content>}
+%
+\newcommand{\lsc@kandis}[2][]{%
+  \sbox{\lsc@kbox}{#2}%
+  \settowidth{\lsc@kwidth}{\usebox{\lsc@kbox}}%
+  \setlength{\lsc@kwidth}{.5\lsc@kwidth}%
+% \addtolength{\lsc@kwidth}{\fboxsep}%
+  \settoheight{\lsc@kheight}{\usebox{\lsc@kbox}}%
+  \settodepth{\lsc@kdepth}{\usebox{\lsc@kbox}}%
+  \addtolength{\lsc@kheight}{\lsc@kdepth}%
+% \addtolength{\lsc@kheight}{\fboxsep}%
+  \setlength{\lsc@kxwidth}{\lsc@kwidth}%
+  \addtolength{\lsc@kxwidth}{\lsc@kheight}%
+  \begin{pspicture}(-\lsc@kxwidth,\lsc@kheight)(\lsc@kxwidth,-\lsc@kheight)%
+  \pspolygon[#1](-\lsc@kxwidth,0)%
+                (-\lsc@kwidth,\lsc@kheight)%
+                (\lsc@kwidth,\lsc@kheight)%
+                (\lsc@kxwidth,0)%
+                (\lsc@kwidth,-\lsc@kheight)%
+                (-\lsc@kwidth,-\lsc@kheight)%
+  \rput(0,0){\usebox{\lsc@kbox}}%
+  \end{pspicture}%
+}
+%
+\newcommand{\lsc@hotkandis}[1]{%
+  \lsc@kandis[fillstyle=solid,linestyle=solid]{#1}}
+%
+\newcommand{\lsc@coldkandis}[1]{%
+  \lsc@kandis[fillstyle=solid,linestyle=dashed]{#1}}
+
+%% save coordinates of message sending and reception (values are accessed by
+%  _name_ later)
+%
+%  The easy solution consisting of just placing nodes and later connecting
+%  them by lines does not work since then label end up positioned upside-down
+%  below arrows for those messages going from right to left.  Hence we need to
+%  have both coordinates to draw the line the right way.
+%
+% \lsc@msg{a|i}{snd|rcv}{id}
+%
+\newcommand{\lsc@msg}[3]{%
+  \expandafter\ifx\csname lsc@#1msg#3#2X\endcsname\relax%
+    \expandafter\xdef\csname lsc@#1msg#3#2X\endcsname{\the\lsc@X}%
+    \expandafter\xdef\csname lsc@#1msg#3#2Y\endcsname{\the\lsc@Y}%
+  \else%
+    \errmessage{LSC error: #3: message location already defined!}%
+  \fi%
+}
+%
+%  remove all helper definitions again to be able to detect errors with later
+%  messages who use the same name
+%
+% \lsc@clearmsg{a|i}{id}
+%
+\newcommand{\lsc@clearmsg}[2]{%
+  \global\expandafter\let\csname lsc@#1msg#2sndX\endcsname\relax%
+  \global\expandafter\let\csname lsc@#1msg#2sndY\endcsname\relax%
+  \global\expandafter\let\csname lsc@#1msg#2rcvX\endcsname\relax%
+  \global\expandafter\let\csname lsc@#1msg#2rcvY\endcsname\relax%
+}
+
+%% draw a simultaneous-region "kuller" (circle) -- whether it goes to front or
+%  back is determined by the hook that is defined to be this command
+%
+\newcommand{\lsc@simregionkuller}{%
+  \rput(\lsc@X,\lsc@Y){%
+    \pscircle*{\lsc@simregradius}}}
+
+%% save coordinates of conditions spanning multiple instance lines; if first
+%  called for a name, the coordinates of the leftmost end are stored, the
+%  coordinates of the rightmost end are overwritten each time, leaving the
+%  actual rightmost values in the end; the Y-coordinate is only stored on the
+%  first call (values are accessed by _name_ later)
+%
+% \lsc@widecondloc{<id>}
+%
+\newcommand{\lsc@widecondloc}[1]{%
+  \expandafter\ifx\csname lsc@wc#1leftmostX\endcsname\relax%
+    \expandafter\xdef\csname lsc@wc#1leftmostX\endcsname{\the\lsc@X}%
+    \expandafter\xdef\csname lsc@wc#1Y\endcsname{\the\lsc@Y}%
+  \fi%
+  \expandafter\xdef\csname lsc@wc#1rightmostX\endcsname{\the\lsc@X}}%
+
+%% write a white block as part of the background of a condition spanning
+%  multiple instance lines; in other words, the background of these conditions
+%  is not drawn at once but separately on each instance line
+%
+%  The trick for getting the outline right is to draw "puzzles": on the
+%  leftmost instance, a
+%       _______
+%      /   |   \
+%      \___|___/
+%
+%  piece is drawn and on all other instances a
+%     _________
+%     \    |   \
+%     /____|___/
+%
+%  pieces.  This even gets wide conditions covering only a single instance
+%  line right.
+%
+% \lsc@lscfirstblock
+%
+\newcommand{\lsc@firstblock}{%
+  \pssetlength{\lsc@kxwidth}{0.5\lscLocationWidth}%
+  \pssetlength{\lsc@kwidth}{\lsc@kxwidth}%
+  \psaddtolength{\lsc@kwidth}{-0.35\lscLocationHeight}%
+  \pssetlength{\lsc@kheight}{0.7\lscLocationHeight}%
+  \rput(\lsc@X,\lsc@Y){%
+    \pspolygon*[linecolor=white]%
+      (-\lsc@kxwidth,-0.5\lsc@kheight)%
+      (-\lsc@kwidth,0)%
+      (\lsc@kwidth,0)%
+      (\lsc@kxwidth,-0.5\lsc@kheight)%
+      (\lsc@kwidth,-\lsc@kheight)%
+      (-\lsc@kwidth,-\lsc@kheight)}}%
+
+% \lsc@lscotherblock
+%
+\newcommand{\lsc@otherblock}{%
+  \pssetlength{\lsc@kxwidth}{0.5\lscLocationWidth}%
+  \pssetlength{\lsc@kwidth}{\lsc@kxwidth}%
+  \psaddtolength{\lsc@kwidth}{-0.35\lscLocationHeight}%
+  \pssetlength{\lsc@kxxwidth}{\lsc@kxwidth}%
+  \psaddtolength{\lsc@kxxwidth}{0.35\lscLocationHeight}%
+  \pssetlength{\lsc@kheight}{0.7\lscLocationHeight}%
+  \rput(\lsc@X,\lsc@Y){%
+    \pspolygon*[linecolor=white]%
+      (-\lsc@kxwidth,-0.5\lsc@kheight)%
+      (-\lsc@kxxwidth,0)%
+      (\lsc@kwidth,0)%
+      (\lsc@kxwidth,-0.5\lsc@kheight)%
+      (\lsc@kwidth,-\lsc@kheight)%
+      (-\lsc@kxxwidth,-\lsc@kheight)}}%
+
+%% set cut colour and width of a named cut and draw a named cut -- explicitly
+%  named cuts get names of the form 'lsc@cutnamed...Y', the unnamed cut has
+%  names of the form 'lsc@cutinternalY' 
+%
+% \lsc@setCutColour{<id>}{<colourname>}
+%
+\newcommand{\lsc@setCutColour}[2]{%
+  \expandafter\def\csname lsc@cut#1Colour\endcsname{#2}}
+
+% \lsc@setCutWidth{<id>}{<length>}
+%
+\newcommand{\lsc@setCutWidth}[2]{%
+  \expandafter\def\csname lsc@cut#1Width\endcsname{#2}}
+
+% \lsc@setCutLinestyle{<id>}{<linestyle>}
+%
+\newcommand{\lsc@setCutLinestyle}[2]{%
+  \expandafter\def\csname lsc@cut#1Linestyle\endcsname{#2}}
+
+%% drawing a cut with name <id> comprises drawing a line in colour
+%  \lsc@cut<id>Colour with width \lsc@cut<id>Width at the current Y location
+%  over the full location width.   If we are _not_ on the first instance,
+%  then firstly a line at the leftmost boundary of the current location is
+%  drawn from \lsc@cut<id>Y, the vertical position of the last cut segment, to
+%  the current Y location.
+%
+% \lsc@namedCut{<id>}
+%
+\newcommand{\lsc@namedCut}[1]{%
+  %
+  % if the linestyle is 'none', explicitly don't do anything -- otherwise the
+  % 'c-c' line ends are drawn anyway...
+  %
+  \ifthenelse{\equal{\csname lsc@cut#1Linestyle\endcsname}{none}}{%
+    \relax%
+  }{{%
+    \psset{linecolor=\csname lsc@cut#1Colour\endcsname,%
+           linewidth=\csname lsc@cut#1Width\endcsname,%
+           linestyle=\csname lsc@cut#1Linestyle\endcsname,%
+           arrows=c-c}%
+    %
+    % if we are not on the first instance, consider to draw a vertical line
+    %
+    \ifthenelse{\equal{\lsc@firstinst}{\lsc@false}}{%
+      %
+      % it's not sufficient to check the last and the current Y position for
+      % equality since minimal deviations have the effect that the vertical line
+      % is drawn (and consequently creates the ugly artefact)
+      %
+      \ifthenelse{\lengthtest{\csname lsc@cut#1Y\endcsname > \lsc@Y}}{%
+        \pssetlength{\lsc@cutvdiff}{\csname lsc@cut#1Y\endcsname}
+        \addtolength{\lsc@cutvdiff}{-\lsc@Y}
+      }{%
+        \pssetlength{\lsc@cutvdiff}{\lsc@Y}
+        \addtolength{\lsc@cutvdiff}{-\csname lsc@cut#1Y\endcsname}
+      }%
+       \ifthenelse{\lengthtest{\lsc@cutvdiff < \csname lsc@cut#1Width\endcsname}}{%
+         % skip: don't draw vertical line when at (roughly) same height
+       }{%
+         \rput(-0.5\lscLocationWidth,0){%
+           \psline(\lsc@X,\csname lsc@cut#1Y\endcsname)(\lsc@X,\lsc@Y)}%
+       }%
+    }{}%
+    %
+    % draw horizontal line
+    %
+    \rput(\lsc@X,\lsc@Y){%
+      \psline(-0.5\lscLocationWidth,0)(0.5\lscLocationWidth,0)}%
+    \expandafter\xdef\csname lsc@cut#1Y\endcsname{\the\lsc@Y}%
+  }}%
+}
+
+%% helper macros for scheduling, drawing, and clearing hooks
+%
+\newcommand{\lsc@schedhook}[2]{%
+  \global\expandafter\def\csname lsc@draw#1hook\endcsname{#2}%
+}
+%
+\newcommand{\lsc@clearhook}[1]{%
+  \global\expandafter\let\csname lsc@draw#1hook\endcsname\relax}%
+%
+\newcommand{\lsc@clearhooks}{%
+ \lsc@clearhook{actcond}%
+ \lsc@clearhook{atom}%
+ \lsc@clearhook{bgblock}%
+ \lsc@clearhook{bgsimreg}%
+ \lsc@clearhook{fgblock}%
+ \lsc@clearhook{fgsimreg}%
+ \lsc@clearhook{timer}%
+}
+%
+\newcommand{\lsc@flushhook}[1]{%
+  \csname lsc@draw#1hook\endcsname%
+  \lsc@clearhook{#1}%
+}
+
+%% do the things that have to be done before the instance line is drawn,
+%  currently this comprises only the drawing of a multi-instance line
+%  condition background if one is scheduled for drawing and a simregion
+%  kuller.  Used by ordinary and environment instance lines.
+%  ('Scheduling' is done by defining macros.)
+%
+\newcommand{\lsc@linePrelude}{%
+  \lsc@flushhook{bgsimreg}%
+  \lsc@flushhook{bgblock}}%
+
+%% do the things that have to be done after the instance line is drawn,
+%  currently drawing the following things given in order from back to front
+%  (if scheduled):
+%   - background of multi-instance line conditions
+%   - condition or action (implies that there can be either a condition or an
+%     action at a location)
+%   - timer
+%   - atom circle
+%
+%  Used by ordinary and environment instance lines.
+%
+\newcommand{\lsc@linePostlude}[1]{%
+  \lsc@flushhook{fgblock}%
+  \lsc@flushhook{actcond}%
+  \lsc@flushhook{timer}%
+  \lsc@flushhook{atom}%
+  \lsc@flushhook{fgsimreg}%
+  \global\advance\lsc@Y by-#1\lscLocationHeight}%
+
+%% macros to draw instance lines, ordinary and environment
+%
+% \lsc@line{<timinginterval>}{solid|dashed}{<length>}
+%
+\newcommand{\lsc@line}[3]{%
+  \lsc@linePrelude%
+  \rput(\lsc@X,\lsc@Y){%
+    %
+    % use \pcline only if really needed -- it make small dvi files
+    % significantly larger (adds about 0.5k per small LSC)
+    %
+    \psset{linestyle=#2}%
+    \ifthenelse{\equal{#1}{}}{%
+      \psline(0,-#3\lscLocationHeight)%
+    }{%
+      \pcline(0,0)(0,-#3\lscLocationHeight)%
+      \lput[l]{0}{\ {#1}}%
+    }%
+  }
+  \lsc@linePostlude{#3}%
+}
+%
+% \lsc@envline{<timinginterval>}{solid|none}{<length>}
+%
+\newcommand{\lsc@envline}[3]{%
+  \lsc@linePrelude%
+  \rput(\lsc@X,\lsc@Y){%
+    %
+    % if there is a timing interval, position it to the right of the rightmost
+    % edge of the box
+    %
+    \ifthenelse{\equal{#1}{}}{%
+    }{%
+      \rput(\lsc@envlinewidth,0){%
+        \pcline[linestyle=none](0,0)(0,-#3\lscLocationHeight)}%
+      \lput[l]{0}{\ {#1}}%
+    }%
+    %
+    % the instance line itself as a criss-cross filled box 
+    %
+    \pspolygon[linestyle=none,fillstyle=hlines]%
+      (-\lsc@envlinewidth,0)%
+      (\lsc@envlinewidth,0)%
+      (\lsc@envlinewidth,-#3\lscLocationHeight)%
+      (-\lsc@envlinewidth,-#3\lscLocationHeight)%
+    %
+    % if it's hot, add a solid line over the middle of the box
+    %
+    \psline[linestyle=#2](0,-#3\lscLocationHeight)%
+  }%
+  \lsc@linePostlude{#3}%
+}
+
+%% see whether the labels for both ends of the create arrow have been defined
+%  and if so draw the arrow.  Used by the lscCreate command and the
+%  lsccreateinst instance line.
+%
+% \lsc@createarrow{<id>}
+%
+\newcommand{\lsc@createarrow}[1]{%
+  \expandafter\ifx\csname lsc@createsrc#1\endcsname\relax%
+    \relax%
+  \else\expandafter\ifx\csname lsc@createdest#1\endcsname\relax%
+    \relax%
+  \else%
+      \ncline{->}{\csname lsc@createsrc#1node\endcsname}{\csname lsc@createdest#1node\endcsname}%
+      \global\expandafter\let\csname lsc@createsrc#1\endcsname\relax%
+      \global\expandafter\let\csname lsc@createdest#1\endcsname\relax%
+  \fi\fi%
+}
+
+%% the first two macros only draw the hourglass and hour-X of timer set/reset
+%  and timeout, the third macro constructs a timer symbol with label and the
+%  latter three macros are actually used by the exported macros. 
+%
+\newcommand{\lsc@hourglass}{%
+  \pspolygon[fillstyle=solid]%
+            (-\lsc@hgwidth,\lsc@hgheight)%
+            (\lsc@hgwidth,\lsc@hgheight)%
+            (-\lsc@hgwidth,-\lsc@hgheight)%
+            (\lsc@hgwidth,-\lsc@hgheight)}%
+%
+\newcommand{\lsc@hourx}{%
+  \psline(-\lsc@hgwidth,\lsc@hgheight)%
+         (\lsc@hgwidth,-\lsc@hgheight)%
+  \psline(-\lsc@hgwidth,-\lsc@hgheight)%
+         (\lsc@hgwidth,\lsc@hgheight)}%
+%
+% \lsc@timer{<xposition>}{<arrows>}{<symbol>}{<text>}
+%
+% The label <text> is placed to the left of the symbol if <xposition> is
+% negative and to the right otherwise.
+%
+% For <xposition>, currently only \lsc@hgoffset or -\lsc@hgoffset are used,
+% for <arrows> only '-' or '<-' and for <symbol> \lsc@hourglass or \lsc@hourx.
+%
+\newcommand{\lsc@timer}[4]{%
+  \rput(\lsc@X,\lsc@Y){%
+    \rput(#1,0){%
+      {#3}%
+      \ifthenelse{\lengthtest{#1 < 0pt}}{%
+        \rput[r](-1.5\lsc@hgwidth,0){{#4}}%
+      }{%
+        \rput[l](1.5\lsc@hgwidth,0){{#4}}%
+      }}%
+    \psline{#2}(0,0)(#1,0)}}%
+%
+\newcommand{\lsc@timerset}[3]{%
+  \lsc@timer{#1}{-}{\lsc@hourglass}{{#2}({#3})}}
+%
+\newcommand{\lsc@timerreset}[2]{%
+  \lsc@timer{#1}{-}{\lsc@hourx}{{#2}}}
+%
+\newcommand{\lsc@timeout}[2]{%
+  \lsc@timer{#1}{<-}{\lsc@hourglass}{{#2}}}
+
+%% draw hot and cold single-instance condition
+%
+\newcommand{\lsc@cond}[1]{%
+  \rput[t](\lsc@X,\lsc@Y){#1}}
+%
+\newcommand{\lsc@hotcond}[1]{%
+  \lsc@cond{\lsc@hotkandis{#1}}}%
+%
+\newcommand{\lsc@coldcond}[1]{%
+  \lsc@cond{\lsc@coldkandis{#1}}}%
+
+%% macros to draw the message arrow -- checks whether both ends are defined
+%
+%  \lsc@msgarrow{a|i}{<linestyle>}{<id>}{<label>}
+%
+% The arrow shape is controlled by \psset{} in wrapping macros.
+%
+\newcommand{\lsc@msgarrow}[4]{{%
+  \expandafter\ifx\csname lsc@#1msg#3sndX\endcsname\relax%
+    \errmessage{LSC error: #3: send location not defined?}%
+  \else\expandafter\ifx\csname lsc@#1msg#3sndY\endcsname\relax%
+    \errmessage{LSC error: #3: send location not defined?}%
+  \else\expandafter\ifx\csname lsc@#1msg#3rcvX\endcsname\relax%
+    \errmessage{LSC error: #3: receive location not defined?}%
+  \else\expandafter\ifx\csname lsc@#1msg#3rcvY\endcsname\relax%
+    \errmessage{LSC error: #3: receive location not defined?}%
+  \else
+    \psset{linestyle=#2}%
+    \ifthenelse{\lengthtest{\csname lsc@#1msg#3sndX\endcsname < \csname lsc@#1msg#3rcvX\endcsname}}{%
+      \pcline{->}%
+        (\csname lsc@#1msg#3sndX\endcsname,\csname lsc@#1msg#3sndY\endcsname)%
+        (\csname lsc@#1msg#3rcvX\endcsname,\csname lsc@#1msg#3rcvY\endcsname)%
+    }{%
+    \ifthenelse{\lengthtest{\csname lsc@#1msg#3sndX\endcsname > \csname lsc@#1msg#3rcvX\endcsname}}{%
+      \pcline{<-}%
+        (\csname lsc@#1msg#3rcvX\endcsname,\csname lsc@#1msg#3rcvY\endcsname)%
+        (\csname lsc@#1msg#3sndX\endcsname,\csname lsc@#1msg#3sndY\endcsname)%
+    }{%
+      \pcbar[arm=0.5]{->}%
+        (\csname lsc@#1msg#3sndX\endcsname,\csname lsc@#1msg#3sndY\endcsname)%
+        (\csname lsc@#1msg#3rcvX\endcsname,\csname lsc@#1msg#3rcvY\endcsname)%
+    }}%
+    \aput[\lsc@labelsep]{:U}{#4}%
+  \fi\fi\fi\fi%
+}}
+%
+% \lsc@asynarrow{solid|dashed}{<id>}{<label>}
+%
+\newcommand{\lsc@asynarrow}[3]{{%
+  \psset{arrowsize=2pt 3,arrowlength=3,arrowinset=0.80,linestyle=#1}%
+  \lsc@msgarrow{a}{#1}{#2}{#3}}}
+%
+%  \lsc@hotasynarrow{<id>}{<label>}
+%
+\newcommand{\lsc@hotasynarrow}[2]{%
+  \lsc@asynarrow{solid}{#1}{#2}}%
+%
+%  \lsc@coldasynarrow{<id>}{<label>}
+%
+\newcommand{\lsc@coldasynarrow}[2]{%
+  \lsc@asynarrow{dashed}{#1}{#2}}%
+%
+\newcommand{\lsc@instarrow}[3]{{%
+  \psset{arrowsize=2pt 3,arrowlength=2,arrowinset=0,linestyle=#1}%
+  \lsc@msgarrow{i}{#1}{#2}{#3}}}
+%
+%  \lsc@hotinstarrow{<id>}{<label>}
+%
+\newcommand{\lsc@hotinstarrow}[2]{%
+  \lsc@instarrow{solid}{#1}{#2}}%
+%
+%  \lsc@coldinstarrow{<id>}{<label>}
+%
+\newcommand{\lsc@coldinstarrow}[2]{%
+  \lsc@instarrow{dashed}{#1}{#2}}%
+
+%% macros to draw a local invariant
+%
+% \lsc@likuller{<yfactor>}{<ypos>}
+%
+% <yfactor> is '-0.5' for start and '0.5' for end kuller; this provides a
+% small "inwards" offset to the kuller s.t. subsequent local invariants remain
+% readable. <ypos> is the y-position.
+% Filling of the kuller is controlled by \psset{} in calling wrapper macros.
+%
+\newcommand{\lsc@likuller}[2]{%
+  \rput(\lsc@liX,#2){%
+    \pscircle[fillstyle=solid](0,#1\lsc@dotradius){\lsc@dotradius}}%
+}
+%
+% \lsc@incllikuller{<yfactor>}{<ypos>}
+%
+\newcommand{\lsc@incllikuller}[2]{{%
+  \psset{fillcolor=black}%
+  \lsc@likuller{#1}{#2}%
+}}
+%
+% \lsc@excllikuller{<yfactor>}{<ypos>}
+%
+\newcommand{\lsc@excllikuller}[2]{{%
+  \lsc@likuller{#1}{#2}%
+}}
+%
+% \lsc@inclstartkuller{<id>}
+%
+\newcommand{\lsc@inclstartkuller}[1]{%
+  \lsc@incllikuller{-0.5}{\csname lsc@li#1startY\endcsname}}%
+%
+% \lsc@exclstartkuller{<id>}
+%
+\newcommand{\lsc@exclstartkuller}[1]{%
+  \lsc@excllikuller{-0.5}{\csname lsc@li#1startY\endcsname}}%
+%
+% \lsc@inclendkuller{<id>}
+%
+\newcommand{\lsc@inclendkuller}[1]{%
+  \lsc@incllikuller{0.5}{\csname lsc@li#1endY\endcsname}}%
+%
+% \lsc@exclendkuller{<id>}
+%
+\newcommand{\lsc@exclendkuller}[1]{%
+  \lsc@excllikuller{0.5}{\csname lsc@li#1endY\endcsname}}%
+%
+% \lsc@locinv{r|l}{<id>}{incl|excl}{incl|excl}{<kandis>}%
+%
+% Assumes that the first parameter is 'r' or 'l' (should've been checked
+% before) but checks itself for 'incl' and 'excl'.  <kandis> should be the
+% stuff to be put next to the vertical line, it is typically a hot or cold
+% \lsc@kandis, i.e. temperature has to be handled in the calling macro.
+%
+\newcommand{\lsc@locinv}[5]{%
+  \expandafter\ifx\csname lsc@li#2startX\endcsname\relax%
+    \errmessage{LSC error: #2: local invariant begin not defined?}%
+  \else\expandafter\ifx\csname lsc@li#2startY\endcsname\relax%
+    \errmessage{LSC error: #2: local invariant begin not defined?}%
+  \else\expandafter\ifx\csname lsc@li#2endX\endcsname\relax%
+    \errmessage{LSC error: #2: local invariant end not defined?}%
+  \else\expandafter\ifx\csname lsc@li#2endY\endcsname\relax%
+    \errmessage{LSC error: #2: local invariant end not defined?}%
+  \else
+    %
+    % draw the connections to the locations on the instance lines
+    %
+    \psline[linestyle=dotted,dotsep=1pt]%
+      (\csname lsc@li#2startX\endcsname,\csname lsc@li#2startY\endcsname)%
+      (\lsc@liX,\csname lsc@li#2startY\endcsname)%
+    \psline%
+      (\lsc@liX,\csname lsc@li#2startY\endcsname)%
+      (\lsc@liX,\csname lsc@li#2endY\endcsname)%
+    \psline[linestyle=dotted,dotsep=1pt]%
+      (\lsc@liX,\csname lsc@li#2endY\endcsname)%
+      (\csname lsc@li#2endX\endcsname,\csname lsc@li#2endY\endcsname)%
+    %
+    % draw the "kandis"
+    %
+    \pssetlength{\lsc@licondY}{\csname lsc@li#2endY\endcsname}%
+    \psaddtolength{\lsc@licondY}{\csname lsc@li#2startY\endcsname}%
+    \pssetlength{\lsc@licondY}{0.5\lsc@licondY}%
+    \rput[#1](\lsc@liX,\lsc@licondY){#5}%
+    %
+    % put the inclusive/exclusive markers
+    %
+    \def\lsc@arg{#3}%
+    \ifx\lsc@arg\lsc@incl%
+      \lsc@inclstartkuller{#2}%
+    \else\ifx\lsc@arg\lsc@excl%
+      \lsc@exclstartkuller{#2}%
+    \else%
+      \errmessage{LSC error: \lsc@arg: Local invariant start must be "incl" or "excl"!}%
+    \fi\fi%
+    %
+    \def\lsc@arg{#4}%
+    \ifx\lsc@arg\lsc@incl%
+      \lsc@inclendkuller{#2}%
+    \else\ifx\lsc@arg\lsc@excl%
+      \lsc@exclendkuller{#2}%
+    \else%
+      \errmessage{LSC error: \lsc@arg: Local invariant end must be "incl" or "excl"!}%
+    \fi\fi%
+  \fi\fi\fi\fi%
+}
+
+%% macros to position the instance lines end of creation arrows
+%
+% \lsc@createdest{<id>}
+%
+% Puts the pnode for the creation arrow.  Communicates with calling macros by
+% the shared lengths \lsc@createinstX, \lsc@createinstY and the X-offset
+% \lsc@createinstW.
+%
+\newcommand{\lsc@setcreatedest}[1]{%
+  \expandafter\ifx\csname lsc@createsrc#1\endcsname\relax%
+    %
+    % if the src of the creation arrow doesn't exist already, then it will end
+    % up to the right of us thus place the node to the right of the box (!)...
+    %
+    \addtolength{\lsc@createinstX}{\lsc@createinstW}%
+  \else%
+    %
+    % ...otherwise put it to the left
+    %
+    \addtolength{\lsc@createinstX}{-\lsc@createinstW}%
+  \fi%
+  %
+  \pnode(\lsc@createinstX,\lsc@createinstY){\csname lsc@createdest#1node\endcsname}%
+  %
+  \expandafter\xdef\csname lsc@createdest#1\endcsname{\lsc@true}%
+  %
+  \lsc@createarrow{#1}%
+}
+%
+% \lsc@createboxdest{<id>}
+%
+\newcommand{\lsc@setcreateboxdest}[1]{%
+  %
+  % for boxed create instance heads, the arrow should end on the line of the
+  % box
+  %
+  \setlength{\lsc@createinstW}{0.4\lscLocationWidth}%
+  \addtolength{\lsc@createinstW}{\lsc@instheadframesep}%
+  %
+  \lsc@setcreatedest{#1}%
+}
+%
+% \lsc@createnoboxdest{<id>}{<label>}
+%
+\newcommand{\lsc@setcreatenoboxdest}[2]{%
+  %
+  % for non-boxed create instance heads, the arrow should end a little bit to
+  % the left or right of the label (!)
+  %
+  \settowidth{\lsc@createinstW}{#2}%
+  \setlength{\lsc@createinstW}{0.5\lsc@createinstW}%
+  \psaddtolength{\lsc@createinstW}{0.1em}%
+  \psaddtolength{\lsc@createinstW}{\lsc@instheadframesep}%
+  %
+  \lsc@setcreatedest{#1}%
+}
+
+%% macros to draw an instance head
+%
+% \lsc@insthead[<Y>]{solid|dashed|none}{true|false}{<label>}
+%
+% The boolean 'lsc@MSC', which indicates whether we are in an MSC instance
+% line or not, i.e. whether a footer has to be drawn or not, is set to the
+% second parameter.
+%
+\newcommand{\lsc@insthead}[4][0]{%
+   \rput[b](\lsc@X,#1){\psframebox[fillstyle=solid,framesep=\lsc@instheadframesep,linestyle=#2]{%
+     \makebox[0.80\lscLocationWidth]{#4\lsc@instheadrule}}}%
+   \setboolean{lsc@MSC}{#3}}%
+%
+% \lsc@instheadbox[<Y>]{solid|dashed}{true|false}{<label>}
+%
+\newcommand{\lsc@instheadbox}[4][0]{%
+  \lsc@insthead[#1]{#2}{#3}{#4}}
+%
+% \lsc@instheadnobox[<Y>]{true|false}{<label>}
+%
+\newcommand{\lsc@instheadnobox}[3][0]{%
+  \lsc@insthead[#1]{none}{#2}{#3}}
+%
+% \lsc@instheadnoboxSD[<Y>]{<label>}
+%
+\newcommand{\lsc@instheadnoboxSD}[2][0]{%
+  \lsc@instheadnobox[#1]{false}{#2}}
+%
+% \lsc@instheadSD[<Y>]{<label>}
+%
+\newcommand{\lsc@instheadSD}[3][0]{%
+  \lsc@instheadbox[#1]{#2}{false}{#3}}
+%
+% \lsc@instheadMSC[<Y>]{<label>}
+%
+\newcommand{\lsc@instheadMSC}[3][0]{%
+  \lsc@instheadbox[#1]{#2}{true}{#3}}
+
+%% macros to draw an instance foot
+%
+% \lsc@instend
+%
+% If drawn, the instance end (footer) goes to the current location, not the
+% bottom of the LSC picture environment.
+%
+\newcommand{\lsc@instend}{%
+  % put the end if in MSC mode
+  %
+  \ifthenelse{\boolean{lsc@MSC}}{%
+     \rput[b](\lsc@X,\lsc@Y){%
+       \psframebox[fillstyle=solid,fillcolor=black]{%
+         \makebox[0.80\lscLocationWidth]{%
+           \rule{0mm}{\lscFooterHeightFactor\lscLocationHeight}}}}%
+  }{%
+  }%
+  %
+  % if we are at the end of an instance line, then the next one is not a
+  % first instance line -- unless the next one occurs in a new 'Lsc'
+  % environment
+  %
+  \xdef\lsc@firstinst{\lsc@false}%
+  %
+  % advance X position for the next instance line
+  %
+  \global\advance\lsc@X by\lscLocationWidth%
+}
+
+%% helper macros for symbolic instance balloons
+%
+% \lsc@balloon{solid|dashed}{<stuff>}
+%
+\newcommand{\lsc@balloon}[2]{%
+  \pscircle(0.1,0){0.09}%
+  \pscircle(0.3,0.2){0.13}%
+  \rput[b](0.5,0.4){%
+    \psovalbox[fillstyle=solid,linestyle=#1]{#2}}}%
+
+%% draw multi-instance line condition
+%
+% \lsc@widecond{<id>}{solid|dashed}{<label>}
+%
+\newcommand{\lsc@widecond}[3]{%
+  \expandafter\ifx\csname lsc@wc#1rightmostX\endcsname\relax%
+    \errmessage{LSC error: #1: no locations wide condition defined?}%
+  \else\expandafter\ifx\csname lsc@wc#1leftmostX\endcsname\relax%
+    \errmessage{LSC error: #1: no locations wide condition defined?}%
+  \else\expandafter\ifx\csname lsc@wc#1Y\endcsname\relax%
+    \errmessage{LSC error: #1: no locations wide condition defined?}%
+  \else%
+    %
+    % compute the extension of the whole kandis from the saved information --
+    % forgot what the exact strategy was, the plan is to place the outline
+    % correctly of course...  
+    %
+    \pssetlength{\lsc@kxwidth}{\csname lsc@wc#1rightmostX\endcsname}%
+    \psaddtolength{\lsc@kxwidth}{-\csname lsc@wc#1leftmostX\endcsname}%
+    \psaddtolength{\lsc@kxwidth}{\lscLocationWidth}%
+    \pssetlength{\lsc@kxwidth}{0.5\lsc@kxwidth}%
+    \pssetlength{\lsc@kwidth}{\lsc@kxwidth}%
+    \psaddtolength{\lsc@kwidth}{-0.35\lscLocationHeight}%
+    \pssetlength{\lsc@kheight}{0.7\lscLocationHeight}%
+    %
+    % draw the outline of the kandis, the background has been drawn by the 
+    % \lscWidecondOn/Off commands
+    %
+    \rput(\csname lsc@wc#1leftmostX\endcsname,\csname lsc@wc#1Y\endcsname){%
+      \rput(\lsc@kxwidth,0){%
+        \rput(-0.5\lscLocationWidth,0){%
+          \pspolygon[linestyle=#2](-\lsc@kxwidth,-0.5\lsc@kheight)%
+                                     (-\lsc@kwidth,0)%
+                                     (\lsc@kwidth,0)%
+                                     (\lsc@kxwidth,-0.5\lsc@kheight)%
+                                     (\lsc@kwidth,-\lsc@kheight)%
+                                     (-\lsc@kwidth,-\lsc@kheight)}}}%
+    %
+    % position the label in the middle of the kandis using an \ncline between
+    % two helper named nodes and pstricks' labelling functions
+    %
+    \rput(\csname lsc@wc#1leftmostX\endcsname,\csname lsc@wc#1Y\endcsname){%
+      \rput(0,-0.35\lscLocationHeight){%
+        \pnode{lscATwcL}}}%
+    \rput(\csname lsc@wc#1rightmostX\endcsname,\csname lsc@wc#1Y\endcsname){%
+      \rput(0,-0.35\lscLocationHeight){%
+        \pnode{lscATwcR}}}%
+    \ncline[linestyle=none]{lscATwcL}{lscATwcR}%
+    \lput{0}{#3}%
+  \fi\fi\fi%
+  %
+  % clear definitions
+  %
+  \global\expandafter\let\csname lsc@wc#1rightmostX\endcsname\relax%
+  \global\expandafter\let\csname lsc@wc#1leftmostX\endcsname\relax%
+  \global\expandafter\let\csname lsc@wc#1Y\endcsname\relax}
+
+%% helper macros for the Lsc/FullLsc environment
+%
+% \lsc@init{<nrinsts>}{<nrlocs>}
+%
+\newcommand{\lsc@init}[2]{%
+  %
+  % reset X position (Y is reset in 'lscinst')
+  %
+  \pssetlength{\lsc@X}{0.5\lscLocationWidth}%
+  %
+  % compute horizontal position of right-bound local invariants (depends on
+  % width of current LSC of course)
+  %
+  \pssetlength{\lsc@liR}{#1\lscLocationWidth}%
+  \psaddtolength{\lsc@liR}{-0.2\lscLocationWidth}%
+  %
+  % the next 'lscinst' will be the first (-> \lscCut)
+  %
+  \def\lsc@firstinst{\lsc@true}%
+  %
+  % undefine all schedulings (-> \lscLine)
+  %
+  \lsc@clearhooks%
+  %
+  % compute extent of the image; considering pre-chart, universal/existential
+  % frame, and the name-ac-am box
+  %
+  \pssetlength{\lsc@width}{#1\lscLocationWidth}%
+  \pssetlength{\lsc@ulX}{0}%
+  \pssetlength{\lsc@ulY}{0}%
+  \pssetlength{\lsc@lrX}{\lsc@width}%
+  \pssetlength{\lsc@lrY}{-#2\lscLocationHeight}%
+}
+%
+% \lsc@addpcwidthcorrection
+%
+\newcommand{\lsc@addpcwidthcorrection}{%
+  \psaddtolength{\lsc@ulX}{-0.25\lscLocationWidth}%
+  \psaddtolength{\lsc@lrX}{0.25\lscLocationWidth}%
+}
+%
+% \lsc@addpccorrection
+%
+\newcommand{\lsc@addpccorrection}{%
+  \psaddtolength{\lsc@ulY}{\lsc@pccorrection}%
+}
+%
+% \lsc@addframecorrection
+%
+\newcommand{\lsc@addframecorrection}{%
+  \psaddtolength{\lsc@lrY}{-0.1\lscLocationHeight}%
+}
+%
+% \lsc@mkacambox{<name>}{<ac>}{invariant|initial|iterative}{strict|weak|}
+%
+\newcommand{\lsc@mkacambox}[4]{%
+  \def\lsc@arg{#4}%
+  \ifx\lsc@arg\lsc@empty%
+    \def\lsc@i{}%
+  \else\ifx\lsc@arg\lsc@weak%
+    \def\lsc@i{\lsc@permissive}%
+  \else\ifx\lsc@arg\lsc@permissive%
+    \def\lsc@i{\lsc@permissive}%
+  \else\ifx\lsc@arg\lsc@strict%
+    \def\lsc@i{\lsc@strict}%
+  \else%
+    \errmessage{LSC error: \lsc@arg: FullLSC interpretation must be "", "permissive", "weak", or "strict"!}%
+    \def\lsc@i{???}%
+  \fi\fi\fi\fi%
+  %
+  \def\lsc@arg{#3}%
+  \ifx\lsc@arg\lsc@invariant%
+    \def\lsc@am{\lsc@invariant}%
+  \else\ifx\lsc@arg\lsc@initial%
+    \def\lsc@am{\lsc@initial}%
+  \else\ifx\lsc@arg\lsc@iterative%
+    \def\lsc@am{\lsc@iterative}%
+  \else%
+    \errmessage{LSC error: \lsc@arg: FullLSC interpretation must be "invariant", "initial", or "iterative"!}%
+    \def\lsc@am{???}%
+  \fi\fi\fi%
+  %
+  \sbox{\lsc@acambox}{%
+    \psframebox[fillstyle=solid,framesep=0]{%
+      \small%
+      \begin{tabular}{ll}%
+        LSC:&{#1}\\[\lsc@acamboxblskipcorrection]%
+        AC:&{#2}\\[\lsc@acamboxblskipcorrection]%
+        AM:&{\lsc@am}{\ \hfill}%
+        \ifthenelse{\equal{\lsc@i}{}}{%
+        }{\begin{tabular}{ll}%
+           I:&{\lsc@i}%
+          \end{tabular}}%
+      \end{tabular}\hspace{.5em}}}%
+  %
+  \settoheight{\lsc@acamheight}{\usebox{\lsc@acambox}}%
+  \psaddtolength{\lsc@ulY}{\lsc@acamheight}%
+  \settodepth{\lsc@acamheight}{\usebox{\lsc@acambox}}%
+  \psaddtolength{\lsc@ulY}{\lsc@acamheight}%
+}
+%
+% \lsc@prechart{<prechartloc>}
+%
+\newcommand{\lsc@prechart}[1]{%
+  \pssetlength{\lsc@kwidth}{\lsc@width}%
+  \pssetlength{\lsc@kwidth}{.5\lsc@kwidth}%
+  \pssetlength{\lsc@kxwidth}{\lsc@kwidth}%
+  %
+  \pssetlength{\lsc@frametop}{\lsc@pccorrection}%
+  %
+  \ifthenelse{\equal{#1}{}}{%
+    %
+    % no pre-chart: just adjust length
+    %
+    \pssetlength{\lsc@kheight}{0}%
+  }{%
+    \psaddtolength{\lsc@kxwidth}{0.25\lscLocationWidth}%
+    %
+    % draw the pre-chart
+    %
+    \pssetlength{\lsc@kheight}{#1\lscLocationHeight}%
+    \psaddtolength{\lsc@kheight}{\lsc@pccorrection}%
+    %
+    \rput(0.5\lsc@width,\lsc@pccorrection){%
+      \pspolygon[linestyle=dashed](-\lsc@kxwidth,-0.5\lsc@kheight)%
+                                  (-\lsc@kwidth,0)%
+                                  (\lsc@kwidth,0)%
+                                  (\lsc@kxwidth,-0.5\lsc@kheight)%
+                                  (\lsc@kwidth,-\lsc@kheight)%
+                                  (-\lsc@kwidth,-\lsc@kheight)}%
+    %
+    \psaddtolength{\lsc@frametop}{-\lsc@kheight}%
+  }%
+}
+%
+% \lsc@frame{solid|dashed}
+%
+\newcommand{\lsc@frame}[1]{%
+   %
+   % draw the universal/existential box
+   %
+   \pssetlength{\lsc@frameheight}{\lsc@lrY}%
+   \psaddtolength{\lsc@frameheight}{\lsc@kheight}%
+   \psaddtolength{\lsc@frameheight}{-\lsc@pccorrection}%
+   %
+   \rput(0.5\lsc@width,\lsc@frametop){%
+     \psframe[linestyle=#1]%
+       (-\lsc@kxwidth,0)(\lsc@kxwidth,\lsc@frameheight)}%
+}
+
+
+% % exported interface:  % % % % % % % % % % % % % % % % % % % % % % % % % % %
+
+%% additional space between the instance line and the local invariant
+%  condition (in addition to the default space)
+%
+%      |....................................
+%      |                                   O ______
+%      |                                   |<_cond_>
+%      |...................................O
+%      |
+%
+%      |< basic offset >|< lscLocInvOffset >
+%
+\newlength{\lscLocinvOffset}
+\pssetlength{\lscLocinvOffset}{0}
+
+% \lscAsynSnd{<id>}
+%
+\newcommand{\lscAsynSnd}[1]{%
+  \lsc@msg{a}{snd}{#1}}
+
+% \lscAsynRcv{<id>}
+%
+\newcommand{\lscAsynRcv}[1]{%
+  \lsc@msg{a}{rcv}{#1}}
+
+% \lscInstSnd{<id>}
+%
+\newcommand{\lscInstSnd}[1]{%
+  \lsc@msg{i}{snd}{#1}}
+
+% \lscInstRcv{<id>}
+%
+\newcommand{\lscInstRcv}[1]{%
+  \lsc@msg{i}{rcv}{#1}}
+
+% \lscTimerSet[r|l]{<timername>}{<timerduration>}
+%
+\newcommand{\lscTimerSet}[3][r]{%
+  \def\lsc@arg{#1}%
+  \ifx\lsc@arg\lsc@r%
+    \lsc@schedhook{timer}{\lsc@timerset{\lsc@hgoffset}{#2}{#3}}%
+  \else\ifx\lsc@arg\lsc@l%
+    \lsc@schedhook{timer}{\lsc@timerset{-\lsc@hgoffset}{#2}{#3}}%
+  \else%
+    \errmessage{LSC error: \lsc@arg: TimerSet position must be "l" (left) or "r" (right)!}%
+  \fi\fi%
+}
+
+% \lscTimerReset[r|l]{<timername>}
+%
+\newcommand{\lscTimerReset}[2][r]{%
+  \def\lsc@arg{#1}%
+  \ifx\lsc@arg\lsc@r%
+    \lsc@schedhook{timer}{\lsc@timerreset{\lsc@hgoffset}{#2}}%
+  \else\ifx\lsc@arg\lsc@l%
+    \lsc@schedhook{timer}{\lsc@timerreset{-\lsc@hgoffset}{#2}}%
+  \else%
+    \errmessage{LSC error: \lsc@arg: TimerReset position must be "l" (left) or "r" (right)!}%
+  \fi\fi%
+}
+
+% \lscTimeout[r|l]{<timername>}
+%
+\newcommand{\lscTimeout}[2][r]{%
+  \def\lsc@arg{#1}%
+  \ifx\lsc@arg\lsc@r%
+    \lsc@schedhook{timer}{\lsc@timeout{\lsc@hgoffset}{#2}}%
+  \else\ifx\lsc@arg\lsc@l%
+    \lsc@schedhook{timer}{\lsc@timeout{-\lsc@hgoffset}{#2}}%
+  \else%
+    \errmessage{LSC error: \lsc@arg: Timeout position must be "l" (left) or "r" (right)!}%
+  \fi\fi%
+}
+
+
+% \lscAct{<content>}
+%
+\newcommand{\lscAct}[1]{%
+  \lsc@schedhook{actcond}{%
+    \rput[t](\lsc@X,\lsc@Y){%
+      \psframebox[fillstyle=solid]{#1}}}}
+
+% schedule a single instance line condition for drawing
+%
+% \lscCond{hot|cold}{<content>}
+%
+\newcommand{\lscCond}[2]{%
+  \def\lsc@arg{#1}%
+  \ifx\lsc@arg\lsc@hot%
+    \lsc@schedhook{actcond}{\lsc@hotcond{#2}}%
+  \else\ifx\lsc@arg\lsc@cold%
+    \lsc@schedhook{actcond}{\lsc@coldcond{#2}}%
+  \else%
+    \errmessage{LSC error: \lsc@arg: Condition temperature must be "hot" or "cold"!}%
+  \fi\fi%
+}
+
+% \lscKill
+%
+\newcommand{\lscKill}{%
+  \rput(\lsc@X,\lsc@Y){%
+    \psline(-\lscKillLength,\lscKillLength)(\lscKillLength,-\lscKillLength)%
+    \psline(-\lscKillLength,-\lscKillLength)(\lscKillLength,\lscKillLength)}}
+
+% \lscCreate{<id>}
+%
+\newcommand{\lscCreate}[1]{%
+  \expandafter\ifx\csname lsc@createsrc#1\endcsname\relax%
+    \rput[b](\lsc@X,\lsc@Y){%
+      \pnode{\csname lsc@createsrc#1node\endcsname}}%
+    %
+    \expandafter\xdef\csname lsc@createsrc#1\endcsname{\lsc@true}%
+    %
+    \lsc@createarrow{#1}%
+  \else%
+    \errmessage{LSC error: #1: Creation arrow source already defined!}%
+  \fi%
+}
+
+% draw the background of a multi-instance line condition for the current
+% instance; 'Off' means, the condition lies behind the current instance line,
+% i.e. the condition does not synchronise it
+%
+% \lscWidecondOff{<id>}
+%
+\newcommand{\lscWidecondOff}[1]{%
+  \expandafter\ifx\csname lsc@wc#1leftmostX\endcsname\relax%
+    \lsc@schedhook{bgblock}{\lsc@firstblock}%
+  \else%
+    \lsc@schedhook{bgblock}{\lsc@otherblock}%
+  \fi%
+  \lsc@widecondloc{#1}}%
+
+% (see above) 'On' means, the condition lies before the current instance line,
+% i.e. the condition synchronises on it
+%
+% \lscWidecondOn{<id>}
+%
+\newcommand{\lscWidecondOn}[1]{%
+  \expandafter\ifx\csname lsc@wc#1leftmostX\endcsname\relax%
+    \lsc@schedhook{fgblock}{\lsc@firstblock}%
+  \else%
+    \lsc@schedhook{fgblock}{\lsc@otherblock}%
+  \fi%
+  \lsc@widecondloc{#1}}%
+
+% mark the beginning/end of local invariant <id>.  It is actually drawn later,
+% using \lscLocinv after beginning and end have been marked, by convention
+% after all 'lscinst' environments.
+%
+% \lscLocinvStart{<id>}
+% \lscLocinvBegin{<id>}
+%
+\newcommand{\lscLocinvStart}[1]{%
+  \expandafter\ifx\csname lsc@li#1startX\endcsname\relax%
+    \expandafter\xdef\csname lsc@li#1startX\endcsname{\the\lsc@X}%
+    \expandafter\xdef\csname lsc@li#1startY\endcsname{\the\lsc@Y}%
+  \else%
+    \errmessage{LSC error: #1: local invariant begin already defined!}%
+  \fi%
+}
+\let\lscLocinvBegin\lscLocinvStart%
+
+% \lscLocinvEnd{<id>}
+%
+\newcommand{\lscLocinvEnd}[1]{%
+  \expandafter\ifx\csname lsc@li#1endX\endcsname\relax%
+    \expandafter\xdef\csname lsc@li#1endX\endcsname{\the\lsc@X}%
+    \expandafter\xdef\csname lsc@li#1endY\endcsname{\the\lsc@Y}%
+  \else%
+    \errmessage{LSC error: #1: local invariant end already defined!}%
+  \fi%
+}
+
+% draw an atom circle at the current location and label it with <id>.  Using
+% this ID, it can be labelled later. 
+%
+% \lscAtom{<id>}
+%
+\newcommand{\lscAtom}[1]{%
+  \lsc@schedhook{atom}{%
+    \rput(\lsc@X,\lsc@Y){%
+      \cnode[linestyle=dashed,dash=2pt 2pt]{\lsc@atomradius}{#1}}}}
+
+% label the atom <id> with <content>, positioning the label explicitly by
+% giving the angle.
+%
+% \lscLabelAtomAt{<angle}{<id>}{<content>}
+%
+\newcommand{\lscLabelAtomAt}[3]{%
+  \nccircle[linestyle=none,angleA=#1]{-}{#2}{0.175}%
+  \Bput{#3}}
+
+% a shortcut for the (anticipated) four most common angles to put an atom
+% label.
+%
+% \lscLabelAtom[ra|rb|la|lb]{<id>}{<content>}
+%
+\newcommand{\lscLabelAtom}[3][ra]{%
+  \def\lsc@arg{#1}%
+  \ifx\lsc@arg\lsc@ra%
+    \lscLabelAtomAt{-45}{#2}{#3}%
+  \else\ifx\lsc@arg\lsc@rb%
+    \lscLabelAtomAt{-135}{#2}{#3}%
+  \else\ifx\lsc@arg\lsc@la%
+    \lscLabelAtomAt{45}{#2}{#3}%
+  \else\ifx\lsc@arg\lsc@lb%
+    \lscLabelAtomAt{135}{#2}{#3}%
+  \else%
+    \errmessage{LSC error: \lsc@arg: Atom label position must be "ra", "rb", "la", or "lb"!}%
+  \fi\fi\fi\fi%
+}
+
+%% draw an instance line at the current location with all scheduled
+%  conditions, timers, simregion kullers, etc.
+%
+% \lscLine[<timinginterval>]{hot|cold|none}{<length>}
+%
+% 'none' is not a semantical concept of LSCs but may be used to draw
+% "pathological" or schematic LSCs needing vertical space
+%
+\newcommand{\lscLine}[3][]{%
+  \def\lsc@arg{#2}%
+  \ifx\lsc@arg\lsc@hot%
+    \lsc@line{#1}{solid}{#3}%
+  \else\ifx\lsc@arg\lsc@cold%
+    \lsc@line{#1}{dashed}{#3}%
+  \else\ifx\lsc@arg\lsc@none%
+    \lsc@line{#1}{none}{#3}%
+  \else%
+    \errmessage{LSC error: \lsc@arg: Instance line temperature must be "hot", "cold", or none!}%
+  \fi\fi\fi%
+}
+
+%% draw an environment instance line in the Sequence Diagram style
+%  (cf. \lscLine)
+%
+% \lscEnvLine[<timinginterval>]{hot|cold}{<length>}
+%
+\newcommand{\lscEnvLine}[3][]{%
+  \def\lsc@arg{#2}%
+  \ifx\lsc@arg\lsc@hot%
+    \lsc@envline{#1}{solid}{#3}%
+  \else\ifx\lsc@arg\lsc@cold%
+    \lsc@envline{#1}{none}{#3}%
+  \else%
+    \errmessage{LSC error: \lsc@arg: Environment instance line temperature must be "hot" or "cold"!}%
+  \fi\fi%
+}
+
+%% set the name/line width for the cut with ID <id>.
+%
+% \lscSetNamedCutColour{<id>}{<colourname>}
+%
+\newcommand{\lscSetNamedCutColour}[2]{%
+  \lsc@setCutColour{named#1}{#2}}
+
+% \lscSetNamedCutWidth{<id>}{<length>}
+%
+\newcommand{\lscSetNamedCutWidth}[2]{%
+  \lsc@setCutWidth{named#1}{#2}}
+
+% \lscSetNamedCutWidth{<id>}{<linestyle>}
+%
+\newcommand{\lscSetNamedCutLinestyle}[2]{%
+  \lsc@setCutLinestyle{named#1}{#2}}
+
+% \lscSetCutColour{<colourname>}
+%
+\newcommand{\lscSetCutColour}[1]{%
+  \def\lscCutColour{#1}}
+
+% \lscSetCutWidth{<length>}
+%
+\newcommand{\lscSetCutWidth}[1]{%
+  \setlength{\lscCutWidth}{#1}}
+
+% \lscSetCutLinestyle{<linestyle>}
+%
+\newcommand{\lscSetCutLinestyle}[1]{%
+  \def\lscCutLinestyle{#1}}
+
+%% draw a named cut.  Using different IDs one may draw multiple cuts into a
+%  single LSC -- whatever this might be good for one time.
+%
+% \lscNamedCut{<id>}
+%
+\newcommand{\lscNamedCut}[1]{%
+  \expandafter\ifx\csname lsc@cutnamed#1Colour\endcsname\relax%
+    \lscSetNamedCutColour{#1}{\lscCutColour}%
+  \fi%
+  \expandafter\ifx\csname lsc@cutnamed#1Width\endcsname\relax%
+    \lscSetNamedCutWidth{#1}{\lscCutWidth}%
+  \fi%
+  \expandafter\ifx\csname lsc@cutnamed#1Linestyle\endcsname\relax%
+    \lscSetNamedCutLinestyle{#1}{\lscCutLinestyle}%
+  \fi%
+  \lsc@namedCut{named#1}}
+
+%% draw the default cut through the current location.  The cut might come out
+%  corrupted if not all instance environments of the current Lsc comprise
+%  exactly one \lscCut.
+%
+% \lscCut
+%
+\newcommand{\lscCut}{%
+  \lsc@setCutColour{iNtErN@l}{\lscCutColour}%
+  \lsc@setCutWidth{iNtErN@l}{\lscCutWidth}%
+  \lsc@setCutLinestyle{iNtErN@l}{\lscCutLinestyle}%
+  \lsc@namedCut{iNtErN@l}}
+
+%% \rput <content> to the current drawing X/Y position in the LSC; a nested
+%  \rput places stuff relative to the current drawing position
+%
+% \lscPut{<content>}
+%
+\newcommand{\lscPut}[1]{%
+  \rput(\lsc@X,\lsc@Y){#1}}
+
+%% actually draw an asynchronous communication whose beginning and end have
+%  been set.
+%
+% \lscAsyn{<id>}{hot|cold}{<label>}
+%
+\newcommand{\lscAsyn}[3]{%
+  \def\lsc@arg{#2}%
+  \ifx\lsc@arg\lsc@hot%
+    \lsc@hotasynarrow{#1}{#3}%
+  \else\ifx\lsc@arg\lsc@cold%
+    \lsc@coldasynarrow{#1}{#3}%
+  \else%
+    \errmessage{LSC error: \lsc@arg: Message temperature must be "hot" or "cold"!}%
+  \fi\fi%
+  \lsc@clearmsg{a}{#1}}
+
+%% actually draw an instantaneous communication whose beginning and end have
+%  been set.
+%
+% \lscInst{<id>}{hot|cold}{<label>}
+%
+\newcommand{\lscInst}[3]{%
+  \def\lsc@arg{#2}%
+  \ifx\lsc@arg\lsc@hot%
+    \lsc@hotinstarrow{#1}{#3}%
+  \else\ifx\lsc@arg\lsc@cold%
+    \lsc@coldinstarrow{#1}{#3}%
+  \else%
+    \errmessage{LSC error: \lsc@arg: Message temperature must be "hot" or "cold"!}%
+  \fi\fi%
+  \lsc@clearmsg{i}{#1}}
+
+%% actually draw a multi-instance line condition whose locations have been
+%  set (consecutively).
+%
+% \lscWidecond{<id>}{hot|cold}{<label>}
+%
+\newcommand{\lscWidecond}[3]{%
+  \def\lsc@arg{#2}%
+  \ifx\lsc@arg\lsc@hot%
+    \lsc@widecond{#1}{solid}{#3}%
+  \else\ifx\lsc@arg\lsc@cold%
+    \lsc@widecond{#1}{dashed}{#3}%
+  \else%
+    \errmessage{LSC error: \lsc@arg: Wide condition temperature must be "hot" or "cold"!}%
+  \fi\fi%
+}
+
+%% actually draw a local invariant whose beginning and end have been set.
+%  Local invariants always appear to the left or to the right of the _whole_
+%  LSC not somewhere in the middle (controlled by the optional parameter with
+%  legal values 'r' (default) or 'l').  Layouting has been considered to
+%  become too complicated otherwise.
+%
+% \lscLocinv[r|l]{<id>}{incl|excl}{incl|excl}{hot|cold}{<content>}
+%
+\newcommand{\lscLocinv}[6][r]{%
+  \def\lsc@arg{#1}%
+  \ifx\lsc@arg\lsc@r%
+    \pssetlength{\lsc@liX}{\lsc@liR}%
+    \psaddtolength{\lsc@liX}{\lscLocinvOffset}%
+    \def\lsc@lilr{l}%
+  \else\ifx\lsc@arg\lsc@l%
+    \pssetlength{\lsc@liX}{\lsc@liL}%
+    \psaddtolength{\lsc@liX}{-\lscLocinvOffset}%
+    \def\lsc@lilr{r}%
+  \else%
+    \errmessage{LSC error: \lsc@arg: Local invariant position must be "l" (left) or "r" (right)!}%
+    \def\lsc@lilr{x}%
+  \fi\fi%
+  %
+  \ifx\lsc@lilr{x}%
+    \relax% get here only if #1 was illegal by def. of \lsc@lilr
+  \else%
+    \def\lsc@arg{#5}%
+    \ifx\lsc@arg\lsc@hot%
+      \lsc@locinv{\lsc@lilr}{#2}{#3}{#4}{\lsc@hotkandis{#6}}%
+    \else\ifx\lsc@arg\lsc@cold%
+      \lsc@locinv{\lsc@lilr}{#2}{#3}{#4}{\lsc@coldkandis{#6}}%
+    \else%
+      \errmessage{LSC error: \lsc@arg: Local invariant temperature must be "hot" or "cold"!}%
+    \fi\fi%
+  \fi%
+  %
+  % undefine begin and end
+  %
+  \global\expandafter\let\csname lsc@li#2startX\endcsname\relax%
+  \global\expandafter\let\csname lsc@li#2startY\endcsname\relax%
+  \global\expandafter\let\csname lsc@li#2endX\endcsname\relax%
+  \global\expandafter\let\csname lsc@li#2endY\endcsname\relax}
+
+%% mark the locations within the 'coregion' environment as a coregion
+%
+% \begin{coregion}[r|l]
+% \end{coregion}
+%
+\newenvironment{coregion}[1][l]{%
+  % compute the X position of the line parallel to the instance line
+  %
+  \def\lsc@arg{#1}%
+  \ifx\lsc@arg\lsc@l%
+    \pssetlength{\lsc@crX}{-\lsc@coregoffset}%
+  \else\ifx\lsc@arg\lsc@r%
+    \pssetlength{\lsc@crX}{\lsc@coregoffset}%
+  \else%
+    \errmessage{LSC error: \lsc@arg: Coregion position must be "l" (left) or "r" (right)!  Continuing as if "l" was given.}%
+    \pssetlength{\lsc@crX}{-\lsc@coregoffset}% use the default
+  \fi\fi%
+  %
+  \rput(\lsc@X,\lsc@Y){%
+    \rput(\lsc@crX,\lsc@coregoffset){%
+      \pnode{lsccoregbegin}}}%
+}{%
+  \rput(\lsc@X,\lsc@Y){%
+    \rput(\lsc@crX,-\lsc@coregoffset){%
+      \pnode{lsccoregend}}}%
+  \ncline[linestyle=dotted,dotsep=2pt,linewidth=\lsc@coregwidth]{lsccoregbegin}{lsccoregend}%
+}
+
+%% mark the elements within the 'simregion' environment by a dot
+%
+% \begin{simregion}[b|f]
+% \end{simregion}
+%
+\newenvironment{simregion}[1][b]{%
+  \def\lsc@arg{#1}%
+  \ifx\lsc@arg\lsc@b%
+    \lsc@schedhook{bgsimreg}{\lsc@simregionkuller}%
+  \else\ifx\lsc@arg\lsc@f%
+    \lsc@schedhook{fgsimreg}{\lsc@simregionkuller}%
+  \else%
+    \errmessage{LSC error: \lsc@arg: Simregion position must be "b" (background) or "f" (foreground)!}%
+  \fi\fi%
+}{%
+}
+
+%% a regular instance line
+%
+% \begin{lscinst}[MSC|SD|noboxSD|esymMSC|esymSD]{<instancename>}
+% \end{lscinst}
+%
+\newenvironment{lscinst}[2][MSC]{%
+  % reset current Y position
+  %
+  \pssetlength{\lsc@Y}{0}%
+  %
+  % draw the head
+  %
+  \def\lsc@arg{#1}%
+  \ifx\lsc@arg\lsc@noboxSD%
+    \lsc@instheadnoboxSD{#2}%
+  \else\ifx\lsc@arg\lsc@SD%
+    \lsc@instheadSD{solid}{#2}%
+  \else\ifx\lsc@arg\lsc@MSC%
+    \lsc@instheadMSC{solid}{#2}%
+  \else\ifx\lsc@arg\lsc@esymSD%
+    \lsc@instheadSD{dashed}{#2}%
+  \else\ifx\lsc@arg\lsc@esymMSC%
+    \lsc@instheadMSC{dashed}{#2}%
+  \else%
+    \errmessage{LSC error: #1: Instance kind must be "MSC", "SD", "noboxSD", "esymMSC", or "esymSD"!}%
+  \fi\fi\fi\fi\fi%
+}{%
+  % draw the foot (if necessary)
+  %
+  \lsc@instend%
+}
+
+%% an instance line with ingoing creation arrow
+%
+% \begin{lsccreateinst}[MSC|SD|noboxSD|esymMSC|esymSD]{<length>}{<id>}{<instancename>}
+% \end{lsccreateinst}
+%
+% <length> is the vertical offset from the regular location of instance
+% heads, i.e. with <length> = 0 the position of the instance head is the same
+% as with regular instance lines.
+% The <id> can be referenced in an lscCreate 
+%
+\newenvironment{lsccreateinst}[4][MSC]{%
+  %
+  % reset current Y position (always, to break the layout not completely)
+  %
+  \pssetlength{\lsc@Y}{0}%
+  \global\advance\lsc@Y by-#2\lscLocationHeight%
+  %
+  \expandafter\ifx\csname lsc@createdest#3\endcsname\relax%
+    %
+    % common setup for the createarrow pnode
+    %
+    \pssetlength{\lsc@createinstX}{\lsc@X}%
+    \pssetlength{\lsc@createinstY}{\lsc@Y}%
+    \psaddtolength{\lsc@createinstY}{\lsc@createoffset}%
+    %
+    % put the head and the endpoint for the create arrow
+    % (and remember whether we are in SD or MSC mode for the footer)
+    %
+    \def\lsc@arg{#1}%
+    \ifx\lsc@arg\lsc@noboxSD%
+      \lsc@instheadnoboxSD[\lsc@Y]{#4}%
+      \lsc@setcreatenoboxdest{#3}{#4}%
+    \else\ifx\lsc@arg\lsc@MSC%
+      \lsc@instheadMSC[\lsc@Y]{solid}{#4}%
+      \lsc@setcreateboxdest{#3}%
+    \else\ifx\lsc@arg\lsc@SD%
+      \lsc@instheadSD[\lsc@Y]{solid}{#4}%
+      \lsc@setcreateboxdest{#3}%
+    \else\ifx\lsc@arg\lsc@esymMSC%
+      \lsc@instheadMSC[\lsc@Y]{dashed}{#4}%
+      \lsc@setcreateboxdest{#3}%
+    \else\ifx\lsc@arg\lsc@esymSD%
+      \lsc@instheadSD[\lsc@Y]{dashed}{#4}%
+      \lsc@setcreateboxdest{#3}%
+    \else%
+      \errmessage{LSC error: \lsc@arg: Creation instance kind must be "MSC", "SD", "noboxSD", "esymMSC", or "esymSD"!}%
+    \fi\fi\fi\fi\fi%
+  \else%
+    \errmessage{LSC error: #3: Creation instance already defined!}%
+  \fi%
+}{%
+  \lsc@instend%
+}
+
+%% symbolic instance line balloon
+%
+% \lscBalloon{existential|universal}{<stuff>}
+%
+\newcommand{\lscBalloon}[2]{%
+  \def\lsc@arg{#1}%
+  \ifx\lsc@arg\lsc@existential%
+    \lsc@balloon{dashed}{#2}%
+  \else\ifx\lsc@arg\lsc@universal%
+    \lsc@balloon{solid}{#2}%
+  \else%
+    \errmessage{LSC error: #1: Balloon quantification must be "universal" or "existential"!}%
+  \fi\fi%
+}
+
+%% the actor symbol
+%
+% \lscActor
+%
+\newcommand{\lscActor}{%
+  \begin{pspicture}(-0.275,0.275)(0.275,-0.275)%
+    \psline(0,0.3)(0,-0.1)%
+    \psline(-0.15,0.05)(0.15,0.05)%
+    \psline(-0.1,-0.15)(-0.1,-0.275)%
+    \psline(0.1,-0.15)(0.1,-0.275)%
+    \pscircle[fillstyle=solid](0,0.2){0.1}%
+    \pspolygon[fillstyle=solid](0,0.0)(-0.15,-0.15)(0.15,-0.15)%
+  \end{pspicture}}
+
+%% the clock symbol
+%
+% \lscClock
+%
+\newcommand{\lscClock}{%
+  \begin{pspicture}(-0.275,0.275)(0.275,-0.275)%
+    \pscircle{0.275}%
+    \pscircle{0.225}%
+    \psline(0,0.225)(0,0)(0.225,0)%
+  \end{pspicture}}
+
+%% the environment symbol
+%
+% \lscEnv
+%
+\newcommand{\lscEnv}{%
+  \begin{pspicture}(-0.5,0.275)(0.5,-0.275)%
+    \psarc(-0.3,0.2){0.1}{0}{180}%
+    \psarc(-0.1,0.2){0.1}{0}{180}%
+    \psarc(0.1,0.2){0.1}{0}{180}%
+    \psarc(0.3,0.2){0.1}{0}{180}%
+    \psarc(-0.3,-0.2){0.1}{180}{0}%
+    \psarc(-0.1,-0.2){0.1}{180}{0}%
+    \psarc(0.1,-0.2){0.1}{180}{0}%
+    \psarc(0.3,-0.2){0.1}{180}{0}%
+    \psarc(-0.4,0.1){0.1}{90}{-90}%
+    \psarc(-0.4,-0.1){0.1}{90}{-90}%
+    \psarc(0.4,0.1){0.1}{-90}{90}%
+    \psarc(0.4,-0.1){0.1}{-90}{90}%
+    \rput(0,0){{\footnotesize ENV}}%
+  \end{pspicture}}
+
+% \begin{Lsc}[<prechartloc>]{existential|universal|none}{<nrinsts>}{<nrlocs>}
+% \end{Lsc}
+%
+\newenvironment{Lsc}[4][]{%
+  \lsc@init{#3}{#4}%
+  %
+  \ifthenelse{\equal{#1}{} \and \equal{#2}{none}}{%
+    %
+    % special case: no prechart, no frame
+    %
+    \psaddtolength{\lsc@ulY}{-\lsc@instheadruledepth}%
+    \psaddtolength{\lsc@ulY}{\lsc@instheadruleheight}%
+  }{%
+    % have prechart or frame: correct height
+    %
+    \lsc@addpccorrection%
+    %
+    \ifthenelse{\equal{#1}{}}{%
+    }{%
+      % have prechart: correct width
+      %
+      \lsc@addpcwidthcorrection%
+    }%
+  }%
+  %
+  % add height correction if we shall draw a frame 
+  %
+  \def\lsc@arg{#2}%
+  \ifx\lsc@arg\lsc@none%
+    \relax%
+  \else\ifx\lsc@arg\lsc@existential%
+    \lsc@addframecorrection%
+  \else\ifx\lsc@arg\lsc@universal%
+    \lsc@addframecorrection%
+  \else%
+    \errmessage{LSC error: \lsc@arg: LSC kind must be "existential", "universal", or "none"!}%
+  \fi\fi\fi%
+  %
+  % start the picture
+  %
+  \begin{pspicture}(\lsc@ulX,\lsc@ulY)(\lsc@lrX,\lsc@lrY)%
+  %
+  % draw the prechart (also sets up some lengths for the frame)
+  %
+  \lsc@prechart{#1}%
+  %
+  % draw the universal/existential frame
+  %
+  \def\lsc@arg{#2}%
+  \ifx\lsc@arg\lsc@existential%
+    \lsc@frame{dashed}%
+  \else\ifx\lsc@arg\lsc@universal%
+    \lsc@frame{solid}%
+  \else\ifx\lsc@arg\lsc@none%
+    \relax%
+  \else%
+    \relax% error message is printed above 
+  \fi\fi\fi%
+}{%
+  \end{pspicture}%
+}%
+
+% \begin{FullLsc}[<prechartloc>]{<name>}{<ac>}{invariant|initial|iterative}{strict|weak|}{existential|universal}{<nrinsts>}{<nrlocs>}
+% \end{FullLsc}
+%
+\newenvironment{FullLsc}[8][]{%
+  \lsc@init{#7}{#8}%
+  %
+  \lsc@addpccorrection%
+  \lsc@addframecorrection%
+  %
+  \ifthenelse{\equal{#1}{}}{%
+  }{%
+    \lsc@addpcwidthcorrection%
+  }%
+  %
+  \lsc@mkacambox{#2}{#3}{#4}{#5}%
+  %
+  % start the picture
+  %
+  \begin{pspicture}(\lsc@ulX,\lsc@ulY)(\lsc@lrX,\lsc@lrY)%
+  %
+  % draw the prechart (also sets up some lengths for the frame)
+  %
+  \lsc@prechart{#1}%
+  %
+  % draw the universal/existential frame
+  %
+  \def\lsc@arg{#6}%
+  \ifx\lsc@arg\lsc@existential%
+    \lsc@frame{dashed}%
+  \else\ifx\lsc@arg\lsc@universal%
+    \lsc@frame{solid}%
+  \else%
+    \errmessage{LSC error: \lsc@arg: LSC quantification must be "existential" or "universal"!}%
+  \fi\fi%
+  %
+  \rput[lb](0,\lsc@pccorrection){%
+    \usebox{\lsc@acambox}}
+}{%
+  \end{pspicture}
+}%
+
+\endinput

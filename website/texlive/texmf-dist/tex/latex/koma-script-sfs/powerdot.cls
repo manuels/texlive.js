@@ -1,0 +1,1634 @@
+%%
+%% This is file `powerdot.cls',
+%% 
+%% ---------------------------------------------------------------
+%% Copyright (C) 2005-2011 Hendri Adriaens and Christopher Ellison
+%% ---------------------------------------------------------------
+%%
+%% Version 1.4i prepared by Herbert Voss
+%%
+%% This work may be distributed and/or modified under the
+%% conditions of the LaTeX Project Public License, either version 1.3
+%% of this license or (at your option) any later version.
+%% The latest version of this license is in
+%%   http://www.latex-project.org/lppl.txt
+%% and version 1.3 or later is part of all distributions of LaTeX
+%% version 2003/12/01 or later.
+%%
+%% This work has the LPPL maintenance status "unmaintained".
+%%
+\NeedsTeXFormat{LaTeX2e}[1995/12/01]
+\ProvidesClass{powerdot}[2012/03/13 v1.4i powerdot presentation class (HA,CE,hv)]
+\newif\ifpd@overlay
+\newif\ifpd@section
+\newif\ifpd@ifsetup
+\newif\ifpd@display
+\newif\ifpd@pauseslide
+\newcounter{note}
+\newcounter{slide}
+\newcounter{pd@pause}
+\newcounter{pd@section}
+\newcounter{pd@overlay}
+\newcounter{pd@trivlist}
+\newcounter{pd@onslidedepth}
+\newbox\pd@tba
+\newbox\pd@tbb
+\newtoks\pd@body
+\newwrite\pd@bmout
+\newwrite\pd@tocout
+\newlength\pd@frsep
+\newlength\pd@colsep
+\newlength\slidewidth
+\newlength\slideheight
+\let\pd@cursetup\@empty
+\RequirePackage{xkeyval}[2005/07/10]
+\define@choicekey*[pd]{class}{orient}[\pd@tempa\pd@orient]{%
+  landscape,portrait}{\XKV@addtolist@x\pd@cursetup\pd@tempa}
+\define@choicekey*[pd]{class}{paper}[\pd@tempa\pd@paper]{%
+  screen,a4paper,letterpaper,smartboard}{\XKV@addtolist@x\pd@cursetup\pd@tempa}
+\define@choicekey*[pd]{class}{display}[\pd@tempa\pd@display]{%
+  slides,notes,slidesnotes}{\XKV@addtolist@x\pd@cursetup\pd@tempa}
+\define@choicekey*[pd]{class}{mode}[\pd@tempa\pd@mode]{%
+  present,print,handout}{\XKV@addtolist@x\pd@cursetup\pd@tempa}
+\define@key[pd]{class}{pauseslide}[black]{%
+  \pd@pauseslidetrue
+  \def\pd@pauseslidecolor{#1}%
+}
+\define@boolkeys[pd]{class}[pd@@]{%
+  nopsheader,hlentries,hlsections,nohandoutpagebreaks,nohandoutframes%
+}[true]
+\define@boolkey[pd]{class}[pd@@]{clock}[true]{%
+  \ifpd@@clock
+    \AtBeginDocument{%
+      \@Form[]%
+      \ifnum\pd@orient=\z@
+        \def\pd@clockrot{] /R 90\@gobble}%
+      \else
+        \let\pd@clockrot\@empty
+      \fi
+    }%
+    \def\pd@startclock##1##2{%
+      function pdshowtime(){
+        var pdtime=new Date();
+        this.getField("pdclock.time").value=
+          util.printd("##1",pdtime);
+      }
+      pdshowtime();
+      var tempa=app.setInterval("pdshowtime()",##2);
+      this.getField("pdstartclock").readonly=true;
+      this.getField("pdclock.time").readonly=true;
+    }%
+  \fi
+}
+\define@cmdkey[pd]{class}[pd@@]{size}{%
+  \def\pd@tempa##1pt{##1}%
+  \edef\pd@@size{\expandafter\pd@tempa\pd@@size}%
+}
+\define@cmdkey[pd]{class}[pd@@]{style}{}
+\define@key[pd]{class}{fleqn}[]{\input{fleqn.clo}}
+\define@key[pd]{class}{leqno}[]{\input{leqno.clo}}
+\presetkeys[pd]{class}{%
+  size=11pt,style=default,orient=landscape,paper=screen,%
+  display=slides,hlentries=true,mode=present}{}
+\ProcessOptionsX[pd]<class>\relax
+\def\pd@warn{\ClassWarning{powerdot}}
+\def\pd@error#1{\ClassError{powerdot}{#1}\@ehd}
+\def\pd@noportrait{%
+  \ifnum\pd@orient=\@ne\ifnum\pd@mode=2\else\pd@error{%
+    `\pd@@style' style does not support portrait orientation
+  }\fi\fi
+}
+\ifnum\pd@mode>0
+  \ifnum\pd@paper=\z@
+    \@expandtwoargs\@removeelement{screen}\pd@cursetup\pd@cursetup
+    \XKV@addtolist@x\pd@cursetup{a4paper}
+    \def\pd@paper{1}
+    \pd@warn{you can't use `screen' format for this mode;
+      \MessageBreak I've switched to a4paper
+    }
+  \fi
+\fi
+\ifnum\pd@mode=2
+  \newbox\pd@textbox
+  \ifnum\pd@orient=\z@
+    \@expandtwoargs\@removeelement{landscape}\pd@cursetup\pd@cursetup
+    \XKV@addtolist@x\pd@cursetup{portrait}
+    \def\pd@orient{1}
+    \pd@warn{you can't use `landscape' for handout mode;
+      \MessageBreak I've switched to portrait
+    }
+  \fi
+\fi
+\ifcase\pd@paper
+  \def\pd@tempa{papersize={8.25in,11in}}
+\or
+  \def\pd@tempa{papersize={210mm,297mm}}
+\or
+  \def\pd@tempa{papersize={8.5in,11in}}
+\or
+  \def\pd@tempa{papersize={900pt,1440pt}}
+\fi
+\ifnum\pd@orient=\z@
+  \edef\pd@tempa{\pd@tempa,landscape}
+\else
+  \edef\pd@tempa{\pd@tempa,portrait}
+\fi
+\PassOptionsToPackage\pd@tempa{geometry}
+\LoadClass{article}
+\let\pd@tempa\newcommand
+\let\newcommand\def
+\input{size\pd@@size.clo}
+\let\newcommand\pd@tempa
+\let\Gm@showparams\@empty
+\ifnum\pd@mode=2
+  \RequirePackage[margin=2cm,includefoot]{geometry}
+\else
+  \RequirePackage[mag=2000,margin=0pt,voffset=-\pd@@size pt]{geometry}
+  \geometry{top=.5\paperheight}
+\fi
+\RequirePackage{ifxetex}
+\ifxetex
+  \RequirePackage[setpagesize=false,pdfstartview=Fit,
+    pageanchor=false,bookmarks=false]{hyperref}[2009/12/14]
+\def\pd@pdftrans{%
+  \@expandtwoargs\in@{,\pd@@trans,}{%
+    ,Split,Blinds,Box,Wipe,Dissolve,Glitter,%
+    Replace,Fly,Push,Cover,Uncover,Fade,}%
+  \ifin@\else
+    \pd@warn{Transition `\pd@@trans' might not be understood by
+      your ps to pdf converter}%
+  \fi
+  \special{pdf:put @thispage %
+    <</Trans<</S/\pd@@trans>>>>%
+  }%
+}
+
+\def\pd@pdbookmark#1#2#3#4{%
+  \pdfstringdef\pd@tempa{#4}%
+  \special{pdf:outline
+    \pd@pdb@@kmark{#1}%
+    <<%
+      /Title(\pd@tempa)%
+      /A<<%
+        /S/GoTo
+        /D(slide.#3)%
+      >>%
+    >>%
+  }%
+}
+\else
+  \RequirePackage[setpagesize=false,dvips,
+    pdfstartview=Fit,
+    pageanchor=false,bookmarks=false]{hyperref}
+\fi
+\AtBeginDocument{\def\@pdfborder{0 0 0}}
+\RequirePackage{graphicx}
+\RequirePackage{pstricks}[2004/05/12]
+\RequirePackage{xcolor}[2004/05/09]
+\RequirePackage{enumitem}[2007/03/12]
+%% Fix for latest enumitem %%%   20110915 hv -------------------------------
+\let\orig@enumerate\enumerate
+\def\enumerate{\@ifnextchar[\enumerate@i{\enumerate@i[]}}
+\def\enumerate@i[#1]{\@ifnextchar[{\enumerate@ii[#1]}{\enumerate@ii[#1][]}}
+\def\enumerate@ii[#1][#2]{%
+  \ifx\relax#1\relax\else\setkeys{enumitem}{#1}\fi%
+  \orig@enumerate[#2]}
+\let\orig@itemize\itemize
+\def\itemize{\@ifnextchar[\itemize@i{\itemize@i[]}}
+\def\itemize@i[#1]{\@ifnextchar[{\itemize@ii[#1]}{\itemize@ii[#1][]}}
+\def\itemize@ii[#1][#2]{%
+  \ifx\relax#1\relax\else\setkeys{enumitem}{#1}\fi%
+  \orig@itemize[#2]}
+%
+\let\orig@description\description
+\def\description{\@ifnextchar[\description@i{\description@i[]}}
+\def\description@i[#1]{\@ifnextchar[{\description@ii[#1]}{\description@ii[#1][]}}
+\def\description@ii[#1][#2]{%
+   \ifx\relax#1\relax\else\setkeys{enumitem}{#1}\fi%
+   \orig@description[#2]}
+%% -------------------------------------------------------------------------
+\RequirePackage{verbatim}
+\ifnum\pd@mode<2
+  \pagestyle{empty}
+\fi
+\ifnum\pd@mode>0
+  \pd@pauseslidefalse
+\fi
+\setlength\parindent{0pt}
+\setlength\slidewidth{.5\paperwidth}
+\setlength\slideheight{.5\paperheight}
+\ifnum\pd@orient=\z@
+  \AtBeginDvi{\special{!/landplus90 true store}}
+\fi
+\ifpd@@nopsheader\else
+  \AtBeginDvi{\special{papersize=\the\paperwidth,\the\paperheight}}
+  \ifcase\pd@paper
+    \AtBeginDvi{\special{!%
+      \@percentchar\@percentchar BeginPaperSize: letter
+      ^^Jletter^^J\@percentchar\@percentchar EndPaperSize
+    }}
+  \or
+    \AtBeginDvi{\special{!%
+      \@percentchar\@percentchar BeginPaperSize: a4
+      ^^Ja4^^J\@percentchar\@percentchar EndPaperSize
+    }}
+  \or
+    \AtBeginDvi{\special{!%
+      \@percentchar\@percentchar BeginPaperSize: letter
+      ^^Jletter^^J\@percentchar\@percentchar EndPaperSize
+    }}
+  \or\relax
+%    \AtBeginDvi{\special{!%
+%      \@percentchar\@percentchar BeginPaperSize: special
+%      ^^Jletter^^J\@percentchar\@percentchar EndPaperSize
+%    }}
+  \fi
+\fi
+\ifcase\pd@paper\def\@pdfpagescrop{0 0 594 842}\fi
+\def\@pdfcreator{LaTeX with powerdot class}
+\AtEndDocument{%
+  \immediate\write\@auxout{\string\newlabel{lastslide}%
+    {{}{\the\c@slide}{\relax}{}{}}}%
+}
+\define@key[pd]{global}{theslide}{\def\theslide{#1}}
+\define@key[pd]{global}{thenote}{\def\thenote{#1}}
+\define@key[pd]{global}{enumerate}{%
+  \ifx\enit@@enum\@undefined
+    \def\enit@@enum{#1}%
+  \else
+    \XKV@addtolist@n\enit@@enum{#1}%
+  \fi
+}
+\define@key[pd]{global}{itemize}{%
+  \ifx\enit@@item\@undefined
+    \def\enit@@item{#1}%
+  \else
+    \XKV@addtolist@n\enit@@item{#1}%
+  \fi
+}
+\define@key[pd]{global}{list}{%
+  \ifx\enit@@list\@undefined
+    \def\enit@@list{#1}%
+  \else
+    \XKV@addtolist@n\enit@@list{#1}%
+  \fi
+}
+\define@key[pd]{global}{counters}{%
+  \XKV@addtolist@n\pd@@counters{#1}%
+}
+\def\pd@@counters{table,figure,equation,footnote,mpfootnote}
+\define@cmdkeys[pd]{global}[pd@@]{clockformat,clockrefresh}
+\define@cmdkeys[pd]{glslide}[pd@@]{lf,cf,rf,trans}
+\define@cmdkey[pd]{glslide}[pd@@]{palette}{%
+  \ifnum\pd@mode<2
+    \XKV@ifundefined{pd@pe@\pd@@palette @colors}{%
+      \pd@error{palette `\pd@@palette' not defined}%
+    }{%
+      \@nameuse{pd@pe@\pd@@palette @colors}%
+      \color{pdcolor1}%
+      \let\default@color\current@color
+      \let\pd@color\XC@current@color
+    }%
+    \pd@countcolors
+  \fi
+}
+\define@choicekey*[pd]{glslide}{method}[\pd@tempa\pd@method]{%
+  normal,file,direct}{%
+  \ifnum\pd@method=2
+    \ifx\pd@textbox\@undefined\newbox\pd@textbox\fi
+  \fi
+}
+\define@boolkey[pd]{glslide}[pd@@]{randomdots}[true]{%
+  \ifx\randomi\@undefined
+    \InputIfFileExists{random}{\newcount\pd@tempcnta}{%
+      \global\pd@@randomdotsfalse
+      \pd@warn{random.tex not found, random dots canceled}%
+    }%
+  \fi
+  \ifnum\pd@mode=\tw@\global\pd@@randomdotsfalse\fi
+}
+\define@cmdkeys[pd]{glslide}[pd@@]{%
+  dminsize,dmaxsize,dbright,dmindots,dmaxdots,dminwidth,dmaxwidth,%
+  dminheight,dmaxheight,dprop,logohook,logopos%
+}
+\define@key[pd]{glslide}{logocmd}{%
+  \ifx\pd@logobox\@undefined\newbox\pd@logobox\fi
+  \sbox\pd@logobox{#1}%
+}
+\setkeys[pd]{glslide,global}{%
+  lf=,cf=,rf=,theslide=\arabic{slide} / \pageref*{lastslide},%
+  thenote=note \arabic{note} of slide \arabic{slide},%
+  trans=Replace,dminsize=5pt,dmaxsize=40pt,dminwidth=0pt,%
+  dmaxwidth=\slidewidth,dminheight=0pt,dbright=60,%
+  dmaxheight=\slideheight,dmindots=5,dmaxdots=40,dprop=,%
+  logohook=tl,logopos=,logocmd=,method=normal,%
+  clockformat=HH:MM:ss,clockrefresh=1000%
+}
+\def\pdsetup{\setkeys[pd]{global,glslide}}
+\AtBeginDocument{%
+  \disable@keys[pd]{global}{%
+    theslide,thenote,enumerate,itemize,list,counters%
+  }%
+}
+\define@cmdkeys[pd]{slide}[pd@@]{toc,bm}
+\def\pdifsetup#1{%
+  \edef\pd@tempb{#1}%
+  \pd@pdifsetup\pd@tempb{landscape,portrait}%
+  \pd@pdifsetup\pd@tempb{screen,a4paper,letterpaper,smartboard}%
+  \pd@pdifsetup\pd@tempb{slides,notes,slidesnotes}%
+  \pd@pdifsetup\pd@tempb{present,print,handout}%
+  \pd@pdifs@tup\pd@tempb
+}
+\def\pd@pdifsetup#1#2{%
+  \in@true
+  \@tempcnta\z@
+  \XKV@for@n{#2}\pd@tempa{%
+    \@expandtwoargs\in@{,\pd@tempa,}{,#1,}%
+    \ifin@\advance\@tempcnta\@ne\fi
+  }%
+  \ifnum\@tempcnta=\z@\XKV@addtolist@x#1{#2}\fi
+}
+\def\pd@pdifs@tup#1{%
+  \in@true
+  \XKV@whilist\pd@cursetup\pd@tempa\ifin@\fi{%
+    \@expandtwoargs\in@{,\pd@tempa,}{,#1,}%
+  }%
+  \ifin@\expandafter\@firstoftwo\else\expandafter\@secondoftwo\fi
+}
+\def\pd@tempa#1{%
+  \define@key[pd]{template}{#1}[]{%
+    \ifpd@ifsetup\@namedef{pd@@#1}{##1}\fi
+  }%
+}
+\XKV@for@n{%
+  titlehook,titlepos,titlewidth,titlefont,%
+  texthook,textpos,textwidth,textfont,textheight,%
+  tochook,tocpos,tocwidth,tocfont,%
+  stochook,stocpos,stocwidth,stocfont,%
+  ntochook,ntocpos,ntocwidth,ntocfont,%
+  tocfrsep,tocsecsep,tocslidesep,%
+  tocsecm,toctcolor,tochlcolor,tochltcolor,%
+  tocsecindent,tocslideindent,%
+  lfhook,lfpos,lffont,lftemp,%
+  cfhook,cfpos,cffont,cftemp,%
+  rfhook,rfpos,rffont,rftemp,%
+  iacolor,%
+  clockhook,clockpos,clockwidth,clockheight,%
+  clockcharsize,clockalign,clockcolor%
+}\pd@tempb{\expandafter\pd@tempa\expandafter{\pd@tempb}}
+\define@cmdkey[pd]{template}[pd@@]{ifsetup}[]{%
+  \pd@pdifsetup\pd@@ifsetup{landscape,portrait}%
+  \pd@pdifsetup\pd@@ifsetup{screen,a4paper,letterpaper,smartboard}%
+  \pd@pdifsetup\pd@@ifsetup{slides,notes,slidesnotes}%
+  \pd@pdifsetup\pd@@ifsetup{present,print,handout}%
+  \pd@pdifs@tup\pd@@ifsetup\pd@ifsetuptrue\pd@ifsetupfalse
+}
+\define@choicekey*[pd]{template}{tocorient}[\pd@tempa\pd@tocorient]{v,h}{}
+\define@choicekey*[pd]{template}{stocorient}[\pd@tempa\pd@stocorient]{v,h}{}
+\define@choicekey*[pd]{template}{ntocorient}[\pd@tempa\pd@ntocorient]{v,h}{}
+\setkeys[pd]{template}{%
+  ifsetup,%
+  titlehook=Bl,titlepos=,titlewidth=\slidewidth,%
+  titlefont=\raggedright,texthook=tl,textpos=,%
+  textwidth=\slidewidth,textfont=\raggedright,%
+  textheight=\slideheight,%
+  tochook=tl,tocpos=,tocwidth=.2\slidewidth,%
+  tocfont=\tiny\raggedright,%
+  stochook=tl,stocpos=,stocwidth=.2\slidewidth,%
+  stocfont=\tiny\raggedright,%
+  ntochook=tl,ntocpos=,ntocwidth=.2\slidewidth,%
+  ntocfont=\tiny\raggedright,%
+  tocorient=v,stocorient=v,ntocorient=v,%
+  tocfrsep=.5mm,tocsecsep=2ex,tocslidesep=0ex,%
+  tocsecm=,toctcolor=black,tochlcolor=black,tochltcolor=white,%
+  tocsecindent=0pt,tocslideindent=0pt,%
+  lfhook=Bl,lfpos=,lffont=\scriptsize,lftemp=\pd@@lf,%
+  cfhook=B,cfpos=,cffont=\scriptsize,cftemp=\pd@@cf,%
+  rfhook=Br,rfpos=,rffont=\scriptsize,rftemp=\pd@@rf\ifx\pd@@rf
+    \@empty\else\ifx\theslide\@empty\else\ -- \fi\fi\theslide,%
+  iacolor=lightgray,%
+  clockhook=tr,clockpos=,clockwidth=3cm,clockheight=\baselineskip,%
+  clockcharsize=14pt,clockalign=2,clockcolor=black%
+}
+\def\pddefinepalettes#1#2{%
+  \ifx\pd@nopalettes\@undefined\@tempcnta\z@\else
+    \@tempcnta\pd@nopalettes
+  \fi
+  \pd@pddefinepalettes{#1}{#2}%
+}
+\def\pd@pddefinepalettes#1#2{%
+  \advance\@tempcnta\@ne
+  \@namedef{pd@pe@\the\@tempcnta @name}{#1}%
+  \@namedef{pd@pe@#1@colors}{#2}%
+  \@ifnextchar\bgroup\pd@pddefinepalettes{%
+    \edef\pd@nopalettes{\the\@tempcnta}%
+  }%
+}
+\def\pd@countcolors{%
+  \@tempcnta\@ne
+  \@whilesw\ifx\pd@nocolors\@undefined\fi{%
+    \XKV@ifundefined{\string\color@pdcolor\the\@tempcnta}{%
+      \advance\@tempcnta\m@ne
+      \edef\pd@nocolors{\the\@tempcnta}%
+    }{\advance\@tempcnta\@ne}%
+  }%
+}
+\ifpd@pauseslide\def\@pdfstartpage{2}\fi
+\AtBeginDocument{%
+  \ifx\pd@nopalettes\@undefined\else\ifx\pd@@palette\@undefined
+    \@nameuse{pd@pe@\@nameuse{pd@pe@1@name}@colors}%
+    \color{pdcolor1}%
+    \let\default@color\current@color
+    \let\pd@color\XC@current@color
+  \fi\fi
+  \ifnum\pd@mode=2
+    \color{black}%
+    \def\pd@@iacolor{black}%
+    \let\default@color\current@color
+    \let\pd@color\XC@current@color
+  \else\pd@countcolors\fi
+  \ifpd@pauseslide
+    \begin{pauseslide}[toc=,bm=,trans=Replace,randomdots=false]{}%
+    \end{pauseslide}%
+  \fi
+}
+\def\pddefinetemplate{\@testopt\pd@pddefinetemplate{}}
+\def\pd@pddefinetemplate[#1]#2#3#4{%
+  \@namedef{#2}{\pd@getargsandbody{#2}}%
+  \@namedef{end#2}{\ifpd@display\pd@slide\fi}%
+  \ifx\@empty#1\@empty
+    \@namedef{pd@template@#2@options}{\setkeys[pd]{template}{#3}}%
+    \@namedef{pd@template@#2@bg}{#4}%
+  \else
+    \XKV@ifundefined{pd@template@#1@options}{%
+      \pd@error{template `#1' undefined}}{%
+      \def\pd@tempa{#1}\def\pd@tempb{#2}%
+      \ifx\pd@tempa\pd@tempb
+        \pd@namelet{pd@template@#2@options}{pd@template@#1@options}%
+        \expandafter
+          \XKV@addtomacro@n\csname pd@template@#2@options\endcsname
+          {\setkeys[pd]{template}{ifsetup,#3}}%
+        \pd@namelet{pd@template@#2@bg}{pd@template@#1@bg}\expandafter
+        \XKV@addtomacro@n\csname pd@template@#2@bg\endcsname{#4}%
+      \else
+        \@namedef{pd@template@#2@bg}{\@nameuse{pd@template@#1@bg}#4}%
+        \@namedef{pd@template@#2@options}{%
+          \@nameuse{pd@template@#1@options}%
+          \setkeys[pd]{template}{ifsetup,#3}%
+        }%
+      \fi
+    }%
+  \fi
+}
+\def\pd@getargsandbody#1{\@testopt{\pd@get@rgsandbody{#1}}{}}
+\def\pd@get@rgsandbody#1[#2]#3{%
+  \pd@get@rgs@ndbody{#2}{#3}%
+  \ifcase\ifnum\pd@method>\z@\ifpd@display\@ne\fi\fi\z@
+    \pd@body{}%
+    \def\pd@tempa{\pd@get@rgs@ndb@dy{#1}}%
+  \else
+    \ifnum\pd@method=\@ne
+      \def\pd@tempa{%
+        \immediate\openout\@inputcheck\jobname.vrb\relax
+        \def\verbatim@processline{%
+          \immediate\write\@inputcheck{\the\verbatim@line}%
+        }%
+        \begingroup\let\do\@makeother\dospecials\catcode`\^^M\active
+        \verbatim@start
+      }%
+      \@namedef{end#1}{%
+        \endgroup\immediate\closeout\@inputcheck
+        \let\verbatim@processline\pd@orig@verbatim@processline
+        \pd@slide
+      }%
+    \else
+      \pd@deloverlays
+      \let\pd@tempa\pd@sl@de
+      \@namedef{end#1}{%
+        \end{pd@minipage}\end{lrbox}%
+        \ifx\pd@@textpos\@empty\else
+          \rput[\pd@@texthook](\pd@@textpos){\usebox\pd@textbox}%
+        \fi
+      }%
+    \fi
+  \fi
+  \pd@tempa
+}
+\def\pd@get@rgs@ndbody#1#2{%
+  \setkeys[pd]{glslide,slide}{#1}%
+  \def\pd@t@tle{#2}%
+  \pd@displaytrue
+  \def\pd@tempa{note}%
+  \ifcase\pd@display
+    \ifx\@currenvir\pd@tempa\relax\pd@displayfalse\fi
+  \or
+    \ifx\@currenvir\pd@tempa\else
+      \def\pd@tempa{titleslide}%
+      \ifx\@currenvir\pd@tempa\else
+        \pd@displayfalse
+        \stepcounter{slide}%
+      \fi
+    \fi
+  \fi
+}
+\long\def\pd@get@rgs@ndb@dy#1#2\end#3{%
+  \def\pd@tempa{#1}%
+  \def\pd@tempb{#3}%
+  \ifx\pd@tempa\pd@tempb
+    \pd@body\expandafter{\the\pd@body#2}%
+    \def\pd@tempa{\end{#1}}%
+  \else
+    \pd@body\expandafter{\the\pd@body#2\end{#3}}%
+    \def\pd@tempa{\pd@get@rgs@ndb@dy{#1}}%
+  \fi
+  \pd@tempa
+}
+\def\pd@slide{%
+  \pd@overlayfalse
+  \def\pd@nooverlays{1}%
+  \setcounter{pd@overlay}\@ne
+  \let\pd@labels\@empty
+  \XKV@for@o\pd@@counters\pd@tempa{%
+    \expandafter\xdef\csname pd@counter@\pd@tempa\endcsname{%
+      \expandafter\the\csname c@\pd@tempa\endcsname
+    }%
+  }%
+  \pd@sl@de
+  \@whilenum\c@pd@overlay<\pd@nooverlays\do{%
+    \pd@overlaytrue
+    \XKV@for@o\pd@@counters\pd@tempa{%
+      \setcounter\pd@tempa{\csname pd@counter@\pd@tempa\endcsname}%
+    }%
+    \stepcounter{pd@overlay}%
+    \ifpd@@randomdots
+      \let\pd@trandim\pd@randim
+      \let\pd@tranpos\pd@ranpos
+      \let\pd@trancol\pd@rancol
+    \fi
+    \pd@sl@de
+  }%
+}
+\def\pd@sl@de{%
+  \stepcounter{slide}\newpage
+  \ifpd@overlay\addtocounter{slide}\m@ne\fi
+  \edef\@currentlabel{\the\c@slide}%
+  \pst@Verb{InitOL /TheOL (0) def}%
+  \pst@Verb{(0) BOL}%
+  \@nameuse{pd@template@\@currenvir @options}%
+  \@nameuse{pd@template@\@currenvir @bg}%
+  \ifpd@@randomdots
+    \ifpd@overlay\else\ifnum\pd@nocolors>\z@
+      \let\pd@randim\@empty
+      \let\pd@ranpos\@empty
+      \let\pd@rancol\@empty
+      \setrannum\pd@tempcnta\pd@@dmindots\pd@@dmaxdots
+      \edef\pd@nodots{\the\pd@tempcnta}%
+      \pd@tempcnta\z@
+      \@whilesw\ifnum\pd@tempcnta<\pd@nodots\fi{%
+        \advance\pd@tempcnta\@ne
+        \setrandim\@tempdima\pd@@dminsize\pd@@dmaxsize
+        \XKV@addtolist@x\pd@randim{\the\@tempdima}%
+        \setrandim\@tempdima\pd@@dminwidth\pd@@dmaxwidth
+        \setrandim\@tempdimb\pd@@dminheight\pd@@dmaxheight
+        \XKV@addtolist@x\pd@ranpos{\the\@tempdima,\the\@tempdimb}%
+        \setrannum\@tempcntb1\pd@nocolors
+        \XKV@addtolist@x\pd@rancol{\the\@tempcntb}%
+      }%
+      \let\pd@trandim\pd@randim
+      \let\pd@tranpos\pd@ranpos
+      \let\pd@trancol\pd@rancol
+    \else\let\pd@nodots\z@\fi\fi
+    \@tempcnta\z@
+    \@whilesw\ifnum\@tempcnta<\pd@nodots\fi{%
+      \advance\@tempcnta\@ne
+      \pd@pop\pd@trandim\pd@tempa\pd@pop\pd@tranpos\pd@tempb
+      \pd@pop\pd@tranpos\pd@tempc\pd@pop\pd@trancol\pd@tempd
+      \ifnum\pd@@dbright<\z@
+        \@tempcntb\pd@@dbright
+        \advance\@tempcntb100
+        \edef\pd@tempd{\pd@tempd!\the\@tempcntb!black}%
+      \else
+        \@tempcntb-\pd@@dbright
+        \advance\@tempcntb100
+        \edef\pd@tempd{\pd@tempd!\the\@tempcntb}%
+      \fi
+      {\ifx\pd@@dprop\@empty\else
+        \expandafter\psset\expandafter{\pd@@dprop}%
+      \fi
+      \psdot[dotsize=\pd@tempa,linecolor=pdcolor\pd@tempd]%
+        (\pd@tempb,\pd@tempc)}%
+    }%
+  \fi
+  \def\pd@tempa{pauseslide}%
+  \def\pd@tempb{emptyslide}%
+  \ifx\pd@@logopos\@empty\else
+    \ifx\pd@logobox\@undefined\else
+      \ifx\@currenvir\pd@tempa\else
+        \ifx\@currenvir\pd@tempb\else
+          \rput[\pd@@logohook](\pd@@logopos){\usebox\pd@logobox}%
+        \fi
+      \fi
+    \fi
+  \fi
+  \ifpd@@clock
+    \ifnum\c@slide=\@ne\ifpd@overlay\else
+      \rput(0,-1){%
+        \TextField[%
+          format=\pd@startclock\pd@@clockformat\pd@@clockrefresh,%
+          name=pdstartclock,bordercolor={},backgroundcolor={},%
+          height=0bp,width=0bp]{}%
+      }%
+    \fi\fi
+    \def\pd@tempa##1,##2,##3\@nil{##1 ##2 ##3}%
+    \extractcolorspec\pd@@clockcolor\pd@tempb
+    \expandafter\convertcolorspec\pd@tempb{rgb}\pd@tempb
+    \edef\pd@tempa{\expandafter\pd@tempa\pd@tempb\@nil}%
+    \ifx\pd@@clockpos\@empty\else
+      \rput[\pd@@clockhook](\pd@@clockpos){%
+         \TextField[name=pdclock.time,bordercolor={},%
+          rotation={\ifnum\pd@orient=\z@ 90\else 0\fi},%
+          backgroundcolor={},align=\pd@@clockalign,color=\pd@tempa,%
+          charsize=\pd@@clockcharsize,width=\pd@@clockwidth,%
+          height=\pd@@clockheight]{}%
+      }%
+    \fi
+  \fi
+  \pd@pdftrans
+  \ifpd@overlay\else
+    \def\pd@tempa{note}%
+    \ifx\@currenvir\pd@tempa\else
+      \pd@maketocbm0%
+      \hyper@anchorstart{slide.\the\c@slide}\hyper@anchorend
+    \fi
+  \fi
+  \def\pd@reloverlay{1}%
+  \let\pd@closeitem\relax
+  \def\pd@currentstate{0}%
+  \let\pd@currenttype\relax
+  \setcounter{pd@pause}\@ne
+  \let\pd@revert\@firstofone
+  \setcounter{pd@onslidedepth}\z@
+  \ifx\pd@@titlepos\@empty\else
+    \def\pd@tempa{%
+      \begin{minipage}\pd@@titlewidth
+      \pd@@titlefont\strut
+      \ifpd@section
+        \expandafter\pd@sectiontitle\expandafter{\pd@t@tle}%
+      \else
+        \expandafter\pd@slidetitle\expandafter{\pd@t@tle}%
+      \fi
+      \end{minipage}%
+    }%
+    \rput[\pd@@titlehook](\pd@@titlepos){%
+      \ifpd@pauseslide
+        \hyperlink{pauseslide}{\pd@tempa}%
+      \else
+        \pd@tempa
+      \fi
+    }%
+  \fi
+  \ifx\pd@@tocpos\@empty\else
+    \rput[\pd@@tochook](\pd@@tocpos){%
+      \ifnum\pd@tocorient=\z@\begin{minipage}\pd@@tocwidth\fi
+      \let\pd@usedtocfont\pd@@tocfont
+      \let\pd@usedtocorient\pd@tocorient
+      \pd@puttoc0%
+      \ifnum\pd@usedtocorient=\z@\end{minipage}\fi
+    }%
+  \fi
+  \ifx\pd@@stocpos\@empty\else
+    \rput[\pd@@stochook](\pd@@stocpos){%
+      \ifnum\pd@stocorient=\z@\begin{minipage}\pd@@tocwidth\fi
+      \let\pd@usedtocfont\pd@@stocfont
+      \let\pd@usedtocorient\pd@stocorient
+      \pd@puttoc1%
+      \ifnum\pd@usedtocorient=\z@\end{minipage}\fi
+    }%
+  \fi
+  \ifx\pd@@ntocpos\@empty\else
+    \rput[\pd@@ntochook](\pd@@ntocpos){%
+      \ifnum\pd@ntocorient=\z@\begin{minipage}\pd@@tocwidth\fi
+      \let\pd@usedtocfont\pd@@ntocfont
+      \let\pd@usedtocorient\pd@ntocorient
+      \pd@puttoc2%
+      \ifnum\pd@usedtocorient=\z@\end{minipage}\fi
+    }%
+  \fi
+  \ifx\pd@@lfpos\@empty\else
+    \rput[\pd@@lfhook](\pd@@lfpos){\pd@@lffont\pd@@lftemp}%
+  \fi
+  \ifx\pd@@cfpos\@empty\else
+    \rput[\pd@@cfhook](\pd@@cfpos){\pd@@cffont\pd@@cftemp}%
+  \fi
+  \ifx\pd@@rfpos\@empty\else
+    \rput[\pd@@rfhook](\pd@@rfpos){\pd@@rffont\pd@@rftemp}%
+  \fi
+  \ifnum\pd@method<2
+    \ifx\pd@@textpos\@empty\else
+      \rput[\pd@@texthook](\pd@@textpos){%
+        \pd@sl@d@
+        \ifnum\pd@method=\z@\the\pd@body\else
+          \input\jobname.vrb
+        \fi
+        \end{pd@minipage}%
+      }%
+    \fi
+    \let\pd@tempa\relax
+  \else
+    \def\pd@tempa{\begin{lrbox}\pd@textbox\pd@sl@d@}%
+  \fi
+  \pd@tempa
+}
+\def\pd@sl@d@{%
+  \begin{pd@minipage}%
+  \let\pd@tempa\color
+  \def\color##1{\pd@tempa{##1}\let\default@color\current@color}%
+  \pd@@textfont
+  \let\color\pd@tempa
+}
+%
+\def\pd@notet{0}
+\pddefinetemplate{note}{%
+  titlepos={.04\slidewidth,.92\slideheight},%
+  titlefont=\let\pd@slidetitle\@firstofone\color{black}\Large,%
+  textpos={.07\slidewidth,.82\slideheight},%
+  textfont=\color{black},textwidth=.86\slidewidth,%
+  lfpos={.04\slidewidth,.035\slideheight},%
+  lffont=\color{black}\scriptsize,%
+  cfpos={.5\slidewidth,.035\slideheight},%
+  cffont=\color{black}\scriptsize,%
+  rfpos={.96\slidewidth,.035\slideheight},%
+  rffont=\color{black}\scriptsize,%
+  rftemp=\pd@@rf\ifx\pd@@rf\@empty\else
+    \ifx\thenote\@empty\else\space--\space\fi\fi\thenote,%
+}{%
+  \addtocounter{slide}\m@ne
+  \ifnum\c@slide=\pd@notet
+    \stepcounter{note}%
+  \else
+    \setcounter{note}{1}%
+  \fi
+  \xdef\pd@notet{\the\c@slide}%
+  \psline[linewidth=.5pt](0,.87\slideheight)%
+    (\slidewidth,.87\slideheight)%
+  \psline[linewidth=.5pt](0,.08\slideheight)%
+    (\slidewidth,.08\slideheight)%
+}
+\pddefinetemplate{pauseslide}{}{%
+  \addtocounter{slide}\m@ne
+  \hyper@anchorstart{pauseslide}\hyper@anchorend
+  \psframe*[linecolor=\pd@pauseslidecolor](0,0)(\slidewidth,\slideheight)%
+  {\color{\pd@pauseslidecolor}%
+  \rput[cm](.5\slidewidth,.5\slideheight){%
+  \Acrobatmenu{GoBack}{\setlength\fboxsep{10cm}\fbox{GoBack}}}}%
+}
+\pddefinetemplate{emptyslide}{textpos={0,\slideheight}}{}
+\let\pd@orig@maketitle\maketitle
+\def\maketitle{\@testopt\pd@maketitle{}}
+\def\pd@maketitle[#1]{%
+  \begin{titleslide}[#1,toc=,bm=,trans=Replace,method=normal]{}%
+    \let\footnote\thanks
+    \def\thefootnote{\@fnsymbol\c@footnote}%
+    {\pd@title{\pd@@titlefont\@title}\par}{%
+      \vskip2em\pd@@textfont
+      \begin{tabular}[t]{c}%
+        \@author
+      \end{tabular}\par
+      \vskip1.5em\small\@date
+    }\par
+    \small\@thanks
+    \vfil\null
+  \end{titleslide}%
+  \c@footnote\z@
+}
+\def\pd@maketocbm#1{%
+  \def\pd@tempa{\immediate\write\pd@bmout{%
+    \string\pdbookmark{sec.\the\c@pd@section\ifnum#1=\z@.slide\fi}{%
+    \ifnum#1=\z@ sec.\the\c@pd@section\fi}{\the\c@slide}%
+    {\the\@temptokena}%
+  }}%
+  \ifx\pd@@bm\@undefined
+    \@temptokena\expandafter{\pd@t@tle}%
+  \else
+    \ifx\pd@@bm\@empty
+      \let\pd@tempa\relax
+    \else
+      \@temptokena\expandafter{\pd@@bm}%
+    \fi
+  \fi
+  \pd@tempa
+  \def\pd@tempa{\immediate\write\pd@tocout{%
+    \string\pdcontentsline{#1}{\the\c@slide}{\the\@temptokena}%
+  }}%
+  \ifx\pd@@toc\@undefined
+    \@temptokena\expandafter{\pd@t@tle}%
+  \else
+    \ifx\pd@@toc\@empty
+      \let\pd@tempa\relax
+    \else
+      \@temptokena\expandafter{\pd@@toc}%
+    \fi
+  \fi
+  \pd@tempa
+}
+\def\pdbookmark#1#2#3#4{%
+  \@tempcnta\pd@pdb@@kmark{#2}%
+  \advance\@tempcnta\@ne
+  \@nameedef{pd@be@#2}{\the\@tempcnta}%
+}
+\def\pd@pdb@@kmark#1{%
+  \@ifundefined{pd@be@#1}0{\csname pd@be@#1\endcsname}%
+}
+\ifxetex\else
+\def\pd@pdbookmark#1#2#3#4{%
+  \pdfstringdef\pd@tempa{#4}%
+  \pdfmark{pdfmark=/OUT,%
+    Count={\pd@pdb@@kmark{#1}},Dest={slide.#3},%
+    View={/XYZ null null null},Title={\pd@tempa}%
+  }%
+}
+\fi
+\def\pdcontentsline#1#2#3{%
+  \ifnum\@tempcnta>\z@
+    \@nameedef{pd@te@\the\@tempcnta @start}{\pd@tempa}%
+    \@namedef{pd@te@\the\@tempcnta @stop}{#2}%
+  \fi
+  \def\pd@tempa{#2}%
+  \advance\@tempcnta\@ne
+  \@namedef{pd@te@\the\@tempcnta}{%
+    \pdcontentsline{#1}{#2}{#3}%
+  }%
+}
+\AtBeginDocument{%
+  \InputIfFileExists{\jobname.bm}{}{}%
+  \let\pdbookmark\pd@pdbookmark
+  \InputIfFileExists{\jobname.bm}{}{}%
+  \immediate\openout\pd@bmout\jobname.bm\relax
+  \@tempcnta\z@
+  \def\pd@tempa{0}%
+  \InputIfFileExists{\jobname.toc}{}{}%
+  \edef\pd@notocentries{\the\@tempcnta}%
+  \ifx\r@lastslide\@undefined\@tempcntb\pd@tempa\else
+    \edef\pd@tempb{\expandafter\@secondoffive\r@lastslide}%
+    \@tempcntb\pd@tempb
+  \fi
+  \advance\@tempcntb\@ne
+  \@nameedef{pd@te@\the\@tempcnta @start}{\pd@tempa}%
+  \@nameedef{pd@te@\the\@tempcnta @stop}{\the\@tempcntb}%
+  \immediate\openout\pd@tocout\jobname.toc\relax
+  \let\pdcontentsline\pd@pdcontentsline
+}
+\def\pd@puttoc#1{%
+  \@tempcnta\z@
+  \@tempcntb\z@
+  \@tempswatrue
+  \def\pd@toctype{#1}%
+  \@whilenum\@tempcnta<\pd@notocentries\do{%
+    \advance\@tempcnta\@ne
+    \@nameuse{pd@te@\the\@tempcnta}%
+  }%
+}
+\def\pd@pdcontentsline#1#2#3{%
+  \let\pd@tempa\relax
+  \ifcase\pd@toctype
+    \ifcase#1\relax
+      \ifnum\@tempcntb=\z@
+        \let\pd@tempa\pd@tocdisplay
+      \else
+        \ifnum\@tempcntb=\c@pd@section
+          \let\pd@tempa\pd@tocdisplay
+        \fi
+      \fi
+    \or
+      \global\advance\@tempcntb\@ne
+      \let\pd@tempa\pd@tocdisplay
+    \or
+      \global\advance\@tempcntb\@ne
+      \ifnum\@tempcntb=\c@pd@section
+        \let\pd@tempa\pd@tocdisplay
+      \fi
+    \fi
+  \or
+    \ifcase#1\relax\or
+      \global\advance\@tempcntb\@ne
+      \let\pd@tempa\pd@tocdisplay
+    \or
+      \global\advance\@tempcntb\@ne
+      \ifnum\@tempcntb=\c@pd@section
+        \let\pd@tempa\pd@tocdisplay
+      \fi
+    \fi
+  \or
+    \ifnum#1=\z@
+      \ifnum\@tempcntb=\c@pd@section
+        \let\pd@tempa\pd@tocdisplay
+      \fi
+    \else
+      \global\advance\@tempcntb\@ne
+    \fi
+  \fi
+  \ifpd@@hlentries\ifx\pd@tempa\relax\else
+    \ifnum#1=\z@
+      \ifnum\c@slide<\@nameuse{pd@te@\the\@tempcnta @start}%
+      \else
+        \ifnum\c@slide<\@nameuse{pd@te@\the\@tempcnta @stop}%
+          \let\pd@tempa\pd@tochighlight
+        \fi
+      \fi
+    \else
+      \ifpd@@hlsections
+        \ifnum\@tempcntb=\c@pd@section
+          \let\pd@tempa\pd@tochighlight
+        \fi
+      \else
+        \ifnum#2=\c@slide\ifnum\@nameuse{pd@te@\the
+          \@tempcnta @stop}=\c@slide\else
+          \let\pd@tempa\pd@tochighlight
+        \fi\fi
+      \fi
+    \fi
+  \fi\fi
+  \ifx\pd@tempa\relax\else
+    \if@tempswa\@tempswafalse\else
+      \pd@usedtocfont
+      \ifnum\pd@usedtocorient=\z@
+        \ifnum#1=\z@\vskip\pd@@tocslidesep\else\vskip\pd@@tocsecsep\fi
+      \else
+        \ifnum#1=\z@\hskip\pd@@tocslidesep\else\hskip\pd@@tocsecsep\fi
+      \fi
+    \fi
+    \ifnum#1=\z@\else\pd@@tocsecm\fi
+    \ifcase\pd@toctype
+      \@tempdimb\pd@@tocwidth
+    \or
+      \@tempdimb\pd@@stocwidth
+    \or
+      \@tempdimb\pd@@ntocwidth
+    \fi
+    \ifnum#1=\z@
+      \ifnum\@tempcntb=\z@\@tempdima\z@\else
+        \@tempdima\pd@@tocslideindent
+        \advance\@tempdimb-\pd@@tocslideindent
+      \fi
+      \hyperlink{slide.#2}{\pd@tempa{\pd@tocslide{#3}}}%
+    \else
+      \@tempdima\pd@@tocsecindent
+      \advance\@tempdimb-\pd@@tocsecindent
+      \hyperlink{slide.#2}{\pd@tempa{\pd@tocsection{#3}}}%
+    \fi
+    \ifnum\pd@usedtocorient=\z@\par\fi
+  \fi
+}
+\define@choicekey[pd]{toc}{content}[\pd@tempa\pd@content]{%
+  all,sections,currentsection,future,futuresections}{}
+\define@choicekey[pd]{toc}{type}[\pd@tempa\pd@type]{0,1}{}
+\presetkeys[pd]{toc}{content=all,type=0}{}
+\def\tableofcontents{\@testopt\pd@tableofcontents{}}
+\def\pd@tableofcontents[#1]{%
+  \begingroup
+  \setkeys[pd]{toc}{#1}%
+  \let\pd@tempc\z@
+  \def\pdcontentsline##1##2##3{%
+    \ifnum##1>\z@\advance\@tempcntb\@ne\fi
+    \let\pd@tempb\@empty
+    \def\pd@tempa{\hyperlink{slide.##2}{\pd@tempb##3}\par}%
+    \ifnum\pd@type=\z@
+      \def\pd@tempd{\let\pd@tempa\relax}%
+    \else
+      \def\pd@tempd{\def\pd@tempb{\color\pd@@iacolor}}%
+    \fi
+    \ifcase##1\or\let\pd@tempc\z@\or
+      \ifnum\@tempcntb=\c@pd@section
+        \let\pd@tempc\z@
+      \else
+        \let\pd@tempc\@ne
+      \fi
+    \fi
+    \ifnum\pd@tempc=\@ne\pd@tempd\fi
+    \ifcase\pd@content\or
+      \ifnum##1=\z@\let\pd@tempa\relax\fi
+    \or
+      \ifnum\@tempcntb=\c@pd@section\else\pd@tempd\fi
+    \or
+      \ifnum\@tempcnta<\c@slide\pd@tempd\fi
+    \or
+      \ifnum\@tempcntb<\c@pd@section\pd@tempd\fi
+      \ifnum##1=\z@\pd@tempd\fi
+    \fi
+    \ifnum##1>\z@\XKV@addtomacro@n\pd@tempb\bfseries\fi
+    \ifx\pd@tempa\relax\else
+      \if@tempswa\@tempswafalse\else
+        \ifnum##1=\z@\else\vskip5pt\fi
+      \fi
+      \ifnum##1=\z@\ifnum\@tempcntb=\z@\else\hskip15pt\fi\fi
+      \pd@tempa
+    \fi
+  }%
+  \@tempcnta\z@
+  \@tempcntb\z@
+  \@tempswatrue
+  \@whilenum\@tempcnta<\pd@notocentries\do{%
+    \advance\@tempcnta\@ne
+    \@nameuse{pd@te@\the\@tempcnta}%
+  }%
+  \endgroup
+}
+\define@choicekey*[pd]{section}{tocsection}[\pd@tempa\pd@tempb]{%
+  false,true,hidden}{}
+\define@boolkey[pd]{section}[pd@@]{slide}[true]{}
+\define@cmdkey[pd]{section}[pd@@]{template}{%
+  \def\pd@tempa{slide}%
+  \ifx\pd@@template\pd@tempa
+    \let\pd@@template\pd@@sectemp
+  \else
+    \def\pd@tempa{wideslide}%
+    \ifx\pd@@template\pd@tempa
+      \let\pd@@template\pd@@widesectemp
+    \fi
+  \fi
+}
+\presetkeys[pd]{section}{tocsection=true,slide=true,template=slide}{}
+\define@cmdkeys[pd]{section}[pd@@]{sectemp,widesectemp}
+\setkeys[pd]{section}{sectemp=slide,widesectemp=slide}
+\AtBeginDocument{\disable@keys[pd]{section}{sectemp,widesectemp}}
+\let\pd@orig@section\section
+\def\section{\@testopt\pd@section{}}
+\def\pd@section[#1]#2{%
+  \begingroup
+  \pd@sectiontrue
+  \setkeys*[pd]{section}{#1}%
+  \ifnum\pd@tempb=\z@
+    \ifpd@@slide
+      \toks@{#2}%
+      \@temptokena\expandafter{\XKV@rm}%
+      \edef\pd@tempa{%
+        \noexpand\begin{\pd@@template}%
+        [bm={\the\toks@},toc={\the\toks@},%
+        \the\@temptokena]{\the\toks@}%
+        \noexpand\end{\pd@@template}%
+      }%
+      \pd@tempa
+    \fi
+  \else
+    \setrmkeys*[pd]{slide}%
+    \stepcounter{pd@section}%
+    \stepcounter{slide}%
+    \def\pd@t@tle{#2}%
+    \pd@maketocbm\pd@tempb
+    \addtocounter{slide}\m@ne
+    \ifpd@@slide
+      \toks@{#2}%
+      \@temptokena\expandafter{\XKV@rm}%
+      \edef\pd@tempa{%
+        \noexpand\begin{\pd@@template}%
+        [\the\@temptokena,bm=,toc=]{\the\toks@}%
+        \noexpand\end{\pd@@template}%
+      }%
+      \pd@tempa
+    \fi
+  \fi
+  \endgroup
+}
+\def\onslide{%
+  \@ifnextchar-\pd@@nslide{\XKV@ifstar{\pd@onslide1}{%
+  \XKV@ifplus{\pd@onslide2}{\pd@onslide0}}}%
+}
+\def\pd@onslide#1#2{%
+  \pd@testdisp0{#2}%
+  \if@tempswa
+    \let\pd@tempa\@firstofone
+  \else
+    \ifcase#1\relax
+      \long\def\pd@tempa##1{%
+        \pst@Verb{(1) BOL}%
+        \stepcounter{pd@onslidedepth}%
+        ##1%
+        \addtocounter{pd@onslidedepth}\m@ne
+        \ifnum\c@pd@onslidedepth=\z@\ifnum\pd@currentstate=\z@
+          \pst@Verb{(0) BOL}%
+        \fi\fi
+      }%
+    \or
+      \long\def\pd@tempa##1{\@bsphack\@esphack}%
+    \or
+      \long\def\pd@tempa##1{{\color\pd@@iacolor##1}}%
+    \fi
+  \fi
+  \pd@tempa
+}
+\def\pd@testdisp#1#2{%
+  \@tempswafalse
+  \XKV@for@n{#2}\pd@tempa{\expandafter\pd@t@stdisp\pd@tempa--\@nil#1}%
+}
+\def\pd@t@stdisp#1-#2-#3\@nil#4{%
+  \ifx\@empty#1\@empty\relax
+    \ifnum#4=\z@
+      \pd@checkrel#2\@nil\@tempcnta
+    \else
+      \@tempcnta#2%
+      \def\pd@reloverlay{1}%
+    \fi
+    \pd@compnooverlays\@tempcnta
+    \ifnum\c@pd@overlay>\@tempcnta\else\@tempswatrue\fi
+  \else
+    \ifnum#4=\z@
+      \pd@checkrel#1\@nil\@tempcnta
+    \else
+      \@tempcnta#1%
+      \def\pd@reloverlay{#1}%
+    \fi
+    \ifx\@empty#2\@empty\relax
+      \pd@compnooverlays\@tempcnta
+      \ifx\@empty#3\@empty\relax
+        \ifnum\c@pd@overlay=\@tempcnta\@tempswatrue\fi
+      \else
+        \ifnum\c@pd@overlay<\@tempcnta\else\@tempswatrue\fi
+      \fi
+    \else
+      \ifnum#4=\z@
+        \pd@checkrel#2\@nil\@tempcntb
+      \else
+        \@tempcntb#2%
+      \fi
+      \pd@compnooverlays\@tempcntb
+      \ifnum\c@pd@overlay<\@tempcnta\else
+        \ifnum\c@pd@overlay>\@tempcntb\else\@tempswatrue\fi
+      \fi
+    \fi
+  \fi
+}
+\def\pd@checkrel#1#2\@nil#3{%
+  \def\pd@tempa{#1}%
+  \def\pd@tempb{+}%
+  \ifx\pd@tempa\pd@tempb
+    #3#2\advance#3\pd@reloverlay
+  \else#3#1#2\fi
+}
+\def\pd@compnooverlays#1{%
+  \ifnum#1>\pd@nooverlays\xdef\pd@nooverlays{\the#1}\fi\relax
+}
+\let\pd@orig@item\@item
+\def\@item[#1]{\@ifnextchar<{\pd@item[#1]}{\pd@item[#1]<>}}
+\def\pd@item[#1]<#2>{%
+  \pd@closeitem
+  \ifx\pd@@type\pd@currenttype\else
+    \ifnum\pd@@type=\z@
+      \pst@Verb{(1) BOL}%
+    \else
+      \pst@Verb{(0) BOL}%
+      \normalcolor
+    \fi
+    \global\let\pd@currenttype\pd@@type
+  \fi
+  \ifnum\pd@currentstate=\z@
+    \normalcolor\pst@Verb{(0) BOL}%
+    \pd@hide{#2}%
+  \else
+    \color\pd@@iacolor
+  \fi
+  \ifx\@empty#2\@empty\else
+    \def\pd@closeitem{\gdef\pd@currentstate{0}}%
+  \fi
+  \pd@orig@item[#1]\leavevmode\ignorespaces
+}
+\let\pd@orig@@trivlist\@trivlist
+\def\@trivlist{%
+  \global\expandafter\let\csname pd@currentstate\the\c@pd@trivlist
+    \endcsname\pd@currentstate
+  \ifnum\pd@@type=\z@\let\pd@closeitem\relax\fi
+  \stepcounter{pd@trivlist}%
+  \pd@orig@@trivlist
+}
+\let\pd@orig@endtrivlist\endtrivlist
+\def\endtrivlist{%
+  \addtocounter{pd@trivlist}\m@ne
+  \pd@revert{%
+    \global\expandafter\let\expandafter\pd@currentstate\csname
+      pd@currentstate\the\c@pd@trivlist\endcsname
+  }%
+  \pd@orig@endtrivlist
+}
+\def\pd@hide#1{%
+  \ifx\@empty#1\@empty\else
+    \ifnum\pd@currentstate=\z@
+      \pd@testdisp1{#1}%
+      \if@tempswa\else
+        \ifnum\pd@@type=\z@
+          \pst@Verb{(1) BOL}%
+        \else
+          \color\pd@@iacolor
+        \fi
+        \gdef\pd@currentstate{1}%
+      \fi
+    \fi
+  \fi
+}
+\def\pause{\@testopt\pd@p@use1}
+\def\pd@p@use[#1]{%
+  \addtocounter{pd@pause}{#1}%
+  \expandafter\pd@hide\expandafter{\the\c@pd@pause-}%
+  \global\let\pd@revert\@gobble
+  \ignorespaces
+}
+\def\pd@deloverlays{%
+  \def\pd@hide##1{}%
+  \def\pd@onslide##1##2{\@firstofone}%
+  \let\@trivlist\pd@orig@@trivlist
+  \let\endtrivlist\pd@orig@endtrivlist
+  \def\pd@item[##1]<##2>{\pd@orig@item[##1]\leavevmode\ignorespaces}%
+}
+\define@cmdkey{enumitem}[pd@@]{type}{}
+\setkeys{enumitem}{type=0}
+\ifxetex\else
+\def\pd@pdftrans{%
+  \@expandtwoargs\in@{,\pd@@trans,}{%
+    ,Split,Blinds,Box,Wipe,Dissolve,Glitter,%
+    Replace,Fly,Push,Cover,Uncover,Fade,}%
+  \ifin@\else
+    \pd@warn{Transition `\pd@@trans' might not be understood by
+      your ps to pdf converter}%
+  \fi
+  \pdfmark{%
+    pdfmark=/PUT,%
+    Raw={\string{ThisPage\string}%
+      <</Trans << /S /\pd@@trans\space >> >>%
+    }%
+  }%
+}
+\fi
+\define@cmdkeys[pd]{twocolumn}[pd@@]{%
+  lineheight,lfrheight,rfrheight,lcolwidth,rcolwidth,%
+  topsep,bottomsep,indent,lineprop,lfrprop,rfrprop%
+}
+\define@key[pd]{twocolumn}{colsep}{\setlength\pd@colsep{#1}}
+\define@key[pd]{twocolumn}{frsep}{\setlength\pd@frsep{#1}}
+\presetkeys[pd]{twocolumn}{frsep=1.5mm,colsep=.06\linewidth,%
+  lcolwidth=.47\linewidth,rcolwidth=.47\linewidth,topsep=0cm,%
+  bottomsep=0cm,indent=0cm,lineprop=,lfrprop=,rfrprop=,%
+  lineheight=,lfrheight=,rfrheight=%
+}{}
+\def\twocolumn{\@testopt\pd@twocolumn{}}
+\long\def\pd@twocolumn[#1]#2#3{%
+  \setkeys[pd]{twocolumn}{#1}%
+  \sbox\pd@tba{\begin{minipage}\pd@@lcolwidth\pd@@textfont#2\end{minipage}}%
+  \setlength\@tempdima{\the\ht\pd@tba}%
+  \addtolength\@tempdima{\the\dp\pd@tba}%
+  \sbox\pd@tbb{\begin{minipage}\pd@@rcolwidth\pd@@textfont#3\end{minipage}}%
+  \setlength\@tempdimb{\the\ht\pd@tbb}%
+  \addtolength\@tempdimb{\the\dp\pd@tbb}%
+  \setlength\@tempdimc{\pd@maxdim\@tempdima\@tempdimb}%
+  \ifx\pd@@lfrheight\@empty\else
+    \setlength\@tempdimc{\pd@maxdim\pd@@lfrheight\@tempdimc}%
+  \fi
+  \ifx\pd@@lineheight\@empty\else
+    \setlength\@tempdimc{\pd@maxdim\pd@@lineheight\@tempdimc}%
+  \fi
+  \ifx\pd@@rfrheight\@empty\else
+    \setlength\@tempdimc{\pd@maxdim\pd@@rfrheight\@tempdimc}%
+  \fi
+  \begin{pspicture}(-\pd@@indent,\pd@@topsep)(\linewidth,-\@tempdimc)%
+  \psset{linewidth=.25pt,linecolor=\pd@color}%
+  \setlength\@tempdima\pd@@lcolwidth
+  \addtolength\@tempdima\pd@frsep
+  \ifx\pd@@lfrheight\@empty\else
+    \expandafter\psframe\expandafter[\pd@@lfrprop]%
+      (-\pd@frsep,\pd@frsep)(\@tempdima,-\pd@@lfrheight)%
+  \fi
+  \rput[tl](0,0){\usebox\pd@tba}%
+  \setlength\@tempdima\pd@@lcolwidth
+  \addtolength\@tempdima{.5\pd@colsep}%
+  \ifx\pd@@lineheight\@empty\else
+    \expandafter\psline\expandafter[\pd@@lineprop]%
+      (\@tempdima,\pd@frsep)(\@tempdima,-\pd@@lineheight)%
+  \fi
+  \addtolength\@tempdima{.5\pd@colsep}%
+  \setlength\@tempdimc\@tempdima
+  \addtolength\@tempdima{-\pd@frsep}%
+  \setlength\@tempdimb\@tempdima
+  \addtolength\@tempdimb\pd@@rcolwidth
+  \addtolength\@tempdimb{2\pd@frsep}%
+  \ifx\pd@@rfrheight\@empty\else
+    \expandafter\psframe\expandafter[\pd@@rfrprop]%
+      (\@tempdima,\pd@frsep)(\@tempdimb,-\pd@@rfrheight)%
+  \fi
+  \rput[tl](\@tempdimc,0){\usebox\pd@tbb}%
+  \end{pspicture}\par
+}
+\renewenvironment{figure}[1][]{%
+  \def\@captype{figure}%
+  \par\begin{center}%
+}{\par\end{center}}
+\renewenvironment{table}[1][]{%
+  \def\@captype{table}%
+  \par\begin{center}%
+}{\par\end{center}}
+\def\pddefinelyxtemplate#1#2{\def#1{\pd@lyxgetargsandbody{#2}}}
+\def\pd@lyxgetargsandbody#1{\@testopt{\pd@lyxget@rgsandbody{#1}}{}}
+\def\pd@lyxget@rgsandbody#1[#2]#3{%
+  \begingroup
+  \def\@currenvir{#1}%
+  \pd@get@rgs@ndbody{#2}{#3}%
+  \ifcase\ifnum\pd@method>\z@\ifpd@display\@ne\fi\fi\z@
+    \let\pd@tempa\pd@lyxget@rgs@ndbody
+  \else
+    \ifnum\pd@method=\@ne
+      \def\pd@tempa{%
+        \immediate\openout\@inputcheck\jobname.vrb\relax
+        \def\verbatim@processline{%
+          \pd@lyxget@rgs@ndb@dy
+          \ifin@
+            \let\pd@tempa\@gobblefour
+            \def\next{%
+              \endgroup\immediate\closeout\@inputcheck
+              \let\verbatim@processline\pd@orig@verbatim@processline
+              \pd@slide\endgroup
+              \immediate\openout\@inputcheck\jobname.vrb\relax
+              \immediate\write\@inputcheck{\pd@lyxrem}%
+              \immediate\closeout\@inputcheck
+              \immediate\openin\@inputcheck\jobname.vrb\relax
+              \immediate\read\@inputcheck to\pd@tempa
+              \immediate\closein\@inputcheck\pd@tempa
+            }%
+          \else
+            \immediate\write\@inputcheck{\the\verbatim@line}%
+            \let\pd@tempa\relax
+          \fi
+          \pd@tempa
+        }%
+        \begingroup\let\do\@makeother\dospecials\catcode`\^^M\active
+        \verbatim@start
+      }%
+    \else
+      \pd@deloverlays
+      \let\pd@tempa\pd@sl@de
+      \def\lyxend{%
+        \end{pd@minipage}\end{lrbox}%
+        \ifx\pd@@textpos\@empty\else
+          \rput[\pd@@texthook](\pd@@textpos){\usebox\pd@textbox}%
+        \fi
+        \endgroup
+      }%
+    \fi
+  \fi
+  \pd@tempa
+}
+\long\def\pd@lyxget@rgs@ndbody#1\lyxend{%
+  \pd@body{#1}%
+  \ifpd@display\pd@slide\fi
+  \endgroup
+}
+\begingroup\lccode`\!`\\\lowercase{\endgroup
+\def\pd@lyxget@rgs@ndb@dy{%
+  \@expandtwoargs\in@{!lyxend}{\the\verbatim@line}%
+  \ifin@\expandafter\pd@lyxget@rgs@ndb@d@\the\verbatim@line\@nil\fi
+}
+\def\pd@lyxget@rgs@ndb@d@#1!lyxend#2\@nil{%
+  \ifx\@empty#1\@empty\gdef\pd@lyxrem{#2}\else\in@false\fi
+}}
+\def\lyxend{}
+\pddefinelyxtemplate\lyxnote{note}
+\pddefinelyxtemplate\lyxslide{slide}
+\pddefinelyxtemplate\lyxwideslide{wideslide}
+\pddefinelyxtemplate\lyxemptyslide{emptyslide}
+\AtBeginDocument{%
+  \@expandtwoargs\in@{,frenchb.ldf,}{,\@filelist,}%
+  \ifin@
+    \let\bbl@frenchindent\relax
+    \let\bbl@frenchitemize\relax
+    \let\bbl@frenchlistspacing\relax
+  \fi
+  \renewenvironment{thebibliography}[1]{%
+    \list{\@biblabel{\@arabic\c@enumiv}}{%
+      \settowidth\labelwidth{\@biblabel{#1}}%
+      \leftmargin\labelwidth
+      \advance\leftmargin\labelsep
+      \@openbib@code
+      \usecounter{enumiv}%
+      \let\p@enumiv\@empty
+      \renewcommand\theenumiv{\@arabic\c@enumiv}%
+    }%
+    \sloppy
+    \clubpenalty4000
+    \@clubpenalty \clubpenalty
+    \widowpenalty4000%
+    \sfcode`\.\@m
+  }{%
+    \def\@noitemerr
+     {\@latex@warning{Empty `thebibliography' environment}}%
+    \endlist
+  }%
+  \@ifpackageloaded{CJK}{%
+    \count@=127
+    \@whilenum\count@<255\do{%
+      \advance\count@\@ne
+      \lccode`\~=\count@
+      \catcode\count@=\active
+      \lowercase{\def~{\kern1ex}}%
+    }%
+    \hypersetup{CJKbookmarks=true}%
+  }{}%
+}
+\ifnum\pd@mode=\z@
+  \AtBeginDocument{%
+    \let\pd@orig@label\label
+    \def\label{\pd@label\pd@orig@label}%
+    \let\pd@orig@label@in@display\label@in@display
+    \def\label@in@display{\pd@label\pd@orig@label@in@display}%
+  }
+  \def\pd@label#1#2{%
+    \@expandtwoargs\in@{,#2,}{,\pd@labels,}%
+    \ifin@\else
+      \global\XKV@addtolist@x\pd@labels{#2}%
+      #1{#2}%
+    \fi
+  }
+\else\pd@deloverlays\let\pd@pdftrans\relax\fi
+\ifnum\pd@mode=2
+\def\pd@n@wpage{%
+  \gdef\pd@newpage{%
+    \global\let\pd@newpage\pd@n@wpage
+    \newpage
+  }%
+}
+\let\pd@newpage\pd@n@wpage
+\def\pd@get@rgsandbody#1[#2]#3{%
+  \setkeys[pd]{glslide,slide}{#2}%
+  \def\pd@t@tle{#3}%
+  \def\pd@tempa{note}%
+  \let\pd@resa\@currenvir
+  \pd@displaytrue
+  \ifcase\pd@display
+    \ifx\pd@resa\pd@tempa\relax\pd@displayfalse\fi
+  \or
+    \ifx\pd@resa\pd@tempa\else\pd@displayfalse\fi
+  \fi
+  \ifx\pd@resa\pd@tempa\else
+    \stepcounter{slide}%
+    \edef\@currentlabel{\the\c@slide}%
+    \let\pd@tempb\@empty
+    \pd@maketocbm0%
+    \hyper@anchorstart{slide.\the\c@slide}\hyper@anchorend
+  \fi
+  \gdef\lyxend{\gdef\lyxend{}\pd@slide}%
+  \begin{lrbox}\pd@textbox
+    \@tempdima\linewidth
+    \ifpd@@nohandoutframes\else
+      \advance\@tempdima-16pt
+    \fi
+    \begin{minipage}\@tempdima
+    \subsection*\pd@t@tle
+    \pd@displaytrue\raggedright
+}
+\let\pd@lyxget@rgsandbody\pd@get@rgsandbody
+\def\pd@slide{%
+  \end{minipage}\end{lrbox}%
+  \ifpd@display
+    \ifpd@@nohandoutframes
+      \usebox\pd@textbox
+    \else
+      \fboxrule1pt\fboxsep7pt
+      \fbox{\usebox\pd@textbox}%
+    \fi
+    \par\smallskip
+    \pd@@lf\hfill\ifx\pd@@rf\@empty\else\pd@@rf\ -- \fi
+    \def\pd@tempa{note}%
+    \ifx\pd@resa\pd@tempa
+      \ifnum\c@slide=\pd@notet
+        \stepcounter{note}%
+      \else
+        \setcounter{note}{1}%
+      \fi
+      \xdef\pd@notet{\the\c@slide}%
+      \thenote
+    \else\theslide\fi
+    \par\bigskip
+    \ifpd@@nohandoutpagebreaks\else\vfill\pd@newpage\fi
+  \fi
+}
+\def\pd@maketitle[#1]{%
+  \pd@orig@maketitle
+  \vskip50pt
+  \pd@puttoc0%
+  \newpage
+  \stepcounter{slide}%
+}
+\def\pd@pdcontentsline#1#2#3{%
+  \ifnum#1=\z@
+    \ifnum\@tempcntb>\z@\hskip15pt\fi
+    \hyperlink{slide.#2}{#3}%
+    \leaders\hbox{\hss.\ \hss}\hfill#2\par
+  \else
+    \if@tempswa\else\vskip10pt\fi
+    \hyperlink{slide.#2}{\bfseries#3}%
+    {\hfill\bfseries#2}\par
+    \global\advance\@tempcntb\@ne
+  \fi
+  \@tempswafalse
+}
+\def\pd@section[#1]#2{%
+  \begingroup
+    \setkeys*[pd]{section}{#1}%
+    \setrmkeys*[pd]{slide}%
+    \def\pd@tempa{%
+      \stepcounter{slide}%
+      \def\pd@t@tle{#2}%
+      \pd@maketocbm\pd@tempb
+      \hyper@anchorstart{slide.\the\c@slide}\hyper@anchorend
+      \pd@orig@section*{#2\normalfont\hfill\theslide}%
+    }%
+    \ifnum\pd@display=\@ne\ifpd@@slide\stepcounter{slide}\fi\else
+      \ifnum\pd@tempb=\z@
+        \ifpd@@slide\pd@tempa\fi
+      \else
+        \stepcounter{pd@section}%
+        \pd@tempa
+        \ifpd@@slide\else\addtocounter{slide}\m@ne\fi
+      \fi
+    \fi
+  \endgroup
+}
+\fi
+\def\@nameedef#1{\expandafter\edef\csname#1\endcsname}
+\def\pd@namelet#1#2{\expandafter\let\csname#1\expandafter\endcsname\csname#2\endcsname}
+%
+\def\pd@pop#1#2{%
+  \@expandtwoargs\in@{,}{#1}%
+  \ifin@\expandafter\pd@p@p#1\@nil#2#1\else\let#2#1\let#1\@empty\fi
+}
+\def\pd@p@p#1,#2\@nil#3#4{\def#3{#1}\def#4{#2}}
+\def\pd@maxdim#1#2{\ifdim#1>#2#1\else#2\fi}
+\def\pd@minipage{%
+  \leavevmode
+  \@pboxswfalse
+  \setlength\@tempdima\pd@@textwidth
+  \def\@mpargs{{t}{\pd@@textheight}[t]{\pd@@textwidth}}%
+  \setbox\@tempboxa\vbox\bgroup
+    \color@begingroup
+      \hsize\@tempdima
+      \textwidth\hsize
+      \columnwidth\hsize
+      \@parboxrestore
+      \let\@footnotetext\@mpfootnotetext
+      \let\@listdepth\@mplistdepth
+      \@mplistdepth\z@
+      \@minipagerestore
+      \@setminipage
+}
+\def\endpd@minipage{%
+    \par
+    \unskip
+    \ifvoid\@mpfootins\else
+      \vfill
+      \normalcolor
+      \footnoterule
+      \unvbox\@mpfootins
+    \fi
+    \@minipagefalse
+  \color@endgroup
+  \egroup
+  \expandafter\@iiiparbox\@mpargs{\unvbox\@tempboxa}%
+}
+\let\pd@orig@verbatim@processline\verbatim@processline
+\def\psds@ocircle{\pst@gdot{ 0 0 DS 0 360 arc stroke }}
+\def\psds@osquare{%
+  \pst@gdot{
+    DS .886 mul /r ED
+    r r moveto r r neg L r neg r neg L r neg r L
+    closepath stroke }%
+}
+\IfFileExists{powerdot-\pd@@style.sty}
+  {\RequirePackage{powerdot-\pd@@style}}
+  {\pd@error{unknown style `\pd@@style'}}
+\ifx\titleslide\@undefined
+  \pd@error{`titleslide' environment not defined by style `\pd@@style'}
+\fi
+\ifx\slide\@undefined
+  \pd@error{`slide' environment not defined by style `\pd@@style'}
+\fi
+\ifx\pd@title\@undefined\let\pd@title\@firstofone\fi
+\ifx\pd@slidetitle\@undefined\let\pd@slidetitle\@firstofone\fi
+\ifx\pd@sectiontitle\@undefined\let\pd@sectiontitle\@firstofone\fi
+\ifx\pd@tocdisplay\@undefined
+  \def\pd@tocdisplay#1{%
+    \hskip\@tempdima
+    \begin{minipage}[b]\@tempdimb
+      \pd@usedtocfont\color\pd@@toctcolor#1%
+    \end{minipage}%
+  }
+\fi
+\ifx\pd@tochighlight\@undefined
+  \def\pd@tochighlight#1{%
+    \psframebox*[framesep=\pd@@tocfrsep,%
+      fillcolor=\pd@@tochlcolor,boxsep=false]{%
+      \hskip\@tempdima
+      \begin{minipage}[b]\@tempdimb
+        \pd@usedtocfont\color\pd@@tochltcolor#1%
+      \end{minipage}%3
+    }%
+  }
+\fi
+\ifx\pd@tocslide\@undefined\let\pd@tocslide\@firstofone\fi
+\ifx\pd@tocsection\@undefined\let\pd@tocsection\@firstofone\fi
+\endinput
+%%
+%% End of file `powerdot.cls'.

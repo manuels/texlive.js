@@ -1,0 +1,600 @@
+% calctab.sty
+%
+% Version: 0.6.1
+% Date: 2009_07_12
+%
+% Copyright (C) 2009 Roberto Giacomelli <giaconet dot mailbox at gmail dot com>
+%
+%    This work may be distributed and/or modified under the
+%    conditions of the LaTeX Project Public License, either
+%    version 1.3 of this license or any later version.
+%    The latest version of this license is in
+%    http://www.latex-project.org/lppl.txt and version 1.3
+%    or later is part of all distributions of LaTeX version
+%    2005/12/01 or later.
+%
+% This work has the LPPL maintenance status `maintained'.
+% 
+% The Current Maintainer of this work is Roberto Giacomelli
+%
+% This work consists of these files:
+% calctab.sty, calctab_manual.pdf and README
+%
+% Please make attention to this important notice:
+% The language syntax can be change.
+%
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{calctab}[2009/07/12 v0.6.1 Autocalc table environments]
+%
+% ''library'' package for the table's visual property
+\RequirePackage{alphalph}
+\RequirePackage{booktabs}
+\RequirePackage{eurosym}
+\RequirePackage[table]{xcolor}
+\RequirePackage{numprint}[2008/02/17]
+%
+% ''library'' package for algorithms and language implementation
+\RequirePackage{xkeyval}
+\RequirePackage{ifthen}
+\RequirePackage{fltpoint}
+\RequirePackage{xstring}
+%
+%
+% length to tuning distance of central column of calctab table
+% 8 mm is the default value
+\newlength{\ctsep}\setlength{\ctsep}{8mm}
+%
+% main counter of the table rows
+\newcounter{ct@RowIndex}
+%
+% simple loop counter
+\newcounter{ct@i}
+\newcounter{ct@k}
+%
+% macrokey definition commands
+\newcommand{\ct@makemacrokey}[1]{\expandafter\def\csname #1\endcsname##1{%
+	\expandafter\def\csname ct@#1\endcsname{##1}}}
+%
+% apparence text commands definition and default assignments
+\ct@makemacrokey{ctcurrency}\ctcurrency{\euro}
+\ct@makemacrokey{ctdescription}\ctdescription{Items description}
+\ct@makemacrokey{ctontraslation}\ctontraslation{on}
+\ct@makemacrokey{ctheaderone}\ctheaderone{Q.ty}
+\ct@makemacrokey{ctheadertwo}\ctheadertwo{Price}
+
+%
+% boolean to control numeric loop: if ct@Globflag is true then
+% all row values are computed
+\newboolean{ct@Globflag}\setboolean{ct@Globflag}{true}
+%
+% new boolean to control behavior of the \inrule command
+\newboolean{ct@ifinrule}\setboolean{ct@ifinrule}{false}
+%
+% new boolean to control rule after an \add row
+\newboolean{ct@ifruleafteradd}\setboolean{ct@ifruleafteradd}{false}
+%
+% control flag of the from, until keys
+% this flag is false if from and/or unil keys is/are not specified
+\newboolean{ct@fromctrl}\setboolean{ct@fromctrl}{false}
+\newboolean{ct@untilctrl}\setboolean{ct@untilctrl}{false}
+%
+%
+%
+% definitions of the ordinary keys
+% the ordinary keys is useful for to assign a name to row
+% note the use of different families
+%
+\define@key{ctfamId}{id}{%
+	% save in ctreg@<idname> its row number
+	\expandafter\edef\csname ctreg@#1\endcsname{\thect@RowIndex}
+	% definition of the key <idvalue>, the id argument #1
+	\define@key{ctfamLabel}{#1}[]{
+		% activate ctflag<n>
+		\ifthenelse{\boolean{ctflag\csname ctreg@#1\endcsname}}{
+			%ops, overriding of keys condition
+			\PackageWarning{calctab}{\ct@overridingkeyerr{#1}}
+		}{%
+			\setboolean{ctflag\csname ctreg@#1\endcsname}{true}
+		}
+		% global flag is false if a key is specifed
+		\setboolean{ct@Globflag}{false}
+	}%
+}%
+%
+%
+% the id key for \add command
+\define@key{ctfamAddid}{id}{%
+	\ifthenelse{\boolean{ct@Globflag}}{%
+		\expandafter\edef\csname ctref@#1\endcsname{\thect@RowIndex}
+		\define@key{ctfamLabel}{#1}[]{% set all row flag on true
+		\setcounter{ct@i}{1}
+		\whiledo{\not\(\value{ct@i}>\expandafter\number\csname ctref@#1\endcsname\)}{
+			\ifthenelse{\boolean{ctflag\thect@i}}{
+				\PackageWarning{calctab}{\ct@overridingkeyerr{#1}}
+			}{
+				\setboolean{ctflag\thect@i}{true}
+			}
+			\stepcounter{ct@i}
+		}% end whiledo
+		\setboolean{ct@Globflag}{false}
+		}
+	}{% else clause
+		\expandafter\edef\csname ctref@#1\endcsname{\ctref@temp}
+		\define@key{ctfamLabel}{#1}[]{% repeat the original id list
+		\edef\n@xt{\noexpand\setkeys{ctfamLabel}[id]{\csname ctref@#1\endcsname}}
+		\n@xt 
+		}
+	}
+}%
+%
+%
+% definition of ``interval'' keys
+\define@key{ctfamLabel}{from}{%
+	\@ifundefined{ctreg@#1}
+	{\PackageError{calctab}{\ct@keynotexisterr{#1}}}
+	{%
+		\def\ct@fromrow{\csname ctreg@#1\endcsname}
+		\ifthenelse{\ct@fromrow=1}{\PackageWarning{calctab}{\ct@notusefulwarning{from}}}{}
+		\setboolean{ct@fromctrl}{true}
+		\setboolean{ct@Globflag}{false}
+	}
+}%
+%
+%
+\define@key{ctfamLabel}{until}{%
+	\@ifundefined{ctreg@#1}
+	{\PackageError{calctab}{\ct@keynotexisterr{#1}}}{%
+		\def\ct@untilrow{\csname ctreg@#1\endcsname}
+		\ifthenelse{\ct@untilrow=\thect@RowIndex}{\PackageWarning{calctab}{\ct@notusefulwarning{until}}}{}
+		\setboolean{ct@untilctrl}{true}
+		\setboolean{ct@Globflag}{false}
+	}
+}%
+%
+%  allocation of the table box
+\newsavebox{\ct@TabBox}
+%
+% set standard decimal position (numprint package)
+\nprounddigits{2}
+%
+% internal \amount command control flag
+\newboolean{ct@isop}
+%
+%
+% main computation loop
+\newcommand\ct@Loop{%
+	\fpRegSet{ct@Sum}{0}
+	\setcounter{ct@i}{1}
+	\setcounter{ct@k}{0}
+	\edef\ct@labelreg{}% for the text labels row sequence (A+B+...)
+	\edef\ct@labeltemp{}%
+	\def\ct@plustext{}% '+' char
+	\whiledo{\not\(\value{ct@i}>\value{ct@RowIndex}\)}{%
+		\ifthenelse{\(\boolean{ctflag\thect@i}\OR\boolean{ct@Globflag}\)}{%
+			\fpRegAdd{ct@Sum}{ctRowValue\thect@i}%
+			\stepcounter{ct@k}
+			\ifthenelse{\value{ct@k}<3}{%
+				\edef\ct@labelreg{\ct@labelreg\ct@plustext\AlphAlph{\value{ct@i}}}
+			}{% else clause
+				\ifthenelse{\value{ct@k}>5}{%
+					\edef\ct@labeltemp{\ct@plustext$\, \cdots\,$\ct@plustext\AlphAlph{\value{ct@i}}}
+				}{%else clause
+					\edef\ct@labeltemp{\ct@labeltemp\ct@plustext\AlphAlph{\value{ct@i}}}
+				}
+			}
+			\setboolean{ctflag\thect@i}{false}% reset the row flag status
+			\def\ct@plustext{+}
+		}{%else clause: reset internal loop variables
+			\edef\ct@labelreg{\ct@labelreg\ct@labeltemp}
+			\setcounter{ct@k}{0}%
+			\edef\ct@labeltemp{}%
+		}%
+		\stepcounter{ct@i}%
+	}%
+	\edef\ct@labelreg{\ct@labelreg\ct@labeltemp}
+	\setboolean{ct@Globflag}{true}% reset the global flag status
+}%
+%
+%
+%
+%
+% calctab environment: definition code
+%
+\newenvironment{calctab}[1][]{%#1 is the optinal table's paragraph description
+%set font family
+\sffamily
+%
+%set the token register (TeX primitive token register resolve the tabular grouping problem)
+\toks255={\rowcolors{1}{gray!15}{}\begin{tabular}{clr}\midrule&\ct@ctdescription & \ct@ctcurrency \\\midrule}
+%
+% reset main counter to starting value
+\setcounter{ct@RowIndex}{0}
+%
+% save paragraph table header to use it in the environment end code
+\newcommand{\ct@FirstPar}[1]{#1}
+%
+% internal command definition
+%
+%
+% from until keys internal command
+\newcommand{\ct@intervalloop}{%
+	\ifthenelse{\(\boolean{ct@fromctrl}\OR\boolean{ct@untilctrl}\)}{%
+		\ifthenelse{\boolean{ct@fromctrl}}{\setboolean{ct@fromctrl}{false}}{\def\ct@fromrow{1}}
+		\ifthenelse{\boolean{ct@untilctrl}}{\setboolean{ct@untilctrl}{false}}{\def\ct@untilrow{\thect@RowIndex}}
+		\ifthenelse{\number\ct@fromrow<\number\ct@untilrow}{% canonical interval from until
+			\ct@setintervalflag{\ct@fromrow}{\ct@untilrow}
+		}{% negative interval 1 -> until plus from -> last row
+			\ct@setintervalflag{1}{\ct@untilrow}
+			\ct@setintervalflag{\ct@fromrow}{\thect@RowIndex}
+		}
+	}{}% else clause denied
+}
+%
+% internal command to set true the flags row in an interval
+\newcommand{\ct@setintervalflag}[2]{%
+	% #1 arg -> start row value
+	% #2 arg -> finish row value
+	\setcounter{ct@i}{##1}
+	\whiledo{\not\(\value{ct@i}>\number##2\)}{%
+		\ifthenelse{\boolean{ctflag\thect@i}}{%
+			\PackageWarning{calctab}{\ct@overridingkeyerr{from or until}}
+		}{%
+			\setboolean{ctflag\thect@i}{true}
+		}
+		\stepcounter{ct@i}
+	}
+}%
+%
+%
+% #1 -> operator sign * / + -
+% #2 -> text for sign operation ($\, \times \,$)
+\newcommand{\ct@operator}[2]{%
+	\StrBefore{\ct@arg}{##1}[\ct@before]
+	\StrBehind{\ct@arg}{##1}[\ct@after]
+	\fpRegSet{ct@one}{\ct@before}
+	\fpRegMul{ct@one}{ct@unit}
+	\fpRegSet{ct@two}{\ct@after}
+	\fpRegCopy{ctRowValue\thect@RowIndex}{ct@one}
+	\IfStrEq{##1}{*}{\fpRegMul{ctRowValue\thect@RowIndex}{ct@two}}{}
+	\IfStrEq{##1}{/}{\fpRegDiv{ctRowValue\thect@RowIndex}{ct@two}}{}
+	\IfStrEq{##1}{+}{\fpRegAdd{ctRowValue\thect@RowIndex}{ct@two}}{}
+	\IfStrEq{##1}{-}{\fpRegSub{ctRowValue\thect@RowIndex}{ct@two}}{}
+	\fpRegRound{ctRowValue\thect@RowIndex}{-2}
+	\fpRegGet{ct@one}{\ct@before}
+	\fpRegGet{ct@two}{\ct@after}
+	\toks255=\expandafter{\the\toks255(}
+	\edef\ct@result{\noexpand\numprint{\ct@before}}
+	\toks255=\expandafter\expandafter\expandafter{\expandafter\the\expandafter\toks255\ct@result ##2}
+	\edef\ct@result{\noexpand\numprint{\ct@after}}
+	\toks255=\expandafter\expandafter\expandafter{%
+	\expandafter\the\expandafter\toks255\ct@result)\rule{\ctsep}{0pt}}
+}
+%
+%
+%
+%
+% interface inner command: \amount
+\newcommand\amount[3][]{%#1->opt arg #2->descr #3->amount
+	\stepcounter{ct@RowIndex}
+	\newboolean{ctflag\thect@RowIndex}%definition of bool flag for each row
+	\setboolean{ctflag\thect@RowIndex}{false}%initial value of ctflag<n>
+	\setkeys{ctfamId}{##1}%
+	%append the tabular entry to the token register
+	\ifthenelse{\boolean{ct@ifinrule}}{%
+		\ifthenelse{\boolean{ct@ifruleafteradd}}{
+			\toks255=\expandafter{\the\toks255\midrule}
+			\setboolean{ct@ifruleafteradd}{false}
+		}{}
+	}{%
+		\setboolean{ct@ifruleafteradd}{false}
+	}
+	%
+	\toks255=\expandafter{\the\toks255\AlphAlph{\value{ct@RowIndex}}&##2 }
+	% elementary ``parsing'' of the argument #3
+	\fpRegSet{ct@unit}{1}
+	% elimination of the space char
+	\StrDel{##3}{ }[\ct@arg]
+	\IfBeginWith{\ct@arg}{-}{\setboolean{ct@isop}{true}}{\setboolean{ct@isop}{false}}
+	\ifthenelse{\boolean{ct@isop}}{%
+		\fpRegSet{ct@unit}{-1}
+		\StrBehind{\ct@arg}{-}[\ct@argt]
+		\def\ct@arg{\ct@argt}
+	}{
+		\IfBeginWith{\ct@arg}{+}{\setboolean{ct@isop}{true}}{\setboolean{ct@isop}{false}}
+		\ifthenelse{\boolean{ct@isop}}{%
+			\StrBehind{\ct@arg}{+}[\ct@argt]
+			\def\ct@arg{\ct@argt}
+		}{}
+	}
+	%
+	\IfSubStr{\ct@arg}{*}{\setboolean{ct@isop}{true}}{\setboolean{ct@isop}{false}}
+	\ifthenelse{\boolean{ct@isop}}{% true
+		\ct@operator{*}{$\, \times \,$}
+	}{% false
+		\IfSubStr{\ct@arg}{/}{\setboolean{ct@isop}{true}}{\setboolean{ct@isop}{false}}
+		\ifthenelse{\boolean{ct@isop}}{%
+			\ct@operator{/}{$\, / \,$}
+		}{%
+			\IfSubStr{\ct@arg}{-}{\setboolean{ct@isop}{true}}{\setboolean{ct@isop}{false}}
+			\ifthenelse{\boolean{ct@isop}}{%
+				\ct@operator{-}{$\, - \,$}
+			}{%
+				\IfSubStr{\ct@arg}{+}{\setboolean{ct@isop}{true}}{\setboolean{ct@isop}{false}}
+				\ifthenelse{\boolean{ct@isop}}{%
+					\ct@operator{+}{$\, + \,$}
+				}{%
+					\fpRegSet{ctRowValue\thect@RowIndex}{\ct@arg}
+					\fpRegMul{ctRowValue\thect@RowIndex}{ct@unit}% add for 0.6 fixed bug
+				}
+			}
+		}
+	}
+	\fpRegGet{ctRowValue\thect@RowIndex}{\ct@tempnumber}
+	\toks255=\expandafter{\the\toks255&}
+	\edef\ct@result{\noexpand\numprint{\ct@tempnumber}}
+	\toks255=\expandafter\expandafter\expandafter{\expandafter\the\expandafter\toks255\ct@result\\}
+	\setboolean{ct@ifinrule}{true}
+}%
+%
+%
+%
+\newcommand\perc[3][]{%
+	\stepcounter{ct@RowIndex}% another new row
+	\newboolean{ctflag\thect@RowIndex}% definition of bool flag for each row
+	\setboolean{ctflag\thect@RowIndex}{false}% initial value of ctflag<n>
+	% user id label task
+	\setkeys*{ctfamLabel}{##1}
+	\setrmkeys{ctfamId}
+	% 'from' and 'until' keys process
+	\ct@intervalloop
+	%
+	\addtocounter{ct@RowIndex}{-1}\ct@Loop\stepcounter{ct@RowIndex}
+	\fpDiv{\tempPerc}{##3}{100}%
+	\fpRegSet{tempreg}{\tempPerc}
+	\fpRegMul{ct@Sum}{tempreg}
+	\fpRegRound{ct@Sum}{-2}% approx to the second digit
+	\fpRegGet{ct@Sum}{\ct@tempnum}
+	\fpRegSet{ctRowValue\thect@RowIndex}{\ct@tempnum}
+	%
+	\ifthenelse{\boolean{ct@ifinrule}}{
+		\ifthenelse{\boolean{ct@ifruleafteradd}}{%
+			\toks255=\expandafter{\the\toks255\midrule}
+			\setboolean{ct@ifruleafteradd}{false}
+		}{}
+	}{
+		\setboolean{ct@ifruleafteradd}{false}
+	}
+	%
+	\toks255=\expandafter{\the\toks255\AlphAlph{\value{ct@RowIndex}}&##2 (\numprint{##3}\% \ct@ctontraslation{} }
+	\edef\ct@num{\noexpand\ct@labelreg)\noexpand\rule{\ctsep}{0pt}}
+	\toks255=\expandafter\expandafter\expandafter{\expandafter\the\expandafter\toks255\ct@num&}
+	\edef\ct@num{\noexpand\numprint{\ct@tempnum}}
+	\toks255=\expandafter\expandafter\expandafter{\expandafter\the\expandafter\toks255\ct@num\\}
+	\setboolean{ct@ifinrule}{true}
+}
+%
+\newcommand\add[2][]{%
+	\def\ctref@temp{##1}% save id list
+	\setkeys*{ctfamLabel}{##1}
+	\setrmkeys{ctfamAddid}
+	% 'from' and 'until' keys processing
+	\ct@intervalloop
+	%
+	\ifthenelse{\boolean{ct@ifinrule}}{\toks255=\expandafter{\the\toks255\midrule}}{}
+	\ct@Loop\fpRegGet{ct@Sum}{\ct@tempnum}
+	\toks255=\expandafter{\the\toks255\rowcolor{gray!15}&\bfseries##2 (}
+	\edef\ct@num{\noexpand\ct@labelreg)\noexpand\rule{\ctsep}{0pt}}
+	\toks255=\expandafter\expandafter\expandafter{\expandafter\the\expandafter\toks255\ct@num&\bfseries}
+	\edef\ct@num{\noexpand\numprint{\ct@tempnum}}
+	\toks255=\expandafter\expandafter\expandafter{\expandafter\the\expandafter\toks255\ct@num\\}
+	\setboolean{ct@ifinrule}{true}
+	\setboolean{ct@ifruleafteradd}{true}
+}
+%
+\newcommand\inrule{%
+	\ifthenelse{\boolean{ct@ifinrule}}{%
+		\toks255=\expandafter{\the\toks255\midrule}
+	}{
+		\PackageWarning{calctab}{\ct@inrulewarning}
+	}
+	\setboolean{ct@ifinrule}{false}
+}%
+%
+%
+%
+}{% calctab environment closing code
+	\begin{center}
+	\begin{lrbox}{\ct@TabBox}
+	\the\toks255\bottomrule
+	\end{tabular}
+	\end{lrbox}
+	\sffamily
+	\parbox{\wd\ct@TabBox}{
+	\ct@FirstPar\par\smallskip\par
+	\usebox{\ct@TabBox}}
+	\end{center}
+}
+%
+%
+%
+% xcalctab environment section definition
+%
+\newenvironment{xcalctab}[1][]{%
+%set font family
+\sffamily
+%
+% set the token register (TeX primitive command resolve the tabular grouping problem)
+\toks255={\rowcolors{1}{gray!15}{}%
+\begin{tabular}{cl*{3}{r}}\midrule&\ct@ctdescription &\ct@ctheaderone&\ct@ctheadertwo& \ct@ctcurrency \\\midrule}
+%
+% reset main counter to starting value
+\setcounter{ct@RowIndex}{0}
+%
+% save paragraph table header to use it in the environment end code
+\newcommand{\ct@FirstPar}[1]{#1}
+%
+% internal command definition
+%
+%
+%
+% from until keys internal command
+\newcommand{\ct@intervalloop}{%
+	\ifthenelse{\(\boolean{ct@fromctrl}\OR\boolean{ct@untilctrl}\)}{%
+		\ifthenelse{\boolean{ct@fromctrl}}{\setboolean{ct@fromctrl}{false}}{\def\ct@fromrow{1}}
+		\ifthenelse{\boolean{ct@untilctrl}}{\setboolean{ct@untilctrl}{false}}{\def\ct@untilrow{\thect@RowIndex}}
+		\ifthenelse{\number\ct@fromrow<\number\ct@untilrow}{% canonical interval from until
+				\ct@setintervalflag{\ct@fromrow}{\ct@untilrow}
+			}{% negative interval 1 -> until plus from -> last row
+				\ct@setintervalflag{1}{\ct@untilrow}
+				\ct@setintervalflag{\ct@fromrow}{\thect@RowIndex}
+			}
+	}{}% else clause denied
+}
+%
+% internal command to set true the flags row in an interval
+\newcommand{\ct@setintervalflag}[2]{%
+	% #1 arg -> start row value
+	% #2 arg -> finish row value
+	\setcounter{ct@i}{##1}
+	\whiledo{\not\(\value{ct@i}>\number##2\)}{%
+		\ifthenelse{\boolean{ctflag\thect@i}}{%
+			\PackageWarning{calctab}{\ct@overridingkeyerr{from or until}}
+		}{% else clause
+			\setboolean{ctflag\thect@i}{true}
+		}
+		\stepcounter{ct@i}
+	}
+}%
+%
+%
+%
+\newcommand\amount[4][]{%#1 ->opt #2->descr #3->qta  #4->price
+	\stepcounter{ct@RowIndex}
+	\newboolean{ctflag\thect@RowIndex}%definition of bool flag for each row
+	\setboolean{ctflag\thect@RowIndex}{false}%initial value of ctflag<n>
+	\setkeys{ctfamId}{##1}%
+	% fp computation
+	\fpRegSet{ctRowValue\thect@RowIndex}{##3}% first number
+	\fpRegSet{ct@two}{##4}% second number
+	\fpRegMul{ctRowValue\thect@RowIndex}{ct@two}
+	\fpRegRound{ctRowValue\thect@RowIndex}{-2}
+	%
+	% now, we must control the ``rule'' case
+	\ifthenelse{\boolean{ct@ifinrule}}{
+		\ifthenelse{\boolean{ct@ifruleafteradd}}{%
+			\toks255=\expandafter{\the\toks255\midrule}
+			\setboolean{ct@ifruleafteradd}{false}
+		}{}
+	}{
+		\setboolean{ct@ifruleafteradd}{false}
+	}%
+	%
+	%
+	% append the tabular entry to the token register
+	\toks255=\expandafter{\the\toks255\AlphAlph{\value{ct@RowIndex}}&##2\rule{\ctsep}{0pt}&\numprint{##3}&\numprint{##4}&}
+	\fpRegGet{ctRowValue\thect@RowIndex}{\ct@tempnum}
+	\edef\ct@num{\noexpand\numprint{\ct@tempnum}}
+	\toks255=\expandafter\expandafter\expandafter{\expandafter\the\expandafter\toks255\ct@num\\}
+	% rule regolation
+	\setboolean{ct@ifinrule}{true}
+}%
+%
+%
+%
+\newcommand\perc[3][]{%
+	\stepcounter{ct@RowIndex}% another new row
+	\newboolean{ctflag\thect@RowIndex}% definition of bool flag for each row
+	\setboolean{ctflag\thect@RowIndex}{false}% initial value of ctflag<n>
+	% user id label task
+	\setkeys*{ctfamLabel}{##1}
+	\setrmkeys{ctfamId}
+	% 'from' and 'until' keys process
+	\ct@intervalloop
+	%
+	\addtocounter{ct@RowIndex}{-1}\ct@Loop\stepcounter{ct@RowIndex}
+	\fpDiv{\tempPerc}{##3}{100}%
+	\fpRegSet{tempreg}{\tempPerc}
+	\fpRegMul{ct@Sum}{tempreg}
+	\fpRegRound{ct@Sum}{-2}% approx to the second digit
+	\fpRegGet{ct@Sum}{\ct@tempnum}
+	\fpRegSet{ctRowValue\thect@RowIndex}{\ct@tempnum}
+	%
+	\ifthenelse{\boolean{ct@ifinrule}}{%
+		\ifthenelse{\boolean{ct@ifruleafteradd}}{%
+			\toks255=\expandafter{\the\toks255\midrule}
+			\setboolean{ct@ifruleafteradd}{false}
+		}{}%
+	}{% else clause
+		\setboolean{ct@ifruleafteradd}{false}
+	}%
+	%
+	\toks255=\expandafter{\the\toks255\AlphAlph{\value{ct@RowIndex}}&##2 (\numprint{##3}\% \ct@ctontraslation{} }
+	\edef\ct@num{\noexpand\ct@labelreg)\noexpand\rule{\ctsep}{0pt}}
+	\toks255=\expandafter\expandafter\expandafter{\expandafter\the\expandafter\toks255\ct@num&&&}
+	\edef\ct@num{\noexpand\numprint{\ct@tempnum}}
+	\toks255=\expandafter\expandafter\expandafter{\expandafter\the\expandafter\toks255\ct@num\\}
+	\setboolean{ct@ifinrule}{true}
+}
+%
+\newcommand\add[2][]{%
+	\def\ctref@temp{##1}% save id list
+	\setkeys*{ctfamLabel}{##1}
+	\setrmkeys{ctfamAddid}
+	% 'from' and 'until' keys process
+	\ct@intervalloop
+	%
+	\ifthenelse{\boolean{ct@ifinrule}}{\toks255=\expandafter{\the\toks255\midrule}}{}
+	\ct@Loop\fpRegGet{ct@Sum}{\ct@tempnum}
+	\toks255=\expandafter{\the\toks255\rowcolor{gray!15}&\bfseries##2 (}
+	\edef\ct@num{\noexpand\ct@labelreg)}
+	\toks255=\expandafter\expandafter\expandafter{\expandafter\the\expandafter\toks255\ct@num&&&\bfseries}
+	\edef\ct@num{\noexpand\numprint{\ct@tempnum}}
+	\toks255=\expandafter\expandafter\expandafter{\expandafter\the\expandafter\toks255\ct@num\\}
+	% rule case analisys flag setup
+	\setboolean{ct@ifinrule}{true}
+	\setboolean{ct@ifruleafteradd}{true}
+}
+%
+% this command remain internal!
+\newcommand\inrule{%
+	\ifthenelse{\boolean{ct@ifinrule}}{%
+		\toks255=\expandafter{\the\toks255\midrule}
+	}{
+		\PackageWarning{calctab}{\ct@inrulewarning}
+	}
+	\setboolean{ct@ifinrule}{false}
+}%
+%
+%
+%
+}{% calctab environment closing code
+	\begin{center}
+	\begin{lrbox}{\ct@TabBox}
+	\the\toks255\bottomrule
+	\end{tabular}
+	\end{lrbox}
+	\sffamily
+	\parbox{\wd\ct@TabBox}{
+	\ct@FirstPar\par\smallskip\par
+	\usebox{\ct@TabBox}}
+	\end{center}
+}
+%
+%
+% package warning and error macro definition part code
+%
+% the user has defined a key that not exist
+\newcommand{\ct@keynotexisterr}[1]{The key '#1' not exist}
+%
+% in the id list command optional argument, a key is been specifed more then one time
+\newcommand{\ct@overridingkeyerr}[1]{The '#1' key is just specifed in a previous optional arg sequence.\MessageBreak
+Overlap ignored}
+%
+\newcommand{\ct@notusefulwarning}[1]{The key '#1' is not influential on computation}
+\newcommand{\ct@inrulewarning}[1]{A rule cannot be draw at this point. Command ignored}
+%
+%
+%
+% Version 0.6.1 Changes history see the calctab_manual.pdf documentation
+%
+% end of file calctab.sty

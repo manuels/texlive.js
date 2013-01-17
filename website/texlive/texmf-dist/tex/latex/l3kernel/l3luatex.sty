@@ -1,0 +1,183 @@
+%%
+%% This is file `l3luatex.sty',
+%% generated with the docstrip utility.
+%%
+%% The original source files were:
+%%
+%% l3luatex.dtx  (with options: `package')
+%% 
+%% EXPERIMENTAL CODE
+%% 
+%% Do not distribute this file without also distributing the
+%% source files specified above.
+%% 
+%% Do not distribute a modified version of this file.
+%% 
+%% File: l3luatex.dtx Copyright (C) 2010-2012 The LaTeX3 Project
+%%
+%% It may be distributed and/or modified under the conditions of the
+%% LaTeX Project Public License (LPPL), either version 1.3c of this
+%% license or (at your option) any later version.  The latest version
+%% of this license is in the file
+%%
+%%    http://www.latex-project.org/lppl.txt
+%%
+%% This file is part of the "l3kernel bundle" (The Work in LPPL)
+%% and all files in that bundle must be distributed together.
+%%
+%% The released version of this bundle is available from CTAN.
+%%
+%% -----------------------------------------------------------------------
+%%
+%% The development version of the bundle can be found at
+%%
+%%    http://www.latex-project.org/svnroot/experimental/trunk/
+%%
+%% for those people who are interested.
+%%
+%%%%%%%%%%%
+%% NOTE: %%
+%%%%%%%%%%%
+%%
+%%   Snapshots taken from the repository represent work in progress and may
+%%   not work or may contain conflicting material!  We therefore ask
+%%   people _not_ to put them into distributions, archives, etc. without
+%%   prior consultation with the LaTeX3 Project.
+%%
+%% -----------------------------------------------------------------------
+\RequirePackage{l3names}
+\GetIdInfo$Id: l3luatex.dtx 3355 2012-02-09 07:18:22Z joseph $
+  {L3 Experimental LuaTeX-specific functions}
+\ProvidesExplPackage
+  {\ExplFileName}{\ExplFileDate}{\ExplFileVersion}{\ExplFileDescription}
+\package_check_loaded_expl:
+\msg_kernel_new:nnnn { luatex } { bad-engine }
+  { LuaTeX~engine~not~in~use!~Ignoring~#1. }
+  {
+    The~feature~you~are~using~is~only~available~
+    with~the~LuaTeX~engine.~LaTeX3~ignored~`#1#2'.
+  }
+\luatex_if_engine:TF
+  {
+    \cs_new_eq:NN \lua_now:x       \luatex_directlua:D
+    \cs_new_eq:NN \lua_shipout_x:n \luatex_latelua:D
+  }
+  {
+    \cs_new:Npn \lua_now:x #1
+      {
+        \msg_expandable_kernel_error:nnn
+          { luatex } { bad-engine } { \lua_now:x }
+      }
+    \cs_new_protected:Npn \lua_shipout_x:n #1
+      {
+        \msg_expandable_kernel_error:nnn
+          { luatex } { bad-engine } { \lua_shipout_x:n }
+      }
+  }
+\cs_new:Npn \lua_now:n #1
+  { \lua_now:x { \exp_not:n {#1} } }
+\cs_generate_variant:Nn \lua_shipout_x:n { x }
+\cs_new_protected:Npn \lua_shipout:n #1
+  { \lua_shipout_x:n { \exp_not:n {#1} } }
+\cs_generate_variant:Nn \lua_shipout:n { x }
+\int_new:N  \g_cctab_allocate_int
+\int_set:Nn \g_cctab_allocate_int { \c_minus_one }
+\int_new:N \g_cctab_stack_int
+\seq_new:N \g_cctab_stack_seq
+\cs_new_protected:Npn \cctab_new:N #1
+  {
+    \chk_if_free_cs:N #1
+    \int_gadd:Nn \g_cctab_allocate_int { \c_two }
+    \int_compare:nNnTF
+      \g_cctab_allocate_int <  { \c_max_register_int + \c_one }
+       {
+         \tex_global:D \tex_chardef:D #1 \g_cctab_allocate_int
+         \luatex_initcatcodetable:D #1
+       }
+       { \msg_kernel_fatal:nnx { kernel } { out-of-registers } { cctab } }
+  }
+\luatex_if_engine:F
+  {
+    \cs_set_protected:Npn \cctab_new:N #1
+      {
+        \msg_kernel_error:nnx { luatex } { bad-engine }
+          { \exp_not:N \cctab_new:N }
+      }
+  }
+\luatex_if_engine:T
+  {
+    \cs_set_protected:Npn \cctab_new:N #1
+      {
+        \chk_if_free_cs:N #1
+        \newcatcodetable #1
+        \luatex_initcatcodetable:D #1
+      }
+  }
+\cs_new_protected:Npn \cctab_begin:N #1
+  {
+    \seq_gpush:Nx \g_cctab_stack_seq { \tex_the:D \luatex_catcodetable:D }
+    \luatex_catcodetable:D #1
+    \int_gadd:Nn \g_cctab_stack_int { \c_two }
+    \int_compare:nNnT \g_cctab_stack_int > \c_max_register_int
+      { \msg_kernel_fatal:nn { code } { cctab-stack-full } }
+    \luatex_savecatcodetable:D \g_cctab_stack_int
+    \luatex_catcodetable:D \g_cctab_stack_int
+  }
+\cs_new_protected_nopar:Npn \cctab_end:
+  {
+    \int_gsub:Nn \g_cctab_stack_int { \c_two }
+    \seq_if_empty:NTF \g_cctab_stack_seq
+      { \tl_set:Nn \l_cctab_internal_tl { 0 } }
+      { \seq_gpop:NN \g_cctab_stack_seq \l_cctab_internal_tl }
+    \luatex_catcodetable:D \l_cctab_internal_tl \scan_stop:
+  }
+\luatex_if_engine:F
+  {
+    \cs_set_protected:Npn \cctab_begin:N #1
+      {
+        \msg_kernel_error:nnxx { luatex } { bad-engine }
+          { \exp_not:N \cctab_begin:N } {#1}
+      }
+    \cs_set_protected_nopar:Npn \cctab_end:
+      {
+        \msg_kernel_error:nnx { luatex } { bad-engine }
+          { \exp_not:N \cctab_end: }
+      }
+  }
+\luatex_if_engine:T
+  {
+    \cs_set_protected:Npn \cctab_begin:N #1 { \BeginCatcodeRegime #1 }
+    \cs_set_protected_nopar:Npn \cctab_end: { \EndCatcodeRegime }
+  }
+\tl_new:N \l_cctab_internal_tl
+\cs_new_protected:Npn \cctab_gset:Nn #1#2
+  {
+    \group_begin:
+      #2
+      \luatex_savecatcodetable:D #1
+    \group_end:
+  }
+\luatex_if_engine:F
+  {
+    \cs_set_protected:Npn \cctab_gset:Nn #1#2
+      {
+        \msg_kernel_error:nnxx { luatex } { bad-engine }
+          { \exp_not:N \cctab_gset:Nn } { #1 {#2} }
+      }
+  }
+\luatex_if_engine:T
+  {
+    \cctab_new:N \c_code_cctab
+    \cctab_gset:Nn \c_code_cctab { }
+  }
+\luatex_if_engine:T
+  {
+    \cs_new_eq:NN \c_document_cctab \CatcodeTableLaTeX
+    \cs_new_eq:NN \c_initex_cctab   \CatcodeTableIniTeX
+    \cs_new_eq:NN \c_other_cctab    \CatcodeTableOther
+    \cs_new_eq:NN \c_str_cctab      \CatcodeTableString
+  }
+\cs_new_eq:NN \c_string_cctab \c_str_cctab
+%% 
+%%
+%% End of file `l3luatex.sty'.

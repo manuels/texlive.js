@@ -1,0 +1,215 @@
+
+% Copyright 2003 by Rolf Niepraschk (Rolf.Niepraschk@ptb.de).
+% This software is released under the terms of the LaTeX Project Public 
+% License  (ftp://dante.ctan.org/tex-archive/macros/latex/base/lppl.txt).
+% (Essentially: Free to use, copy, distribute (sell) and change, but, if
+% changed, the name must be changed.)
+
+\ProvidesPackage{colorinfo}
+  [2003/05/04 v0.3c Info from defined colors (RN)]
+
+\newcommand*\colorInfo[1]{} 
+\newcommand*\colorInfoRGB[1]{} 
+\newcommand*\colorModel{}
+\newcommand*\colorValue{}
+\newcommand*\colorDriver{}
+\newcommand*\CI@color@info{}
+\newcommand*\CI@cmyk@rgb{}
+
+\chardef\CI@SaveCatcode=\catcode`\" \catcode`\"=12\relax
+\def\colorInfo#1{%
+  \begingroup
+  \gdef\colorModel{}\gdef\colorValue{}%
+  \@ifundefined{\string\color @#1}{}%
+  {%
+    \edef\@tempa{\csname\string\color @#1\endcsname}%
+    \expandafter\CI@color@info\@tempa
+  }
+  \endgroup
+} 
+%
+\def\colorInfoRGB#1{%
+  \colorInfo{#1}%
+  \def\@tempa{rgb}%
+  \ifx\colorModel\@tempa\else
+    \def\@tempa{gray}%
+    \ifx\colorModel\@tempa
+      \edef\colorValue{\colorValue,\colorValue,\colorValue}
+    \else%  CMYK
+      \expandafter\CI@cmyk@rgb\colorValue,
+    \fi 
+    \def\colorModel{rgb} 
+  \fi  
+}
+%
+\def\CI@cmyk@rgb#1,#2,#3,#4,{%
+  \@tempdimb=#4\p@\advance\@tempdimb by \m@ne\p@%    K - 1
+  \@tempdimc=-\@tempdimb%                            1 - K
+%    
+  \@tempdima=#1\@tempdimb%                           C * (K - 1)
+  \advance\@tempdima by \@tempdimc%                  1 + C * (K - 1) - K 
+  \xdef\colorValue{\strip@pt\@tempdima}%             R
+%    
+  \@tempdima=#2\@tempdimb%                           M * (K - 1)
+  \advance\@tempdima by \@tempdimc%                  1 + M * (K - 1) - K  
+  \xdef\colorValue{\colorValue,\strip@pt\@tempdima}% R,G
+%    
+  \@tempdima=#3\@tempdimb%                           Y * (K - 1)
+  \advance\@tempdima by \@tempdimc%                  1 + Y * (K - 1) - K 
+  \xdef\colorValue{\colorValue,\strip@pt\@tempdima}% R,G,B    
+} 
+
+\newcommand\CI@DriverInit{%
+  \@ifpackageloaded{color}{%
+    \@ifundefined{Gin@driver}{}{%
+      \ifx\Gin@driver\@empty\else
+        \filename@parse{\Gin@driver}
+        \edef\colorDriver{\filename@base}
+%
+\@tempswatrue
+\def\@tempa{dvips}
+\ifx\@tempa\colorDriver
+\else\def\@tempa{dvipdfm}
+  \ifx\@tempa\colorDriver
+  \else\def\@tempa{dvipsone}
+    \ifx\@tempa\colorDriver
+    \else\def\@tempa{pctex32}
+      \ifx\@tempa\colorDriver 
+      \else\@tempswafalse
+      \fi
+    \fi
+  \fi
+\fi
+%
+\if@tempswa%                            --- dvips family ---  
+  \def\CI@color@info##1 {%
+    \gdef\colorModel{##1}%
+    \csname CI@dvips@\colorModel\endcsname
+  }  
+  \newcommand*\CI@dvips@rgb{}
+  \def\CI@dvips@rgb##1 ##2 ##3 {%
+    \gdef\colorValue{##1,##2,##3}%  
+  }
+  \newcommand*\CI@dvips@gray{}
+  \def\CI@dvips@gray##1 {%
+    \gdef\colorValue{##1}%  
+  }
+  \newcommand*\CI@dvips@cmyk{}
+  \def\CI@dvips@cmyk##1 ##2 ##3 ##4 {%
+    \gdef\colorValue{##1,##2,##3,##4}% 
+  }   
+\else 
+  \def\@tempa{pdftex}
+  \ifx\@tempa\colorDriver%              --- pdfTeX ---
+%
+    \providecommand*\@gobblefive[5]{}
+    \providecommand*\@gobblesix[6]{}
+%    
+    \def\CI@color@info##1 ##2 ##3 ##4 {%
+      \def\@tempa{##4}%
+      \def\@tempb{rg}%
+      \ifx\@tempa\@tempb%   RGB
+        \gdef\colorModel{rgb}\gdef\colorValue{##1,##2,##3}% 
+        \let\@tempb\@gobblefive
+      \else  
+        \def\@tempb{G}%
+        \ifx\@tempa\@tempb% GRAY
+          \gdef\colorModel{gray}\gdef\colorValue{##1}% 
+          \let\@tempb\relax
+        \else%              CMYK
+          \gdef\colorModel{cmyk}\gdef\colorValue{##1,##2,##3,##4}%
+          \let\@tempb\@gobblesix 
+        \fi
+      \fi
+      \@tempb
+    }      
+  \else
+    \def\@tempa{vtex}
+    \ifx\@tempa\colorDriver%            --- VTeX ---        
+      \def\CI@color@info##1##2##3##4##5##6##7##8{%  
+        \def\@tempa{##2}\def\@tempb{"}%
+        \ifx\@tempa\@tempb
+          \gdef\colorModel{rgb}%
+         \CI@normalize{\number"##3##4,\number"##5##6,\number"##7##8}%
+           {\colorValue}\let\@tempb\relax
+        \else
+          \gdef\colorModel{cmyk}%
+          \gdef\colorValue{\number"##3##4,\number"##5##6,\number"##7##8}%
+          \let\@tempb\CI@vtex@cmyk% 
+        \fi
+        \@tempb
+      }
+      \newcommand*\CI@vtex@cmyk{}
+      \def\CI@vtex@cmyk##1##2{%
+        \CI@normalize{\colorValue,\number"##1##2}{\colorValue}
+      }
+      \newcommand*\CI@normalize[2]{%
+        \begingroup
+          \def\@tempb{}\@tempswafalse
+          \@for\@tempa:=##1\do{%
+            \if@tempswa\edef\@tempb{\@tempb,}\else\@tempswatrue\fi
+            \@tempdima=\@tempa\p@\divide\@tempdima by\@cclv\relax
+            \edef\@tempb{\@tempb\strip@pt\@tempdima}}
+          \xdef##2{\@tempb}
+        \endgroup  
+      } 
+    \else
+      \def\@tempa{textures}
+      \ifx\@tempa\colorDriver%          --- textures ---
+        \def\colorInfo##1{%
+          \def\colorModel{}\def\colorValue{}%
+          \@ifundefined{\string\color @##1}{}%
+          {%
+            \typeout{Not yet implemented...}
+          }
+        }
+      \else
+        \def\@tempa{tcidvi}
+        \ifx\@tempa\colorDriver%        --- tcidvi ---
+          \def\colorInfo##1{%
+            \def\colorModel{}\def\colorValue{}%
+            \@ifundefined{\string\color @##1}{}%
+            {%
+              \typeout{Not yet implemented...}
+            }
+          } 
+        \else
+          \def\@tempa{truetex}
+          \ifx\@tempa\colorDriver% --- truetex ---
+            \def\colorInfo##1{%
+              \def\colorModel{}\def\colorValue{}%
+              \@ifundefined{\string\color @##1}{}%
+              {%
+                \typeout{Not yet implemented...}
+              }
+            } 
+          \else
+            \def\@tempa{pctexps}
+            \ifx\@tempa\colorDriver%    --- pctexps ---
+              \def\colorInfo##1{%
+                \def\colorModel{}\def\colorValue{}%
+                \@ifundefined{\string\color @##1}{}%
+                {%
+                  \typeout{Not yet implemented...}
+                }
+              }
+            \fi               
+          \fi            
+        \fi                
+      \fi                
+    \fi          
+  \fi
+\fi
+%
+%-----------------------------------------           
+      \fi  
+    }%  \@ifundefined{Gin@driver}
+  }{}%  \@ifpackageloaded{color}
+}%      \CI@DriverInit
+\catcode`\"=\CI@SaveCatcode 
+
+\AtBeginDocument{%
+  \CI@DriverInit\let\CI@DriverInit=\relax
+}
+
+\endinput

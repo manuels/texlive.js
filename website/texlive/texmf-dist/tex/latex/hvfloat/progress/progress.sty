@@ -1,0 +1,359 @@
+%%
+%% This is file `progress.sty',
+%%
+%% version 1.10
+%%
+%% Copyright (C) 2002-2003 Kasper B. Graversen - this is freeware
+%%
+%% Thanks to Robin Fairbairns for helping me sorting things out ;-)
+%% Thanks to Dan Luecking for some definitions
+%% Also thanks to David Bausum for his free 'trept' "TeX: Reference and Examples" information material
+%%
+%% Progress may be distributed and/or modified under the
+%% conditions of the LaTeX Project Public License, either version 1.1
+%% of this license or (at your option) any later version.
+%% The latest version of this license is in
+%% http://www.latex-project.org/lppl.txt
+%% and version 1.1 or later is part of all distributions of LaTeX
+%% version 1999/06/01 or later.
+
+\NeedsTeXFormat{LaTeX2e}[1994/06/01]
+\ProvidesPackage{progress}[2003/29/06 v1.10 progress package]
+\typeout{Package: progress v1.10 <2003/29/06> (Kasper B. Graversen)}
+
+
+% User-redefinable option: the form of the output filename
+\newcommand{\ProgressReportName}{\jobname\YYYYMMDDdate.html}
+
+% User-redefinable option: the size of the picture, if progress graphs are drawn
+\newlength{\ProgressGfxUnitSize}
+\setlength{\ProgressGfxUnitSize}{0.07mm}    % default value
+
+\newcount\ProgressGfxXSize
+\newcount\ProgressGfxYSize
+\ProgressGfxXSize = 100 \relax
+\ProgressGfxYSize =  20 \relax
+
+
+% User-redifinable option: the output in the document (dvi/pdf file)
+\newcommand{\ProgressDocOutput}[1]{\marginpar{\ProgressDrawBar{#1}}}
+
+
+
+
+
+% pr@gressArgument - holds the percent given to \progress{}
+\newcount\pr@gressArgument
+
+% pr@gressDepth is the level of output
+%   pr@gressDepth = 1 : only chapters
+%   pr@gressDepth = 2 : only chapters & sections
+%   pr@gressDepth = 3 : only chapters & sections & subsections
+%   pr@gressDepth = 4 : only chapters & sections & subsections & subsubsection
+\newcount\pr@gressDepth
+
+% pr@gressCurrentDepth denotes the currently encountered \chapter, \section, \subsection, or \subsubsection
+%	pr@gressCurrentDepth = 1 : chapter
+%	pr@gressCurrentDepth = 2 : section
+%	pr@gressCurrentDepth = 3 : subsection
+%	pr@gressCurrentDepth = 4 : subsubsection
+\newcount\pr@gressCurrentDepth
+
+% denotes if \progress should perfom actions or not
+% \d@cumentstate = 1 : draft.. include all definitions
+% \d@cumentstate = 2 : final.. include nothing
+\newcount\d@cumentstate
+\d@cumentstate=1\relax  % default is draftmode (\relax stops scanning: it's only active job)
+
+
+\DeclareOption{chapter}{\pr@gressDepth=1\relax}
+\DeclareOption{section}{\pr@gressDepth=2\relax}
+\DeclareOption{subsection}{\pr@gressDepth=3\relax}
+\DeclareOption{subsubsection}{\pr@gressDepth=4\relax}
+
+\DeclareOption{textonly}{\renewcommand{\ProgressDocOutput}[1]{\marginpar{{\scriptsize progress: #1\%}}}}
+\DeclareOption{textgfx}{\renewcommand{\ProgressDocOutput}[1]{\marginpar{\ProgressDrawBar{#1}{\scriptsize~#1\%}}}}
+
+\DeclareOption{final}{%
+	\newcommand{\progress}[1]{}%    in final mode do not write anything to the document (nor to the html file!)
+	\d@cumentstate=2\relax%         set to final mode
+}%
+
+\DeclareOption{draft}{
+	\d@cumentstate=1\relax%	set to draft mode
+	\newcommand{\progress}[1]{%
+        % ask if current level is <= user specified level
+        \@tempcnta=\pr@gressDepth
+        \advance\@tempcnta by 1
+        \ifnum\pr@gressCurrentDepth < \@tempcnta
+            \pr@gressArgument=#1 				% set a register to the given percent value to determine its size
+            \ifnum\pr@gressArgument < 0
+            \def\bgcolor{A05050} ****\else	    % HTML "brown"
+            \ifnum\pr@gressArgument < 51
+            \def\bgcolor{FF0000} \else        	% HTML "red"
+            \ifnum\pr@gressArgument < 71
+            \def\bgcolor{C71585} \else        	% HTML "MediumVioletRed"
+            \ifnum\pr@gressArgument < 81
+            \def\bgcolor{6495ED} \else         	% HTML light blue
+            \ifnum\pr@gressArgument < 91
+            \def\bgcolor{FF8C00} \else         	% orange
+            \ifnum\pr@gressArgument < 95
+            \def\bgcolor{008000} \else         	% green
+            \ifnum\pr@gressArgument = 100
+            \def\bgcolor{ADFF2F}              	% GreenYellow
+            \fi\fi\fi\fi\fi\fi\fi
+            \immediate\write\fp{<td bgcolor="\hashchar \bgcolor"><b><font color="\hashchar FFFFFF"> #1\percentchar</font><b></td></tr>}%
+        \fi%
+        \ProgressDocOutput{#1}					% write something in the document
+	}%
+}%
+
+\ProcessOptions\relax
+%
+%  source2e contains some explanations of \@ifstar, \@dblarg, and the syntax of \chapter, ...
+%  \dosometingbefore/\dosomethingafter marks the stuff/macro that you can insert.
+%  Heiko <oberdiek@uni-freiburg.de>
+%
+% Syntax for \foo (\chapter, \section, ...):
+%   \foo*{...}
+%   \foo[...]{...}
+%   \foo{...}
+% The star is catched by \@ifstar:
+
+%%% define \percentchar and \hashchar by Dan Luecking
+{\catcode`\%=12 \gdef\percentchar{%}}
+{\catcode`\#=12 \gdef\hashchar{#}}
+
+
+\AtBeginDocument{%
+\ifnum\d@cumentstate = 1\relax	% only if draft mode
+	%%% setup file write..
+	\newwrite\fp
+	\immediate\openout\fp=\ProgressReportName
+
+	%%% title header of document and document title
+	\immediate\write\fp{<html><head><title>Progress of "\jobname"\space \eightdigitdate</title></head><body>}
+	\immediate\write\fp{<h1>Progress of "\jobname"\space generated \eightdigitdate </h1>}
+
+	%% start real HTML table
+	\immediate\write\fp{<table border="1" width="100\percentchar">}
+\fi
+}
+
+
+% long definition since @mkboth otherwise fucks up when using headers in document
+\newcommand{\insertChapter}[1]{%
+  \pr@gressCurrentDepth=1\relax
+  \begingroup
+    \set@display@protect
+    \let\@mkboth\@gobbletwo
+        \ifnum\thechapter > 0
+		\immediate\write\fp{<tr><td bgcolor="\hashchar cccccc" width=70\percentchar><font size="+3">\thechapter&nbsp;#1</font></td>}
+        \fi
+  \endgroup
+}
+
+
+\newcommand{\insertSection}[1]{%
+	\pr@gressCurrentDepth = 2\relax
+	\ifnum\pr@gressDepth > 1
+	    \immediate\write\fp{<tr><td><font size="+2">&nbsp;&nbsp;&nbsp;&nbsp;\thesection&nbsp;#1</font></td>}
+	\fi
+}
+\newcommand{\insertSubsection}[1]{%
+	\pr@gressCurrentDepth = 3\relax
+	\ifnum\pr@gressDepth > 2
+		\immediate\write\fp{<tr><td><font size="+1">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;\thesubsection&nbsp;#1</font></td>}
+	\fi
+}
+
+\newcommand{\insertSubsubsection}[1]{%
+	\pr@gressCurrentDepth = 4\relax
+	\ifnum\pr@gressDepth > 3
+		\immediate\write\fp{<tr><td><font size="+0">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;\thesubsubsection&nbsp;#1</font></td>}
+	\fi
+}
+
+
+%%% CHAPTER
+\ifx\chapter\undefined
+%no definition if in article mode or other modes without chapter
+\else
+    \ifnum\d@cumentstate = 1\relax	% only if draft mode
+        \newcommand*{\oooldchapter}{}% check, if \oooldchapter is free
+        \let\oooldchapter\chapter
+
+        \renewcommand*{\chapter}{%
+          \@ifstar{\starchapter}%
+          {\@dblarg\nostarchapter}%
+        }
+
+        \newcommand*{\starchapter}[1]{%
+          \oooldchapter*{#1}%
+          \insertChapter{#1}%
+        }
+
+        \newcommand{\nostarchapter}{}
+        \def\nostarchapter[#1]#2{% #1: toc entry, #2: main entry
+          \oooldchapter[{#1}]{#2}%
+          \insertChapter{#2}%
+        }
+    \fi
+\fi
+
+%%% SECTION
+\ifnum\d@cumentstate = 1 \relax	% only if draft mode
+	\newcommand*{\oooldsection}{}% check, if \oooldchapter is free
+	\let\oooldsection\section
+
+	\renewcommand*{\section}{%
+	  \@ifstar{\starsection}%
+	  {\@dblarg\nostarsection}%
+	}
+
+	\newcommand*{\starsection}[1]{%
+	  \oooldsection*{#1}%
+	  \insertSection{#1}%
+	}
+
+	\newcommand{\nostarsection}{}
+	\def\nostarsection[#1]#2{% #1: toc entry, #2: main entry
+	  \oooldsection[{#1}]{#2}%
+	  \insertSection{#2}%
+	}
+\fi
+
+
+%%% SUBSECTION
+\ifnum\d@cumentstate = 1\relax	% only if draft mode
+	\newcommand*{\oooldsubsection}{}% check, if \oooldchapter is free
+	\let\oooldsubsection\subsection
+
+	\renewcommand*{\subsection}{%
+	  \@ifstar{\starsubsection}%
+	  {\@dblarg\nostarsubsection}%
+	}
+
+	\newcommand*{\starsubsection}[1]{%
+	  \oooldsubsection*{#1}%
+	  \insertSubsection{#1}%
+	}
+
+	\newcommand{\nostarsubsection}{}
+	\def\nostarsubsection[#1]#2{% #1: toc entry, #2: main entry
+	  \oooldsubsection[{#1}]{#2}%
+	  \insertSubsection{#2}%
+	}
+\fi
+
+
+%%% SUBSUBSECTION
+\ifnum\d@cumentstate = 1\relax	% only if draft mode
+	\newcommand*{\oooldsubsubsection}{}% check, if \oooldchapter is free
+	\let\oooldsubsubsection\subsubsection
+
+	\renewcommand*{\subsubsection}{%
+	  \@ifstar{\starsubsubsection}%
+	  {\@dblarg\nostarsubsubsection}%
+	}
+
+	\newcommand*{\starsubsubsection}[1]{%
+	  \oooldsubsubsection*{#1}%
+	  \insertSubsection{#1}%
+	}
+
+	\newcommand{\nostarsubsubsection}{}
+	\def\nostarsubsubsection[#1]#2{% #1: toc entry, #2: main entry
+	  \oooldsubsubsection[{#1}]{#2}%
+	  \insertSubsubsection{#2}%
+	}%
+\fi
+
+
+
+
+%%% helper methods for generating the date for the HTML file output
+\newcommand{\eightdigitdate}{%
+    \ifnum\number \day  < 10 0\number\day   \else \number\day\fi.%
+    \ifnum\number \month< 10 0\number\month \else \number\month\fi.%
+    \number\year%
+}
+
+%% is used for naming the progress output file. It returns an 8-digit date with no "." in format YYMMDD
+\newcommand{\YYYYMMDDdate}{%
+    \number\year%
+    \ifnum\number \month< 10 0\number\month \else \number\month\fi%
+    \ifnum\number \day  < 10 0\number\day   \else \number\day\fi%
+}
+
+%% is used for naming the progress output file. It returns an 8-digit date with no "." in format DDMMYY
+\newcommand{\DDMMYYYYdate}{%
+    \ifnum\number \day  < 10 0\number\day   \else \number\day\fi%
+    \ifnum\number \month< 10 0\number\month \else \number\month\fi%
+    \number\year%
+}
+
+%% is used for naming the progress output file. It returns an 8-digit date with no "." in format MMDDYY
+\newcommand{\MMDDYYYYdate}{%
+    \ifnum\number \month< 10 0\number\month \else \number\month\fi%
+    \ifnum\number \day  < 10 0\number\day   \else \number\day\fi%
+    \number\year%
+}
+
+\AtEndDocument{%
+	\ifnum\d@cumentstate = 1\relax	% only if draft mode
+		%% end overview table
+		\immediate\write\fp{</table>}
+		%% write legend table
+		\immediate\write\fp{<br><br><br><br><blockquote>Legend:<br><table border="1" cellspacing="0" cellpadding="5">}
+		\immediate\write\fp{<tr><td bgcolor="A05050" width=40> &nbsp; 	<td width=55> < 0 <td> Means the same as above 0, but indicate that the author is stuck and needs consultance with co-author(s)	</td></tr>}
+		\immediate\write\fp{<tr><td bgcolor="FF0000"> 				 	<td> 0-50<td> Unfinished</td></tr>}
+		\immediate\write\fp{<tr><td bgcolor="C71585">&nbsp; 			<td>51-70<td> 1st draft - can have "rough edges"<br><br> Focus: main form, contents, major points.</td></tr>}
+		\immediate\write\fp{<tr><td bgcolor="6495ED">&nbsp; 			<td>71-80<td> 2nd draft <br><br> Focus: section consistency internally within the chapter, errors, misunderstandings, disagreements, missing points, missing references, additions, readability.</td></tr>}
+		\immediate\write\fp{<tr><td bgcolor="FF8C00">&nbsp; 			<td>81-90<td> 3rd draft<br><br> Focus: chapter consistency externally within the report, agreement with contents, form, last check if points have been left out, readability.</td></tr>}
+		\immediate\write\fp{<tr><td bgcolor="008000">&nbsp; 			<td>91-99<td> Deliverable</td></tr>}
+		\immediate\write\fp{<tr><td bgcolor="008000">&nbsp; 			<td>95 	 <td> Deliverable, all quotes checked</td></tr>}
+		\immediate\write\fp{<tr><td bgcolor="008000">&nbsp; 			<td>96 	 <td> Deliverable, BibTeX references checked</td></tr>}
+		\immediate\write\fp{<tr><td bgcolor="008000">&nbsp; 			<td>97 	 <td> Deliverable, punctuation checked</td></tr>}
+		\immediate\write\fp{<tr><td bgcolor="008000">&nbsp; 			<td>98 	 <td> Deliverable, thesaurus consulted</td></tr>}
+		\immediate\write\fp{<tr><td bgcolor="008000">&nbsp; 			<td>99 	 <td> Deliverable, whole document spelling checked</td></tr>}
+		\immediate\write\fp{<tr><td bgcolor="ADFF2F">&nbsp; 			<td>100  <td> Finished</td></tr>}
+		\immediate\write\fp{</table>}
+		%% end HTML
+		\immediate\write\fp{<table width="100\percentchar"><tr align="right"><td><font size="-2">report generated by progress.sty (c) Kasper B. Graversen 2002-2003</font></td></tr></tabel>}
+        \immediate\write\fp{</blockquote><br></body></html>}
+	\fi
+}
+
+% draws a progress bar with the argument as the percent
+\newcommand{\ProgressDrawBar}[1]{%
+    \setlength{\unitlength}{\ProgressGfxUnitSize}
+    \begin{picture}(\ProgressGfxXSize,\ProgressGfxYSize)(0,0)
+
+    \put(0,0){\framebox(\ProgressGfxXSize,\ProgressGfxYSize)}	% draw the progress box
+																% draw the progress bar
+	\@tempcnta=\ProgressGfxXSize
+	\ifnum \@tempcnta < 0 \multiply \@tempcnta by -1 \fi		% handle negative %'s by   * -1
+	\multiply \@tempcnta by #1		\divide \@tempcnta by 100
+    \multiput(1,0)(1,0){\@tempcnta}{\line(0,1){\ProgressGfxYSize}}
+
+    % draw the 25% marker
+    \@tempcnta=\ProgressGfxXSize   \divide \@tempcnta by 4    		% find x-length of 25%
+    \@tempcntb=\ProgressGfxYSize   \divide \@tempcntb by 4			% find y-height of the 25% and 75% markers
+    \put(\@tempcnta ,0){\line(0,1){\@tempcntb}}%
+
+    % draw the 75% marker
+    \@tempcnta=\ProgressGfxXSize   \divide \@tempcnta by 4    \multiply \@tempcnta by 3 	% find x-length of 75%
+    \put(\@tempcnta ,0){\line(0,1){\@tempcntb}}%
+
+    % draw the 50% marker
+    \@tempcnta=\ProgressGfxXSize   \divide \@tempcnta by 2    	% find x-length of 50%
+    \@tempcntb=\ProgressGfxYSize   \divide \@tempcntb by 2		% find y-height of the 50% marker
+    \put(\@tempcnta ,0){\line(0,1){\@tempcntb}}%
+
+    \end{picture}%
+}
+
+
+
+\endinput

@@ -1,0 +1,238 @@
+%
+%  T A B L S . S T Y           (ver 3.5)
+%
+%  Copyright (c) 1989-1996  by Donald Arseneau
+%
+%  These macros may be freely used, transmitted, reproduced, or modified
+%  provided that this notice is left intact.
+%
+%  Modify LaTeX's array and tabular environments to keep text from touching
+%  other text or hlines above or below.  See instructions after \endinput.
+%
+%----------------------------------------------------------------------
+
+%  create registers and default settings:
+
+\newdimen\tablinesep   \tablinesep= 1pt    \let\tablineskip=\tablinesep
+\newdimen\arraylinesep \arraylinesep= 1pt  \let\arraylineskip=\arraylinesep
+\newdimen\extrarulesep \extrarulesep= 3pt
+
+\newdimen\@arstdepth \newdimen\@arstheight \newdimen\@skip@bove
+
+\let\@tarlinesep\z@ % so outermost arrays will not act nested
+
+% Change the initializations to create a smaller strut and include
+% my macros in the initialization for the preamble.
+
+\def\@array[#1]#2{%  remember global variables to allow recursion:
+ \edef\@unrecurse{\global\@skip@bove\the\@skip@bove
+     \global\@arstheight\the\@arstheight\global\@arstdepth\the\@arstdepth}%
+%  Make the strut on the first line be shorter by the linesep outside
+ \let\@otarlinesep\@tarlinesep \global\@skip@bove-\@otarlinesep
+%  This setup works for both tabular and array because of this test:
+ \ifx\@classz\@arrayclassz \let\@tarlinesep\arraylinesep
+ \else \let\@tarlinesep\tablinesep \fi
+ \divide\@tarlinesep\tw@ % half sep is applied to height & depth
+ \let\@seesize\relax \let\@rememsize\relax \@mkpream{#2}%
+ \@tempdima\arraystretch\ht\strutbox \@tempdimb\arraystretch\dp\strutbox
+ \ifdim\@tarlinesep>\z@ % (need \protect for \multicolumn)
+   \def\@rememsize{\protect\@r@m@msize}\let\@seesize\@s@@size
+   \advance\@tempdima-\@tarlinesep \advance\@tempdimb-\@tarlinesep
+ \fi \setbox\@arstrutbox\hbox{% set up smaller strut
+    \vrule \@height\@tempdima \@depth\@tempdimb \@width\z@}%
+ \let\protect\noexpand
+ \edef\@preamble{\ialign \noexpand\@halignto \bgroup
+ \unhcopy\@arstrutbox \@preamble \tabskip\z@skip &\@sharp \cr}%
+% I have added an extra column (&\@sharp) to take the smart strut.
+ \let\@startpbox\@@startpbox \let\@endpbox\@@endpbox
+ \if#1t\vtop \else \if#1b\vbox \else \vcenter \fi\fi
+ \bgroup \let\par\@empty
+ \global\@arstheight\ht\@arstrutbox \global\@arstdepth\dp\@arstrutbox
+ \advance\extrarulesep.5\arrayrulewidth
+ \let\@sharp##\let\protect\relax \lineskip\z@skip \baselineskip\z@skip
+ \@preamble}
+
+%  Change the meaning of \\ to do the final strut calculation and
+%  put in the smart strut
+
+\def\@xtabularcr{\@ifnextchar[{\@argtabularcr}{\@argtabularcr[\z@]}}
+
+\def\@xarraycr{\aftergroup\@argarraycr\@xtabularcr}
+
+\def\@argarraycr{${}}% put this "aftergroup" so we can combine macro streams
+
+% Sense a following \end, and adjust spacing accordingly;
+% Sense a rule below, as signalled by "\noalign" after expansion
+
+\def\@argtabularcr[#1]{\ifnum\z@=`{\fi}&\omit % end group, new column
+ {\ifnum\z@=`}\fi
+ \global\advance\@arstheight\@skip@bove % use \@skip@bove so it is available
+ \global\@skip@bove#1\relax % actually, the skip below
+ \@ifnextchar\end{\global\advance\@arstdepth-\@otarlinesep\@mystrutcr}%
+    {\expandafter\expandafter\expandafter\@xargarraycr}}
+
+\def\@xargarraycr{\@ifnextchar\noalign
+      {\global\advance\@arstdepth\extrarulesep \@mystrutcr}%
+      {\@mystrutcr}}
+
+\def\@mystrutcr{% \@skip@bove is really the parameter for skip below here
+  \ifdim\@skip@bove>\z@ \advance\@arstdepth\@skip@bove \global\@skip@bove\z@\fi 
+  \advance\@arstheight\@tarlinesep \advance\@arstdepth\@tarlinesep
+  \vrule \@height\@arstheight \@depth\@arstdepth \@width\z@
+  \global\@arstheight\ht\@arstrutbox \global\@arstdepth\dp\@arstrutbox
+  \ifnum\z@=`{\fi}\cr  
+  \ifdim\@skip@bove<\z@ \noalign{\vskip\@skip@bove \global\@skip@bove\z@}\fi}
+
+% Simulate \crcr at the end of the table, assuming that we are not in
+% vmode once a line of entries has started.  This fails to put in a smart
+% strut if the table ends without \\ while in vmode in a column entry.
+% Use \@unrecurse to simulate grouping of global parameters.
+% For nested tables and arrays, the final strut is reduced by the linesep
+% that will be added at the outer level.
+
+\def\endtabular{\endarray $\egroup}
+
+\expandafter\let\csname endtabular*\endcsname=\endtabular
+
+\def\endarray{\ifvmode\csname crcr\endcsname % just do \crcr if \\ given
+  \else \\[\z@ \global\advance\@arstdepth-\@otarlinesep]% 
+  \fi\egroup\@unrecurse\egroup}
+
+% Put \@seesize...\@rememsize in all preamble templates
+
+\def\@tabclassz{\ifcase \@lastchclass \@acolampacol \or \@ampacol \or
+   \or \or \@addamp \or
+   \@acolampacol \or \@firstampfalse \@acol \fi
+\edef\@preamble{\@preamble{%
+  \ifcase
+     \@chnum \hfil\@seesize\ignorespaces\@sharp\unskip\@rememsize \hfil
+     \or \@seesize\ignorespaces\@sharp\unskip\@rememsize \hfil
+     \or \hfil\hskip\z@skip\@seesize\ignorespaces\@sharp\unskip\@rememsize
+  \fi}}}
+
+\def\@arrayclassz{\ifcase \@lastchclass \@acolampacol \or \@ampacol \or
+   \or \or \@addamp \or
+   \@acolampacol \or \@firstampfalse \@acol \fi
+\edef\@preamble{\@preamble
+  \ifcase \@chnum
+     \hfil\@seesize $\relax\@sharp$\@rememsize \hfil
+      \or \@seesize $\relax\@sharp$\@rememsize \hfil
+      \or \hfil\@seesize $\relax\@sharp$\@rememsize \fi}}
+
+\def\@classv{\@addtopreamble{\@seesize\@startpbox{\@nextchar}%
+  \ignorespaces\@sharp\@endpbox\@rememsize}}
+
+% my macros to keep track of the size of entries.
+
+\def\@s@@size{\setbox\z@\hbox\bgroup\bgroup}
+
+\def\@r@m@msize{\egroup\egroup % end the \hbox
+    \ifdim\ht\z@>\@arstheight \global\@arstheight\ht\z@ \fi
+    \ifdim\dp\z@>\@arstdepth  \global\@arstdepth \dp\z@ \fi
+    \unhbox\z@}
+
+% Redefine \hline to remove notches and to give extrarulesep and
+% optional [] skip
+
+\def\hline{\noalign{\ifnum\z@=`}\fi\kern-.5\arrayrulewidth
+   \hrule \@height \arrayrulewidth \kern-.5\arrayrulewidth
+   \global\@skip@bove\extrarulesep
+   \@ifnextchar[\@yhline{\expandafter\expandafter\expandafter\@zhline}}
+
+\def\@xhline{\ifx\@tempa\noalign \vskip\doublerulesep \fi % may be the opt.
+  \ifnum`{=\z@\fi}}
+
+\def\@yhline[#1]{\doublerulesep#1\global\advance\@skip@bove#1\relax
+  \expandafter\expandafter\expandafter\@zhline}
+
+\def\@zhline{\futurelet\@tempa\@xhline}%
+
+% make \cline give the \extrarulesep below
+
+\let\TB@cline\cline
+
+\def\cline#1{\noalign{\kern-.5\arrayrulewidth}%
+ \TB@cline{#1}%
+ \noalign{\global\@skip@bove\extrarulesep \kern.5\arrayrulewidth}}%
+
+\endinput
+% -----------------------------------------------------------------
+%
+%  Modify LaTeX's array and tabular environments to keep text from touching
+%  other text or hlines above or below.  There are three new parameters:
+%
+%  \tablinesep (or \tablelineskip): minimum space between text on successive
+%                  lines in a tabular environment.  Negative distances are
+%                  treated as zero.  The default value is 1pt.  0pt turns off
+%                  checking for touching text.  Text given in an @{ }
+%                  specification is never checked for overlap.
+%
+%  \arraylinesep (or \arraylineskip): like \tablinesep, but for arrays.
+%
+%  \extrarulesep : extra space to add above and below each \hline and \cline.
+%                  There will be at least \extrarulesep + 0.5\tablinesep
+%                  between an \hline and a line of text.  Negative values can
+%                  be used, but only until some text touches the line.
+%                  The default value is 3pt.
+%
+%  To ensure interline separations in tables but not arrays, declare
+%        \setlength\arraylinesep{0pt}
+%  The appearance of normal LaTeX tables can be had with
+%        \setlength\tablinesep{0pt}
+%        \setlength\arraylinesep{0pt}
+%        \setlength\extrarulesep{0pt}
+%  but it would be better to not use tabls in this situation.
+%
+%  \hline[dimen]:
+%
+%  \hline has been changed to take an optional length argument just like \\
+%  giving the space to insert below.  This space is in addition to the
+%  \extrarulesep and linesep.  A negative value will reduce the space until
+%  the hline touches some text below, and then will have no further effect.
+%  E.g., \hline[-9in] draws a horizontal line while suppressing the extrarulesep
+%  beneath.  Also, the new \hline FIXES THE NOTCHES that used to appear at the
+%  junction between horizontal and vertical lines.
+%
+%  How it works:
+%  There are no struts in the preamble entries (lie), rather, there are
+%  tests to measure the maximum height and depth of all entries on a line.
+%  The maximum values start at the size of LaTeX's \@arstrut minus the
+%  appropriate linesep.  At the \\, a strut is inserted (in its own
+%  column) which is that maximum size plus the linesep plus any additional
+%  space for separation from \hline s.
+%
+%  The Downside:
+%  Building a table will be slower than before because the entries have to
+%  be boxed twice (by \@seesize and by \halign itself) instead of just once.
+%  \setlength\tablinesep{0pt} will recover most of this speed, with
+%  \extrarulesep still partially in effect--extra space will still be added
+%  around hlines, but it may be taken up by very tall or very deep table
+%  entries; thus text may still touch the lines.  Because of the speed penalty,
+%  if your computer is slow, it is probably best to omit the TABLS option 
+%  until producing a final copy.
+%
+%  (2.2) \endtabular* is defined (it was left out before. oops!)
+%  change some \z@ to \z@skip. Thanks to Michael Downes.
+%  Create alias \tablinesep = \tablelineskip for consistency with
+%  \tabcolsep nomenclature. \def\\{\crcr} used in ver 2.1 didn't work right,
+%  so use \csname crcr\endcsname.
+%
+%  (3.0) Arrays are included! The very top and bottom struts of nested
+%  arrays are reduced by the lesser of the inner and outer lineseps so space
+%  doesn't accumulate with each level of nesting.
+%
+%  (3.1 & 3.2 & 3.3) Minor changes to match LaTeX updates.
+%
+%  (3.4) More extensive changes, prompted by LaTeX updates.  You can now hide
+%  \hline in another macro, and it is still recognized. [Similar commands that
+%  add \extrarulesep must begin with \noalign.]  \hline[3pt]\hline is now
+%  reasonable. (Also try \hline[0pt]\hline!)
+%
+%  (3.5) Fix several (non-crashing) bugs introduced in 3.4
+%
+%  Send problem reports to asnd@triumf.ca
+%
+%  Test integrity of file:
+%  brackets: round, square, curly, angle:   () [] {} <>
+%  backslash, slash, vertical, at, dollar, and: \ / | @ $ &
+%  hat, grave, acute (apostrophe), quote, tilde:   ^ ` ' " ~

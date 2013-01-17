@@ -1,0 +1,133 @@
+ %% drawstack.sty
+  %% Copyright 2010 Matthieu Moy <Matthieu.Moy@imag.fr>
+  %
+  % This work may be distributed and/or modified under the
+  % conditions of the LaTeX Project Public License, either version 1.3
+  % of this license or (at your option) any later version.
+  % The latest version of this license is in
+  %   http://www.latex-project.org/lppl.txt
+  % and version 1.3 or later is part of all distributions of LaTeX
+  % version 2005/12/01 or later.
+  %
+  % This work has the LPPL maintenance status `maintained'.
+  %
+  % The Current Maintainer of this work is M. Matthieu Moy.
+  %
+  % This work consists of the files drawstack.sty and the example file
+  % stack-example.tex.
+
+\NeedsTeXFormat{LaTeX2e}
+
+\ProvidesPackage{drawstack}[2010/08/06 Draw Execution Stack in LaTeX]
+
+\RequirePackage{tikz}
+\RequirePackage{ifthen}
+
+% Default styles definition.
+\tikzstyle{freecell}=[fill=green!10,draw=green!30!black]
+\tikzstyle{occupiedcell}=[fill=green!10!red!10,draw=green!30!black]
+\tikzstyle{padding}=[fill=green!10!black!10,draw=green!30!black]
+\tikzstyle{highlight}=[draw=red!50!black,text=red!50!black]
+
+\DeclareOption{nocolor}{
+  \tikzstyle{freecell}=[fill=white!95!black,draw=black]
+  \tikzstyle{occupiedcell}=[fill=white!60!black,draw=black]
+  \tikzstyle{padding}=[fill=white!90!black!10,draw=black]
+  \tikzstyle{highlight}=[draw=black,text=black]
+}
+\ProcessOptions
+
+\pgfdeclarelayer{background layer}
+\pgfdeclarelayer{foreground layer}
+\pgfsetlayers{background layer,main,foreground layer}
+\usetikzlibrary{shapes} % ellipse
+\usetikzlibrary{snakes} % braces
+
+\newcounter{cellnb}
+\setcounter{cellnb}{0}
+
+\newcommand{\llcell}[3]{
+    \addtocounter{cellnb}{-#1}
+    \setcounter{ptrnb}{0}
+    \draw[#2] (0,\value{cellnb}) +(-2,-.5) rectangle +(2,-.5+#1);
+    \draw (0,\value{cellnb}+#1/2-0.5) node{#3};
+}
+\newcommand{\bigcell}[2]{
+  \llcell{#1}{freecell}{#2}
+  \foreach \c in {2,...,#1} {
+    \draw[freecell]
+    (-2,\value{cellnb}+\c-1.5) -- (-1.7,\value{cellnb}+\c-1.5);
+    \draw[freecell]
+    (1.7,\value{cellnb}+\c-1.5) -- (2,\value{cellnb}+\c-1.5);
+  }
+}
+\newcommand{\cell}[2][freecell]{%
+\llcell{1}{#1}{#2}}
+
+\newcounter{ptrnb}
+\newcommand{\cellptr}[1]{
+  \draw[<-,line width=0.7pt] (0,\value{cellnb}) +(2,\value{ptrnb}*0.1) -- +(2.5,\value{ptrnb}*0.45);
+  \draw (2.5,\value{ptrnb}*0.5+\value{cellnb}) node[anchor=west] {#1};
+  \addtocounter{ptrnb}{1}
+}
+\newcommand{\esp}{\cellptr{\%esp}}
+\newcommand{\ebp}{\cellptr{\%ebp}}
+
+\newcommand{\cellcom}[1]{
+  \draw (2.4,\value{ptrnb}*0.5+\value{cellnb}) node[anchor=west] {#1};
+  \addtocounter{ptrnb}{1}
+}
+\newcommand{\cellround}[1]{
+  \begin{pgfonlayer}{foreground layer}
+    \draw[highlight] (0,\value{cellnb})
+    node[shape=ellipse,draw, minimum width=3cm, minimum height=0.9cm]
+    (marked) {};
+    \draw[highlight] (0,\value{cellnb}) +(3,1.3) node[anchor=west] (textmarked) {#1};
+    \draw[highlight,->] (marked) -- (textmarked.text);
+  \end{pgfonlayer}
+}
+
+\newcommand{\stacktop}[2][freecell]{
+  \setcounter{cellnb}{0}
+  \ifthenelse{\equal{#2}{}}{}{
+    \draw (0,\value{cellnb}) node {#2};
+    \addtocounter{cellnb}{-1}
+  }
+
+  \draw[#1] (0,\value{cellnb})
+  +(-2,.5) -- +(-2,-.5) -- +(2,-.5) -- +(2,.5);
+  \draw (0,\value{cellnb}) node{...};
+}
+\newcommand{\stackbottom}[1][freecell]{
+  \addtocounter{cellnb}{-1}
+  \draw[#1] (0,\value{cellnb})
+  +(-2,-.5) -- +(-2,+.5) -- +(2,+.5) -- +(2,-.5);
+  \draw (0,\value{cellnb}) node{...};
+}
+\newenvironment{drawstack}[1][]%
+{\begin{tikzpicture}[#1]\stacktop{}}%
+{\stackbottom\end{tikzpicture}}
+
+\newcommand{\bcell}[1]{\cell[occupiedcell]{#1}}
+\newcommand{\padding}[2]{\llcell{#1}{padding}{#2}}
+\newcommand{\bstacktop}[0]{\stacktop[occupiedcell]}
+\newcommand{\bstackbottom}[0]{\stackbottom[occupiedcell]}
+
+\newcounter{startframe}
+\newcommand{\startframe}[0]{
+  \setcounter{startframe}{\value{cellnb}}
+}
+\newcommand{\finishframe}[1]{
+  \draw[snake=brace, line width=0.6pt, segment amplitude=7pt]
+  (-2,\value{cellnb}-0.5) -- (-2,\value{startframe}-0.5);
+  \draw (-4.2cm,\value{cellnb}*0.5+\value{startframe}*0.5-0.5) node
+  {\parbox{3cm}{%
+\begin{flushright}
+#1
+\end{flushright}}};
+}
+\newcommand{\stackframe}[3]{
+  \draw[snake=brace] (-2,-#1-0.5) -- (-2,-#2-0.5);
+  \draw (0, #1) node {#3};
+}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

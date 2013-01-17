@@ -1,0 +1,234 @@
+% multislot.sty
+% 
+% Second version
+
+
+\needsfontinstversion{1.900} 
+% Relies heavily on _etx_pass_hook commands.
+
+
+%%%%%%%%%%%%%%% RESOURCES USED %%%%%%%%%%%%%%%
+% 
+% The following classes of control sequences are used by the multislot 
+% routines, in addition to the ones defined below and the ones fontinst 
+% normally uses:
+% 
+%    \name-NUM
+% 
+% where NUM is a number consisting of one, two, or three decimal digits. 
+% These are also used by \pltomtx, so they probably already exist as 
+% hash table entries.
+
+
+
+%%%%%%%%%%%%%%% SAVE CATCODES %%%%%%%%%%%%%%%
+%
+% Save the current values of the catcodes of space, @, NL, ~ and _.
+% _ and @ are made letters, ~ is a space, and space and NL are ignored.
+
+\edef\spacecatcode{\the\catcode`\ }
+\edef\atcatcode{\the\catcode`\@}
+\edef\nlcatcode{\the\catcode`\^^M}
+\edef\underscorecatcode{\the\catcode`\_}
+\edef\tildecatcode{\the\catcode`\~}
+
+\catcode`\ =9
+\catcode`\^^M=9
+\catcode`\@=11
+\catcode`\_=11
+\catcode`\~=10
+
+
+%%%%%%%%%%%%%%% MULTIPLE SLOT COMMANDS %%%%%%%%%%%%%%%
+% 
+% The user-level commands are quite simple. As usual, you can write
+% 
+%    \setslot{NAME}
+%        <slot commands>
+%    \endsetslot
+% 
+% to assign a glyph to a slot. The difference is that if there are 
+% multiple \setslot commands for a slot, this will no longer cause 
+% strange results. Instead, only the first \setslot-\endsetslot pair 
+% for each slot will be used, the others are ignored.
+% 
+% If you instead write
+% 
+%    \resetslot{NAME}
+%        <slot commands>
+%    \endsetslot
+% 
+% then this will override any earlier occurences of \setslot or 
+% \resetslot. Finally, there is the command
+% 
+%    \unsetslot{NUMBER}
+% 
+% which makes fontinst forget any earlier occurences of \setslot 
+% or \resetslot commands for that particular slot.
+
+
+% The way this works is that every \setslot or \resetslot command is 
+% implicitly assigned an index, namely the number of such commands 
+% perviously encountered since the start of the ETX pass. The count 
+% register \slot_index is allocated to keep track of the current 
+% index:
+
+\newcount\slot_index
+\def\clear_slot_index{\slot_index=\m@ne}
+\add_to\pre_first_etx_pass_hook{\clear_slot_index}
+\add_to\pre_second_etx_pass_hook{\clear_slot_index}
+\add_to\pre_third_etx_pass_hook{\clear_slot_index}
+\add_to\pre_fourth_etx_pass_hook{\clear_slot_index}
+
+% \setslot, \setleftboundary, and \setrightboundary increments the 
+% counter just before checking it.
+
+
+
+% The point of maintaining the index is that the index of the 
+% \setslot (or whatever) that actually sets a particular slot gets 
+% stored in the \name-SLOT control sequence (which is \mathchardef'ed 
+% to the index). After assignments are made, all a \setslot (or 
+% whatever) needs to do is to check whether the stored index matches 
+% the current one, and gobble itself if they don't.
+
+% The basic check is performed by the command \later_index_check. 
+% This has the syntax
+% 
+%   \later_index_check{SLOT}{<else-code>}
+% 
+% and expands to nothing if this \setslot will be active, but to 
+% <else-code> if it will not.
+\def\later_index_check#1{
+   \x_cs\ifnum {name-#1}=\slot_index 
+      \expandafter\gobble_one
+   \else
+      \expandafter\identity_one
+   \fi
+}
+% However, when deciding which \setslots will be active, the condition 
+% to test is slightly different: is the control sequence in question 
+% already defined to be a mathchar token? If it isn't, then this will 
+% be the active \setslot.
+\def\setslot_index_check#1{\x_cs\setslot_index_check_i{name-#1}}
+\def\temp_command#1{
+   \def\setslot_index_check_ii##1#1##2\setslot_index_check_ii{##1}
+   \def\setslot_index_check_i##1{
+      \expandafter\setslot_index_check_ii \expandafter\ifx
+            \expandafter$ \meaning##1 #1 0 \setslot_index_check_ii $
+         \expandafter\identity_one
+      \else
+         \mathchardef##1=\slot_index
+         \expandafter\gobble_one
+      \fi
+   }
+}
+\expandafter\temp_command \expandafter{ \string\mathchar " }
+
+% The stated definition of \setslot_index_check should thus be in 
+% force during the first etx pass, but after that the 
+% \later_index_check definition should rule.
+\add_to\post_first_etx_pass_hook{
+   \let\setslot_index_check=\later_index_check
+}
+
+% The following is used to ignore a \setslot--\endsetslot or 
+% \setleftboundary--\endsetleftboundary construction; the argument is 
+% the command which marks the end. The reason not to use 
+% \gobble_setslot is that it still executes \end_do_slot, which is 
+% quite wrong for the kind of ignoring done here.
+\def\ignore_to_end#1{
+   \bgroup
+      \let#1=\fi
+      \expandafter
+   \egroup
+   \iffalse
+}
+
+
+% The \setslot, \setleftboundary, and \setrightboundary commands must 
+% be equipped with checks at the start.
+\def\checked_setslot{
+   \advance \slot_index \@ne
+   \setslot_index_check{\the\slot_number}{
+      \advance \slot_number \@ne
+      \ignore_to_end\endsetslot
+   }
+   \unchecked_setslot
+}
+
+\def\checked_setleftboundary{
+   \advance \slot_index \@ne
+   \setslot_index_check{leftboundary}{\ignore_to_end\endsetleftboundary}
+   \unchecked_setleftboundary
+}
+
+\def\checked_setrightboundary#1{
+   \advance \slot_index \@ne
+   \setslot_index_check{\the\slot_number}{
+      \advance \slot_number \@ne
+      \gobble_two
+   }
+   \unchecked_setrightboundary{#1}
+}
+\add_to\pre_first_etx_pass_hook{
+   \let\unchecked_setslot=\setslot
+   \let\setslot=\checked_setslot
+   \let\unchecked_setleftboundary=\setleftboundary
+   \let\setleftboundary=\checked_setleftboundary
+   \let\unchecked_setrightboundary=\setrightboundary
+   \let\setrightboundary=\checked_setrightboundary
+}
+% But that's it, as far as the \set... commands are concerned.
+
+
+% What about \unsetslot? In principle, it _should_ just be a matter of
+\def\unsetslot#1{
+   \eval_expr{#1}
+   \x_cs\let{name-\the\result}\undefined_command
+}
+\add_to\post_first_etx_pass_hook{\let\unsetslot=\gobble_one}
+% given which \resetslot is simply
+\def\resetslot{\unsetslot\slot_number \setslot}
+% and this sort-of works, but not quite.
+% 
+% The problem is that the ordinary slot assignment table, which is 
+% used for ligature and kerning instructions, is not updated by 
+% \unsetslot. Hence ligatures and kerns will be generated as if all 
+% glyphs that have been set for a slot are present there; after
+% 
+%   \nextslot{108}
+%   \setslot{l} \endsetslot
+%   
+%   \nextslot{108}
+%   \resetslot{lambda} \endsetslot
+% 
+% the effect will be as if one had given the command 
+% 
+%   \setleftkerning{lambda}{l}{1000}
+% 
+% and moreover the same happens for ligatures, so an f + l -> fl 
+% ligature will also work as an f + lambda -> fl ligature.
+% 
+% This is of course a BUG, and there doesn't seem to be any way 
+% around it, short of adding another pass of reading ETX files. Doing 
+% so would probably not be worth the effort, since the usefulness of 
+% a \resetslot command is not clear; unlike \resetglyph, it cannot be 
+% used to amend an existing \set..., but only to override it.
+
+
+
+%%%%%%%%%%%%%%% RESTORE CATCODES %%%%%%%%%%%%%%%
+%
+% Restore the catcodes that were changed.
+
+\catcode`\@=\atcatcode
+\catcode`\^^M=\nlcatcode
+\catcode`\ =\spacecatcode
+\catcode`\~=\tildecatcode
+\catcode`\_=\underscorecatcode
+
+%%%%%%%%%%%%%%% THE END %%%%%%%%%%%%%%%
+
+\endinput
+

@@ -1,0 +1,364 @@
+%
+% pdftricks.sty 
+%
+% Copyright (c) 2001-3, Radhakrishnan CV <cvr@river-valley.com>
+%                       Rajagopal CV <cvr3@river-valley.com>
+%                       http://www.river-valley.com
+%
+% River Valley Technologies, Floor III, SJP Buildings, Cotton Hills
+% Trivandrum, India 695014
+%
+% Tel: +91 471 233 7501
+%
+%                     Antoine Chambert-Loir 
+%                     <chambert@math.polytechnique.fr>
+%                     http://www.math.polytechnique.fr/~chambert
+%
+% Ecole polytechnique, Palaiseau Cedex, France
+% 
+%
+% This program is free software; you can redistribute it and/or
+% modify it under the terms of the GNU General Public License
+% as published by the Free Software Foundation; either version 2
+% of the License, or (at your option) any later version.
+%
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program (gpl.txt); if not, write to the Free
+% Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
+% MA  02111-1307, USA.
+%
+% $Id: pdftricks.sty,v 1.16 2003/08/10 04:29:20 cvr Exp cvr $
+%
+
+\NeedsTeXFormat{LaTeX2e}
+\def\Fileversion$#1: #2 ${\gdef\fileversion{#2}}
+\def\Filedate$#1: #2 #3 ${\gdef\filedate{#2}}
+\Fileversion$Revision: 1.16 $
+\Filedate$Date: 2003/08/10 04:29:20 $
+\ProvidesPackage{pdftricks}
+   [\filedate\space\fileversion\space psTricks support in PDF (CVR/ACL)]
+\PackageWarningNoLine{pdftricks}
+   {****************************************\MessageBreak
+    Package pdftricks v,\fileversion\space loaded\MessageBreak
+    [psTricks support in PDF (CVR, ACL)]\MessageBreak
+    ****************************************}
+\RequirePackage{graphicx,color}
+\newif\if@debug\@debugfalse
+\newif\ifPDFTshell
+\newif\ifPDFTnopdf
+\newif\ifnoprocess \noprocessfalse
+\newif\ifmiktex \miktexfalse
+\DeclareOption{debug}{\@debugtrue}
+\DeclareOption{noshell}{\PDFTshellfalse}
+\DeclareOption{shell}{\PDFTshelltrue}
+\DeclareOption{miktex}{\global\miktextrue}  
+\ExecuteOptions{shell}
+\ProcessOptions\relax
+\ifPDFTshell
+% we must set it to false if \write18 doesn't work.
+% Hack given by Thierry Bouche (Thanks !)
+\def\tmpfile{/tmp/w18-test-\the\year\the\month\the\day\the\time} 
+\ifmiktex%
+ \immediate\write18{rem >"\tmpfile"}%%%%%% LDL-2
+\else
+ \immediate\write18{touch \tmpfile} %%%%%% LDL-1
+\fi
+\ifmiktex
+ \IfFileExists{\tmpfile.}{\PDFTshelltrue}{\PDFTshellfalse} %%%%%% LDL-4
+\else
+ \IfFileExists{\tmpfile}{\PDFTshelltrue}{\PDFTshellfalse}  %%%%%% LDL-3
+\fi
+\fi
+\ifPDFTshell
+  \PackageWarningNoLine{pdftricks}
+   {****************************************\MessageBreak
+    Using \csname write\endcsname18 capability \MessageBreak
+    for producing PDF-figures.  \MessageBreak
+    ****************************************}
+\else
+  \PackageWarningNoLine{pdftricks}
+   {****************************************\MessageBreak
+    No \csname write\endcsname18 capability.\MessageBreak
+    You'll have to run a script by yourself!\MessageBreak
+    ****************************************}
+\fi
+
+% warning! the definition of FIGURES if pst2pdf must be set accordingly !!
+\def\PDFTfigname{\jobname-fig\thepsfig}
+\def\PDFTWarning#1#2{\if@debug\PackageWarning{#1}{#2}\fi}
+\def\PDFTWarningNoLine#1#2{\if@debug\PackageWarningNoLine{#1}{#2}\fi}
+
+%%
+%% The real meat of psfile manipulation starts here.
+%%
+%%
+\RequirePackage{moreverb}
+\def\pdfverbatimwrite#1{%
+  \@bsphack
+  \immediate\openout \verbatim@out #1
+  \BeforeStream%
+  \let\do\@makeother\dospecials
+  \catcode`\^^M\active \catcode`\^^I=12
+  \def\verbatim@processline{%
+    \immediate\write\verbatim@out
+      {\the\verbatim@line}}%
+  \verbatim@start}
+\def\endpdfverbatimwrite{%
+  \immediate\write\verbatim@out{\string\end{document}}
+  \immediate\closeout\verbatim@out
+  \@esphack}
+
+\def\BeforeStream
+   {\message{Opening PDFStream=\PDFTfigname.tex}%
+    \immediate\write\verbatim@out{\string\documentclass{article}}
+    \immediate\write\verbatim@out{\string\input\space tmp.inputs}
+    \immediate\write\verbatim@out{\string\pagestyle{empty}}
+    \immediate\write\verbatim@out{\string\begin{document}}
+    }
+\newenvironment{pdfdisplay}{\stepcounter{psfig}%
+  \xdef\PDFCutFile{\PDFTfigname.tex}
+  \pdfverbatimwrite{\PDFCutFile}}
+ {\endpdfverbatimwrite%
+  \psgraphicsinclude%
+   \global\noprocessfalse\noindent}
+\newenvironment{pdfpic}{\stepcounter{psfig}%
+  \xdef\PDFCutFile{\PDFTfigname.tex}
+  \pdfverbatimwrite{\PDFCutFile}}
+ {\endpdfverbatimwrite%
+  \psgraphicsinclude%
+   \global\noprocessfalse\noindent}
+\newenvironment{pdfinline}{\stepcounter{psfig}%
+  \xdef\PDFCutFile{\PDFTfigname.tex}
+  \pdfverbatimwrite{\PDFCutFile}}
+ {\endpdfverbatimwrite%
+  \psinlinegraphicsinclude%
+   \global\noprocessfalse\noindent}
+\AtEndDocument{\endPShook%
+      \ifPDFTnopdf
+        \PackageWarningNoLine{pdftricks}
+        {******************************************\MessageBreak
+         Some PDF files of images were not found.\MessageBreak
+         Run the script `pst2pdf' before the next\MessageBreak
+         run of pdfLaTeX\MessageBreak
+         ******************************************}
+       \fi
+}
+\gdef\endPShook{}
+\def\noprocess{\global\noprocesstrue
+  \PackageWarning{pdftricks}
+        {******************************************\MessageBreak
+           Figure Number: \PDFTfigname\space is not processed \MessageBreak
+         ******************************************\MessageBreak}
+}
+
+\newcounter{psfig}
+\newif\if@pdfGINwidth
+\newif\if@pdfGINheight
+\newif\if@pdfGINscale
+\long\gdef\psgraphicsProcess{%
+  \@ifundefined{Fig\thepsfig}
+  {\PDFTWarningNoLine{pdftricks}
+    {******************************************\MessageBreak
+     ************ Processing Fig: \thepsfig\space**********\MessageBreak
+    ******************************************}
+  }
+  {\noprocess}
+   \ifPDFTshell\ifnoprocess\relax\else
+    \IfFileExists{\PDFTfigname.tex}{%
+     \immediate\write18{latex -interaction=batchmode \PDFTfigname}
+  \PDFTWarningNoLine{pdftricks}
+    {******************************************\MessageBreak
+     \PDFTfigname.tex converted to \PDFTfigname.dvi\MessageBreak
+     ******************************************}
+    }{}
+    \IfFileExists{\PDFTfigname.dvi}{%
+     \immediate\write18{dvips -o \PDFTfigname.ps \PDFTfigname}
+  \PDFTWarningNoLine{pdftricks}
+    {******************************************\MessageBreak
+     \PDFTfigname.ps generated\MessageBreak
+     ******************************************}
+    }{}
+    \IfFileExists{\PDFTfigname.ps}{%
+     \immediate\write18{ps2eps -f \PDFTfigname.ps}
+  \PDFTWarningNoLine{pdftricks}
+    {******************************************\MessageBreak
+     \PDFTfigname.eps generated\MessageBreak
+     ******************************************}
+    }{}
+    \IfFileExists{\PDFTfigname.eps}{%
+      \immediate\write18{epstopdf \PDFTfigname.eps}
+  \PDFTWarningNoLine{pdftricks}
+    {******************************************\MessageBreak
+     \PDFTfigname.eps converted to \PDFTfigname.pdf\MessageBreak
+     ******************************************}
+    }{}
+    \ifmiktex%
+    \immediate\write18{del \PDFTfigname.aux \PDFTfigname.dvi 
+       \PDFTfigname.log \PDFTfigname.eps}     %%%%%% LDL-6
+    \else
+    \immediate\write18{rm \PDFTfigname.aux \PDFTfigname.dvi 
+     \PDFTfigname.log \PDFTfigname.eps} %%%%%% LDL-5
+   \fi\fi
+   \fi
+}
+\long\gdef\psgraphicsinclude{\psgraphicsProcess%
+  \IfFileExists{\PDFTfigname.pdf}%
+     {\begin{center}
+     \bgroup\fboxsep\@PDFboxsep\fboxrule\@PDFboxrule%
+      \color{\@PDFgraphiccolor}%
+      \fcolorbox{\@PDFgraphiclinecolor}{\@PDFgraphicbackground}%
+     {\if@pdfGINwidth%
+       \includegraphics[width=\@PDFgraphicwidth]{\PDFTfigname}\else%
+      \if@pdfGINheight%
+       \includegraphics[height=\@PDFgraphicheight]{\PDFTfigname}\else%
+      \if@pdfGINscale%
+       \includegraphics[scale=\@PDFgraphicscale]{\PDFTfigname}\else%
+       \includegraphics{\PDFTfigname}\fi\fi\fi%
+     }\egroup\end{center}%
+      \global\@pdfGINwidthfalse\let\@PDFgraphicwidth\relax
+      \global\@pdfGINheightfalse\let\@PDFgraphicheight\relax
+      \global\@pdfGINscalefalse\let\@PDFgraphicscale\relax
+      }{\PDFTnopdftrue}
+   \gdef\@PDFgraphiclinecolor{white}
+   \gdef\@PDFgraphicbackground{white}
+   \gdef\@PDFboxsep{0pt}
+   \gdef\@PDFboxrule{0pt}
+}
+
+\long\gdef\psinlinegraphicsinclude{%
+  \psgraphicsProcess%
+  \IfFileExists{\PDFTfigname.pdf}%
+     {\bgroup\fboxrule0pt%
+       \normalcolor\fbox{\includegraphics{\PDFTfigname.pdf}}%
+       \egroup}%
+      {\PDFTnopdftrue}%
+}
+
+\definecolor{gray30}{gray}{.70}
+\definecolor{gray10}{gray}{.90}
+\RequirePackage{keyval}
+\def\configure[#1][#2]{\setkeys{#1}{#2}
+  \PDFTWarning{pdftricks}{Reconfigured #1 parameter(s)\MessageBreak  
+   #2\MessageBreak}}
+\define@key{pdfgraphic}{width}     {\gdef\@PDFgraphicwidth{#1}%
+                                    \global\@pdfGINwidthtrue}
+\define@key{pdfgraphic}{height}    {\gdef\@PDFgraphicheight{#1}%
+                                    \global\@pdfGINheighttrue}
+\define@key{pdfgraphic}{scale}     {\gdef\@PDFgraphicscale{#1}%
+                                    \global\@pdfGINscaletrue}
+\define@key{pdfgraphic}{color}     {\gdef\@PDFgraphiccolor{#1}}
+\define@key{pdfgraphic}{linecolor} {\gdef\@PDFgraphiclinecolor{#1}}
+\define@key{pdfgraphic}{background}{\gdef\@PDFgraphicbackground{#1}}
+\define@key{pdfgraphic}{linewidth} {\gdef\@PDFboxrule{#1}}
+\define@key{pdfgraphic}{rulesep}   {\gdef\@PDFboxsep{#1}}
+\gdef\@PDFgraphiccolor{black}
+\gdef\@PDFgraphiclinecolor{white}
+\gdef\@PDFgraphicbackground{white}
+\gdef\@PDFboxrule{0pt}
+\gdef\@PDFboxsep{0pt}
+
+%%
+%% Environment to grab all the packages used in the master doc.
+%% This forces you to load pdftricks as the first package.
+%%
+\newenvironment{psinputs}{\verbatimwrite{tmp.inputs}}
+   {\endverbatimwrite}
+
+%%
+%% Arrays to keep the fig numbers
+%%
+\@ifundefined{c@arraylength}{\newcounter{arraylength}}{}%
+\@ifundefined{c@ArrayIndex}{\newcounter{ArrayIndex}}{}%
+\@ifundefined{c@zeroCtr}{\newcounter{zeroCtr}}{}%
+\@ifundefined{c@recordCtr}{\newcounter{recordCtr}}{}
+\setcounter{recordCtr}{1}
+\@ifundefined{c@Ctr}{\newcounter{Ctr}}{}
+\def\DeclareArray#1{\Array{#1}[0]{}}%
+%
+\def\Array#1[#2]#3{%
+      \expandafter\gdef\csname #1#2\endcsname{#3}%
+      \expandafter\gdef\csname #1\endcsname[##1]{\csname #1##1\endcsname}}%
+%
+\def\getArraylength#1{\setcounter{arraylength}{0}%
+   \loop\expandafter\ifx\csname #1\thearraylength\endcsname\relax%
+   \else\stepcounter{arraylength}\repeat}%
+%
+\def\addToArray#1#2{\setcounter{arraylength}{0}%
+   \loop\expandafter\ifx\csname #1\thearraylength\endcsname\relax%
+   \else\stepcounter{arraylength}\repeat%
+   \Array{#1}[\thearraylength]{#2}}%
+%
+\def\clearArray#1{\getArraylength{#1}%
+   \loop\ifnum\c@arraylength >0%
+   \global\expandafter\let\csname #1\thearraylength\endcsname\relax%
+   \addtocounter{arraylength}{-1}\repeat}%
+%
+\long\def\ArrayIterator#1#2{%
+   \setcounter{ArrayIndex}{1}\getArraylength{#1}%
+   \setcounter{zeroCtr}{\c@arraylength}%
+   \loop\ifnum\c@ArrayIndex<\c@zeroCtr{#2}%
+   \stepcounter{ArrayIndex}\repeat%
+}%
+\def\@nnil{\@nil}
+\def\@empty{}
+\def\@cvrstop#1\@@#2{}
+%%
+%% Equivalent of \@tfor and \@for where any delimiter can be 
+%% provided instead of LaTeX's default comma character
+%%
+\long\def\cvr@delimfor#1#2#3{\DeclareArray{#1}\clearArray{#1}%
+   \long\def\@icvrloop##1#2##2\@@##3{\def##3{##1}\ifx ##3\@nnil%
+   \expandafter\@cvrstop \else\addToArray{#1}{##1}%
+    \relax\expandafter\@icvrloop\fi##2\@@##3}%
+   \long\def\@cvrloop##1#2##2#2##3\@@##4{\addToArray{#1}{##1}%
+   \def##4{##1}\ifx ##4\@nnil \else%
+    \def##4{##2}\def\y@y{##2}\ifx\y@y\@nnil\else%
+         \addToArray{#1}{##2}\fi\ifx ##4\@nnil \else%
+      \@icvrloop ##3\@@##4\fi\fi}%
+  \expandafter\def\expandafter\@fortmp\expandafter{#3}%
+  \ifx\@fortmp\@empty \else%
+    \expandafter\@cvrloop#3#2\@nil#2\@nil\@@\@ee@\fi}%
+%
+% Dont look into the following code. It is harmful
+% for your eyes and brain as well.
+%
+\newcounter{f@irstCtr}
+\newcounter{s@econdCtr}
+\long\gdef\NoProcess[#1]{%
+   \long\def\@i@@noprocess##1,##2\@@##3{\def##3{##1}\ifx ##3\@nnil%
+   \expandafter\@cvrstop \else
+      \expandafter\hyphencheck##1-@-*[*]
+    \relax\expandafter\@i@@noprocess\fi##2\@@##3}%
+   \long\def\@@@noprocess##1,##2,##3\@@##4{
+      \expandafter\hyphencheck##1-@-*[*]
+   \def##4{##1}\ifx ##4\@nnil \else%
+    \def##4{##2}\def\y@y{##2}\ifx\y@y\@nnil\else%
+      \expandafter\hyphencheck##2-@-*[*]
+         \fi\ifx ##4\@nnil \else%
+      \@i@@noprocess ##3\@@##4\fi\fi}%
+  \expandafter\def\expandafter\@fortmp\expandafter{#1}%
+  \ifx\@fortmp\@empty \else%
+    \expandafter\@@@noprocess#1,\@nil,\@nil\@@\@ee@\fi}%
+\def\d@d#1[*]{}
+\def\hyphencheck#1-#2-#3{\def\r@r{@}\def\s@s{*}\edef\c@c{#3}
+   \ifx\c@c\r@r
+   \setcounter{f@irstCtr}{#1}
+   \setcounter{s@econdCtr}{#2}
+   \stepcounter{s@econdCtr}
+   \loop\ifnum\thes@econdCtr > \thef@irstCtr% 
+      \expandafter\edef\csname Fig\thef@irstCtr\endcsname{TRUE}
+      \stepcounter{f@irstCtr}
+   \repeat%
+   \else\ifx\c@c\s@s% 
+      \expandafter\edef\csname Fig#1\endcsname{TRUE}
+   \fi\fi\d@d}
+
+%%
+%%
+%% End of file `pdftricks.sty'
+%%

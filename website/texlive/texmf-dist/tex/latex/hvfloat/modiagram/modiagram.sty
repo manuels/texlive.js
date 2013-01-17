@@ -1,0 +1,2047 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% --------------------------------------------------------------------------- %
+% - MOdiagram - modiagram.sty                                               - %
+% - easy creation of molecular orbital diagrams                             - %
+% --------------------------------------------------------------------------- %
+% - Clemens Niederberger                                                    - %
+% - 2012/01/23                                                              - %
+% --------------------------------------------------------------------------- %
+% - http://www.mychemistry.eu/                                              - %
+% - contact@mychemistry.eu                                                  - %
+% --------------------------------------------------------------------------- %
+% - If you have any ideas, questions, suggestions or bugs to report, please - %
+% - feel free to contact me.                                                - %
+% --------------------------------------------------------------------------- %
+% - Copyright 2011-2012 Clemens Niederberger                                - %
+% -                                                                         - %
+% - This work may be distributed and/or modified under the                  - %
+% - conditions of the LaTeX Project Public License, either version 1.3      - %
+% - of this license or (at your option) any later version.                  - %
+% - The latest version of this license is in                                - %
+% -   http://www.latex-project.org/lppl.txt                                 - %
+% - and version 1.3 or later is part of all distributions of LaTeX          - %
+% - version 2005/12/01 or later.                                            - %
+% -                                                                         - %
+% - This work has the LPPL maintenance status `maintained'.                 - %
+% -                                                                         - %
+% - The Current Maintainer of this work is Clemens Niederberger.            - %
+% -                                                                         - %
+% - This work consists of the files modiagram.sty, modiagram_doc_de.tex,    - %
+% - modiagram_doc_de.tex, README                                            - %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\RequirePackage{ expl3 , xparse , l3keys2e , tikz , textgreek }
+\usetikzlibrary{calc,arrows}
+\ProvidesExplPackage {modiagram} {2012/01/23} {0.2a} {easy creation of molecular orbital diagrams}
+
+% --------------------------------------------------------------------------- %
+% error messages
+\msg_set:nnn { MOdiagram } { missing-atom }
+  {
+    You~need~to~specify~the~left~and~right~atom~first~before~you~can~use~
+    \token_to_str:N \molecule \c_space_tl \msg_line_context: .
+  }
+
+\msg_set:nnn { MOdiagram } { missing-AO }
+  {
+    You~need~to~specify~both~#2~AOs~first~before~you~can~use~
+    #1~ \msg_line_context: .
+  }
+
+\msg_set:nnn { MOdiagram } { electron-placement }
+  {
+    The~value~for~the~electron~placement~must~be~between~0~and~1~
+    \msg_line_context: . 
+  }
+
+% --------------------------------------------------------------------------- %
+% main environment
+\NewDocumentEnvironment { MOdiagram } { o g }
+  {
+    \cs_set_eq:NN \atom \MOdiagram_atom:
+    \cs_set_eq:NN \molecule \MOdiagram_molecule:
+    \cs_set_eq:NN \AO \MOdiagram_arbitrary_AO:
+    \cs_set_eq:NN \EnergyAxis \MOdiagram_EnergyAxis:
+    \dim_gzero:N \g_MOdiagram_min_energy_dim
+    \dim_gzero:N \g_MOdiagram_max_energy_dim
+    \int_gzero:N \g_MOdiagram_AO_name_int
+    \IfNoValueF { #1 } { \keys_set:nn { MOdiagram / diagram } { #1 } }
+    \MOdiagram_set_labels:
+    \MOdiagram_tikzpicture:n { }
+    \char_set_catcode_letter:N \:
+    \char_set_catcode_other:N \;
+  }
+  {
+    \bool_if:NT \l_MOdiagram_names_bool
+      {
+        \MOdiagram_node:f { \tl_use:N \l_MOdiagram_names_style_tl }
+          at
+          (
+            \l_MOdiagram_left_atom_position_dim ,
+            \g_MOdiagram_min_energy_dim - 1cm
+          )
+          { \tl_use:N \l_MOdiagram_atom_left_name_tl } ;
+        \MOdiagram_node:f { \tl_use:N \l_MOdiagram_names_style_tl }
+          at
+          (
+            \l_MOdiagram_molecule_position_dim ,
+            \g_MOdiagram_min_energy_dim - 1cm
+          )
+          { \tl_use:N \l_MOdiagram_molecule_name_tl } ;
+        \MOdiagram_node:f { \tl_use:N \l_MOdiagram_names_style_tl }
+          at
+          (
+            \l_MOdiagram_left_atom_position_dim
+              + \l_MOdiagram_inter_atom_distance_dim ,
+            \g_MOdiagram_min_energy_dim - 1cm
+          )
+          { \tl_use:N \l_MOdiagram_atom_right_name_tl } ;
+      }
+    \endtikzpicture
+  }
+
+\bool_new:N \l_MOdiagram_AO_square_bool
+\bool_new:N \l_MOdiagram_AO_round_bool
+\bool_new:N \l_MOdiagram_AO_circle_bool
+\bool_new:N \l_MOdiagram_AO_fancy_bool
+\bool_new:N \l_MOdiagram_AO_labels_bool
+\bool_new:N \l_MOdiagram_names_bool
+
+\tl_new:N \l_MOdiagram_names_style_tl
+\tl_set:Nn \l_MOdiagram_names_style_tl { anchor=base }
+
+\tl_new:N \l_MOdiagram_lines_tl
+\tl_set:Nn \l_MOdiagram_lines_tl { dotted }
+
+\tl_new:N \l_MOdiagram_orbital_label_fontsize_tl
+\tl_new:N \l_MOdiagram_orbital_label_style_tl
+
+\dim_new:N \l_MOdiagram_AO_width_dim
+\dim_set:Nn \l_MOdiagram_AO_width_dim { 10pt }
+
+\tl_new:N \l_MOdiagram_AO_up_electron_tl
+\tl_set:Nn \l_MOdiagram_AO_up_electron_tl { .4 }
+\tl_new:N \l_MOdiagram_AO_down_electron_tl
+\tl_set:Nn \l_MOdiagram_AO_down_electron_tl { .6 }
+
+\dim_new:N \l_MOdiagram_left_atom_position_dim
+\dim_set:Nn \l_MOdiagram_left_atom_position_dim { 1cm }
+\dim_new:N \l_MOdiagram_inter_atom_distance_dim
+\dim_set:Nn \l_MOdiagram_inter_atom_distance_dim { 4cm }
+\dim_new:N \l_MOdiagram_molecule_position_dim
+
+\dim_new:N \g_MOdiagram_min_energy_dim
+\dim_new:N \g_MOdiagram_max_energy_dim
+
+\dim_new:N \l_MOdiagram_energy_gain_dim
+\dim_new:N \l_MOdiagram_energy_loss_dim
+
+% detect lowest and highest orbital so we can draw the appropriate energy axis:
+\cs_new_nopar:Npn \MOdiagram_energy_range:N #1
+  {
+    \dim_set:Nn \l_tmpa_dim { #1 }
+    \dim_compare:nT { \l_tmpa_dim < \g_MOdiagram_min_energy_dim }
+      { \dim_gset_eq:NN \g_MOdiagram_min_energy_dim \l_tmpa_dim }
+    \dim_compare:nT { \l_tmpa_dim > \g_MOdiagram_max_energy_dim }
+      { \dim_gset_eq:NN \g_MOdiagram_max_energy_dim \l_tmpa_dim }
+  }
+\cs_generate_variant:Nn \MOdiagram_energy_range:N { n }
+
+% split energy levels for creating the MO; we need to detect wether the left
+% or the right AO is the lower or higher one, respectively
+\cs_if_free:NT \dim_compare:cNcTF { \cs_generate_variant:Nn \dim_compare:nNnTF { cNcTF } }
+
+\cs_new_nopar:Npn \MOdiagram_split_energy:NNN #1#2#3
+  {
+    \dim_compare:cNcTF { l_MOdiagram_atom_left_#1_dim } < { l_MOdiagram_atom_right_#1_dim }
+      {
+        \dim_set_eq:Nc \l_MOdiagram_energy_gain_dim { l_MOdiagram_atom_left_#1_dim }
+        \dim_sub:Nn \l_MOdiagram_energy_gain_dim { #2 }
+        \dim_set_eq:Nc \l_MOdiagram_energy_loss_dim { l_MOdiagram_atom_right_#1_dim }
+        \dim_add:Nn \l_MOdiagram_energy_loss_dim { #3 }
+      }
+      {
+        \dim_set_eq:Nc \l_MOdiagram_energy_gain_dim { l_MOdiagram_atom_right_#1_dim }
+        \dim_sub:Nn \l_MOdiagram_energy_gain_dim { #2 }
+        \dim_set_eq:Nc \l_MOdiagram_energy_loss_dim { l_MOdiagram_atom_left_#1_dim }
+        \dim_add:Nn \l_MOdiagram_energy_loss_dim { #3 }
+      }
+  }
+\cs_generate_variant:Nn \MOdiagram_split_energy:NNN { nNN }
+
+% position the spin-up/spin-down el:
+\cs_new_nopar:Npn \MOdiagram_AO_place_electron:nn #1#2
+  {
+    \fp_set:Nn \l_tmpa_tl { #2 }
+    \fp_compare:nNnT { \l_tmpa_tl } < { 0 }
+      { \msg_error:nn { MOdiagram } { electron-placement } }
+    \fp_abs:N \l_tmpa_tl
+    \fp_compare:nNnT { \l_tmpa_tl } > { 1 }
+      { \msg_error:nn { MOdiagram } { electron-placement } }
+    \bool_if:nTF { #1 }
+      { \tl_set:Nn \l_MOdiagram_AO_down_electron_tl { #2 } }
+      { \tl_set:Nn \l_MOdiagram_AO_up_electron_tl { #2 } }
+  }
+\cs_generate_variant:Nn \MOdiagram_AO_place_electron:nn { nx }
+
+\cs_new_nopar:Npn \MOdiagram_AO_place_electrons:n #1
+  {
+    \fp_set:Nn \l_tmpa_tl { 1 }
+    \fp_sub:Nn \l_tmpa_tl { #1 }
+    \fp_mul:Nn \l_tmpa_tl { .5 }
+    \MOdiagram_AO_place_electron:nx { 0 } { \fp_to_tl:N \l_tmpa_tl }
+    \fp_set:Nn \l_tmpa_tl { 1 }
+    \fp_add:Nn \l_tmpa_tl { #1 }
+    \fp_mul:Nn \l_tmpa_tl { .5 }
+    \MOdiagram_AO_place_electron:nx { 1 } { \fp_to_tl:N \l_tmpa_tl }
+  }
+
+% place the right atom
+\cs_new_nopar:Npn \MOdiagram_molecule_position:n #1
+  {
+    \fp_set_from_dim:Nn \l_tmpa_tl { #1 }
+    \fp_mul:Nn \l_tmpa_tl { .5 }
+    \dim_set:Nn \l_MOdiagram_molecule_position_dim
+      { \fp_to_dim:N \l_tmpa_tl + \l_MOdiagram_left_atom_position_dim }
+  }
+\cs_generate_variant:Nn \MOdiagram_molecule_position:n { f }
+
+\MOdiagram_molecule_position:f
+  { \dim_use:N \l_MOdiagram_inter_atom_distance_dim }
+
+% set up keys for the environment
+\keys_define:nn { MOdiagram / diagram }
+  {
+    style          .choice: ,
+    style / plain  .code:n    =
+      {
+        \bool_set_false:N \l_MOdiagram_AO_square_bool
+        \bool_set_false:N \l_MOdiagram_AO_round_bool
+        \bool_set_false:N \l_MOdiagram_AO_circle_bool
+        \bool_set_false:N \l_MOdiagram_AO_fancy_bool
+        \tl_set:Nn \l_MOdiagram_lines_tl { dotted }
+      } ,
+    style / square .code:n    =
+      {
+        \bool_set_true:N \l_MOdiagram_AO_square_bool
+        \bool_set_false:N \l_MOdiagram_AO_round_bool
+        \bool_set_false:N \l_MOdiagram_AO_circle_bool
+        \bool_set_false:N \l_MOdiagram_AO_fancy_bool
+        \tl_set:Nn \l_MOdiagram_lines_tl { gray }
+      } ,
+    style / circle .code:n    =
+      {
+        \bool_set_false:N \l_MOdiagram_AO_square_bool
+        \bool_set_false:N \l_MOdiagram_AO_round_bool
+        \bool_set_true:N \l_MOdiagram_AO_circle_bool
+        \bool_set_false:N \l_MOdiagram_AO_fancy_bool
+        \tl_set:Nn \l_MOdiagram_lines_tl { gray }
+      } ,
+    style / round  .code:n    =
+      {
+        \bool_set_true:N \l_MOdiagram_AO_square_bool
+        \bool_set_true:N \l_MOdiagram_AO_round_bool
+        \bool_set_false:N \l_MOdiagram_AO_circle_bool
+        \bool_set_false:N \l_MOdiagram_AO_fancy_bool
+        \tl_set:Nn \l_MOdiagram_lines_tl { gray }
+      } ,
+    style / fancy  .code:n    =
+      {
+        \bool_set_true:N \l_MOdiagram_AO_square_bool
+        \bool_set_true:N \l_MOdiagram_AO_round_bool
+        \bool_set_false:N \l_MOdiagram_AO_circle_bool
+        \bool_set_true:N \l_MOdiagram_AO_fancy_bool
+        \tl_set:Nn \l_MOdiagram_lines_tl { densely~dashed }
+      } ,
+    lines         .tl_set:N   = \l_MOdiagram_lines_tl ,
+    distance      .code:n     =
+      {
+        \dim_set:Nn \l_MOdiagram_inter_atom_distance_dim { #1 }
+        \MOdiagram_molecule_position:n { #1 }
+      } ,
+    AO-width      .tl_set:N   = \l_MOdiagram_AO_width_dim ,
+    up-el-pos     .code:n     = \MOdiagram_AO_place_electron:nn { 0 } { #1 } ,
+    down-el-pos   .code:n     = \MOdiagram_AO_place_electron:nn { 1 } { #1 } ,
+    el-sep        .code:n     = \MOdiagram_AO_place_electrons:n { #1 } ,
+    labels        .bool_set:N = \l_MOdiagram_AO_labels_bool ,
+    names         .bool_set:N = \l_MOdiagram_names_bool ,
+    names-style   .tl_set:N   = \l_MOdiagram_names_style_tl ,
+    names-style-add .code:n   = { \tl_put_right:Nn \l_MOdiagram_names_style_tl { , #1 } } ,
+    labels-fs     .tl_set:N   = \l_MOdiagram_orbital_label_fontsize_tl ,
+    labels-style  .tl_set:N   = \l_MOdiagram_orbital_label_style_tl
+  }
+
+\ProcessKeysOptions { MOdiagram / diagram }
+
+% --------------------------------------------------------------------------- %
+% setup command
+\NewDocumentCommand \MOsetup { m }
+  { \keys_set:nn { MOdiagram / diagram } { #1 } }
+
+% --------------------------------------------------------------------------- %
+% draw AOs
+\tl_new:N \l_MOdiagram_atom_left_name_tl
+\tl_new:N \l_MOdiagram_atom_right_name_tl
+
+\bool_new:N \l_MOdiagram_left_atom_placed_bool
+\bool_set_false:N \l_MOdiagram_left_atom_placed_bool
+\bool_new:N \l_MOdiagram_right_atom_placed_bool
+\bool_set_false:N \l_MOdiagram_right_atom_placed_bool
+
+\NewDocumentCommand \MOdiagram_atom: { o m m }
+  {
+    \MOdiagram_atom_disable:
+    \keys_set:nn { MOdiagram / atom } { position = #2 }
+    \keys_set:nn { MOdiagram / atom } { #3 }
+    \bool_if:NTF \l_MOdiagram_atom_left_bool
+      { \bool_set_true:N \l_MOdiagram_left_atom_placed_bool }
+      { \bool_set_true:N \l_MOdiagram_right_atom_placed_bool }
+    \IfNoValueF { #1 }
+      {
+        \bool_if:NTF \l_MOdiagram_atom_left_bool
+          { \tl_set:Nn \l_MOdiagram_atom_left_name_tl { #1 } }
+          { \tl_set:Nn \l_MOdiagram_atom_right_name_tl { #1 } }
+      }
+    \MOdiagram_one_s:
+    \MOdiagram_two_s:
+    \MOdiagram_two_p:
+%     \MOdiagram_three_s:
+%     \MOdiagram_three_p:
+%     \MOdiagram_four_s:
+  }
+
+\bool_new:N \l_MOdiagram_atom_left_bool
+
+% is \atom placed left or right?
+\keys_define:nn { MOdiagram / atom }
+  {
+    position         .choice: ,
+    position / left  .code:n =
+      { \bool_set_true:N \l_MOdiagram_atom_left_bool } ,
+    position / right .code:n =
+      { \bool_set_false:N \l_MOdiagram_atom_left_bool }
+  }
+
+\dim_new:N \l_MOdiagram_atom_xshift_dim
+
+% these are going to be our `arguments' for the \atom command:
+\keys_define:nn { MOdiagram / atom }
+  {
+    1s          .code:n    = { \MOdiagram_one_s_set:n { #1 } } ,
+    1s          .default:n = { 0 ; pair } ,
+    2s          .code:n    = { \MOdiagram_two_s_set:n { #1 } } ,
+    2s          .default:n = { 2 ; pair } ,
+    2p          .code:n    = { \MOdiagram_two_p_set:n { #1 } } ,
+    2p          .default:n = { 5 ; pair , pair , pair } ,
+    color       .code:n    = { \MOdiagram_electron_color_set:n { #1 } } ,
+    label       .code:n    = { \MOdiagram_orbital_label_set:n { #1 } } ,
+    up-el-pos   .code:n    = { \MOdiagram_electron_up_set:n { #1 } } ,
+    down-el-pos .code:n    = { \MOdiagram_electron_down_set:n { #1 } }
+  }
+
+% --------------------------------------------------------------------------- %
+% 1s orbital
+\dim_new:N \l_MOdiagram_atom_one_s_dim
+\dim_new:N \l_MOdiagram_atom_left_one_s_dim
+\dim_new:N \l_MOdiagram_atom_right_one_s_dim
+
+\tl_new:N \l_MOdiagram_AO_one_s_electron_tl
+
+\bool_new:N \l_MOdiagram_atom_one_s_bool
+\bool_new:N \l_MOdiagram_one_s_left_bool
+\bool_set_false:N \l_MOdiagram_one_s_left_bool
+\bool_new:N \l_MOdiagram_one_s_right_bool
+\bool_set_false:N \l_MOdiagram_one_s_right_bool
+
+% read 1s argument
+\cs_new_nopar:Npn \MOdiagram_one_s_set:n #1
+  {
+    \bool_set_true:N \l_MOdiagram_atom_one_s_bool
+    \tl_if_in:onTF { #1 } { ; }
+      { \MOdiagram_one_s_set_aux:n #1 \q_stop }
+      {
+        \tl_clear:N \l_MOdiagram_AO_one_s_electron_tl
+        \tl_if_blank:nTF { #1 }
+          { \dim_set:Nn \l_MOdiagram_atom_one_s_dim { 0 cm } }
+          { \dim_set:Nn \l_MOdiagram_atom_one_s_dim { #1 cm } }
+      }
+  }
+
+\cs_new_nopar:Npn \MOdiagram_one_s_set_aux:n #1;#2 \q_stop
+  {
+    \tl_if_blank:nTF { #1 }
+      { \dim_set:Nn \l_MOdiagram_atom_one_s_dim { 0 cm } }
+      { \dim_set:Nn \l_MOdiagram_atom_one_s_dim { #1 cm } }
+    \tl_set:Nn \l_MOdiagram_AO_one_s_electron_tl { #2 }
+  }
+
+% display 1s orbital
+\cs_new_nopar:Npn \MOdiagram_one_s:
+  {
+    \bool_if:NT \l_MOdiagram_atom_one_s_bool
+      {
+        \bool_if:NTF \l_MOdiagram_atom_left_bool
+          {
+            \dim_set_eq:NN
+              \l_MOdiagram_atom_xshift_dim
+              \l_MOdiagram_left_atom_position_dim
+            \dim_set_eq:NN
+              \l_MOdiagram_atom_left_one_s_dim
+              \l_MOdiagram_atom_one_s_dim
+            \bool_set_true:N \l_MOdiagram_one_s_left_bool
+          }
+          {
+            \dim_set:Nn \l_MOdiagram_atom_xshift_dim
+              {
+                \l_MOdiagram_left_atom_position_dim
+                  + \l_MOdiagram_inter_atom_distance_dim
+              }
+            \dim_set_eq:NN
+              \l_MOdiagram_atom_right_one_s_dim
+              \l_MOdiagram_atom_one_s_dim
+            \bool_set_true:N \l_MOdiagram_one_s_right_bool
+          }
+        \MOdiagram_energy_range:N \l_MOdiagram_atom_one_s_dim
+        \MOdiagram_node:n { inner~sep=0 , outer~sep=0 }
+          (1s
+            \bool_if:NTF \l_MOdiagram_atom_left_bool
+              { left }
+              { right }
+          )
+          at ( \l_MOdiagram_atom_xshift_dim , \l_MOdiagram_atom_one_s_dim )
+          {
+            \bool_if:NTF \l_MOdiagram_atom_left_bool
+              {
+                \MOdiagram_get_electron_color:n { 1sleft }
+                \MOdiagram_get_electron_up:n { 1sleft }
+                \MOdiagram_get_electron_down:n { 1sleft }
+              }
+              {
+                \MOdiagram_get_electron_color:n { 1sright }
+                \MOdiagram_get_electron_up:n { 1sright }
+                \MOdiagram_get_electron_down:n { 1sright }
+              }
+            \MOdiagram_AO:ff
+              { \tl_use:N \l_MOdiagram_AO_one_s_electron_tl }
+              { \tl_use:N \l_MOdiagram_electron_current_color_tl }
+          } ;
+        \bool_if:NTF \l_MOdiagram_atom_left_bool
+          { \MOdiagram_get_orbital_label:n { 1s left } }
+          { \MOdiagram_get_orbital_label:n { 1s right } }
+      }
+  }
+
+% --------------------------------------------------------------------------- %
+% 2s orbital
+\dim_new:N \l_MOdiagram_atom_two_s_dim
+\dim_new:N \l_MOdiagram_atom_left_two_s_dim
+\dim_new:N \l_MOdiagram_atom_right_two_s_dim
+
+\tl_new:N \l_MOdiagram_AO_two_s_electron_tl
+
+\bool_new:N \l_MOdiagram_atom_two_s_bool
+\bool_new:N \l_MOdiagram_two_s_left_bool
+\bool_set_false:N \l_MOdiagram_two_s_left_bool
+\bool_new:N \l_MOdiagram_two_s_right_bool
+\bool_set_false:N \l_MOdiagram_two_s_right_bool
+
+% read 2s argument
+\cs_new_nopar:Npn \MOdiagram_two_s_set:n #1
+  {
+    \bool_set_true:N \l_MOdiagram_atom_two_s_bool
+    \tl_if_in:onTF { #1 } { ; }
+      { \MOdiagram_two_s_set_aux:n #1 \q_stop }
+      {
+        \tl_clear:N \l_MOdiagram_AO_two_s_electron_tl
+        \tl_if_blank:nTF { #1 }
+          { \dim_set:Nn \l_MOdiagram_atom_two_s_dim { 2 cm } }
+          { \dim_set:Nn \l_MOdiagram_atom_two_s_dim { #1 cm } }
+      }
+  }
+
+\cs_new_nopar:Npn \MOdiagram_two_s_set_aux:n #1;#2 \q_stop
+  {
+    \tl_if_blank:nTF { #1 }
+      { \dim_set:Nn \l_MOdiagram_atom_two_s_dim { 2 cm } }
+      { \dim_set:Nn \l_MOdiagram_atom_two_s_dim { #1 cm } }
+    \tl_set:Nn \l_MOdiagram_AO_two_s_electron_tl { #2 }
+  }
+
+% display 2s orbital
+\cs_new_nopar:Npn \MOdiagram_two_s:
+  {
+    \bool_if:NT \l_MOdiagram_atom_two_s_bool
+      {
+        \bool_if:NTF \l_MOdiagram_atom_left_bool
+          {
+            \dim_set_eq:NN
+              \l_MOdiagram_atom_xshift_dim
+              \l_MOdiagram_left_atom_position_dim
+            \dim_set_eq:NN
+              \l_MOdiagram_atom_left_two_s_dim
+              \l_MOdiagram_atom_two_s_dim
+            \bool_set_true:N \l_MOdiagram_two_s_left_bool
+          }
+          {
+            \dim_set:Nn \l_MOdiagram_atom_xshift_dim
+              {
+                \l_MOdiagram_left_atom_position_dim
+                  + \l_MOdiagram_inter_atom_distance_dim
+              }
+            \dim_set_eq:NN
+              \l_MOdiagram_atom_right_two_s_dim
+              \l_MOdiagram_atom_two_s_dim
+            \bool_set_true:N \l_MOdiagram_two_s_right_bool
+          }
+        \MOdiagram_energy_range:N \l_MOdiagram_atom_two_s_dim
+        \MOdiagram_node:n { inner~sep=0 , outer~sep=0 }
+          (2s
+            \bool_if:NTF \l_MOdiagram_atom_left_bool
+              { left }
+              { right }
+          )
+          at ( \l_MOdiagram_atom_xshift_dim , \l_MOdiagram_atom_two_s_dim )
+          {
+            \bool_if:NTF \l_MOdiagram_atom_left_bool
+              {
+                \MOdiagram_get_electron_color:n { 2sleft }
+                \MOdiagram_get_electron_up:n { 2sleft }
+                \MOdiagram_get_electron_down:n { 2sleft }
+              }
+              {
+                \MOdiagram_get_electron_color:n { 2sright }
+                \MOdiagram_get_electron_up:n { 2sright }
+                \MOdiagram_get_electron_down:n { 2sright }
+              }
+            \MOdiagram_AO:ff
+              { \tl_use:N \l_MOdiagram_AO_two_s_electron_tl }
+              { \tl_use:N \l_MOdiagram_electron_current_color_tl }
+          } ;
+        \bool_if:NTF \l_MOdiagram_atom_left_bool
+          { \MOdiagram_get_orbital_label:n { 2s left } }
+          { \MOdiagram_get_orbital_label:n { 2s right } }
+      }
+  }
+
+% --------------------------------------------------------------------------- %
+% 2p orbital
+\dim_new:N \l_MOdiagram_atom_two_p_dim
+\dim_new:N \l_MOdiagram_atom_left_two_p_dim
+\dim_new:N \l_MOdiagram_atom_right_two_p_dim
+
+\dim_new:N \l_MOdiagram_atom_px_shift_dim
+\dim_new:N \l_MOdiagram_atom_py_shift_dim
+\dim_new:N \l_MOdiagram_atom_pz_shift_dim
+
+\tl_new:N \l_MOdiagram_AO_two_px_electron_tl
+\tl_new:N \l_MOdiagram_AO_two_py_electron_tl
+\tl_new:N \l_MOdiagram_AO_two_pz_electron_tl
+
+\bool_new:N \l_MOdiagram_atom_two_p_bool
+\bool_new:N \l_MOdiagram_two_p_left_bool
+\bool_set_false:N \l_MOdiagram_two_p_left_bool
+\bool_new:N \l_MOdiagram_two_p_right_bool
+\bool_set_false:N \l_MOdiagram_two_p_right_bool
+
+% read 2p argument
+\cs_new_nopar:Npn \MOdiagram_two_p_set:n #1
+  {
+    \bool_set_true:N \l_MOdiagram_atom_two_p_bool
+    \tl_if_in:onTF { #1 } { ; }
+      { \MOdiagram_two_p_set_aux_i:n #1 \q_stop }
+      {
+        \tl_clear:N \l_MOdiagram_AO_two_px_electron_tl
+        \tl_clear:N \l_MOdiagram_AO_two_py_electron_tl
+        \tl_clear:N \l_MOdiagram_AO_two_pz_electron_tl
+        \tl_if_blank:nTF { #1 }
+          { \dim_set:Nn \l_MOdiagram_atom_two_p_dim { 5 cm } }
+          { \dim_set:Nn \l_MOdiagram_atom_two_p_dim { #1 cm } }
+      }
+  }
+
+\cs_new_nopar:Npn \MOdiagram_two_p_set_aux_i:n #1;#2 \q_stop
+  {
+    \tl_if_blank:nTF { #1 }
+      { \dim_set:Nn \l_MOdiagram_atom_two_p_dim { 5 cm } }
+      { \dim_set:Nn \l_MOdiagram_atom_two_p_dim { #1 cm } }
+    \MOdiagram_two_p_set_aux_ii:n { #2 }
+  }
+
+\NewDocumentCommand \MOdiagram_two_p_set_aux_ii:n
+  { > { \SplitArgument { 2 } { , } } m }
+  { \MOdiagram_two_p_set_aux_iii:nnn #1 }
+
+\cs_set_nopar:Npn \MOdiagram_two_p_set_aux_iii:nnn #1#2#3
+  {
+    \tl_if_blank:nF { #1 } { \tl_set:Nn \l_MOdiagram_AO_two_px_electron_tl { #1 } }
+    \tl_if_blank:nF { #2 } { \tl_set:Nn \l_MOdiagram_AO_two_py_electron_tl { #2 } }
+    \tl_if_blank:nF { #3 } { \tl_set:Nn \l_MOdiagram_AO_two_pz_electron_tl { #3 } }
+  }
+
+% place the x, y, and z orbitals
+\cs_new_nopar:Npn \MOdiagram_p_orbitals_shift:nnn #1#2#3
+  {
+    \fp_set_from_dim:Nn \l_tmpa_tl { \l_MOdiagram_AO_width_dim } 
+    {
+      \fp_mul:Nn \l_tmpa_tl { #1 }
+      \dim_gset:Nn \l_MOdiagram_atom_px_shift_dim { \fp_to_dim:N \l_tmpa_tl }
+    }
+    {
+      \fp_mul:Nn \l_tmpa_tl { #2 }
+      \dim_gset:Nn \l_MOdiagram_atom_py_shift_dim { \fp_to_dim:N \l_tmpa_tl }
+    }
+    {
+      \fp_mul:Nn \l_tmpa_tl { #3 }
+      \dim_gset:Nn \l_MOdiagram_atom_pz_shift_dim { \fp_to_dim:N \l_tmpa_tl }
+    }
+  }
+
+% display 2p orbitals
+\cs_new_nopar:Npn \MOdiagram_two_p:
+  {
+    \bool_if:NT \l_MOdiagram_atom_two_p_bool
+      {
+        \bool_if:NTF \l_MOdiagram_atom_left_bool
+          {
+            \dim_set_eq:NN
+              \l_MOdiagram_atom_xshift_dim
+              \l_MOdiagram_left_atom_position_dim 
+            \MOdiagram_p_orbitals_shift:nnn { -4 } { -2 } { 0 }
+            \dim_set_eq:NN
+              \l_MOdiagram_atom_left_two_p_dim
+              \l_MOdiagram_atom_two_p_dim
+            \dim_set_eq:NN
+              \l_energy_axis_dim
+              \l_MOdiagram_atom_px_shift_dim
+            \bool_set_true:N \l_MOdiagram_two_p_left_bool
+          }
+          {
+            \dim_set:Nn \l_MOdiagram_atom_xshift_dim
+              {
+                \l_MOdiagram_left_atom_position_dim
+                  + \l_MOdiagram_inter_atom_distance_dim
+              }
+            \MOdiagram_p_orbitals_shift:nnn { 0 } { 2 } { 4 }
+            \dim_set_eq:NN
+              \l_MOdiagram_atom_right_two_p_dim
+              \l_MOdiagram_atom_two_p_dim
+            \bool_set_true:N \l_MOdiagram_two_p_right_bool
+          }
+        \MOdiagram_energy_range:N \l_MOdiagram_atom_two_p_dim
+        \MOdiagram_node:n { inner~sep=0 , outer~sep=0 }
+          (2pz
+            \bool_if:NTF \l_MOdiagram_atom_left_bool
+              { left }
+              { right }
+          )
+          at
+          (
+            \l_MOdiagram_atom_xshift_dim + \l_MOdiagram_atom_pz_shift_dim ,
+            \l_MOdiagram_atom_two_p_dim
+          )
+          {
+            \bool_if:NTF \l_MOdiagram_atom_left_bool
+              {
+                \MOdiagram_get_electron_color:n { 2pz left }
+                \MOdiagram_get_electron_up:n { 2pz left }
+                \MOdiagram_get_electron_down:n { 2pz left }
+              }
+              {
+                \MOdiagram_get_electron_color:n { 2pz right }
+                \MOdiagram_get_electron_up:n { 2pz right }
+                \MOdiagram_get_electron_down:n { 2pz right }
+              }
+            \MOdiagram_AO:ff
+              { \tl_use:N \l_MOdiagram_AO_two_pz_electron_tl }
+              { \tl_use:N \l_MOdiagram_electron_current_color_tl }
+          } ;
+        \bool_if:NTF \l_MOdiagram_atom_left_bool
+          { \MOdiagram_get_orbital_label:n { 2pz left } }
+          { \MOdiagram_get_orbital_label:n { 2pz right } }
+        \MOdiagram_node:n { inner~sep=0 , outer~sep=0 }
+          (2py
+            \bool_if:NTF \l_MOdiagram_atom_left_bool
+              { left }
+              { right }
+          )
+          at
+          (
+            \l_MOdiagram_atom_xshift_dim + \l_MOdiagram_atom_py_shift_dim ,
+            \l_MOdiagram_atom_two_p_dim
+          )
+          {
+            \bool_if:NTF \l_MOdiagram_atom_left_bool
+              {
+                \MOdiagram_get_electron_color:n { 2py left }
+                \MOdiagram_get_electron_up:n { 2py left }
+                \MOdiagram_get_electron_down:n { 2py left }
+              }
+              {
+                \MOdiagram_get_electron_color:n { 2py right }
+                \MOdiagram_get_electron_up:n { 2py right }
+                \MOdiagram_get_electron_down:n { 2py right }
+              }
+            \MOdiagram_AO:ff
+              { \tl_use:N \l_MOdiagram_AO_two_py_electron_tl }
+              { \tl_use:N \l_MOdiagram_electron_current_color_tl }
+          } ;
+        \bool_if:NTF \l_MOdiagram_atom_left_bool
+          { \MOdiagram_get_orbital_label:n { 2py left } }
+          { \MOdiagram_get_orbital_label:n { 2py right } }
+        \MOdiagram_node:n { inner~sep=0 , outer~sep=0 }
+          (2px
+            \bool_if:NTF \l_MOdiagram_atom_left_bool
+              { left }
+              { right }
+          )
+          at
+          (
+            \l_MOdiagram_atom_xshift_dim + \l_MOdiagram_atom_px_shift_dim ,
+            \l_MOdiagram_atom_two_p_dim
+          )
+          {
+            \bool_if:NTF \l_MOdiagram_atom_left_bool
+              {
+                \MOdiagram_get_electron_color:n { 2px left }
+                \MOdiagram_get_electron_up:n { 2px left }
+                \MOdiagram_get_electron_down:n { 2px left }
+              }
+              {
+                \MOdiagram_get_electron_color:n { 2px right }
+                \MOdiagram_get_electron_up:n { 2px right }
+                \MOdiagram_get_electron_down:n { 2px right }
+              }
+            \MOdiagram_AO:ff
+              { \tl_use:N \l_MOdiagram_AO_two_px_electron_tl }
+              { \tl_use:N \l_MOdiagram_electron_current_color_tl }
+          } ;
+        \bool_if:NTF \l_MOdiagram_atom_left_bool
+          { \MOdiagram_get_orbital_label:n { 2px left } }
+          { \MOdiagram_get_orbital_label:n { 2px right } }
+      }  
+  }
+
+% --------------------------------------------------------------------------- %
+% draw MOs
+\tl_new:N \l_MOdiagram_molecule_name_tl
+
+\NewDocumentCommand \MOdiagram_molecule: { o m }
+  {
+    \bool_if:nTF
+      {
+        \l_MOdiagram_left_atom_placed_bool
+          &&
+        \l_MOdiagram_right_atom_placed_bool
+      }
+      {
+        \MOdiagram_molecule_disable:
+        \keys_set:nn { MOdiagram / molecule } { #2 }
+        \IfNoValueF { #1 }
+          { \tl_set:Nn \l_MOdiagram_molecule_name_tl { #1 } }
+        \MOdiagram_one_mo_s:
+        \MOdiagram_two_mo_s:
+        \MOdiagram_two_mo_p:
+%         \MOdiagram_three_mo_s:
+%         \MOdiagram_three_mo_p:
+%         \MOdiagram_four_mo_s:
+      }
+      { \msg_error:nn { MOdiagram } { missing-atom } }
+  }
+
+% these are going to be our molecule arguments:
+\keys_define:nn { MOdiagram / molecule }
+  {
+    1sMO        .code:n    = { \MOdiagram_one_mo_s_set:n { #1 } } ,
+    1sMO        .default:n = { .5 ; pair , pair } ,
+    2sMO        .code:n    = { \MOdiagram_two_mo_s_set:n { #1 } } ,
+    2sMO        .default:n = { .5 ; pair , pair } ,
+    2pMO        .code:n    = { \MOdiagram_two_mo_p_set:n { #1 } } ,
+    2pMO        .default:n = { 1.5 , .5 ; pair , pair , pair , pair , pair , pair } ,
+    color       .code:n    = { \MOdiagram_electron_color_set:n { #1 } } ,
+    label       .code:n    = { \MOdiagram_orbital_label_set:n { #1 } } ,
+    up-el-pos   .code:n    = { \MOdiagram_electron_up_set:n { #1 } } ,
+    down-el-pos .code:n    = { \MOdiagram_electron_down_set:n { #1 } }
+  }
+
+% --------------------------------------------------------------------------- %
+% 1sigma orbitals
+\dim_new:N \l_MOdiagram_molecule_one_sigma_dim
+\dim_new:N \l_MOdiagram_molecule_one_sigmas_dim
+
+\tl_new:N \l_MOdiagram_MO_one_sigma_s_electron_tl
+\tl_new:N \l_MOdiagram_MO_one_sigmas_s_electron_tl
+\bool_new:N \l_MOdiagram_molecule_one_mo_s_bool
+
+% read 1sMO argument
+\cs_new_nopar:Npn \MOdiagram_one_mo_s_set:n #1
+  {
+    \bool_set_true:N \l_MOdiagram_molecule_one_mo_s_bool
+    \tl_if_in:onTF { #1 } { ; }
+      { \MOdiagram_one_mo_s_set_aux:n #1 \q_stop }
+      { \MOdiagram_one_mo_s_set_energy:n { #1 } }
+  }
+
+\cs_new_nopar:Npn \MOdiagram_one_mo_s_set_aux:n #1;#2 \q_stop
+  {
+    \MOdiagram_one_mo_s_set_energy:n { #1 }
+    \MOdiagram_one_mo_s_set_electrons:n { #2 }
+  }
+
+\cs_new_nopar:Npn \MOdiagram_one_mo_s_set_energy:n #1
+  {
+    \tl_if_in:onTF { #1 } { / }
+      { \MOdiagram_one_mo_s_set_energy_aux:n #1 \q_stop }
+      {
+        \tl_if_blank:nTF { #1 }
+          {
+            \dim_set:Nn \l_MOdiagram_molecule_one_sigma_dim { .5 cm }
+            \dim_set:Nn \l_MOdiagram_molecule_one_sigmas_dim { .5 cm }
+          }
+          {
+            \dim_set:Nn \l_MOdiagram_molecule_one_sigma_dim { #1 cm }
+            \dim_set:Nn \l_MOdiagram_molecule_one_sigmas_dim { #1 cm }
+          }
+      }
+  }
+
+\cs_new_nopar:Npn \MOdiagram_one_mo_s_set_energy_aux:n #1/#2 \q_stop
+  {
+    \tl_if_blank:nTF { #1 }
+      { \dim_set:Nn \l_MOdiagram_molecule_one_sigma_dim { .5 cm } }
+      { \dim_set:Nn \l_MOdiagram_molecule_one_sigma_dim { #1 cm } }
+    \tl_if_blank:nTF { #2 }
+      { \dim_set:Nn \l_MOdiagram_molecule_one_sigmas_dim { .5 cm } }
+      { \dim_set:Nn \l_MOdiagram_molecule_one_sigmas_dim { #2 cm } }
+  }
+
+\cs_set_nopar:Npn \MOdiagram_one_mo_s_set_electrons:n #1
+  {
+    \tl_if_in:onTF { #1 } { , }
+      { \MOdiagram_one_mo_s_set_electrons_aux:n #1 \q_stop }
+      { \tl_set:Nn \l_MOdiagram_MO_one_sigma_s_electron_tl { #1 } }
+  }
+
+\cs_new_nopar:Npn \MOdiagram_one_mo_s_set_electrons_aux:n #1,#2 \q_stop
+  {
+    \tl_set:Nn \l_MOdiagram_MO_one_sigma_s_electron_tl { #1 }
+    \tl_set:Nn \l_MOdiagram_MO_one_sigmas_s_electron_tl { #2 }
+  }
+
+% display 1sigma/sigma* MOs:
+\cs_new_nopar:Npn \MOdiagram_one_mo_s:
+  {
+    \bool_if:NT \l_MOdiagram_molecule_one_mo_s_bool
+      {
+        \bool_if:nF
+          { \l_MOdiagram_one_s_left_bool && \l_MOdiagram_one_s_right_bool }
+          { \msg_error:nnxx { MOdiagram } { missing-AO } { 1sMO } { 1s } }
+        \MOdiagram_split_energy:nNN { one_s }
+          \l_MOdiagram_molecule_one_sigma_dim
+          \l_MOdiagram_molecule_one_sigmas_dim
+        \MOdiagram_energy_range:N \l_MOdiagram_energy_gain_dim
+        \MOdiagram_energy_range:N \l_MOdiagram_energy_loss_dim
+        \MOdiagram_node:n { inner~sep=0 , outer~sep=0 }
+          (1sigma)
+          at
+          (
+            \l_MOdiagram_molecule_position_dim ,
+            \l_MOdiagram_energy_gain_dim
+          )
+          {
+            \MOdiagram_get_electron_color:n { 1sigma }
+            \MOdiagram_get_electron_up:n { 1sigma }
+            \MOdiagram_get_electron_down:n { 1sigma }
+            \MOdiagram_AO:ff
+              { \tl_use:N \l_MOdiagram_MO_one_sigma_s_electron_tl }
+              { \tl_use:N \l_MOdiagram_electron_current_color_tl }
+          } ;
+        \MOdiagram_get_orbital_label:n { 1sigma }
+        \MOdiagram_node:n { inner~sep=0 , outer~sep=0 }
+          (1sigma*)
+          at
+          (
+            \l_MOdiagram_molecule_position_dim ,
+            \l_MOdiagram_energy_loss_dim
+          )
+          {
+            \MOdiagram_get_electron_color:n { 1sigma* }
+            \MOdiagram_get_electron_up:n { 1sigma* }
+            \MOdiagram_get_electron_down:n { 1sigma* }
+            \MOdiagram_AO:ff
+              { \tl_use:N \l_MOdiagram_MO_one_sigmas_s_electron_tl }
+              { \tl_use:N \l_MOdiagram_electron_current_color_tl }
+          } ;
+        \MOdiagram_get_orbital_label:n { 1sigma* }
+        \MOdiagram_draw:f
+          { \l_MOdiagram_lines_tl }
+          (1s left.east)  -- (1sigma.west)  (1sigma.east)   -- (1s right.west)
+          (1s left.east)  -- (1sigma*.west) (1sigma*.east)  -- (1s right.west) ;
+      }
+  }
+
+% --------------------------------------------------------------------------- %
+% 2sigma orbitals
+\dim_new:N \l_MOdiagram_molecule_two_sigma_dim
+\dim_new:N \l_MOdiagram_molecule_two_sigmas_dim
+
+\tl_new:N \l_MOdiagram_MO_two_sigma_s_electron_tl
+\tl_new:N \l_MOdiagram_MO_two_sigmas_s_electron_tl
+\bool_new:N \l_MOdiagram_molecule_two_mo_s_bool
+
+% read 2sMO argument
+\cs_new_nopar:Npn \MOdiagram_two_mo_s_set:n #1
+  {
+    \bool_set_true:N \l_MOdiagram_molecule_two_mo_s_bool
+    \tl_if_in:onTF { #1 } { ; }
+      { \MOdiagram_two_mo_s_set_aux:n #1 \q_stop }
+      { \MOdiagram_two_mo_s_set_energy:n { #1 } }
+  }
+
+\cs_new_nopar:Npn \MOdiagram_two_mo_s_set_aux:n #1;#2 \q_stop
+  {
+    \MOdiagram_two_mo_s_set_energy:n { #1 }
+    \MOdiagram_two_mo_s_set_electrons:n { #2 }
+  }
+
+\cs_new_nopar:Npn \MOdiagram_two_mo_s_set_energy:n #1
+  {
+    \tl_if_in:onTF { #1 } { / }
+      { \MOdiagram_two_mo_s_set_energy_aux:n #1 \q_stop }
+      {
+        \tl_if_blank:nTF { #1 }
+          {
+            \dim_set:Nn \l_MOdiagram_molecule_two_sigma_dim { .5 cm }
+            \dim_set:Nn \l_MOdiagram_molecule_two_sigmas_dim { .5 cm }
+          }
+          {
+            \dim_set:Nn \l_MOdiagram_molecule_two_sigma_dim { #1 cm }
+            \dim_set:Nn \l_MOdiagram_molecule_two_sigmas_dim { #1 cm }
+          }
+      }
+  }
+
+\cs_new_nopar:Npn \MOdiagram_two_mo_s_set_energy_aux:n #1/#2 \q_stop
+  {
+    \tl_if_blank:nTF { #1 }
+      { \dim_set:Nn \l_MOdiagram_molecule_two_sigma_dim { .5 cm } }
+      { \dim_set:Nn \l_MOdiagram_molecule_two_sigma_dim { #1 cm } }
+    \tl_if_blank:nTF { #2 }
+      { \dim_set:Nn \l_MOdiagram_molecule_two_sigmas_dim { .5 cm } }
+      { \dim_set:Nn \l_MOdiagram_molecule_two_sigmas_dim { #2 cm } }
+  }
+
+\cs_set_nopar:Npn \MOdiagram_two_mo_s_set_electrons:n #1
+  {
+    \tl_if_in:onTF { #1 } { , }
+      { \MOdiagram_two_mo_s_set_electrons_aux:n #1 \q_stop }
+      { \tl_set:Nn \l_MOdiagram_MO_two_sigma_s_electron_tl { #1 } }
+  }
+
+\cs_new_nopar:Npn \MOdiagram_two_mo_s_set_electrons_aux:n #1,#2 \q_stop
+  {
+    \tl_set:Nn \l_MOdiagram_MO_two_sigma_s_electron_tl { #1 }
+    \tl_set:Nn \l_MOdiagram_MO_two_sigmas_s_electron_tl { #2 }
+  }
+
+% display 2sigma/sigma* MOs:
+\cs_new_nopar:Npn \MOdiagram_two_mo_s:
+  {
+    \bool_if:NT \l_MOdiagram_molecule_two_mo_s_bool
+      {
+        \bool_if:nF
+          { \l_MOdiagram_two_s_left_bool && \l_MOdiagram_two_s_right_bool }
+          { \msg_error:nnxx { MOdiagram } { missing-AO } { 2sMO } { 2s } }
+        \MOdiagram_split_energy:nNN { two_s }
+          \l_MOdiagram_molecule_two_sigma_dim
+          \l_MOdiagram_molecule_two_sigmas_dim
+        \MOdiagram_energy_range:N \l_MOdiagram_energy_gain_dim
+        \MOdiagram_energy_range:N \l_MOdiagram_energy_loss_dim
+        \MOdiagram_node:n { inner~sep=0 , outer~sep=0 }
+          (2sigma)
+          at
+          (
+            \l_MOdiagram_molecule_position_dim ,
+            \l_MOdiagram_energy_gain_dim
+          )
+          {
+            \MOdiagram_get_electron_color:n { 2sigma }
+            \MOdiagram_get_electron_up:n { 2sigma }
+            \MOdiagram_get_electron_down:n { 2sigma }
+            \MOdiagram_AO:ff
+              { \tl_use:N \l_MOdiagram_MO_two_sigma_s_electron_tl }
+              { \tl_use:N \l_MOdiagram_electron_current_color_tl }
+          } ;
+        \MOdiagram_get_orbital_label:n { 2sigma }
+        \MOdiagram_node:n { inner~sep=0 , outer~sep=0 }
+          (2sigma*)
+          at
+          (
+            \l_MOdiagram_molecule_position_dim ,
+            \l_MOdiagram_energy_loss_dim
+          )
+          {
+            \MOdiagram_get_electron_color:n { 2sigma* }
+            \MOdiagram_get_electron_up:n { 2sigma* }
+            \MOdiagram_get_electron_down:n { 2sigma* }
+            \MOdiagram_AO:ff
+              { \tl_use:N \l_MOdiagram_MO_two_sigmas_s_electron_tl }
+              { \tl_use:N \l_MOdiagram_electron_current_color_tl }
+          } ;
+        \MOdiagram_get_orbital_label:n { 2sigma* }
+        \MOdiagram_draw:f
+          { \l_MOdiagram_lines_tl }
+          (2s left.east)  -- (2sigma.west)  (2sigma.east)   -- (2s right.west)
+          (2s left.east)  -- (2sigma*.west) (2sigma*.east)  -- (2s right.west) ;
+      }
+  }
+
+% --------------------------------------------------------------------------- %
+% 2psigma and 2ppi orbitals
+\dim_new:N \l_MOdiagram_molecule_two_psigma_dim
+\dim_new:N \l_MOdiagram_molecule_two_psigmas_dim
+\dim_new:N \l_MOdiagram_molecule_two_ppi_dim
+\dim_new:N \l_MOdiagram_molecule_two_ppis_dim
+
+\tl_new:N \l_MOdiagram_MO_two_sigma_p_electron_tl
+\tl_new:N \l_MOdiagram_MO_two_sigmas_p_electron_tl
+\tl_new:N \l_MOdiagram_MO_two_piy_p_electron_tl
+\tl_new:N \l_MOdiagram_MO_two_piys_p_electron_tl
+\tl_new:N \l_MOdiagram_MO_two_piz_p_electron_tl
+\tl_new:N \l_MOdiagram_MO_two_pizs_p_electron_tl
+
+\bool_new:N \l_MOdiagram_molecule_two_mo_p_bool
+
+% read 2pMO argument
+\cs_set_nopar:Npn \MOdiagram_two_mo_p_set:n #1
+  {
+    \bool_set_true:N \l_MOdiagram_molecule_two_mo_p_bool
+    \tl_if_in:onTF { #1 } { ; }
+      { \MOdiagram_two_mo_p_set_aux:n #1 \q_stop }
+      { \MOdiagram_two_mo_p_set_energy:n { #1 } }
+  }
+
+\cs_set_nopar:Npn \MOdiagram_two_mo_p_set_aux:n #1;#2 \q_stop
+  {
+    \MOdiagram_two_mo_p_set_energy:n { #1 }
+    \MOdiagram_two_mo_p_set_electrons:n { #2 }
+  }
+
+\cs_new_nopar:Npn \MOdiagram_two_mo_p_set_energy:n #1
+  {
+    \tl_if_in:onTF { #1 } { , }
+      { \MOdiagram_two_mo_p_set_energy_aux:n #1 \q_stop }
+      {
+        \tl_if_in:onTF { #1 } { / }
+          {
+            \MOdiagram_two_mo_p_set_energy_sigma_aux:n #1 \q_stop
+            \MOdiagram_two_mo_p_set_energy_pi:n { .5 }
+          }
+          {
+            \MOdiagram_two_mo_p_set_energy_sigma:n { #1 }
+            \MOdiagram_two_mo_p_set_energy_pi:n { .5 } 
+          }
+      }
+  }
+
+\cs_new_nopar:Npn \MOdiagram_two_mo_p_set_energy_aux:n #1,#2 \q_stop
+  {
+    \tl_if_in:onTF { #1 } { / }
+      { \MOdiagram_two_mo_p_set_energy_sigma_aux:n #1 \q_stop }
+      { \MOdiagram_two_mo_p_set_energy_sigma:n { #1 } }
+    \tl_if_in:onTF { #2 } { / }
+      { \MOdiagram_two_mo_p_set_energy_pi_aux:n #2 \q_stop }
+      { \MOdiagram_two_mo_p_set_energy_pi:n { #2 } }
+  }
+
+\cs_new_nopar:Npn \MOdiagram_two_mo_p_set_energy_sigma:n #1
+  {
+    \tl_if_blank:nTF { #1 }
+      {
+        \dim_set:Nn \l_MOdiagram_molecule_two_psigma_dim { 1.5 cm }
+        \dim_set:Nn \l_MOdiagram_molecule_two_psigmas_dim { 1.5 cm }
+      }
+      {
+        \dim_set:Nn \l_MOdiagram_molecule_two_psigma_dim { #1 cm }
+        \dim_set:Nn \l_MOdiagram_molecule_two_psigmas_dim { #1 cm }
+      }
+  }
+
+\cs_new_nopar:Npn \MOdiagram_two_mo_p_set_energy_sigma_aux:n #1/#2 \q_stop
+  {
+    \tl_if_blank:nTF { #1 }
+      { \dim_set:Nn \l_MOdiagram_molecule_two_psigma_dim { 1.5 cm } }
+      { \dim_set:Nn \l_MOdiagram_molecule_two_psigma_dim { #1 cm } }
+    \tl_if_blank:nTF { #2 }
+      { \dim_set:Nn \l_MOdiagram_molecule_two_psigmas_dim { 1.5 cm } }
+      { \dim_set:Nn \l_MOdiagram_molecule_two_psigmas_dim { #2 cm } }
+  }
+
+\cs_new_nopar:Npn \MOdiagram_two_mo_p_set_energy_pi:n #1
+  {
+    \tl_if_blank:nTF { #1 }
+      {
+        \dim_set:Nn \l_MOdiagram_molecule_two_ppi_dim { .5 cm }
+        \dim_set:Nn \l_MOdiagram_molecule_two_ppis_dim { .5 cm }
+      }
+      {
+        \dim_set:Nn \l_MOdiagram_molecule_two_ppi_dim { #1 cm }
+        \dim_set:Nn \l_MOdiagram_molecule_two_ppis_dim { #1 cm }
+      }
+  }
+
+\cs_new_nopar:Npn \MOdiagram_two_mo_p_set_energy_pi_aux:n #1/#2 \q_stop
+  {
+    \tl_if_blank:nTF { #1 }
+      { \dim_set:Nn \l_MOdiagram_molecule_two_ppi_dim { .5 cm } }
+      { \dim_set:Nn \l_MOdiagram_molecule_two_ppi_dim { #1 cm } }
+    \tl_if_blank:nTF { #2 }
+      { \dim_set:Nn \l_MOdiagram_molecule_two_ppis_dim { .5 cm } }
+      { \dim_set:Nn \l_MOdiagram_molecule_two_ppis_dim { #2 cm } }
+  }
+
+\NewDocumentCommand \MOdiagram_two_mo_p_set_electrons:n
+  { > { \SplitArgument { 5 } { , } } m }
+  { \MOdiagram_two_mo_p_set_electrons_aux:n #1 }
+
+\cs_new_nopar:Npn \MOdiagram_two_mo_p_set_electrons_aux:n #1#2#3#4#5#6
+  {
+    \tl_set:Nn \l_MOdiagram_MO_two_sigma_p_electron_tl  { #1 }
+    \tl_set:Nn \l_MOdiagram_MO_two_sigmas_p_electron_tl { #6 }
+    \tl_set:Nn \l_MOdiagram_MO_two_piy_p_electron_tl    { #2 }
+    \tl_set:Nn \l_MOdiagram_MO_two_piys_p_electron_tl   { #4 }
+    \tl_set:Nn \l_MOdiagram_MO_two_piz_p_electron_tl    { #3 }
+    \tl_set:Nn \l_MOdiagram_MO_two_pizs_p_electron_tl   { #5 }
+  }
+
+% display 2sigma+pi/sigma*+pi* orbitals:
+\cs_new_nopar:Npn \MOdiagram_two_mo_p:
+  {
+    \bool_if:NT \l_MOdiagram_molecule_two_mo_p_bool
+      {
+        \bool_if:nF
+          { \l_MOdiagram_two_p_left_bool && \l_MOdiagram_two_p_right_bool }
+          { \msg_error:nnxx { MOdiagram } { missing-AO } { 2pMO } { 2p } }
+        \MOdiagram_split_energy:nNN { two_p }
+          \l_MOdiagram_molecule_two_psigma_dim
+          \l_MOdiagram_molecule_two_psigmas_dim
+        \MOdiagram_energy_range:N \l_MOdiagram_energy_gain_dim
+        \MOdiagram_energy_range:N \l_MOdiagram_energy_loss_dim
+        \MOdiagram_node:n { inner~sep=0 , outer~sep=0 }
+          (2psigma)
+          at
+          (
+            \l_MOdiagram_molecule_position_dim ,
+            \l_MOdiagram_energy_gain_dim
+          )
+          {
+            \MOdiagram_get_electron_color:n { 2psigma }
+            \MOdiagram_get_electron_up:n { 2psigma }
+            \MOdiagram_get_electron_down:n { 2psigma }
+            \MOdiagram_AO:ff
+              { \tl_use:N \l_MOdiagram_MO_two_sigma_p_electron_tl }
+              { \tl_use:N \l_MOdiagram_electron_current_color_tl }
+          } ;
+        \MOdiagram_get_orbital_label:n { 2psigma }
+        \MOdiagram_node:n { inner~sep=0 , outer~sep=0 }
+          (2psigma*)
+          at
+          (
+            \l_MOdiagram_molecule_position_dim ,
+            \l_MOdiagram_energy_loss_dim
+          )
+          {
+            \MOdiagram_get_electron_color:n { 2psigma* }
+            \MOdiagram_get_electron_up:n { 2psigma* }
+            \MOdiagram_get_electron_down:n { 2psigma* }
+            \MOdiagram_AO:ff
+              { \tl_use:N \l_MOdiagram_MO_two_sigmas_p_electron_tl }
+              { \tl_use:N \l_MOdiagram_electron_current_color_tl }
+          } ;
+        \MOdiagram_get_orbital_label:n { 2psigma* }
+        \MOdiagram_split_energy:nNN { two_p }
+          \l_MOdiagram_molecule_two_ppi_dim
+          \l_MOdiagram_molecule_two_ppis_dim
+        \MOdiagram_node:n { inner~sep=0 , outer~sep=0 }
+          (2piy)
+          at
+          (
+            \l_MOdiagram_molecule_position_dim - \l_MOdiagram_AO_width_dim ,
+            \l_MOdiagram_energy_gain_dim
+          )
+          {
+            \MOdiagram_get_electron_color:n { 2piy }
+            \MOdiagram_get_electron_up:n { 2piy }
+            \MOdiagram_get_electron_down:n { 2piy }
+            \MOdiagram_AO:ff
+              { \tl_use:N \l_MOdiagram_MO_two_piy_p_electron_tl }
+              { \tl_use:N \l_MOdiagram_electron_current_color_tl }
+          } ;
+        \MOdiagram_get_orbital_label:n { 2piy }
+        \MOdiagram_node:n { inner~sep=0 , outer~sep=0 }
+          (2piy*)
+          at
+          (
+            \l_MOdiagram_molecule_position_dim - \l_MOdiagram_AO_width_dim ,
+            \l_MOdiagram_energy_loss_dim
+          )
+          {
+            \MOdiagram_get_electron_color:n { 2piy* }
+            \MOdiagram_get_electron_up:n { 2piy* }
+            \MOdiagram_get_electron_down:n { 2piy* }
+            \MOdiagram_AO:ff
+              { \tl_use:N \l_MOdiagram_MO_two_piys_p_electron_tl }
+              { \tl_use:N \l_MOdiagram_electron_current_color_tl }
+          } ;
+        \MOdiagram_get_orbital_label:n { 2piy* }
+        \MOdiagram_node:n { inner~sep=0 , outer~sep=0 }
+          (2piz)
+          at
+          (
+            \l_MOdiagram_molecule_position_dim + \l_MOdiagram_AO_width_dim ,
+            \l_MOdiagram_energy_gain_dim
+          )
+          {
+            \MOdiagram_get_electron_color:n { 2piz }
+            \MOdiagram_get_electron_up:n { 2piz }
+            \MOdiagram_get_electron_down:n { 2piz }
+            \MOdiagram_AO:ff
+              { \tl_use:N \l_MOdiagram_MO_two_piz_p_electron_tl }
+              { \tl_use:N \l_MOdiagram_electron_current_color_tl }
+          } ;
+        \MOdiagram_get_orbital_label:n { 2piz }
+        \MOdiagram_node:n { inner~sep=0 , outer~sep=0 }
+          (2piz*)
+          at
+          (
+            \l_MOdiagram_molecule_position_dim + \l_MOdiagram_AO_width_dim ,
+            \l_MOdiagram_energy_loss_dim
+          )
+          {
+            \MOdiagram_get_electron_color:n { 2piz* }
+            \MOdiagram_get_electron_up:n { 2piz* }
+            \MOdiagram_get_electron_down:n { 2piz* }
+            \MOdiagram_AO:ff
+              { \tl_use:N \l_MOdiagram_MO_two_pizs_p_electron_tl }
+              { \tl_use:N \l_MOdiagram_electron_current_color_tl }
+          } ;
+        \MOdiagram_get_orbital_label:n { 2piz* }
+        \MOdiagram_draw:f
+          { \l_MOdiagram_lines_tl }
+          (2pz left.east)  -- (2psigma.west)  (2psigma.east)   -- (2px right.west)
+          (2pz left.east)  -- (2psigma*.west) (2psigma*.east)  -- (2px right.west)
+          (2pz left.east)  -- (2piy.west)     (2piz.east)      -- (2px right.west)
+          (2pz left.east)  -- (2piy*.west)    (2piz*.east)     -- (2px right.west) ;
+      }
+  }
+
+% --------------------------------------------------------------------------- %
+% draw actual AO / MO
+\tl_new:N \l_MOdiagram_electron_color_tl
+
+\cs_new_nopar:Npn \MOdiagram_AO:nn #1#2
+  {
+    \group_begin:
+      \tl_set:Nn \l_MOdiagram_electron_color_tl { #2 }
+      \tikzpicture
+        \bool_if:NT \l_MOdiagram_AO_fancy_bool
+          {
+            \draw (0,0) -- ++(-.5*\l_MOdiagram_AO_width_dim,0) ;
+            \draw (2pt+\l_MOdiagram_AO_width_dim,0)
+                  -- ++(.5*\l_MOdiagram_AO_width_dim,0) ;
+          }
+        \bool_if:NT \l_MOdiagram_AO_circle_bool
+          {
+            \draw (-.4142pt,0) ++(-.2071*\l_MOdiagram_AO_width_dim,0)
+                  -- ++(-.25*\l_MOdiagram_AO_width_dim,0) ;
+            \draw (2.4142pt,0) ++(1.2071*\l_MOdiagram_AO_width_dim,0)
+                  -- ++(.25*\l_MOdiagram_AO_width_dim,0) ;
+          }
+        \MOdiagram_node:x
+          {
+            inner~sep = 0 ,
+            \bool_if:NT \l_MOdiagram_AO_square_bool { draw } ,
+            \bool_if:NT \l_MOdiagram_AO_circle_bool { circle , draw } ,
+            minimum~size =
+              \bool_if:NTF \l_MOdiagram_AO_square_bool
+                { 2pt+\l_MOdiagram_AO_width_dim }
+                {
+                  \bool_if:NTF \l_MOdiagram_AO_circle_bool
+                    { 1.4142*(2pt+\l_MOdiagram_AO_width_dim) }
+                    { \l_MOdiagram_AO_width_dim }
+                } ,
+            \bool_if:NT \l_MOdiagram_AO_round_bool
+              { rounded~corners=2pt }
+          }
+          at (.5*\l_MOdiagram_AO_width_dim+1pt,0)
+          {
+            \tikz
+              {
+                \bool_if:nTF { \l_MOdiagram_AO_square_bool || \l_MOdiagram_AO_circle_bool }
+                  { \draw[draw=none] (0,0) -- ++(\l_MOdiagram_AO_width_dim,0) ; }
+                  { \draw (0,0) -- ++(\l_MOdiagram_AO_width_dim,0) ; }
+                \tl_set:Nn \l_tmpa_tl { #1 }
+                \tl_remove_all:Nn \l_tmpa_tl { ~ }
+                \prg_case_str:onn { \l_tmpa_tl }
+                  {
+                    { up }
+                      {
+                        \MOdiagram_draw:f
+                          { -left~to,semithick , \l_MOdiagram_electron_color_tl , inner~sep=0,outer~sep=0 }
+                          (\l_MOdiagram_AO_up_electron_tl*\l_MOdiagram_AO_width_dim,-.4*\l_MOdiagram_AO_width_dim)
+                          -- ++(0,.8*\l_MOdiagram_AO_width_dim) ;
+                      }
+                    { down }
+                      {
+                        \MOdiagram_draw:f
+                          { -left~to,semithick , \l_MOdiagram_electron_color_tl }
+                          (\l_MOdiagram_AO_down_electron_tl*\l_MOdiagram_AO_width_dim,.4*\l_MOdiagram_AO_width_dim)
+                          -- ++(0,-.8*\l_MOdiagram_AO_width_dim) ;
+                      }
+                    { pair }
+                      {
+                        \MOdiagram_draw:f
+                          { -left~to,semithick , \l_MOdiagram_electron_color_tl }
+                          (\l_MOdiagram_AO_up_electron_tl*\l_MOdiagram_AO_width_dim,-.4*\l_MOdiagram_AO_width_dim)
+                          -- ++(0,.8*\l_MOdiagram_AO_width_dim) ;
+                        \MOdiagram_draw:f
+                          { -left~to,semithick , \l_MOdiagram_electron_color_tl }
+                          (\l_MOdiagram_AO_down_electron_tl*\l_MOdiagram_AO_width_dim,.4*\l_MOdiagram_AO_width_dim)
+                          -- ++(0,-.8*\l_MOdiagram_AO_width_dim) ;
+                      }
+                  }
+                  {}
+              }
+          } ;
+      \endtikzpicture
+    \group_end:
+  }
+\cs_generate_variant:Nn \MOdiagram_AO:nn { ff }
+
+% -------------------------------------------------------------------------- %
+% per default disable all AOs / MOs
+\cs_new_nopar:Npn \MOdiagram_atom_disable:
+  {
+    \bool_set_false:N \l_MOdiagram_atom_one_s_bool
+    \bool_set_false:N \l_MOdiagram_atom_two_s_bool
+    \bool_set_false:N \l_MOdiagram_atom_two_p_bool
+%     \bool_set_false:N \l_MOdiagram_atom_three_s_bool
+%     \bool_set_false:N \l_MOdiagram_atom_three_p_bool
+  }
+
+\cs_new_nopar:Npn \MOdiagram_molecule_disable:
+  {
+    \bool_set_false:N \l_MOdiagram_molecule_one_mo_s_bool
+  }
+
+% --------------------------------------------------------------------------- %
+% arbitrary placement of AOs / MOs
+\dim_new:N \l_MOdiagram_AO_dim % y
+\dim_new:N \l_MOdiagram_AO_position_dim % x
+
+\dim_new:N \l_MOdiagram_AO_px_shift_dim
+\dim_new:N \l_MOdiagram_AO_py_shift_dim
+\dim_new:N \l_MOdiagram_AO_pz_shift_dim
+
+\tl_new:N \l_MOdiagram_AO_px_electron_tl
+\tl_new:N \l_MOdiagram_AO_py_electron_tl
+\tl_new:N \l_MOdiagram_AO_pz_electron_tl
+
+\tl_new:N \l_MOdiagram_AO_x_electron_color_tl
+\tl_new:N \l_MOdiagram_AO_y_electron_color_tl
+\tl_new:N \l_MOdiagram_AO_z_electron_color_tl
+
+\bool_new:N \l_MOdiagram_AO_label_bool
+\bool_new:N \l_MOdiagram_AO_x_label_bool
+\bool_new:N \l_MOdiagram_AO_y_label_bool
+\bool_new:N \l_MOdiagram_AO_z_label_bool
+
+\tl_new:N \l_MOdiagram_AO_x_label_tl
+\tl_new:N \l_MOdiagram_AO_y_label_tl
+\tl_new:N \l_MOdiagram_AO_z_label_tl
+
+\bool_new:N \l_MOdiagram_AO_up_electron_bool
+\bool_new:N \l_MOdiagram_AO_x_up_electron_bool
+\bool_new:N \l_MOdiagram_AO_y_up_electron_bool
+\bool_new:N \l_MOdiagram_AO_z_up_electron_bool
+\tl_new:N \l_MOdiagram_AO_x_up_electron_tl
+\tl_new:N \l_MOdiagram_AO_y_up_electron_tl
+\tl_new:N \l_MOdiagram_AO_z_up_electron_tl
+
+\bool_new:N \l_MOdiagram_AO_down_electron_bool
+\bool_new:N \l_MOdiagram_AO_x_down_electron_bool
+\bool_new:N \l_MOdiagram_AO_y_down_electron_bool
+\bool_new:N \l_MOdiagram_AO_z_down_electron_bool
+\tl_new:N \l_MOdiagram_AO_x_down_electron_tl
+\tl_new:N \l_MOdiagram_AO_y_down_electron_tl
+\tl_new:N \l_MOdiagram_AO_z_down_electron_tl
+
+\tl_new:N \l_MOdiagram_AO_name_tl
+
+\bool_new:N \l_MOdiagram_AO_p_bool
+\bool_new:N \l_MOdiagram_AO_left_bool
+
+\int_new:N \g_MOdiagram_AO_name_int
+
+% read argument in s case:
+\cs_new_nopar:Npn \MOdiagram_AO_s_set:n #1
+  {
+    \tl_if_in:onTF { #1 } { ; }
+      { \MOdiagram_AO_s_set_aux:n #1 \q_stop }
+      {
+        \dim_set:Nn \l_MOdiagram_AO_dim { #1 cm }
+        \tl_set:Nn \l_MOdiagram_AO_px_electron_tl { pair }
+      }
+  }
+
+\cs_new_nopar:Npn \MOdiagram_AO_s_set_aux:n #1;#2 \q_stop
+  {
+    \dim_set:Nn \l_MOdiagram_AO_dim { #1 cm }
+    \tl_set:Nn \l_MOdiagram_AO_px_electron_tl { #2 }
+  }
+
+% read argument in p case:
+\cs_new_nopar:Npn \MOdiagram_AO_p_set:n #1
+  {
+    \tl_if_in:onTF { #1 } { ; }
+      { \MOdiagram_AO_p_set_aux:n #1 \q_stop }
+      {
+        \dim_set:Nn \l_MOdiagram_AO_dim { #1 cm }
+        \tl_set:Nn \l_MOdiagram_AO_px_electron_tl { pair }
+        \tl_set:Nn \l_MOdiagram_AO_py_electron_tl { pair }
+        \tl_set:Nn \l_MOdiagram_AO_pz_electron_tl { pair }
+      }
+  }
+
+\cs_new_nopar:Npn \MOdiagram_AO_p_set_aux:n #1;#2 \q_stop
+  {
+    \dim_set:Nn \l_MOdiagram_AO_dim { #1 cm }
+    \MOdiagram_AO_p_set_electrons:n { #2 }
+  }
+\NewDocumentCommand \MOdiagram_AO_p_set_electrons:n
+  { > { \SplitArgument { 2 } { , } } m }
+  { \MOdiagram_AO_p_set_electrons_aux:n #1 }
+
+\cs_new_nopar:Npn \MOdiagram_AO_p_set_electrons_aux:n #1#2#3
+  {
+    \tl_set:Nn \l_MOdiagram_AO_px_electron_tl { #1 }
+    \tl_set:Nn \l_MOdiagram_AO_py_electron_tl { #2 }
+    \tl_set:Nn \l_MOdiagram_AO_pz_electron_tl { #3 }
+  }
+
+\cs_new_nopar:Npn \MOdiagram_AO_get_orbital_x_label:n #1
+  {
+    \bool_if:nT { \l_MOdiagram_AO_x_label_bool || \l_MOdiagram_AO_label_bool }
+      {
+        \MOdiagram_node:x
+          { below , \tl_use:N \l_MOdiagram_orbital_label_style_tl }
+          at ( #1 . south )
+          {
+            \tl_use:N \l_MOdiagram_orbital_label_fontsize_tl
+            \tl_use:N \l_MOdiagram_AO_x_label_tl
+          } ;
+      }
+  }
+\cs_generate_variant:Nn \MOdiagram_AO_get_orbital_x_label:n { o }
+
+\cs_new_nopar:Npn \MOdiagram_AO_get_orbital_y_label:n #1
+  {
+    \bool_if:nT { \l_MOdiagram_AO_y_label_bool || \l_MOdiagram_AO_label_bool }
+      {
+        \MOdiagram_node:x
+          { below , \tl_use:N \l_MOdiagram_orbital_label_style_tl }
+          at ( #1 . south )
+          {
+            \tl_use:N \l_MOdiagram_orbital_label_fontsize_tl
+            \tl_use:N \l_MOdiagram_AO_y_label_tl
+          } ;
+      }
+  }
+\cs_generate_variant:Nn \MOdiagram_AO_get_orbital_y_label:n { o }
+
+\cs_new_nopar:Npn \MOdiagram_AO_get_orbital_z_label:n #1
+  {
+    \bool_if:nT { \l_MOdiagram_AO_z_label_bool || \l_MOdiagram_AO_label_bool }
+      {
+        \MOdiagram_node:x
+          { below , \tl_use:N \l_MOdiagram_orbital_label_style_tl }
+          at ( #1 . south )
+          {
+            \tl_use:N \l_MOdiagram_orbital_label_fontsize_tl
+            \tl_use:N \l_MOdiagram_AO_z_label_tl
+          } ;
+      }
+  }
+\cs_generate_variant:Nn \MOdiagram_AO_get_orbital_z_label:n { o }
+
+% these are going to be our arguments
+\keys_define:nn { MOdiagram / AO }
+  {
+    type     .choice: ,
+    type / s .code:n = { \bool_set_false:N \l_MOdiagram_AO_p_bool } ,
+    type / p .code:n = { \bool_set_true:N \l_MOdiagram_AO_p_bool }
+  }
+
+\keys_define:nn { MOdiagram / AO / properties }
+  {
+    color          .code:n   =
+      {
+        \tl_set:Nn \l_MOdiagram_AO_x_electron_color_tl { #1 }
+        \tl_set:Nn \l_MOdiagram_AO_y_electron_color_tl { #1 }
+        \tl_set:Nn \l_MOdiagram_AO_z_electron_color_tl { #1 }
+      } ,
+    color[x]       .tl_set:N = \l_MOdiagram_AO_x_electron_color_tl ,
+    color[y]       .tl_set:N = \l_MOdiagram_AO_y_electron_color_tl ,
+    color[z]       .tl_set:N = \l_MOdiagram_AO_z_electron_color_tl ,
+    label          .code:n   =
+      {
+        \bool_set_true:N \l_MOdiagram_AO_label_bool
+        \tl_set:Nn \l_MOdiagram_AO_x_label_tl { #1 }
+        \tl_set:Nn \l_MOdiagram_AO_y_label_tl { #1 }
+        \tl_set:Nn \l_MOdiagram_AO_z_label_tl { #1 }
+      } ,
+    label[x]       .code:n   =
+      {
+        \bool_set_true:N \l_MOdiagram_AO_x_label_bool
+        \tl_set:Nn \l_MOdiagram_AO_x_label_tl { #1 }
+      } ,
+    label[y]       .code:n   =
+      {
+        \bool_set_true:N \l_MOdiagram_AO_y_label_bool
+        \tl_set:Nn \l_MOdiagram_AO_y_label_tl { #1 }
+      } ,
+    label[z]       .code:n   =
+      {
+        \bool_set_true:N \l_MOdiagram_AO_z_label_bool
+        \tl_set:Nn \l_MOdiagram_AO_z_label_tl { #1 }
+      } ,
+    up-el-pos      .code:n   =
+      {
+        \bool_set_true:N \l_MOdiagram_AO_up_electron_bool
+        \tl_set:Nn \l_MOdiagram_AO_x_up_electron_tl { #1 }
+        \tl_set:Nn \l_MOdiagram_AO_y_up_electron_tl { #1 }
+        \tl_set:Nn \l_MOdiagram_AO_z_up_electron_tl { #1 }
+      } ,
+    up-el-pos[x]   .code:n   =
+      {
+        \bool_set_true:N \l_MOdiagram_AO_x_up_electron_bool
+        \tl_set:Nn \l_MOdiagram_AO_x_up_electron_tl { #1 }
+      } ,
+    up-el-pos[y]   .code:n   =
+      {
+        \bool_set_true:N \l_MOdiagram_AO_y_up_electron_bool
+        \tl_set:Nn \l_MOdiagram_AO_y_up_electron_tl { #1 }
+      } ,
+    up-el-pos[z]   .code:n   =
+      {
+        \bool_set_true:N \l_MOdiagram_AO_z_up_electron_bool
+        \tl_set:Nn \l_MOdiagram_AO_y_up_electron_tl { #1 }
+      } ,
+    down-el-pos    .code:n   =
+      {
+        \bool_set_true:N \l_MOdiagram_AO_down_electron_bool
+        \tl_set:Nn \l_MOdiagram_AO_x_down_electron_tl { #1 }
+        \tl_set:Nn \l_MOdiagram_AO_y_down_electron_tl { #1 }
+        \tl_set:Nn \l_MOdiagram_AO_z_down_electron_tl { #1 }
+      } ,
+    down-el-pos[x] .code:n   =
+      {
+        \bool_set_true:N \l_MOdiagram_AO_x_down_electron_bool
+        \tl_set:Nn \l_MOdiagram_AO_x_down_electron_tl { #1 }
+      } ,
+    down-el-pos[y] .code:n   =
+      {
+        \bool_set_true:N \l_MOdiagram_AO_y_down_electron_bool
+        \tl_set:Nn \l_MOdiagram_AO_y_down_electron_tl { #1 }
+      } ,
+    down-el-pos[z] .code:n   =
+      {
+        \bool_set_true:N \l_MOdiagram_AO_z_down_electron_bool
+        \tl_set:Nn \l_MOdiagram_AO_z_down_electron_tl { #1 }
+      }
+  }
+
+% AO[<name>](<x-coord>){<type>}[<keyval>]{<AO-spec>}
+\NewDocumentCommand \MOdiagram_arbitrary_AO: { o D(){0cm} m o m }
+  {
+    \group_begin:
+    \IfNoValueTF { #1 }
+      {
+        \int_gincr:N \g_MOdiagram_AO_name_int
+        \tl_set:Nn \l_MOdiagram_AO_name_tl { AO \int_use:N \g_MOdiagram_AO_name_int }
+      }
+      { \tl_set:Nn \l_MOdiagram_AO_name_tl { #1 } }
+    \IfNoValueF { #4 }
+      { \keys_set:nn { MOdiagram / AO / properties } { #4 } }
+    \keys_set:nn { MOdiagram / AO } { type = #3 }
+    \bool_if:NTF \l_MOdiagram_AO_p_bool
+      { \MOdiagram_AO_p_set:n { #5 } }
+      { \MOdiagram_AO_s_set:n { #5 } }
+    \dim_set:Nn \l_MOdiagram_AO_position_dim { #2 }
+    \MOdiagram_p_orbitals_shift:nnn { 0 } { 2 } { 4 }
+    \MOdiagram_energy_range:N \l_MOdiagram_AO_dim
+    \MOdiagram_node:n { inner~sep=0 , outer~sep=0 }
+      (
+        \tl_use:N \l_MOdiagram_AO_name_tl
+        \bool_if:NT \l_MOdiagram_AO_p_bool { x }
+      )
+      at
+      (
+        \l_MOdiagram_AO_position_dim + \l_MOdiagram_atom_px_shift_dim ,
+        \l_MOdiagram_AO_dim
+      )
+      {
+        \bool_if:nT { \l_MOdiagram_AO_up_electron_bool || \l_MOdiagram_AO_x_up_electron_bool }
+          {
+            \MOdiagram_AO_place_electron:nx { 0 }
+              { \tl_use:N \l_MOdiagram_AO_x_up_electron_tl }
+          }
+        \bool_if:nT { \l_MOdiagram_AO_down_electron_bool || \l_MOdiagram_AO_x_down_electron_bool }
+          {
+            \MOdiagram_AO_place_electron:nx { 1 }
+              { \tl_use:N \l_MOdiagram_AO_x_down_electron_tl }
+          }
+        \MOdiagram_AO:ff
+          { \tl_use:N \l_MOdiagram_AO_px_electron_tl }
+          { \tl_use:N \l_MOdiagram_AO_x_electron_color_tl }
+      } ;
+    \MOdiagram_AO_get_orbital_x_label:o
+      {
+        \tl_use:N \l_MOdiagram_AO_name_tl
+        \bool_if:NT \l_MOdiagram_AO_p_bool { x }
+      }
+    \bool_if:NT \l_MOdiagram_AO_p_bool
+      {
+        \MOdiagram_node:n { inner~sep=0 , outer~sep=0 }
+          ( \tl_use:N \l_MOdiagram_AO_name_tl y )
+          at
+          (
+            \l_MOdiagram_AO_position_dim + \l_MOdiagram_atom_py_shift_dim ,
+            \l_MOdiagram_AO_dim
+          )
+          {
+            \bool_if:nT { \l_MOdiagram_AO_up_electron_bool || \l_MOdiagram_AO_y_up_electron_bool }
+              {
+                \MOdiagram_AO_place_electron:nx { 0 }
+                  { \tl_use:N \l_MOdiagram_AO_y_up_electron_tl }
+              }
+            \bool_if:nT { \l_MOdiagram_AO_down_electron_bool || \l_MOdiagram_AO_y_down_electron_bool }
+              {
+                \MOdiagram_AO_place_electron:nx { 1 }
+                  { \tl_use:N \l_MOdiagram_AO_y_down_electron_tl }
+              }
+            \MOdiagram_AO:ff
+              { \tl_use:N \l_MOdiagram_AO_py_electron_tl }
+              { \tl_use:N \l_MOdiagram_AO_y_electron_color_tl }
+          } ;
+        \MOdiagram_AO_get_orbital_y_label:o { \tl_use:N \l_MOdiagram_AO_name_tl y }
+        \MOdiagram_node:n { inner~sep=0 , outer~sep=0 }
+          ( \tl_use:N \l_MOdiagram_AO_name_tl z )
+          at
+          (
+            \l_MOdiagram_AO_position_dim + \l_MOdiagram_atom_pz_shift_dim ,
+            \l_MOdiagram_AO_dim
+          )
+          {
+            \bool_if:nT { \l_MOdiagram_AO_up_electron_bool || \l_MOdiagram_AO_z_up_electron_bool }
+              {
+                \MOdiagram_AO_place_electron:nx { 0 }
+                  { \tl_use:N \l_MOdiagram_AO_z_up_electron_tl }
+              }
+            \bool_if:nT { \l_MOdiagram_AO_down_electron_bool || \l_MOdiagram_AO_z_down_electron_bool }
+              {
+                \MOdiagram_AO_place_electron:nx { 1 }
+                  { \tl_use:N \l_MOdiagram_AO_z_down_electron_tl }
+              }
+            \MOdiagram_AO:ff
+              { \tl_use:N \l_MOdiagram_AO_pz_electron_tl }
+              { \tl_use:N \l_MOdiagram_AO_z_electron_color_tl }
+          } ;
+        \MOdiagram_AO_get_orbital_z_label:o { \tl_use:N \l_MOdiagram_AO_name_tl z }
+      }
+    \group_end:
+  }
+
+% --------------------------------------------------------------------------- %
+% connect arbitrary AOs / MOs
+\NewDocumentCommand \connect { m }
+  {
+    \clist_map_variable:nNn { #1 } \l_tmpa_tl
+      {
+        \tl_remove_all:Nn \l_tmpa_tl { ~ }
+        \tl_if_blank:VF \l_tmpa_tl
+          {
+            \MOdiagram_detect_nodes:x { \l_tmpa_tl }
+             \tl_if_in:NnF \l_MOdiagram_node_A_tl { . }
+               { \tl_put_right:Nn \l_MOdiagram_node_A_tl { . east } }
+             \tl_if_in:NnF \l_MOdiagram_node_B_tl { . }
+               { \tl_put_right:Nn \l_MOdiagram_node_B_tl { . west } }
+            \MOdiagram_draw_connection:xxx
+              { \tl_use:N \l_MOdiagram_lines_tl }
+              { \tl_use:N \l_MOdiagram_node_A_tl }
+              { \tl_use:N \l_MOdiagram_node_B_tl }
+          }
+      }
+  }
+
+\NewDocumentCommand \MOdiagram_detect_nodes:n { > { \SplitArgument { 1 } { & } } m }
+  { \MOdiagram_detect_nodes_aux_i:nn #1 }
+\cs_generate_variant:Nn \MOdiagram_detect_nodes:n { x }
+
+\cs_new_nopar:Npn \MOdiagram_detect_nodes_aux_i:nn #1#2
+  {
+    \tl_set:Nn \l_MOdiagram_node_A_tl { #1 }
+    \tl_set:Nn \l_MOdiagram_node_B_tl { #2 }
+  }
+
+\cs_new_nopar:Npn \MOdiagram_draw_connection:nnn #1#2#3
+  { \draw[#1] (#2) -- (#3) ; }
+\cs_generate_variant:Nn \MOdiagram_draw_connection:nnn { xxx }
+
+% --------------------------------------------------------------------------- %
+% orbital labels
+\prop_new:N \l_MOdiagram_orbital_label_prop
+\tl_set:Nn \l_MOdiagram_orbital_label_fontsize_tl { \small }
+
+\cs_new_nopar:Npn \MOdiagram_orbital_label_set:n #1
+  { \keys_set:nn { MOdiagram / label } { #1 } }
+
+\cs_new_nopar:Npn \MOdiagram_get_orbital_label:n #1
+  {
+    \tl_clear:N \l_tmpa_tl
+    \tl_clear:N \l_tmpb_tl
+    \prop_get:NnNT \l_MOdiagram_orbital_label_prop { #1 } \l_tmpa_tl
+      {
+        \MOdiagram_node:x
+          { below , \tl_use:N \l_MOdiagram_orbital_label_style_tl }
+          at ( #1 . south )
+          {
+            \tl_use:N \l_MOdiagram_orbital_label_fontsize_tl
+            \tl_use:N \l_tmpa_tl
+          } ;
+      }
+  }
+
+\keys_define:nn { MOdiagram / label }
+  {
+    1sleft   .code:n =
+      { \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 1sleft }   { #1 } } ,
+    1sright  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 1sright }  { #1 } } ,
+    2sleft   .code:n =
+      { \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2sleft }   { #1 } } ,
+    2sright  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2sright }  { #1 } } ,
+    2pxleft  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2pxleft }  { #1 } } ,
+    2pxright .code:n =
+      { \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2pxright } { #1 } } ,
+    2pyleft  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2pyleft }  { #1 } } ,
+    2pyright .code:n =
+      { \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2pyright } { #1 } } ,
+    2pzleft  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2pzleft }  { #1 } } ,
+    2pzright .code:n =
+      { \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2pzright } { #1 } } ,
+    1sigma   .code:n =
+      { \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 1sigma }   { #1 } } ,
+    1sigma*  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 1sigma* }  { #1 } } ,
+    2sigma   .code:n =
+      { \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2sigma }   { #1 } } ,
+    2sigma*  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2sigma* }  { #1 } } ,
+    2psigma  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2psigma }  { #1 } } ,
+    2psigma* .code:n =
+      { \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2psigma* } { #1 } } ,
+    2piy     .code:n =
+      { \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2piy }     { #1 } } ,
+    2piy*    .code:n =
+      { \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2piy* }    { #1 } } ,
+    2piz     .code:n =
+      { \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2piz }     { #1 } } ,
+    2piz*    .code:n =
+      { \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2piz* }    { #1 } }
+  }
+
+\char_set_catcode_math_subscript:N \@
+\cs_new_nopar:Npn \MOdiagram_set_labels:
+  {
+    \bool_if:NT \l_MOdiagram_AO_labels_bool
+      {
+        \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 1sleft }   { 1s }
+        \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 1sright }  { 1s }
+        \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2sleft }   { 2s }
+        \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2sright }  { 2s }
+        \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2pxleft }  { 2p$@x$ }
+        \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2pxright } { 2p$@x$ }
+        \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2pyleft }  { 2p$@y$ }
+        \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2pyright } { 2p$@y$ }
+        \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2pzleft }  { 2p$@z$ }
+        \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2pzright } { 2p$@z$ }
+        \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 1sigma }   { 1\textsigma$@s$ }
+        \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 1sigma* }  { 1\textsigma$^*@s$ }
+        \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2sigma }   { 2\textsigma$@s$ }
+        \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2sigma* }  { 2\textsigma$^*@s$ }
+        \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2psigma }  { 2\textsigma$@x$ }
+        \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2psigma* } { 2\textsigma$^*@x$ }
+        \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2piy }     { 2\textpi$@y$ }
+        \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2piy* }    { 2\textpi$^*@y$ }
+        \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2piz }     { 2\textpi$@z$ }
+        \prop_put:Nnn \l_MOdiagram_orbital_label_prop { 2piz* }    { 2\textpi$^*@z$ }
+      }
+  }
+\char_set_catcode_letter:N \@
+
+% --------------------------------------------------------------------------- %
+% electron colours
+\prop_new:N \l_MOdiagram_electron_color_prop
+\tl_new:N \l_MOdiagram_electron_current_color_tl
+
+\cs_new_nopar:Npn \MOdiagram_electron_color_set:n #1
+  { \keys_set:nn { MOdiagram / color } { #1 } }
+
+\cs_new_nopar:Npn \MOdiagram_get_electron_color:n #1
+  {
+    \tl_clear:N \l_tmpa_tl
+    \tl_clear:N \l_tmpb_tl
+    \prop_get:NnNT \l_MOdiagram_electron_color_prop { #1 } \l_tmpa_tl
+      { \tl_set_eq:NN \l_MOdiagram_electron_current_color_tl \l_tmpa_tl }
+  }
+
+\keys_define:nn { MOdiagram / color }
+  {
+    1sleft   .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_color_prop { 1sleft }   { #1 } } ,
+    1sright  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_color_prop { 1sright }  { #1 } } ,
+    2sleft   .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_color_prop { 2sleft }   { #1 } } ,
+    2sright  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_color_prop { 2sright }  { #1 } } ,
+    2pxleft  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_color_prop { 2pxleft }  { #1 } } ,
+    2pxright .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_color_prop { 2pxright } { #1 } } ,
+    2pyleft  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_color_prop { 2pyleft }  { #1 } } ,
+    2pyright .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_color_prop { 2pyright } { #1 } } ,
+    2pzleft  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_color_prop { 2pzleft }  { #1 } } ,
+    2pzright .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_color_prop { 2pzright } { #1 } } ,
+    1sigma   .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_color_prop { 1sigma }   { #1 } } ,
+    1sigma*  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_color_prop { 1sigma* }  { #1 } } ,
+    2sigma   .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_color_prop { 2sigma }   { #1 } } ,
+    2sigma*  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_color_prop { 2sigma* }  { #1 } } ,
+    2psigma  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_color_prop { 2psigma }  { #1 } } ,
+    2psigma* .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_color_prop { 2psigma* } { #1 } } ,
+    2piy     .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_color_prop { 2piy }     { #1 } } ,
+    2piy*    .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_color_prop { 2piy* }    { #1 } } ,
+    2piz     .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_color_prop { 2piz }     { #1 } } ,
+    2piz*    .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_color_prop { 2piz* }    { #1 } }
+  }
+
+% --------------------------------------------------------------------------- %
+% electron positions
+\prop_new:N \l_MOdiagram_electron_up_prop
+
+\cs_new_nopar:Npn \MOdiagram_electron_up_set:n #1
+  { \keys_set:nn { MOdiagram / up-pos } { #1 } }
+
+\cs_new_nopar:Npn \MOdiagram_get_electron_up:n #1
+  {
+    \tl_clear:N \l_tmpa_tl
+    \tl_clear:N \l_tmpb_tl
+    \prop_get:NnNT \l_MOdiagram_electron_up_prop { #1 } \l_tmpa_tl
+      { \tl_set_eq:NN \l_MOdiagram_AO_up_electron_tl \l_tmpa_tl }
+  }
+
+\keys_define:nn { MOdiagram / up-pos }
+  {
+    1sleft   .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_up_prop { 1sleft }   { #1 } } ,
+    1sright  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_up_prop { 1sright }  { #1 } } ,
+    2sleft   .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_up_prop { 2sleft }   { #1 } } ,
+    2sright  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_up_prop { 2sright }  { #1 } } ,
+    2pxleft  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_up_prop { 2pxleft }  { #1 } } ,
+    2pxright .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_up_prop { 2pxright } { #1 } } ,
+    2pyleft  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_up_prop { 2pyleft }  { #1 } } ,
+    2pyright .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_up_prop { 2pyright } { #1 } } ,
+    2pzleft  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_up_prop { 2pzleft }  { #1 } } ,
+    2pzright .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_up_prop { 2pzright } { #1 } } ,
+    1sigma   .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_up_prop { 1sigma }   { #1 } } ,
+    1sigma*  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_up_prop { 1sigma* }  { #1 } } ,
+    2sigma   .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_up_prop { 2sigma }   { #1 } } ,
+    2sigma*  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_up_prop { 2sigma* }  { #1 } } ,
+    2psigma  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_up_prop { 2psigma }  { #1 } } ,
+    2psigma* .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_up_prop { 2psigma* } { #1 } } ,
+    2piy     .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_up_prop { 2piy }     { #1 } } ,
+    2piy*    .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_up_prop { 2piy* }    { #1 } } ,
+    2piz     .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_up_prop { 2piz }     { #1 } } ,
+    2piz*    .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_up_prop { 2piz* }    { #1 } }
+  }
+
+\prop_new:N \l_MOdiagram_electron_down_prop
+
+\cs_new_nopar:Npn \MOdiagram_electron_down_set:n #1
+  { \keys_set:nn { MOdiagram / down-pos } { #1 } }
+
+\cs_new_nopar:Npn \MOdiagram_get_electron_down:n #1
+  {
+    \tl_clear:N \l_tmpa_tl
+    \tl_clear:N \l_tmpb_tl
+    \prop_get:NnNT \l_MOdiagram_electron_down_prop { #1 } \l_tmpa_tl
+      { \tl_set_eq:NN \l_MOdiagram_AO_down_electron_tl \l_tmpa_tl }
+  }
+
+\keys_define:nn { MOdiagram / down-pos }
+  {
+    1sleft   .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_down_prop { 1sleft }   { #1 } } ,
+    1sright  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_down_prop { 1sright }  { #1 } } ,
+    2sleft   .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_down_prop { 2sleft }   { #1 } } ,
+    2sright  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_down_prop { 2sright }  { #1 } } ,
+    2pxleft  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_down_prop { 2pxleft }  { #1 } } ,
+    2pxright .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_down_prop { 2pxright } { #1 } } ,
+    2pyleft  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_down_prop { 2pyleft }  { #1 } } ,
+    2pyright .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_down_prop { 2pyright } { #1 } } ,
+    2pzleft  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_down_prop { 2pzleft }  { #1 } } ,
+    2pzright .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_down_prop { 2pzright } { #1 } } ,
+    1sigma   .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_down_prop { 1sigma }   { #1 } } ,
+    1sigma*  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_down_prop { 1sigma* }  { #1 } } ,
+    2sigma   .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_down_prop { 2sigma }   { #1 } } ,
+    2sigma*  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_down_prop { 2sigma* }  { #1 } } ,
+    2psigma  .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_down_prop { 2psigma }  { #1 } } ,
+    2psigma* .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_down_prop { 2psigma* } { #1 } } ,
+    2piy     .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_down_prop { 2piy }     { #1 } } ,
+    2piy*    .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_down_prop { 2piy* }    { #1 } } ,
+    2piz     .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_down_prop { 2piz }     { #1 } } ,
+    2piz*    .code:n =
+      { \prop_put:Nnn \l_MOdiagram_electron_down_prop { 2piz* }    { #1 } }
+  }
+
+% --------------------------------------------------------------------------- %
+% energy axis
+\dim_new:N \l_energy_axis_dim
+\dim_set:Nn \l_energy_axis_dim { 0pt }
+
+\tl_new:N \l_MOdiagram_Eaxis_head_tl
+\tl_set:Nn \l_MOdiagram_Eaxis_head_tl { latex }
+\tl_new:N \l_MOdiagram_Eaxis_title_tl
+
+\bool_new:N \l_MOdiagram_Eaxis_title_bool
+\bool_set_false:N \l_MOdiagram_Eaxis_title_bool
+
+\NewDocumentCommand \MOdiagram_EnergyAxis: { o }
+  {
+    \IfNoValueF { #1 } { \keys_set:nn { MOdiagram / axis } { #1 } }
+    \MOdiagram_draw:f { - \tl_use:N \l_MOdiagram_Eaxis_head_tl }
+      (\l_energy_axis_dim , \g_MOdiagram_min_energy_dim - 1cm )
+      --
+      (\l_energy_axis_dim , \g_MOdiagram_max_energy_dim + 1cm ) 
+      \bool_if:NT \l_MOdiagram_Eaxis_title_bool
+        { node [ above ] { \tl_use:N \l_MOdiagram_Eaxis_title_tl } }
+    ;
+  }
+
+\keys_define:nn { MOdiagram / axis }
+  {
+    title .code:n =
+      {
+        \bool_set_true:N \l_MOdiagram_Eaxis_title_bool
+        \tl_set:Nn \l_MOdiagram_Eaxis_title_tl { #1 }
+      } ,
+    title .default:n = energy ,
+    head  .tl_set:N  = \l_MOdiagram_Eaxis_head_tl ,
+    head  .default:n = >
+  }
+
+% --------------------------------------------------------------------------- %
+% tikz helper functions
+\cs_new_nopar:Npn \MOdiagram_node:n #1
+  { \node [ #1 ] }
+\cs_generate_variant:Nn \MOdiagram_node:n { f,x }
+
+\cs_new_nopar:Npn \MOdiagram_draw:n #1
+  { \draw [ #1 ] }
+\cs_generate_variant:Nn \MOdiagram_draw:n { f }
+
+\cs_new_nopar:Npn \MOdiagram_tikz:nn #1
+  { \tikz [ #1 ] }
+\cs_generate_variant:Nn \MOdiagram_tikz:nn { fn,xn }
+
+\cs_new_nopar:Npn \MOdiagram_tikzpicture:n #1
+  { \tikzpicture [ #1 ] }
+\cs_generate_variant:Nn \MOdiagram_tikzpicture:n { f }
+
+\tex_endinput:D
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Version history
+2011/09/25 version 0.1 - first upload to CTAN
+2011/10/27 version 0.2 - \atom, \molecule, \AO, \EnergyAxis only defined within
+                         the MOdiagram environment
+                       - bugfix in energy splitting process
+                       - bugfix: wrong labelling of plain empty orbitals
+                       - different values for energy gain and loss possible
+                       - default values for the AO and MO; if empty values are
+                         used, the ";" and "," can be omitted
+                       - default node names for the arbitrary AOs
+                       - horizontal shift of electrons possible
+                       - customization of atom- and molecule names possible
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% TODO
+- 3s, 3p , 3sMO , 3pMO , 4s , sp3
+- energy axis: ticks? at orbital heights?
+- electron configuration
+- localisation for the energy axis title using the translator package
+- Default-Einheit (bislang cm) ändern können?

@@ -1,0 +1,244 @@
+%NAME: texpictex.tex
+% texpictex.tex -- The following macros over-ride certain definitions in the
+% PiCTeX macro package. The net effect is that line-drawing is done using
+% the \special's used by texpic (tpic). Several DVI printers understand
+% and handle these specials.
+%
+% Currently, only straight lines are translated. Recently, I added a
+% clipping routine to clip to the bounding box.
+%
+% If people extend this to included elliptic circles and quadratics,
+% please forward the extensions to me (quads are used in the \arrow
+% macro, making them very slow).
+%
+% Dirk Grunwald
+% Univ. of Illinois
+% grunwald@m.cs.uiuc.edu
+%
+\def\makebangletter{\catcode`\!=11\relax}
+\def\makebangother{\catcode`\!=12\relax}
+%
+\makebangletter
+%
+% The units that texpic deals in. You should define it this way instead
+% of simply saying ``0.001in'' because the difference in resolution
+% actually makes a big difference
+%
+\newdimen\!tpu
+\!tpu=1in
+\divide\!tpu by 1000
+%%%
+%%	\!maptpus	-- map a PiCTeX dimension to a TeXPiC dimension
+%%			using the \!tpu conversion factor.
+%%
+%%	uses: dimen0
+%%
+\def\!maptpus#1#2 {\dimen0=#1\divide \dimen0 by \!tpu #2=\dimen0}
+%
+% **  \setplotsymbol ({PLOTSYMBOL} [ ] < , >)
+% **  Save PLOTSYMBOL away in an hbox for use with curve plotting routines
+% **  See Subsection 5.2 of the manual.
+\def\setplotsymbol(#1#2){%
+  \!setputobject{#1}{#2}
+  \setbox\!plotsymbol=\box\!putobject%
+  \!plotsymbolxshift=\!xshift 
+  \!plotsymbolyshift=\!yshift
+%
+% Additions: compute size of dot, convert to TPUs and issue a pensize
+%  
+  \!dimenB=\wd\!plotsymbol
+  \!dimenC=\ht\!plotsymbol
+  \advance\!dimenC by \dp\!plotsymbol
+  \ifdim\!dimenB<\!dimenC \!dimenF=\!dimenC  \else \!dimenF=\!dimenB\fi
+  \!maptpus{\!dimenF}{\!countC}
+  \special{pn \the\!countC}
+  \ignorespaces}
+
+\setplotsymbol({\fiverm .})%       ** initialize plotsymbol
+
+% **  The following routine is used to draw a "solid" line between (xS,yS)
+% **  and (xE,yE).  Points are spaced nearly every  \plotsymbolspacing length
+% **  along the line.  
+%
+%	Note: this is a replacement for PicTeX \!linearsolid.
+%	If line clipping is enabled, the line to be drawn is
+%	clipped using \!clipline. If there's anything left
+%	to draw after clipping, it's drawn. If clipping is off,
+%	the line is simply drawn. In either case, line drawing
+%	is done by \!texpicline.
+%
+\def\!linearsolid{%
+  \let\!nextLinearAct=\!texpicline
+  \expandafter\ifx \!initinboundscheck \relax
+    \else \!clipline \if!InBounds \else \let\!nextLinearAct=\relax \fi \fi%
+  \!nextLinearAct%
+}
+%
+% Texpic has increasing origin in the upper left corner, while
+% pictex has origin in bottom left corner. Ergo, we flip the signs
+% for y-coordinates.
+%
+\def\!texpicline{%
+\advance\!xS by -\!xorigin
+\advance\!xE by -\!xorigin
+\advance\!yS by -\!yorigin
+\advance\!yE by -\!yorigin
+\!maptpus{\!xS}{\!countC} \!maptpus{\!yS}{\!countD} \!countD=-\!countD%
+\special{pa \the\!countC \space \the\!countD}%
+\!maptpus{\!xE}{\!countC} \!maptpus{\!yE}{\!countD} \!countD=-\!countD%
+\special{pa \the\!countC \space \the\!countD}\special{fp}%
+\ignorespaces}
+%
+%%%
+%	Code to support line clipping
+%
+%	Line clipping routine. Clips to bounding box specified
+%	by (!checkleft, !checkbot) and (!checkright, !checktop).
+%	Note that this box is only defined if \initboundscheckon
+%	has been called.
+%
+%	The clipping algorithm was published in ACM TOG Vol 3 No 1
+%	by people at Berkeley, but I've forgotten the complete reference.
+%	This was translated from a version I wrote in C.
+%
+%%
+%	After calling \!cliplines, !InBounds tells you if the line contains
+%	any points within the clipping window.
+%
+\newif\if!InBounds
+%
+%%
+%	\!clipt	-- this corresponds to the routine by the same name
+%	in the published algorithm.
+%
+%	Dimens used are descibed below. All are grouped and know that
+%	PiCTeX doesn't use dimen0..9. Variable names are taken from
+%	the TOG article. The junk on the r.h.s. is indenting information
+%
+%	Globals:	dimen8 corresponds to t0
+%			dimen9 corresponds to t1
+%
+%	clipt		dimen0 corresponds to p
+%			dimen1 corresponds to q
+%			dimen2 corresponds to r
+%
+%	!fastclip	Uses bounding boxes
+%
+%	!clipline	passes dimen3 to clipt as p
+%			passes dimen4 to clipt as q
+%			uses   dimen0, dimen2
+%
+%
+\def\!clipt#1#2{%
+  \dimen0=#1 \relax \dimen1=#2 \relax
+  \ifdim \dimen0 < \!zpt%						>0
+	\!divide{\dimen1}{\dimen0}{\dimen2}%
+	\ifdim \dimen2 > \dimen9%					>1
+		\global\!InBoundsfalse
+	\else%								=1
+		\ifdim \dimen2 > \dimen8 \dimen8=\dimen2 \fi
+	\fi%								<1
+  \else \ifdim \dimen0 > \!zpt%						=0>1
+	\!divide{\dimen1}{\dimen0}{\dimen2}%
+	\ifdim \dimen2 < \dimen8%					>2
+		\global\!InBoundsfalse
+	\else%								=2
+		\ifdim \dimen2 < \dimen9 \dimen9=\dimen2 \fi
+	\fi%								<2
+   \else%								=1
+	\ifdim \dimen1 < \!zpt \global\!InBoundsfalse \fi
+   \fi%									<1
+  \fi%									<0
+}
+%
+%	fastclipcheck
+%
+\def\!fastclip#1#2{%
+  \ifdim #1<\!checkleft \global\!InBoundsfalse \else
+    \ifdim #1>\!checkright \global\!InBoundsfalse \else
+      \ifdim #2<\!checkbot \global\!InBoundsfalse \else
+         \ifdim #2>\!checktop \global\!InBoundsfalse \else
+         \fi 
+      \fi
+    \fi
+  \fi}
+%
+%	clipline	- clip a line to the current bounding box.
+%	assumes line is in (!xS, !yS) and extends to (!xE,!yE) and that
+%	\!xdiff and \!ydiff has been set up. This is normally done
+%	in \!lstart.
+%
+%	\!clipline first checks to see if the start & end points are
+%	conainted in the clipping box. If the simple compare works,
+%	then no clipping is done, else \!doclip is called to
+%	do the actually clipping computations.
+%
+\def\!clipline{%
+   \!!initinboundscheck
+   \!InBoundstrue
+   \!fastclip{\!xS}{\!yS}%
+   \!fastclip{\!xE}{\!yE}%
+   \if!InBounds\else\!doclip\fi}
+%
+\def\!doclip{%
+\begingroup%
+  \global\!InBoundstrue%
+  \dimen8=0pt
+  \dimen9=1pt
+  %
+  \dimen3=-\!xdiff
+  \dimen4=\!xS \advance\dimen4 by -\!checkleft%		fromX-minX
+  \!clipt{\dimen3}{\dimen4}%
+%
+  \if!InBounds% 0
+    \dimen3=\!xdiff
+    \dimen4=\!checkright \advance\dimen4 by -\!xS%	maxX - fromX
+    \!clipt{\dimen3}{\dimen4}%
+%
+    \if!InBounds% 1
+%
+      \dimen3=-\!ydiff
+      \dimen4=\!yS \advance\dimen4 by -\!checkbot%	fromY-minY
+      \!clipt{\dimen3}{\dimen4}%
+%
+      \if!InBounds% 2
+%
+        \dimen3=\!ydiff
+        \dimen4=\!checktop \advance\dimen4 by -\!yS%	maxY-fromY
+        \!clipt{\dimen3}{\dimen4}%
+%
+	\if!InBounds% 3
+	  \dimen0=1pt
+%
+%	The following \if's truncate the line based on the solution
+%	to the parametric solution to the bounding box.
+%
+%	Note that we don't have a \!multiply, the equivilent to \!divide.
+%	The code below compute X * Y as (x / ( 1/ Y)), which is far
+%	from optimal.
+%
+	  \ifdim\dimen9 < \dimen0% 4
+	     \!divide{\dimen0}{\dimen9}{\dimen2}%
+%
+	     \dimen3=\!xdiff \!divide{\dimen3}{\dimen2}{\dimen4}%
+	     \global\!xE=\dimen4 \global\advance\!xE by \!xS
+%
+	     \dimen3=\!ydiff \!divide{\dimen3}{\dimen2}{\dimen4}%
+	     \global\!yE=\dimen4 \global\advance\!yE by \!yS
+	  \fi% 4
+	  \ifdim\dimen8 > \!zpt% 4
+	     \!divide{\dimen0}{\dimen8}{\dimen2}%
+%
+	     \dimen3=\!xdiff \!divide{\dimen3}{\dimen2}{\dimen4}%
+	     \global\advance\!xS by \dimen4
+%
+	     \dimen3=\!ydiff \!divide{\dimen3}{\dimen2}{\dimen4}%
+	     \global\advance\!yS by \dimen4
+	  \fi% 4
+        \fi% 3
+      \fi% 2
+    \fi% 1
+  \fi% 0
+\endgroup}
+%
+\makebangother

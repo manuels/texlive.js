@@ -1,0 +1,904 @@
+%--------------------------------------------
+%
+% Package pgfplots, library for ternary plots (triangular axes).
+%
+% Copyright 2010 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+% 
+% This is a library to draw ternary diagrams.
+%
+% A ternary diagram visualizes percentages of three components in a
+% triangle.
+%
+% Sometimes there is also contour data drawn on top of the ternary
+% diagram, i.e. data (x,y,z, T(x,y,z) ), but I can't do that yet.
+%
+% How to read a ternary diagram: http://csmres.jmu.edu/geollab/fichter/SedRx/readternary.html
+% 
+% Another usage example: http://www.sv.vt.edu/classes/MSE2094_NoteBook/96ClassProj/experimental/ternary2.html
+%
+% Drawing ternary diagrams: http://staff.aist.go.jp/a.noda/programs/ternary/ternary-en.html
+%
+% computing these coordinates: http://www.gamedev.net/community/forums/topic.asp?topic_id=451357
+%
+
+\pgfplotsdefineaxistype{ternary}{%
+	\pgfplots@ternary@activate
+}%
+
+\newif\ifpgfplots@ternary@rellimits
+
+
+\pgfplotsset{
+	/pgfplots/ternary limits relative/.is if=pgfplots@ternary@rellimits,
+	/pgfplots/ternary limits relative=true,
+	/pgfplots/ternary limits relative/.default=true,
+	/pgfplots/ternary relative limits/.style={/pgfplots/ternary limits relative=#1},
+	/pgfplots/ternary start x/.initial=, % FIXME : implement
+	/pgfplots/ternary start y/.initial=,
+	/pgfplots/ternary start z/.initial=,
+	/pgfplots/every ternary axis/.style={
+		/pgfplots/tick align=outside,
+		grid=major,
+		xticklabel style={anchor=west},
+		% yticklabel style={anchor=south east},
+		% zticklabel style={anchor=north},
+		/pgfplots/every 3d description/.style={},
+		/pgfplots/every axis x label/.style={at={(ticklabel cs:0.5)},anchor=near ticklabel},%
+		/pgfplots/every axis y label/.style={at={(ticklabel cs:0.5)},anchor=near ticklabel},%
+		/pgfplots/every axis z label/.style={at={(ticklabel cs:0.5)},anchor=near ticklabel},%
+		/pgfplots/every x tick scale label/.style={at={(xticklabel cs:0.95,5pt)},anchor=near xticklabel,inner sep=0pt},
+		/pgfplots/every y tick scale label/.style={at={(yticklabel cs:0.95,5pt)},anchor=near yticklabel,inner sep=0pt},
+		/pgfplots/every z tick scale label/.style={at={(yticklabel cs:0.95,5pt)},anchor=near yticklabel,inner sep=0pt},
+		/pgfplots/every axis title shift=15pt,
+		/pgfplots/every axis legend/.style={%
+			cells={anchor=center},
+			inner xsep=3pt,inner ysep=2pt,nodes={inner sep=2pt,text depth=0.15em},
+			shape=rectangle,%
+			fill=white,%
+			draw=black,
+			at={(1.03,1.03)},
+			anchor=north west,%
+		},
+		annot/point format 3d/.initial={(\%.2f, \%.2f, \%.2f)},
+	},
+}
+
+\def\pgfplots@ternary@activate{%
+	\let\pgfplotsqpointxy=\pgfplotsqpointxy@ternary
+	\let\pgfplotsqpointxy@orthogonal=\pgfplotsqpointxy
+	\let\pgfplotsqpointxyz=\pgfplotsqpointxyz@ternary
+	\let\pgfplots@draw@axis=\pgfplots@draw@axis@ternary
+	\def\pgfplots@drawaxis@outerlines@separate@onorientedsurf##1##2{}%
+	\def\pgfplots@drawaxis@innerlines@onorientedsurf##1##2##3{}%
+	\let\pgfplots@draw@axis@post=\pgfplots@draw@axis@post@ternary
+	\let\pgfplots@initsizes=\pgfplots@initsizes@ternary
+	\let\pgfplotspoint@initialisation@axes=\pgfplotspoint@initialisation@axes@ternary
+	\let\pgfplotspoint@initialisation@units=\pgfplotspoint@initialisation@units@ternary
+	\let\pgfplots@initsizes@setunitvector=\pgfplots@initsizes@setunitvector@ternary
+	\let\pgfplotspointouternormalvectorofaxis@=\pgfplotspointouternormalvectorofaxis@ternary
+	\let\pgfplots@prepare@ZERO@coordinates=\pgfplots@prepare@ZERO@coordinates@ternary
+	\let\pgfplotsgetnormalforcurrentview=\relax
+	\def\pgfplots@drawtickgridlines@INSTALLCLIP@onorientedsurf##1{}%
+	\let\pgfplots@clippath@prepare@for@axistype=\pgfplots@clippath@prepare@for@axistype@ternary
+	%
+	\pgfkeys{/pgfplots/oriented surf installed/.add={}{%
+		\let\pgfplotspointonorientedsurfaceab@ternary@orig=\pgfplotspointonorientedsurfaceab
+		\let\pgfplotspointonorientedsurfaceab=\pgfplotspointonorientedsurfaceab@ternary
+	}}%
+	\let\pgfplotspointonorientedsurfaceabwithbshift=\pgfplotspointonorientedsurfaceabwithbshift@ternary
+	\pgfkeyssetvalue{/pgfplots/view/az}{}%
+	\pgfkeyssetvalue{/pgfplots/view/el}{}%
+	\let\pgfplots@set@options@sanitize=\relax
+	\let\pgfplots@set@options@sanitizemode=\relax
+	%
+	\expandafter\def\expandafter\pgfplots@notify@options@are@set\expandafter{\pgfplots@notify@options@are@set
+		\ifpgfplots@ternary@rellimits
+			\pgfplotsset{scaled ticks=false,ticklabel style={/pgf/number format/precision=0}}%
+			\let\pgfplots@show@ticklabel@orig=\pgfplots@show@ticklabel@
+			\let\pgfplots@show@ticklabel@=\pgfplots@show@ticklabel@ternary@relative
+		\fi
+	}%
+	%
+	% this here is set *before* 'every ternary axis' is invoked.
+	\pgfplotsset{
+		/pgfplots/footnotesize/.append style=	{/pgfplots/every axis title shift=15pt},%
+		/pgfplots/tiny/.append style=			{/pgfplots/every axis title shift=15pt},%
+		enlargelimits=false,
+		xmin=0,xmax=1,
+		ymin=0,ymax=1,
+		zmin=0,zmax=1,
+		annot/point format/.style={/pgfplots/annot/point format 3d={##1}},
+	}%
+	\def\pgfplots@xticklabel@pos{}%
+	\def\pgfplots@yticklabel@pos{}%
+	\def\pgfplots@zticklabel@pos{}%
+	%\def\pgfplots@xaxislinesnum{1}%
+	%\def\pgfplots@yaxislinesnum{3}%
+	%\def\pgfplots@zaxislinesnum{3}%
+	\def\pgfplotsifaxissurfaceisforeground##1##2##3{##2}%
+	\def\pgfplots@init@ticklabelaxisspecfor##1##2{}%
+	\def\pgfplots@xticklabelaxisspec{v00}%
+	\def\pgfplots@yticklabelaxisspec{0v0}%
+	\def\pgfplots@zticklabelaxisspec{00v}%
+	\def\pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn@##1##2##3{%
+		\pgfplotspointonorientedsurfaceabtolinespec v##1%
+		\edef\pgfplots@loc@TMPe{\csname pgfplots@\pgfplotspointonorientedsurfaceA ticklabelaxisspec\endcsname}%
+		\ifx\pgfplots@loc@TMPe\pgfplotsretval
+%\message{pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn@{##1}--->  TRUE.}%
+			##2%
+		\else
+%\message{pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn@{##1}--->  FALSE.}%
+			##3%
+		\fi
+	}%
+	\def\pgfplots@ifgridlines@onorientedsurf@should@be@drawn##1##2{%
+		##1% FIXME
+	}%
+	\def\pgfplotspointonorientedsurfaceabmatchaxisline##1##2{%
+		\pgfplotspointonorientedsurfaceabtolinespec v0% FIXME that's just a bad guess!
+		\edef\pgfplots@loc@TMPe{##1}%
+		\ifx\pgfplots@loc@TMPe\pgfplotsretval
+			\def##2{0}%
+		\else
+			\def##2{}%
+		\fi
+	}%
+	\let\pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn=\pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn@%
+	%
+	%
+	% cartesian cs
+	\tikzdeclarecoordinatesystem{cartesian}{\edef\pgfplots@loc@TMPa{##1}\expandafter\pgfplotspointcartesian@\pgfplots@loc@TMPa\pgfplots@coord@end}
+}%
+
+\def\pgfplots@show@ticklabel@ternary@relative#1#2{%
+	\csname pgfplots@ternary@map@to@unit@#1\endcsname{#2}%
+	\pgfmathfloatparsenumber\pgfmathresult
+	\pgfmathfloatshift@\pgfmathresult{2}%
+	\let\tick=\pgfmathresult
+}%
+
+\def\pgfplotspointcartesian@#1,#2\pgfplots@coord@end{%
+	\pgfpointxy@orig{#1}{#2}%
+}%
+
+% This here is *the* key point why ternary axes can be processed with
+% almost the same code as rectangular axes.
+%
+% Recall that rectangular axes are drawn using "oriented surfaces",
+% the complete code is based on them. The "a" axis is the direction in
+% which we have tick positions and the "b" axis is the direction in
+% which tick lines (or grid lines) shall be drawn).
+%
+% Now, ternary axes do not directly fit into the "oriented surface"
+% framework. But they have a lot of structure which allows to use it
+% with a specialed "pointonorientedsurfaceab" routine: by noting that
+% - there are only three axes,
+% - the axis containing tick lines (and grid lines) *always* has one
+%   component set to 0 (lower limit), and the remaining two components
+%   sum to 1. Thus, we can simply use one value (for example the "a"
+%   value) and compute the remaining one,
+% - \pgfplotspointonorientedsurfaceab is *always* invoked with 
+%   b set to either the lower or the upper limit.
+%   The lower limit is easy, see above. The upper limit is mainly used
+%   for grid lines, more precisely it denotes the target point of the grid line.
+%   I use special handling to find this target point (by exchanging
+%   coordinate components, see the implementation).
+%
+% #1: the "a" value on the oriented surf
+% #2: the "b" value. Note that *only* the lower *or* the upper limit
+% on the "b" axis are supported here!
+%
+\def\pgfplotspointonorientedsurfaceab@ternary#1#2{%
+	\let\pgfplotspointonorientedsurfaceab@ternary@fixedx=\pgfplotspointonorientedsurfaceabsetupfor@fixedx
+	\let\pgfplotspointonorientedsurfaceab@ternary@fixedy=\pgfplotspointonorientedsurfaceabsetupfor@fixedy
+	\let\pgfplotspointonorientedsurfaceab@ternary@fixedz=\pgfplotspointonorientedsurfaceabsetupfor@fixedz
+	%
+%\message{\string\pgfplotspointonorientedsurfaceab{#1}{#2} -----> }%
+	\ifpgfplots@ternary@next@is@unitinterval
+		\edef\pgfplotspointonorientedsurfaceab@ternary@A{#1}%
+		\edef\pgfplotspointonorientedsurfaceab@ternary@B{#2}%
+	\else
+		\csname pgfplots@ternary@map@to@unit@\pgfplotspointonorientedsurfaceA\endcsname{#1}%
+		\let\pgfplotspointonorientedsurfaceab@ternary@A=\pgfmathresult
+		%
+		\csname pgfplots@ternary@map@to@unit@\pgfplotspointonorientedsurfaceB\endcsname{#2}%
+		\let\pgfplotspointonorientedsurfaceab@ternary@B=\pgfmathresult
+	\fi
+	\if0\pgfplotspointonorientedsurfacespecsymbol
+	\else
+		\pgfplots@error{Internal processing error: only \string\pgfplotspointonorientedsurfaceab\space for ternary axes works only for oriented surfs fixed to LOWER or UPPER axis limits.}%
+	\fi
+%\message{A=\pgfplotspointonorientedsurfaceab@ternary@A; B=\pgfplotspointonorientedsurfaceab@ternary@B -----> }%
+	\ifdim\pgfplotspointonorientedsurfaceab@ternary@B pt=0pt
+		\pgfmath@basic@subtract@{1}{\pgfplotspointonorientedsurfaceab@ternary@A}%
+		\let\pgfplotspointonorientedsurfaceab@ternary@B=\pgfmathresult
+		\expandafter\def\csname pgfplotspointonorientedsurfaceabsetupfor@fixed\pgfplotspointonorientedsurfaceN\endcsname{0}%
+	\else
+		%\let\pgfplots@loc@TMPa=\pgfplotspointonorientedsurfaceab@ternary@A
+		%\pgfmath@basic@subtract@{1}{\pgfplotspointonorientedsurfaceab@ternary@A}%
+		%\let\pgfplotspointonorientedsurfaceab@ternary@A=\pgfmathresult
+		%\let\pgfplotspointonorientedsurfaceab@ternary@B=\pgfplots@loc@TMPa
+		\pgfmath@basic@subtract@{1}{\pgfplotspointonorientedsurfaceab@ternary@A}%
+		\def\pgfplotspointonorientedsurfaceab@ternary@B{0}%
+		\expandafter\let\csname pgfplotspointonorientedsurfaceabsetupfor@fixed\pgfplotspointonorientedsurfaceN\endcsname=\pgfmathresult%
+	\fi
+	%
+	\global\pgfplots@ternary@next@is@unitintervaltrue
+%\message{\string\pgfplotspointonorientedsurfaceab@orig{\pgfplotspointonorientedsurfaceab@ternary@A}{\pgfplotspointonorientedsurfaceab@ternary@B}[fixedsymbol=\pgfplotspointonorientedsurfacespecsymbol; a=\pgfplotspointonorientedsurfaceA,b=\pgfplotspointonorientedsurfaceB.]}%
+	\pgfplotspointonorientedsurfaceab@ternary@orig
+		{\pgfplotspointonorientedsurfaceab@ternary@A}%
+		{\pgfplotspointonorientedsurfaceab@ternary@B}%
+	%
+	\let\pgfplotspointonorientedsurfaceabsetupfor@fixedx=\pgfplotspointonorientedsurfaceab@ternary@fixedx
+	\let\pgfplotspointonorientedsurfaceabsetupfor@fixedy=\pgfplotspointonorientedsurfaceab@ternary@fixedy
+	\let\pgfplotspointonorientedsurfaceabsetupfor@fixedz=\pgfplotspointonorientedsurfaceab@ternary@fixedz
+}%
+
+\def\pgfplotspointonorientedsurfaceabwithbshift@ternary#1#2#3{%
+	% implement the shift in "b" direction explicitly:
+	%
+	\pgfplotspointonorientedsurfaceab@ternary{#1}{#2}%
+	\edef\pgfplots@loc@TMPe{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+	\pgfpointadd
+		{\pgfplots@loc@TMPe}%
+		{%
+			\begingroup
+			% I need a '-' here because for ternary axes, the "b" axis
+			% points to the *outside* instead of the inside.
+			\pgf@xa=-#3\relax
+			\if r\pgfkeysvalueof{/pgfplots/\pgfplotspointonorientedsurfaceB\space dir/value}%
+				% oh. a reversed axis.
+				\pgf@xa=-\pgf@xa
+			\fi
+			\edef\pgfplots@loc@TMPa{\pgf@sys@tonumber\pgf@xa}%
+			\pgfmath@basic@multiply@{\csname pgfplots@\pgfplotspointonorientedsurfaceB @inverseveclength\endcsname}{\pgfplots@loc@TMPa}%
+			\pgfmath@smuggleone\pgfmathresult
+			\endgroup
+			\let\pgfplots@loc@TMPa=\pgfmathresult
+			\pgfqpointscale{\pgfplots@loc@TMPa}{\csname pgfplotspointunit\pgfplotspointonorientedsurfaceB\endcsname}%
+		}%
+}
+
+
+\let\pgfplots@initsizes@ternary@orig=\pgfplots@initsizes
+\def\pgfplots@initsizes@ternary{%
+	\ifpgfplots@threedim
+	\else
+	 	\pgfplots@error{Sorry, 'axis type=ternary' needs a three dimensional axes. Make sure you supplied three dimensional coordinates (using \string\addplot3, for example). This error is critical; I can't recover}%
+	\fi
+%\message{ternary with limits x=[\pgfplots@xmin:\pgfplots@xmax], y=[\pgfplots@ymin:\pgfplots@ymax];  z=[\pgfplots@zmin:\pgfplots@zmax].}%
+	\pgfplots@ternary@init@map@to@unit x
+	\pgfplots@ternary@init@map@to@unit y
+	\pgfplots@ternary@init@map@to@unit z
+	%
+	\pgfplots@initsizes@get@width@withoutlabels
+	\pgf@x=\pgfmathresult
+	\edef\pgfplots@width@ternary{\pgf@sys@tonumber\pgf@x}%
+	%
+	\pgfplots@initsizes@ternary@orig
+	%
+}%
+
+\def\pgfplots@ternary@init@map@to@unit#1{%
+	\begingroup
+	\pgfmath@basic@subtract@
+		{\csname pgfplots@#1max\endcsname}
+		{\csname pgfplots@#1min\endcsname}%
+	\pgfmath@basic@reciprocal@\pgfmathresult
+	\let\pgfplots@map@to@unit@scale=\pgfmathresult
+	%
+	\expandafter\xdef\csname pgfplots@ternary@map@to@unit@#1\endcsname##1{%
+		\noexpand\pgfmath@basic@subtract@{##1}{\csname pgfplots@#1min\endcsname}%
+		\noexpand\pgfmath@basic@multiply@{\noexpand\pgfmathresult}{\pgfplots@map@to@unit@scale}%
+	}%
+	\endgroup
+}
+
+\def\pgfplots@initsizes@setunitvector@ternary#1#2#3#4{%
+	% ternary axis are DIFFERENT here.
+	% They don't use the (xx,xy), (yx,yy), (zx,zy) vectors, so we can
+	% use them to realize *cartesian* coordinates.
+	%
+	% Thus, any \draw (0,0) inside of a ternary axis will yield
+	% cartesian coordinates.
+	%
+	% The relevant quantities to *draw* the diagram are the three
+	% axis, they are also prepared here.
+	%
+	\def#4{0}% whether we have (#1,0) or (0,#1)
+	\ifcase#2%
+		\pgfsetxvec{%
+			\pgfqpoint{\pgfplots@width@ternary pt}{0pt}%
+		}%
+		\pgfpointdiff
+			{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz@ternary001}
+			{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz@ternary100}%
+	\or
+		\pgfsetyvec{%
+			\pgfqpoint{0pt}{\pgfplots@width@ternary pt}%
+		}%
+		\pgfpointdiff
+			{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz@ternary100}
+			{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz@ternary010}%
+	\or
+		\pgfsetzvec{%
+			\pgfpointorigin
+		}%
+		\pgfpointdiff
+			{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz@ternary010}
+			{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz@ternary001}%
+	\fi
+	\expandafter\xdef\csname pgfplotspoint#1axis\endcsname{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+	\pgfmathveclen{\pgf@x}{\pgf@y}%
+	\expandafter\let\csname pgfplots@#1@veclength\endcsname=\pgfmathresult
+	\pgfplotsmath@ifzero{\pgfmathresult}{%
+		\expandafter\def\csname pgfplots@#1@inverseveclength\endcsname{infty}%
+	}{%
+		\expandafter\pgfmathreciprocal@\expandafter{\pgfmathresult}%
+		\expandafter\let\csname pgfplots@#1@inverseveclength\endcsname=\pgfmathresult
+	}%
+	\expandafter\xdef\csname pgfplotspoint#1axislength\endcsname{\pgfplots@x@veclength pt}%
+	%
+%\message{-> got unitvector(#1) = (\the\csname pgf@#1x\endcsname, \the\csname pgf@#1y\endcsname).}%
+}%
+
+\newif\ifpgfplots@ternary@next@is@unitinterval
+
+% Deduce z = 1-x-y after transformation to relative coordinates.
+\def\pgfplotsqpointxy@ternary#1#2{%
+	\pgf@process{%
+		\ifpgfplots@ternary@next@is@unitinterval
+			\dimen1=#1pt
+			\dimen2=#2pt
+		\else
+			\pgfplots@ternary@map@to@unit@x{#1}%
+			\dimen1=\pgfmathresult pt
+			%
+			\pgfplots@ternary@map@to@unit@y{#2}%
+			\dimen2=\pgfmathresult pt
+		\fi
+		\dimen4=\dimen1
+		\advance\dimen4 by\dimen2
+		\dimen3=1pt
+		\advance\dimen3 by-\dimen4
+		%
+		\global\pgfplots@ternary@next@is@unitintervalfalse
+		\pgfplotsqpointxyz@ternary@
+	}%
+}%
+% gx(x,y,z) = 0.5 * (x + 2*z)/(x+y+z)
+% gy(x,y,z) = (sqrt(3) / 2) * x / (x+y+z)
+\def\pgfplotsqpointxyz@ternary#1#2#3{%
+	\pgf@process{%
+		\ifpgfplots@ternary@next@is@unitinterval
+			\dimen1=#1pt
+			\dimen2=#2pt
+			\dimen3=#3pt
+		\else
+			\pgfplots@ternary@map@to@unit@x{#1}%
+			\dimen1=\pgfmathresult pt
+			%
+			\pgfplots@ternary@map@to@unit@y{#2}%
+			\dimen2=\pgfmathresult pt
+			%
+			\pgfplots@ternary@map@to@unit@z{#3}%
+			\dimen3=\pgfmathresult pt
+		\fi
+		\global\pgfplots@ternary@next@is@unitintervalfalse
+		%
+		\pgfplotsqpointxyz@ternary@
+	}%
+}%
+\def\pgfplotsqpointxyz@ternary@{%
+	%\dimen1=#1
+	%\dimen2=#2
+	%\dimen3=#3
+	% FIXME . I didn't understand that stuff.
+	\if r\pgfkeysvalueof{/pgfplots/x dir/value}% reversed
+		%\multiply\dimen1 by-1
+		%\advance\dimen1 by1pt
+		%\dimen1=#2
+		%\dimen2=#3
+		%\dimen3=#1
+	\fi
+	%--------------------------------------------------
+	% \if r\pgfkeysvalueof{/pgfplots/y dir/value}% reversed
+	% 	\multiply\dimen2 by-1
+	% 	\advance\dimen2 by1pt
+	% \fi
+	% \if r\pgfkeysvalueof{/pgfplots/z dir/value}% reversed
+	% 	\multiply\dimen3 by-1
+	% 	\advance\dimen3 by1pt
+	% \fi
+	%-------------------------------------------------- 
+	\pgfplotsqpointxyz@ternary@@%
+}%
+\def\pgfplotsqpointxyz@ternary@@{%
+	% Disable renormalization!?
+	%\dimen4=\dimen1
+	%\advance\dimen4 by\dimen2
+	%\advance\dimen4 by\dimen3
+	%\edef\pgfplots@ternary@sum{\pgf@sys@tonumber{\dimen4}}%
+	%\pgfmathapproxequalto@{1}{\pgfplots@ternary@sum}%
+	\pgfmathcomparisontrue
+	\ifpgfmathcomparison
+		\let\pgfplots@ternary@scale=\pgfplots@width@ternary
+	\else
+		\pgfmath@basic@divide@
+			{\pgfplots@width@ternary}%
+			{\pgfplots@ternary@sum}%
+		\let\pgfplots@ternary@scale=\pgfmathresult
+	\fi
+	%
+	\dimen4=2\dimen3
+	\advance\dimen4 by \dimen1
+	\divide\dimen4 by2
+	\pgf@x=\pgfplots@ternary@scale\dimen4
+	%
+	\dimen4=\dimen1
+	\dimen4=0.866025403784\dimen4 % *= sqrt(3)/2 
+	\pgf@y=\pgfplots@ternary@scale\dimen4
+	%
+}%
+\def\pgfplotspoint@initialisation@units@ternary{%
+	\let\pgfplotspointunitx\pgfplotspointxaxis
+	\let\pgfplotspointunity\pgfplotspointyaxis
+	\let\pgfplotsunitxlength=\pgfplots@x@veclength
+	\let\pgfplotsunitylength=\pgfplots@y@veclength
+	\let\pgfplotsunitxinvlength=\pgfplots@x@inverseveclength
+	\let\pgfplotsunityinvlength=\pgfplots@y@inverseveclength
+	\ifpgfplots@threedim
+		\let\pgfplotspointunitz=\pgfplotspointzaxis
+		\let\pgfplotsunitzlength=\pgfplots@z@veclength
+		\let\pgfplotsunitzinvlength=\pgfplots@z@inverseveclength
+	\fi
+}%
+
+% POSTCONDITION: the macros
+% 	\pgfplotspointminminmin
+% 	\pgfplotspoint[xyz]axis
+% 	\pgfplotspoint[xyz]axislength
+%   are defined (globally).
+\def\pgfplotspoint@initialisation@axes@ternary{%
+	\xdef\pgfplotspointminminmin{\noexpand\pgfpointorigin}%
+	%
+	\pgfpointdiff
+		{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz@ternary001}
+		{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz@ternary100}%
+	\if r\pgfkeysvalueof{/pgfplots/x dir/value}% reverse
+		\pgfqpointscale{-1}{}%
+	\fi
+	\xdef\pgfplotspointxaxis{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+	\pgfmathveclen{\pgf@x}{\pgf@y}%
+	\expandafter\let\csname pgfplots@x@veclength\endcsname=\pgfmathresult
+	\pgfplotsmath@ifzero{\pgfmathresult}{%
+		\expandafter\def\csname pgfplots@x@inverseveclength\endcsname{infty}%
+	}{%
+		\expandafter\pgfmathreciprocal@\expandafter{\pgfmathresult}%
+		\expandafter\let\csname pgfplots@x@inverseveclength\endcsname=\pgfmathresult
+	}%
+	\xdef\pgfplotspointxaxislength{\pgfplots@x@veclength pt}%
+	%
+	\pgfpointdiff
+		{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz@ternary100}
+		{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz@ternary010}%
+	\if r\pgfkeysvalueof{/pgfplots/y dir/value}% reverse
+		\pgfqpointscale{-1}{}%
+	\fi
+	\xdef\pgfplotspointyaxis{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+	\pgfmathveclen{\pgf@x}{\pgf@y}%
+	\expandafter\let\csname pgfplots@y@veclength\endcsname=\pgfmathresult
+	\pgfplotsmath@ifzero{\pgfmathresult}{%
+		\expandafter\def\csname pgfplots@y@inverseveclength\endcsname{infty}%
+	}{%
+		\expandafter\pgfmathreciprocal@\expandafter{\pgfmathresult}%
+		\expandafter\let\csname pgfplots@y@inverseveclength\endcsname=\pgfmathresult
+	}%
+	\xdef\pgfplotspointyaxislength{\pgfplots@y@veclength pt}%
+	%
+	\pgfpointdiff
+		{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz@ternary010}
+		{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz@ternary001}%
+	\if r\pgfkeysvalueof{/pgfplots/z dir/value}% reverse
+		\pgfqpointscale{-1}{}%
+	\fi
+	\xdef\pgfplotspointzaxis{\noexpand\pgf@x=\the\pgf@x\space\noexpand\pgf@y=\the\pgf@y\space}%
+	\pgfmathveclen{\pgf@x}{\pgf@y}%
+	\expandafter\let\csname pgfplots@z@veclength\endcsname=\pgfmathresult
+	\pgfplotsmath@ifzero{\pgfmathresult}{%
+		\expandafter\def\csname pgfplots@z@inverseveclength\endcsname{infty}%
+	}{%
+		\expandafter\pgfmathreciprocal@\expandafter{\pgfmathresult}%
+		\expandafter\let\csname pgfplots@z@inverseveclength\endcsname=\pgfmathresult
+	}%
+	\xdef\pgfplotspointzaxislength{\pgfplots@z@veclength pt}%
+	%
+}
+\def\pgfplots@prepare@ZERO@coordinates@ternary{%
+	\ifpgfplots@xislinear
+		\ifpgfplots@apply@datatrafo@x
+			\pgfplotscoordmath{x}{parsenumber}{0}%
+			\pgfplotscoordmath{x}{datascaletrafo}{\pgfmathresult}%
+			\global\let\pgfplots@logical@ZERO@x=\pgfmathresult
+		\else
+			\gdef\pgfplots@logical@ZERO@x{0}%
+		\fi
+		\pgfplotsmathmax{\pgfplots@logical@ZERO@x}{\pgfplots@xmin}%
+		\global\let\pgfplots@logical@ZERO@x=\pgfmathresult
+		\pgfplotsmathmin{\pgfplots@logical@ZERO@x}{\pgfplots@xmax}%
+		\global\let\pgfplots@logical@ZERO@x=\pgfmathresult
+	\else
+		\global\let\pgfplots@logical@ZERO@x=\pgfplots@xmin%
+	\fi
+	%
+	\ifpgfplots@yislinear
+		\ifpgfplots@apply@datatrafo@y
+			\pgfplotscoordmath{y}{parsenumber}{0}%
+			\pgfplotscoordmath{y}{datascaletrafo}{\pgfmathresult}%
+			\global\let\pgfplots@logical@ZERO@y=\pgfmathresult
+		\else
+			\gdef\pgfplots@logical@ZERO@y{0}%
+		\fi
+		\pgfplotsmathmax{\pgfplots@logical@ZERO@y}{\pgfplots@ymin}%
+		\global\let\pgfplots@logical@ZERO@y=\pgfmathresult
+		\pgfplotsmathmin{\pgfplots@logical@ZERO@y}{\pgfplots@ymax}%
+		\global\let\pgfplots@logical@ZERO@y=\pgfmathresult
+	\else
+		\global\let\pgfplots@logical@ZERO@y=\pgfplots@ymin%
+	\fi
+	%
+	\ifpgfplots@threedim
+		\ifpgfplots@zislinear
+			\ifpgfplots@apply@datatrafo@z
+				\pgfplotscoordmath{z}{parsenumber}{0}%
+				\pgfplotscoordmath{z}{datascaletrafo}{\pgfmathresult}%
+				\global\let\pgfplots@logical@ZERO@z=\pgfmathresult
+			\else
+				\gdef\pgfplots@logical@ZERO@z{0}%
+			\fi
+			\pgfplotsmathmax{\pgfplots@logical@ZERO@z}{\pgfplots@zmin}%
+			\global\let\pgfplots@logical@ZERO@z=\pgfmathresult
+			\pgfplotsmathmin{\pgfplots@logical@ZERO@z}{\pgfplots@zmax}%
+			\global\let\pgfplots@logical@ZERO@z=\pgfmathresult
+		\else
+			\global\let\pgfplots@logical@ZERO@z=\pgfplots@zmin%
+		\fi
+	\fi
+	%
+	%
+	\global\pgfplots@ternary@next@is@unitintervaltrue
+	\pgfplotsqpointxyz100%
+	\xdef\pgfplots@ZERO@x{\the\pgf@x}%
+	\xdef\pgfplots@ZERO@y{\the\pgf@y}%
+	\xdef\pgfplotspointaxisorigin{\noexpand\pgf@x=\pgfplots@ZERO@x\space\noexpand\pgf@y=\pgfplots@ZERO@y\space}%
+}%
+
+
+\def\pgfplots@draw@axis@ternary{%
+	%
+	% this should become the line for varying y:
+	\pgfplotspointonorientedsurfaceabsetupforsetz{\pgfplots@zmin}{0}%
+	\pgfplots@draw@axis@insurface yxz
+	%
+	% this should become the line for varying z:
+	\pgfplotspointonorientedsurfaceabsetupforsetx{\pgfplots@xmin}{0}%
+	\pgfplots@draw@axis@insurface zyx
+	%
+	%
+	% this should become the line for varying x:
+	\pgfplotspointonorientedsurfaceabsetupforsety{\pgfplots@ymin}{0}%
+	\pgfplots@draw@axis@insurface xzy
+	%
+	\pgfplots@ternary@draw@axislines
+}%
+\def\pgfplots@ternary@draw@axislines{%
+	\if r\pgfkeysvalueof{/pgfplots/x dir/value}% reverse
+		\pgfplots@separate@axis@linestrue
+	\fi
+	\if r\pgfkeysvalueof{/pgfplots/y dir/value}% reverse
+		\pgfplots@separate@axis@linestrue
+	\fi
+	\if r\pgfkeysvalueof{/pgfplots/z dir/value}% reverse
+		\pgfplots@separate@axis@linestrue
+	\fi
+	\ifpgfplots@separate@axis@lines
+		\scope[/pgfplots/every outer x axis line,
+			xdiscont,decoration={pre length=\csname xdisstart\endcsname, post length=\csname xdisend\endcsname}]
+		\draw decorate {
+			\pgfextra
+				\if r\pgfkeysvalueof{/pgfplots/x dir/value}% reverse
+					\pgfpathmoveto{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz100}%
+					\pgfpathlineto{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz001}%
+				\else
+					\pgfpathmoveto{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz001}%
+					\pgfpathlineto{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz100}%
+				\fi
+			\endpgfextra 
+		};
+		\endscope
+		%
+		\scope[/pgfplots/every outer y axis line,
+			ydiscont,decoration={pre length=\csname ydisstart\endcsname, post length=\csname ydisend\endcsname}]
+		\draw decorate {
+			\pgfextra
+			\if r\pgfkeysvalueof{/pgfplots/y dir/value}% reverse
+				\pgfpathmoveto{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz010}%
+				\pgfpathlineto{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz100}%
+			\else
+				\pgfpathmoveto{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz100}%
+				\pgfpathlineto{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz010}%
+			\fi
+			\endpgfextra 
+		};
+		\endscope
+		%
+		\scope[/pgfplots/every outer z axis line,
+			zdiscont,decoration={pre length=\csname zdisstart\endcsname, post length=\csname zdisend\endcsname}]
+		\draw decorate {
+			\pgfextra
+			\if r\pgfkeysvalueof{/pgfplots/z dir/value}% reverse
+				\pgfpathmoveto{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz001}%
+				\pgfpathlineto{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz010}%
+			\else
+				\pgfpathmoveto{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz010}%
+				\pgfpathlineto{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz001}%
+			\fi
+			\endpgfextra 
+		};
+		\endscope
+	\else
+		\draw[
+			/pgfplots/every outer x axis line, % FIXME! these outer styles need much more attention :-(
+			/pgfplots/every outer y axis line]
+		\pgfextra{%
+		\pgfpathmoveto{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz001}%
+		\pgfpathlineto{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz100}%
+		\pgfpathlineto{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz010}%
+		\pgfpathclose
+		};
+	\fi
+}%
+\def\pgfplots@clippath@prepare@for@axistype@ternary{%
+	\def\pgfplots@clippath@install##1{%
+		\pgfpathmoveto{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz001}%
+		\pgfpathlineto{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz100}%
+		\pgfpathlineto{\global\pgfplots@ternary@next@is@unitintervaltrue\pgfplotsqpointxyz010}%
+		\pgfpathclose
+		\pgfplots@clippath@use@{##1}%
+	}%
+}%
+
+\def\pgfplots@draw@axis@post@ternary{%
+	% do nothing. There is no 3d box to draw here.
+}%
+
+\def\pgfplotspointouternormalvectorofaxis@ternary#1#2#3\relax{%
+	\edef\pgfplots@loc@TMPa{\if r\pgfkeysvalueof{/pgfplots/x dir/value}-\fi}% reverse
+	\edef\pgfplots@loc@TMPb{\if r\pgfkeysvalueof{/pgfplots/y dir/value}-\fi}% reverse
+	\edef\pgfplots@loc@TMPc{\if r\pgfkeysvalueof{/pgfplots/z dir/value}-\fi}% reverse
+	\if v#1%
+		\pgfpointadd
+			{\pgfqpointscale{\pgfplots@loc@TMPb-1}{\pgfplotspointyaxis}}%
+			{\pgfqpointscale{\pgfplots@loc@TMPc}{\pgfplotspointzaxis}}%
+	\else
+		\if v#2%
+			\pgfpointadd
+				{\pgfqpointscale{\pgfplots@loc@TMPa}{\pgfplotspointxaxis}}%
+				{\pgfqpointscale{\pgfplots@loc@TMPc-1}{\pgfplotspointzaxis}}%
+		\else
+			\pgfpointadd
+				{\pgfqpointscale{\pgfplots@loc@TMPa-1}{\pgfplotspointxaxis}}%
+				{\pgfqpointscale{\pgfplots@loc@TMPb}{\pgfplotspointyaxis}}%
+		\fi
+	\fi
+	\pgf@process{\pgfpointnormalised{}}%
+	\endgroup
+}%
+
+
+\def\pgfplotsclickable@check@enable@axistype@ternaryaxis{%
+	\def\pgfplotsretval{1}%
+}%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
+% tieline plots
+%
+\pgfplotsset{
+	tieline/.code={%
+		\let\tikz@plot@handler=\pgfplotsplothandlertieline
+		\pgfkeysifdefined{/pgfplots/table/tie end x}{}{%
+			% provide these keys locally:
+			\pgfkeyslet{/pgfplots/table/tie end x}\pgfutil@empty%
+			\pgfkeyslet{/pgfplots/table/tie end y}\pgfutil@empty%
+			\pgfkeyslet{/pgfplots/table/tie end z}\pgfutil@empty%
+			\pgfkeyslet{/pgfplots/table/tie end x index}\pgfutil@empty%
+			\pgfkeyslet{/pgfplots/table/tie end y index}\pgfutil@empty%
+			\pgfkeyslet{/pgfplots/table/tie end z index}\pgfutil@empty%
+		}%
+		\pgfqkeys{/pgfplots/tieline}{#1}%
+	},
+	tieline/every tieline/.style={},
+	tieline/tieline style/.style={/pgfplots/tieline/every tieline/.append style={#1}},
+	tieline/every curve/.style={},
+	tieline/curve style/.style={/pgfplots/tieline/every curve/.append style={#1}},
+	tieline/each nth tie/.initial=,
+}
+\def\pgfplotsplothandlertieline{%
+	\pgfplotsresetplothandler
+	\let\pgf@plotstreamstart=\pgfplotsplothandlervisbegin@tieline
+	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@tieline
+	\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@tieline
+	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@tieline
+}%
+\def\pgfplotsplothandlervisbegin@tieline{%
+	\pgfplotsapplistXnewempty\pgfp@binodal@A
+	\pgfplotsapplistXnewempty\pgfp@ties
+	\pgfplotsprependlistXnewempty{pgfp@binodal@B@reverse}
+	\def\b@pgfplotsplothandlersurveystart@tieline@even{1}%
+	%
+	\global\let\pgf@plotstreampoint=\pgfplotsplothandlervis@streampoint@tieline
+	\global\let\pgf@plotstreamend=\pgfplotsplothandlervis@streamend@tieline
+	%
+	\pgfkeysgetvalue{/pgfplots/tieline/each nth tie}\pgfplots@eachnth@tie
+	\ifx\pgfplots@eachnth@tie\pgfutil@empty
+		\def\pgfplots@eachnth@tie{1}%
+	\fi
+	\let\c@pgfplots@tiecounter=\c@pgfplotstable@counta
+	\c@pgfplots@tiecounter=0
+}%
+\def\pgfplotsplothandlervis@streampoint@tieline#1{%
+	\pgf@process{#1}%
+	\edef\pgfplots@loc@TMPa{%
+		\noexpand\pgfplots@stream@withmeta@
+			{\pgfplots@current@point@coordindex}%
+			{\the\pgf@x}{\the\pgf@y}%
+			{\pgfplots@current@point@meta}%
+	}%
+	\if1\b@pgfplotsplothandlersurveystart@tieline@even
+		\let\pgfplotsplothandlervis@streampoint@tieline@last=\pgfplots@loc@TMPa
+		\expandafter\pgfplotsapplistXpushback\pgfplots@loc@TMPa\to\pgfp@binodal@A
+		\def\b@pgfplotsplothandlersurveystart@tieline@even{0}%
+	\else
+		\expandafter\pgfplotsprependlistXpushfront\pgfplots@loc@TMPa\to{pgfp@binodal@B@reverse}%
+		%
+		\advance\c@pgfplots@tiecounter by1
+		\ifnum\pgfplots@eachnth@tie=\c@pgfplots@tiecounter
+			\t@pgfplots@toka=\expandafter{\pgfplots@loc@TMPa}%
+			\t@pgfplots@tokb=\expandafter{\pgfplotsplothandlervis@streampoint@tieline@last}%
+			\edef\pgfplots@loc@TMPa{\the\t@pgfplots@toka\the\t@pgfplots@tokb\noexpand\pgfplotsplothandlertieline@finishtie}%
+			\expandafter\pgfplotsapplistXpushback\pgfplots@loc@TMPa\to\pgfp@ties
+			\c@pgfplots@tiecounter=0
+		\fi
+		%
+		\def\b@pgfplotsplothandlersurveystart@tieline@even{1}%
+	\fi
+}%
+\def\pgfplotsplothandlervis@streamend@tieline{%
+	\begingroup
+		\pgfplots@drawmodes@appendtrue
+		\path[/pgfplots/tieline/every curve]%
+		\pgfextra
+		\ifx\tikz@plot@handler\pgfplotsplothandlertieline
+			\let\tikz@plot@handler\pgfplothandlerlineto
+		\fi
+		\pgfplotsresetplothandler
+		\tikz@plot@handler
+		\pgf@plotstreamstart
+		%
+		\pgfplotsapplistXlet\pgfplots@loc@TMPa=\pgfp@binodal@A
+		\pgfplots@loc@TMPa
+		\pgfplotsapplistXnewempty\pgfp@binodal@A
+		\pgfplotsprependlistXlet\pgfplots@loc@TMPa={pgfp@binodal@B@reverse}%
+		\pgfplots@loc@TMPa
+		\pgfplotsprependlistXnewempty{pgfp@binodal@B@reverse}%
+		%
+		\pgf@plotstreamend
+		\endpgfextra;
+	\endgroup
+	%
+	%
+	\pgfplotsset{/pgfplots/tieline/every tieline}%
+	\ifx\tikz@plot@handler\pgfplotsplothandlertieline
+		\let\tikz@plot@handler\pgfplothandlerlineto
+	\fi
+	\pgfplotsresetplothandler
+	\tikz@plot@handler
+	\pgf@plotstreamstart
+	%
+	\def\pgfplotsplothandlertieline@finishtie{%
+		\pgfplotsplothandlervisualizejump
+	}%
+	\pgfplotsapplistXlet\pgfplots@loc@TMPa=\pgfp@ties
+	\pgfplots@loc@TMPa
+	\pgfplotsapplistXnewempty\pgfp@ties
+	%
+	\pgf@plotstreamend
+}%
+
+\def\pgfplotsplothandlersurveystart@tieline{%
+	\def\pgfplots@loc@TMPa{table}%
+	\ifx\pgfplotssurveyphaseinputclass\pgfplots@loc@TMPa
+	\else
+		\pgfplots@error{Sorry, 'tieline' plots are currently only supported for \string\addplot\space table}%
+	\fi
+	\def\b@pgfplotsplothandlersurveystart@tieline@init{0}%
+}%
+\def\pgfplotsplothandlersurveyend@tieline{%
+}%
+
+\def\pgfplotsplothandlersurveypoint@tieline@init{%
+	\pgfplotsplothandlersurveypoint@tieline@init@find@tieendcolfor x\pgfplotsplothandlertieline@Bx
+	\pgfplotsplothandlersurveypoint@tieline@init@find@tieendcolfor y\pgfplotsplothandlertieline@By
+	\ifpgfplots@curplot@threedim
+		\pgfplotsplothandlersurveypoint@tieline@init@find@tieendcolfor z\pgfplotsplothandlertieline@Bz
+	\fi
+	%
+	\def\b@pgfplotsplothandlersurveystart@tieline@init{1}%
+}%
+\def\pgfplotsplothandlersurveypoint@tieline@init@find@tieendcolfor#1#2{%
+	\let#2=\relax
+	\pgfkeysgetvalue{/pgfplots/table/tie end #1}{\pgfplots@loc@TMPa}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\pgfkeysgetvalue{/pgfplots/table/tie end #1 index}{\pgfplots@loc@TMPa}%
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\else
+			\edef#2{\noexpand\getthisrowno{\pgfplots@loc@TMPa}\noexpand\pgfmathresult}%
+		\fi
+	\else
+		\edef#2{\noexpand\getthisrow{\pgfplots@loc@TMPa}\noexpand\pgfmathresult}%
+	\fi
+	\ifx#2\relax
+		\pgfplotsplothandlersurveypoint@tieline@init@find@colindex@for #1\pgfplots@loc@ind
+		\c@pgf@countd=\pgfplots@loc@ind\relax
+		\advance\c@pgf@countd by3
+		\ifnum\c@pgf@countd<\pgfplotstablecols\relax
+		\else
+			\c@pgf@countd=0
+			\pgfplots@error{Sorry, I can't find the 'tie end #1 index' automatically. Please provide 'table[tie end #1={<colname>}]' or 'table[tie end #1 index=<col index>]' manually and verify the all, x,y and z components are correct}%
+		\fi
+		\edef\pgfplots@loc@ind{\the\c@pgf@countd}%
+		\pgfkeyslet{/pgfplots/table/tie end #1 index}\pgfplots@loc@ind
+		\edef#2{\noexpand\getthisrowno{\pgfplots@loc@ind}\noexpand\pgfmathresult}%
+	\fi
+}%
+
+\def\pgfplotsplothandlersurveypoint@tieline@init@find@colindex@for#1#2{%
+	\pgfkeysgetvalue{/pgfplots/table/#1}{\pgfplots@loc@TMPa}%
+	\pgfkeysgetvalue{/pgfplots/table/#1 index}{\pgfplots@loc@TMPb}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\let#2=\pgfplots@loc@TMPb
+	\else
+		\def\pgfplots@loc@TMPb{\expandafter\pgfplotstablegetcolumnindexforname\expandafter{\pgfplots@loc@TMPa}\of}%
+		\expandafter\pgfplots@loc@TMPb\pgfplotstablename\to#2%
+	\fi
+}%
+
+\def\pgfplotsplothandlersurveypoint@tieline{%
+	\if0\b@pgfplotsplothandlersurveystart@tieline@init
+		\pgfplotsplothandlersurveypoint@tieline@init
+	\fi
+	\pgfplotsplothandlersurveypoint@default
+	%
+	\pgfplotsplothandlertieline@Bx\let\pgfplots@current@point@x=\pgfmathresult
+	\pgfplotsplothandlertieline@By\let\pgfplots@current@point@y=\pgfmathresult
+	\ifpgfplots@curplot@threedim
+		\pgfplotsplothandlertieline@Bz\let\pgfplots@current@point@z=\pgfmathresult
+	\fi
+	\pgfplotsplothandlersurveypoint@default
+}%
+\endinput

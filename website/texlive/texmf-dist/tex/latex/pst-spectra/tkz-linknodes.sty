@@ -1,0 +1,265 @@
+%  tkz-linknodes.sty  2009-02-28  alain matthes  
+%  encoding : utf8 
+%  linknodesdoc.tex
+%  Created by Alain Matthes  on 2008-02-28.
+%  Copyright (C) 2009 Alain Matthes  
+%
+% This file may be distributed and/or modified
+%
+% 1. under the LaTeX Project Public License , either version 1.3
+% of this license or (at your option) any later version and/or
+% 2. under the GNU Public License.
+%
+% See the file doc/generic/pgf/licenses/LICENSE for more details.%
+% See http://www.latex-project.org/lppl.txt for details.
+%
+%
+% ``tkz-linknodes.sty'' is the english doc of tkz-linknodes
+%
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                                                               %
+% tkz-linknodes.sty         encodage : utf8                     %
+%                                                               %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                                                               %
+% Créé par Alain Matthes le 12-10-2007.                         %
+% d'après une idée et avec l'aide de  Philippe Ivaldi           %
+%                                                               %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% 22/08/2008
+%% Objet :  création de flèches pour montrer des opérateurs
+%% aritmétiques dans des environnements comme "aligned"
+%<--------------------------------------------------------------------------->
+%<--------------------------------------------------------------------------->
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{tkz-linknodes}[2011/06/02 v1.1c tkz-linknodes]
+\RequirePackage{etex}
+\RequirePackage{ifthen}
+\RequirePackage{xkeyval}[2005/11/25]
+\RequirePackage{tikz}
+\RequirePackage{amsmath}
+\usetikzlibrary{arrows}
+%<--------------------------------------------------------------------------->
+%                       Style
+%<--------------------------------------------------------------------------->
+\tikzset{ArrowStyle/.style={>=latex,->,text=black}} 
+\tikzset{LabelStyle/.style={pos=0.25,right}}
+\tikzset{ReverseStyle/.style={pos=0.25,left}} 
+\tikzset{NodeStyle/.style={}}
+\tikzset{NodeHStyle/.style={}} 
+%<--------------------------------------------------------------------------->
+\define@cmdkey [TK] {SUM} {margin}{}
+\define@cmdkey [TK] {SUM} {dy}{}
+\presetkeys    [TK] {SUM} {margin  = 2 cm,%
+                           dy     = 1.5pt}{}%
+%<--------------------------------------------------------------------------->
+\newcommand*{\SetUpOpEnv}[1][]{%
+  \setkeys    [TK] {SUM} {#1}%
+  \presetkeys [TK] {node}  {margin = \cmdTK@SUM@margin,%
+                            dy    = \cmdTK@SUM@dy}{}%
+}%
+%<--------------------------------------------------------------------------->
+%                              Init 
+%<--------------------------------------------------------------------------->
+\newdimen\p@intx
+\newdimen\p@inty
+\newdimen\p@intCx
+\newdimen\p@intCy
+\newdimen\p@intNx
+\newdimen\p@intNy
+%<--------------------------------------------------------------------------->
+\newcounter{C@NumTab}\setcounter{C@NumTab}{0}
+\newcounter{C@NumGroup}\setcounter{C@NumGroup}{0}
+\newcounter{C@NextNode}\setcounter{C@NextNode}{0}
+\newcounter{NumC@Node}\setcounter{NumC@Node}{0}
+\newcounter{NumC@Stop}\setcounter{NumC@Stop}{0}
+\newcounter{C@CurrentStop}\setcounter{C@CurrentStop}{0}
+\newcounter{C@CurrentNode}\setcounter{C@CurrentNode}{0}
+\newcounter{C@CurrentGroup}\setcounter{C@CurrentGroup}{0}
+%<--------------------------------------------------------------------------->
+\newboolean{B@FirstLink}\setboolean{B@FirstLink}{true}
+\newboolean{B@NewGroup}\setboolean{B@NewGroup}{false}
+\newboolean{B@DeltaBegin}\setboolean{B@DeltaBegin}{false}
+\newboolean{B@DeltaEnd}\setboolean{B@DeltaEnd}{false} 
+%<--------------------------------------------------------------------------->
+\newcommand*{\@SetTab}{%
+  \ifnum \value{C@NumTab}>25\relax%
+     \setcounter{C@NumTab}{1}%
+  \else%
+     \stepcounter{C@NumTab}%
+  \fi%
+    \setcounter{C@NumGroup}{0}%
+ \newcommand*{\PrefixCurrentTab}{\alph{C@NumTab}}
+  \setboolean{B@FirstLink}{true}
+  \setboolean{B@NewGroup}{false}
+  \setcounter{C@NumGroup}{0}
+  \setcounter{C@CurrentGroup}{0}
+  \setcounter{NumC@Node}{0}
+  \setcounter{NumC@Stop}{0}
+  \setcounter{C@NextNode}{0}
+  \setcounter{C@CurrentStop}{0}
+  \setcounter{C@CurrentNode}{0}
+}%
+%<--------------------------------------------------------------------------->
+\newcommand*{\@CreateCurrentStop}[1]{%
+ \@ifundefined{c@C@Stop\@alph{#1}}{%
+ \newcounter{C@Stop\@alph{#1}}\stepcounter{NumC@Stop}}{}%
+ \setcounter{C@Stop\@alph{#1}}{0}%
+}
+%<--------------------------------------------------------------------------->
+\newcommand*{\@CreateCurrentNode}[1]{%
+ \@ifundefined{c@C@Node\@alph{#1}}{%
+ \newcounter{C@Node\@alph{#1}}\stepcounter{NumC@Node}}{}%
+ \setcounter{C@Node\@alph{#1}}{0}%
+}%
+%<--------------------------------------------------------------------------->
+\newcommand*{\@CreateNewGroup}{%
+  \stepcounter{C@NumGroup}%
+  \@CreateCurrentStop{\theC@NumGroup}%
+  \@CreateCurrentNode{\theC@NumGroup}%
+}%
+%<--------------------------------------------------------------------------->
+\newcommand*{\AddNode}[1][1]{%
+  \setcounter{C@CurrentGroup}{#1}%
+   \ifnum \value{C@NumGroup}<#1\relax%
+       \@ifundefined{c@C@Node\@alph{#1}}{%
+          \@CreateNewGroup}{%
+          \stepcounter{C@NumGroup}%
+          \setcounter{C@Node\@alph{#1}}{0}%
+          \setcounter{C@Stop\@alph{#1}}{0}%
+          }%
+   \fi%
+   \stepcounter{C@Node\@alph{#1}}%
+   \stepcounter{C@Stop\@alph{#1}}%
+   \begin{tikzpicture}[remember picture]%
+      \node[NodeStyle]%
+     (\PrefixCurrentTab-\theC@CurrentGroup-\@nameuse{theC@Node\@alph{#1}}){};%
+   \end{tikzpicture}%
+\ignorespaces
+}%
+\newcommand*{\AddRevNode}{% 
+   \begin{tikzpicture}[remember picture]%
+      \node[NodeStyle]%
+     (reverse@node){};%
+   \end{tikzpicture}%
+\ignorespaces } 
+%<--------------------------------------------------------------------------->
+%<--------------------------------------------------------------------------->
+%<--------------------------------------------------------------------------->
+%<--------------------------------------------------------------------------->
+\newcommand*{\@NewNextNode}{%
+  \setcounter{C@NextNode}{\value{C@CurrentNode}}%
+  \stepcounter{C@NextNode}}%
+%<--------------------------------------------------------------------------->
+\newcommand*{\@UseNewGroup}[1]{%  dépend du niveau
+  \setcounter{C@CurrentNode}{1}%
+  \setcounter{C@CurrentStop}{\value{C@Stop\@alph{#1}}}}%
+%<--------------------------------------------------------------------------->
+\define@cmdkey  [TK] {node} {Bshift}{}% 
+\define@cmdkey  [TK] {node} {Mshift}{}% 
+\define@cmdkey  [TK] {node} {Eshift}{}%     
+\define@cmdkey  [TK] {node} {margin}{}%
+\define@cmdkey  [TK] {node} {dy}{}%
+\presetkeys     [TK] {node} {dy      = 1.5pt,%
+                             margin  = 2 cm,
+                             Bshift  = -6cm,
+                             Mshift  = -7cm,
+                             Eshift  = -6cm}{}%
+%<--------------------------------------------------------------------------->
+\newcommand{\LinkNodes}[2][]{%
+\setkeys[TK]{node}{#1}%
+\ifthenelse{\boolean{B@FirstLink}}{\setcounter{C@CurrentGroup}{1}%
+\setboolean{B@NewGroup}{false}%
+\@UseNewGroup{\theC@CurrentGroup}\@NewNextNode%
+\setboolean{B@DeltaBegin}{false}}{%
+\ifthenelse{\boolean{B@NewGroup}}{%
+\setboolean{B@DeltaBegin}{false}}{\setboolean{B@DeltaBegin}{true}}}%
+\def\TGCN{\PrefixCurrentTab-\theC@CurrentGroup-\theC@CurrentNode}%
+\def\TGNN{\PrefixCurrentTab-\theC@CurrentGroup-\theC@NextNode}%
+%
+%
+\begin{tikzpicture}[remember picture,overlay]%
+\pgfextractx{\pgf@x}{\pgfpointanchor{\TGCN}{center}}%
+\pgfextracty{\pgf@y}{\pgfpointanchor{\TGCN}{center}}%
+\p@intCx\pgf@x\p@intCy\pgf@y%
+\pgfextractx{\pgf@x}{\pgfpointanchor{\TGNN}{center}}%
+\pgfextracty{\pgf@y}{\pgfpointanchor{\TGNN}{center}}%
+\p@intNx\pgf@x\p@intNy\pgf@y
+\p@inty\p@intCy\p@intx\linewidth
+\advance\p@intx by-\cmdTK@node@margin
+\ifthenelse{\boolean{B@FirstLink}}{%
+\setboolean{B@FirstLink}{false}%
+\xdef\lastp@intx{\p@intCx}%
+\global\let\lastp@intx\lastp@intx}{}%
+\ifthenelse{\boolean{B@NewGroup}}{\xdef\lastp@inty{\p@intCy}%
+\global\let\lastp@inty\lastp@inty}{\xdef\lastp@inty{\p@inty}%
+\global\let\lastp@inty\lastp@inty}%
+\ifthenelse{\value{C@NextNode}=\value{C@CurrentStop}}{%
+\setboolean{B@DeltaEnd}{false}}{\setboolean{B@DeltaEnd}{true}}%
+\ifthenelse{\boolean{B@DeltaBegin}}{\advance\p@inty by -\cmdTK@node@dy}{}%
+%
+\path[coordinate] (\lastp@intx,\lastp@inty)   coordinate(Begin)
+                  (\p@intx,\lastp@inty)       coordinate(Inter);%
+\ifthenelse{\boolean{B@DeltaEnd}}{%
+\path[coordinate] ([yshift=\cmdTK@node@dy]\TGNN.center)coordinate(End);}%
+{\path[coordinate](\TGNN.center)        coordinate(End);}%
+%
+\draw[ArrowStyle] (Begin)--(Inter)|-(End) node[LabelStyle]{#2};%
+\ifTK@NL@reverse
+\draw[ArrowStyle] ([xshift=\cmdTK@node@Bshift]Begin)--([xshift=\cmdTK@node@Mshift]Inter)|-([xshift=\cmdTK@node@Eshift]End) node[LabelStyle,ReverseStyle]{#2};%
+\fi   
+%
+\xdef\lastp@inty{\p@intCy}\global\let\lastp@inty\lastp@inty%
+\ifthenelse{\value{C@NextNode}=\value{C@CurrentStop}}{%
+\ifthenelse{\value{C@CurrentGroup}<\value{C@NumGroup}}{%
+\global\B@NewGrouptrue\stepcounter{C@CurrentGroup}%
+\@UseNewGroup{\theC@CurrentGroup}\@NewNextNode}{}}{\stepcounter{C@CurrentNode}%
+\@NewNextNode}%
+\end{tikzpicture}%
+\setboolean{B@FirstLink}{false}%
+\ignorespaces
+}%
+%<--------------------------------------------------------------------------->
+\newcommand*{\UpGroup}[1][1]{%
+  \stepcounter{C@CurrentGroup}%
+  \setboolean{B@NewGroup}{true}%
+}%
+%<--------------------------------------------------------------------------->
+\newcommand*{\UpNode}[1][1]{%
+  \addtocounter{C@CurrentNode}{#1}
+}
+%<--------------------------------------------------------------------------->
+\define@cmdkey [TK] {NL} {margin}{}
+\define@cmdkey [TK] {NL} {dy}{}
+\define@boolkey[TK] {NL} {reverse}[true]{} 
+\presetkeys    [TK] {NL} {margin  = 2 cm,reverse=false, 
+                          dy     = 1.5pt}{}
+%<--------------------------------------------------------------------------->
+\newenvironment{NodesList}[1][]{%
+  \setkeys    [TK] {NL} {#1} 
+  \presetkeys [TK] {node}  {margin = \cmdTK@NL@margin,
+                            dy    = \cmdTK@NL@dy}{}%
+  \@SetTab
+  \@CreateNewGroup
+  \stepcounter{C@CurrentGroup}%
+  }{}%
+%<--------------------------------------------------------------------------->
+\newcommand\AddHNode[2]{}
+\def\AddHNode{\pgfutil@ifnextchar[{\Add@HNode}{\Add@HNode[]}} 
+\def\Add@HNode[#1](#2)#3{%  #2 = name of the node #3 content of node
+\begin{tikzpicture}[remember picture,baseline=(#2.base)]
+   \node[outer sep = 2pt,
+         inner sep = 0pt,
+         NodeHStyle,
+         #1](#2){#3};
+\end{tikzpicture}
+}
+
+\newcommand\LinkHNode[4]{% 
+\begin{tikzpicture}[remember picture,overlay] 
+  \draw[<->] (#1) -- ++(0,#4) -| (#2)
+  node[fill=white,near start] {\small #3}; 
+\end{tikzpicture}%
+}    %<--------------------------------------------------------------------------->
+\endinput

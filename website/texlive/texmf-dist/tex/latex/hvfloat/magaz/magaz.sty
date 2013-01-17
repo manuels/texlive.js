@@ -1,0 +1,213 @@
+% magaz.sty  Ver 0.4   24-Nov-2011  "Magazine style"
+% Copyright 1999-2011, Donald Arseneau,   asnd@triumf.ca,  Vancouver, Canada
+% This software may be freely used, transmitted, reproduced, or modified
+% provided that the copyright notice and this permission is retained.
+%
+% This version is just a single tool from a larger body of tools I am 
+% unlikely to implement.  I wrote this in 1999 in response to a request
+% on comp.text.tex.
+%
+% Features:
+% Yes Special formatting for first line of text in a paragraph
+% Not Special formatting for for first n lines (allow each different)
+% Not Also for first character (drop caps) (working together)
+% No  "Continued on"/"continued from" markers (like varioref marks)
+% No  wrapfig spanning columns
+% No  wrapfig placed at fixed location on page
+% No Piecing together fragments of gallies to fit page (maybe flowfram)
+%
+% Instructions:
+%
+% \FirstLine{<text>}
+%
+% The "\FirstLine" command takes one argument: Some text.
+% 
+% The "\FirstLine" command is placed at the beginning of a paragraph, 
+% and takes one argument: Some text. The first line of this text will 
+% be formatted according to "\FirstLineFont"; but if the text occupies 
+% less than a full line of the paragraph, all that text (and no more) 
+% will be affected by "\FirstLineFont".
+% 
+% You should define "\FirstLineFont" appropriately as either a switch 
+% or a text-command; as in "\renewcommand\FirstLineFont{\MakeUppercase}".
+% The defult definition performed in \pkg{magaz.sty} is 
+% "\providecommand\FirstLineFont{\scshape}".
+% 
+% The parameter for "\FirstLine" should be ordinary text, not containing
+% lists or displayed equations -- such things will give you a ``Bad text''
+% error. If the parameter text ends with a space, that space will be 
+% removed. A line break may sometimes be permitted after the parameter 
+% text even if the ensuing text prohibits one (using "~"). Furthermore, 
+% the text should be constant, or else the successive measurements made 
+% internally will not be consistent, and the output may be corrupted
+% (with words missing or duplicated). Some subtle sources of inconstant 
+% text are:
+%  -  Incrementing a counter (and printing the value).              
+%  -  "\everypar" that executes once and is cleared. (This occurs after
+%     section heads and inside list/quotation/center/etc. environments,
+%     but those cases are handled, somewhat.)
+%  -  A "\FirstLineFont" that affects hyphenation (as "\texttt" or a
+%     language setting will).
+%  -  Changing paragraph-layout parameters in "\FirstLineFont".
+% 
+% Other deviations from simple text can give poor formatting. Here are some
+% `advanced' tips:
+%  -  Using "\FirstLine" in the middle of a paragraph will make a mess.
+%     (It should be used to start a paragraph, or placed at the beginning
+%     of one started with "\noindent".  Using it after "\\" should also
+%     work.)
+%  -  Multiple "\vspace" or "\\*" or "\\[]" will cause failure;
+%     a single "\vspace" will be ignored.
+%  -  Although there is no corruption if used immediately after a
+%     "\section" command (or similar) that suppresses indentation,
+%     the paragraph will likely be indented anyway.  The fix for
+%     this (and similar problems) is to begin the paragraph with
+%     "\noindent" before "\FirstLine".
+%  -  Using an inflexible "\parfillskip" might cause some highlighted
+%     first-line text to be dragged down to the second line. (Providing
+%     more text in the argument will usually solve this.) (If you 
+%     don't know about "\parfillskip" you probably don't have to worry.)
+%  -  A large font for "\FirstLineFont" may be too crowded with the
+%     second line, and inserting "\vspace" will not help (this should
+%     be improved) so you may need to resort to a "\strut", as with
+%     "\renewcommand\FirstLineFont{\large\strut\MakeUppercase}"
+%
+% The "\FirstLine" system is intended to be used in a replacement for 
+% a normal sectioning command in a document class; "\paragraph" would be 
+% appropriate.  In particular, this "\paragraph" (or whatever) should 
+% insert vertical space and penalties etc., and probably "\noindent"
+% at the start of the argument.  The document class should also define 
+% "\FirstLineFont" appropriately as either a switch or a text-command; 
+% as in "\renewcommand\FirstLineFont{\scshape\textcolor{blue}}".  The 
+% defult definition is "\providecommand\FirstLineFont{\scshape}".
+
+\ProvidesPackage{magaz}[2011/11/24 v0.4]
+
+\newcommand\FirstLine[1]{%
+ \relax\if@inlabel\noindent\fi % produce any pending list item label
+ \begingroup
+ % typeset text 3 times: 1) using all breaks to count segments; 2) with
+ % a full first line and \FirstLineFont to get first line and remaining
+ % segments; 3) Using current font, keeping only `remaining segments'
+ % on a single line. 
+ \setbox\z@\box\mz@firstbox \setbox\z@\box\mz@remains % void the global boxes
+ \setbox\@tempboxa\vbox{% 1) use all breaks
+   \hbadness\maxdimen \hfuzz\maxdimen
+   \hsize\z@ \leftskip\z@skip \rightskip\z@skip \parfillskip\fill
+   \parshape\z@ \pretolerance\m@ne \tolerance\@ne 
+   \doublehyphendemerits\z@ \finalhyphendemerits\z@
+   #1\global\mathchardef\mz@spf\spacefactor\@@par
+   \global\mathchardef\mz@numl\prevgraf
+   %{\message{^^J^^J^^JText has \number\mz@numl\space segments:}\showhyphens{#1\unskip\unskip}}%
+ }% end vbox "1)"
+ \setbox\@tempboxa\vbox{% 2) first line, plus other segments
+   \parshape \tw@ \z@\linewidth \z@\maxdimen 
+   \doublehyphendemerits\z@ \finalhyphendemerits\z@
+   %\linepenalty\z@
+   % note no \hbadness\maxdimen \hfuzz\maxdimen at this stage
+   \pretolerance\m@ne \parfillskip\fill
+   {\FirstLineFont{#1}\@@par}%
+   \ifnum\prevgraf>\tw@ % Bad argument: not simple text or too much text
+     \mz@handlebad{#1}%
+   \else
+     \unskip\unkern\unskip\unpenalty \unskip\unkern\unskip\unpenalty
+     \ifnum\prevgraf<\tw@ % All text fits on first line
+       \global\setbox\mz@firstbox\lastbox % Grab that line
+       %{\message{Entire text fits: }\showhyphens{\unhcopy\mz@firstbox\unskip\unskip\unpenalty}}%
+       \setbox\z@\hbox{\unhcopy\mz@firstbox}%
+       \begingroup
+       \advance\linewidth-0.4em\relax
+       \expandafter\endgroup
+       \ifdim\wd\z@>0.97\linewidth
+         %\message{^^JHandle wide first line: \the\wd\z@\space vs \the\linewidth. }%
+         \global\setbox\mz@firstbox\hbox to\wd\mz@firstbox{%
+             \unhcopy\mz@firstbox\unskip\unskip\unpenalty}% remove \parfillskip
+         \global\setbox\mz@remains\hbox{}% Trigger keeping of full wide line
+       \fi        % else \mz@remains remains void
+     \else % 2 lines: text fills first line with some left over
+       \setbox\z@\lastbox % remainders to \z@
+       \ifvoid\z@ % could not grab last line 
+         \mz@handlebad{#1}%
+       \else 
+         \unskip\unkern\unskip\unpenalty \unskip\unkern\unskip\unpenalty
+         \global\setbox\mz@firstbox\lastbox % grab first line
+         % Note: counting segments in this first line will be wrong if the line
+         % ended with a hyphenation.  It could be possible to detect and adjust
+         % for the resulting extra segment if it is deemed desirable to count the
+         % first line directly.
+         %{\message{First line is: }\showhyphens{\unhcopy\mz@firstbox\unskip}}%
+         %{\message{Remaining segments are: }\showhyphens{\unhcopy\z@\unskip\unskip}}%
+         %
+         % 2a) break up "remaining segments":
+         \hsize\z@ \hbadness\maxdimen \hfuzz\maxdimen
+         \leftskip\z@skip \rightskip\z@skip \parfillskip\fill
+         \parshape\z@ \pretolerance\m@ne \tolerance\@ne 
+         {\everypar{}\noindent}% mid-par so no \everypar or \parindent
+         \nobreak % \nobreak because leftskip adds breakpoint
+         \unhbox\z@\unskip\unskip\unpenalty\@@par % gives number of "extra segments"
+         %\message{There are \number\mz@numl\space segments in total and \the\prevgraf\space "remaining segments". }%
+         \@tempcnta\mz@numl \advance\@tempcnta-\prevgraf 
+         %\message{Number of segs in 1st line: \the\@tempcnta. }%
+         \advance\@tempcnta\@ne % number of segs in 1st line plus 1
+         \edef\@tempa{\the\@tempcnta\space}% 3) Collect "other segments"
+         \@whilenum \@tempcnta>\@ne\do{% build \parshape lines
+           \edef\@tempa{\@tempa \z@\z@}%
+           \advance\@tempcnta\m@ne
+         }%
+         %\message{Parshape: \@tempa \z@\maxdimen}%
+         \parshape \@tempa \z@\maxdimen
+         #1\@@par
+         \unskip\unkern\unskip\unpenalty \unskip\unkern\unskip\unpenalty
+         \global\setbox\mz@remains\lastbox 
+       \fi
+     \fi
+   \fi
+ }% end vbox "2)"
+ \endgroup
+ \ifvoid\mz@firstbox
+   #1% Error case: just output the text
+ \else
+   {\everypar{}\noindent}\nobreak % everypar was captured in firstbox
+   \ifvoid\mz@remains % partial line only
+     % Unbox the partial line. This allows equal stretching of spaces across
+     % the line, but admits a slight chance that some \FirstLineFont may
+     % carry over to the second line.
+     \unhbox\mz@firstbox 
+     \unskip\unskip\unpenalty % remove \rightskip \parfillskip \nobreak
+     \allowbreak % allow a break rather than get dragged to next line (??)
+   \else % full first line 
+     % Output whole box to prevent unexpected linebreaks, especially for
+     % an overfull line and at the bogus discretionary that TeX leaves before
+     % a final (used) hyphen.
+     \box\mz@firstbox\break 
+     \unhbox\mz@remains
+     \unskip\unskip\unpenalty % remove \rightskip \parfillskip \nobreak
+     % (or remove forced \break for empty remains)
+   \fi
+   \spacefactor\mz@spf
+ \fi
+}
+
+\newbox\mz@firstbox
+\newbox\mz@remains
+
+\providecommand\FirstLineFont{\scshape}
+
+% In the future, I might allow some non-text material by using \vsplit
+% as a fallback method of grabbing lines, and I might allow more or
+% unusual text in the `remainders' by skipping the step of setting two
+% lines (instead setting one first line plus many tiny lines all together).
+% The following macro would then handle those cases with a secondary
+% algorithm as an error recovery mechanism.  Right now it just gives an 
+% error message and dumps out the text.
+
+\def\mz@handlebad{\mz@error}
+\def\mz@error#1{%
+ \PackageError{magaz}{Bad text for \string\FirstLine\space ending\on@line}{}%
+ \global\setbox\mz@remains\box\mz@firstbox % void first box
+}
+ 
+\endinput
+
+Test file integrity:  ASCII 32-57, 58-126:  !"#$%&'()*+,-./0123456789
+:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~

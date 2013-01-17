@@ -1,0 +1,340 @@
+\NeedsTeXFormat{LaTeX2e}[1999/12/01]
+\ProvidesPackage{currfile}[%
+    2012/05/15
+    v0.7
+    Provides the file path elements of the current input file]
+\RequirePackage{kvoptions}
+\SetupKeyvalOptions{family=currfile,prefix=currfile@}
+
+\@ifpackageloaded{fink}{%
+    \DeclareStringOption[\fnk@mainext]{mainext}%
+    \DeclareStringOption[\fnk@maindir]{maindir}%
+    \DeclareBoolOption[true]{fink}%
+    \PackageWarning{currfile}{Deprecated package 'fink' detected. %
+      The 'fink' option will default to 'true'.^^J%
+      If set to 'false' no 'fink' macros will be changed but they will stop
+      working correctly!}%
+}{%
+    \DeclareStringOption[tex]{mainext}%
+    \DeclareStringOption[\@currdir]{maindir}%
+    \DeclareBoolOption[false]{fink}%
+}%
+\DeclareVoidOption{force}{\PassOptionsToPackage{force}{filehook}}
+\DeclareBoolOption[false]{parent}
+\DeclareBoolOption[false]{parents}
+\DeclareBoolOption[false]{realmainfile}%
+\let\ifcurrfile@realmainfile\relax
+\DeclareBoolOption[false]{abspath}%
+\RequirePackage{filehook}[2011/01/09]
+\ProcessKeyvalOptions*\relax
+
+\begingroup
+\xdef\currfile@mainext{\currfile@mainext}%
+\xdef\currfile@maindir{\currfile@maindir}%
+\def\@tempa{./}%
+\ifx\@tempa\currfile@maindir
+    \global\let\currfile@maindir\@empty
+\fi
+\endgroup
+
+\expandafter\ifx\csname ifcurrfile@realmainfile\endcsname\relax
+    \ifcurrfile@abspath
+        \currfile@realmainfiletrue
+    \else
+        \currfile@realmainfilefalse
+    \fi
+\fi
+
+\ifcurrfile@abspath
+    \RequirePackage{currfile-abspath}
+\else
+\ifcurrfile@realmainfile
+    \RequirePackage{currfile-abspath}
+\fi\fi
+\filehook@prefixwarg\filehook@every@atbegin{%
+  \currfile@push
+  \currfile@set{#1}%
+}
+\filehook@appendwarg\filehook@every@atend{%
+  \currfile@pop
+}
+\def\currfile@set#1{%
+  \begingroup
+    \currfile@setparent
+    \edef\@filef@und{#1}%
+    \ifx\input@path\@undefined\else
+        \currfile@checkpath
+    \fi
+    \@onelevel@sanitize\@filef@und
+    \let\filename@simple\currfile@parseext
+    \let\filename@base\@gobble
+    \expandafter\filename@parse\expandafter{\@filef@und}%
+    \global\let\currfiledir\filename@area
+    \global\let\currfilebase\filename@base
+    \global\let\currfileext\filename@ext
+    \xdef\currfilename{\currfilebase\ifx\currfileext\@empty\else.\currfileext\fi}%
+    \xdef\currfilepath{\currfiledir\currfilename}%
+    \ifcurrfile@abspath
+        \getabspath\currfilepath
+        \global\let\currfileabspath\theabspath
+        \xdef\currfileabsdir{\theabsdir\currfiledir}%
+    \fi
+    \addtocounter{currfiledepth}\@ne
+  \endgroup
+}
+\ifcurrfile@parent
+\ifcurrfile@abspath
+\def\currfile@setparent{%
+    \global\let\parentfiledir\currfiledir
+    \global\let\parentfilebase\currfilebase
+    \global\let\parentfileext\currfileext
+    \global\let\parentfilename\currfilename
+    \global\let\parentfilepath\currfilepath
+    \global\let\parentfileabspath\currfileabspath
+    \global\let\parentfileabsdir\currfileabsdir
+}
+\else
+\def\currfile@setparent{%
+    \global\let\parentfiledir\currfiledir
+    \global\let\parentfilebase\currfilebase
+    \global\let\parentfileext\currfileext
+    \global\let\parentfilename\currfilename
+    \global\let\parentfilepath\currfilepath
+}
+\fi
+\else
+\let\currfile@setparent\relax
+\fi
+\def\currfile@checkpath{%
+    \openin\@inputcheck\@filef@und\relax
+    \ifeof\@inputcheck
+        \expandafter\@tfor
+        \expandafter\@tempb
+        \expandafter:\expandafter=\input@path\do{%
+            \openin\@inputcheck\@tempb\@filef@und\relax
+            \ifeof\@inputcheck\else
+                \edef\@filef@und{\@tempb\@filef@und}%
+                \@break@tfor
+            \fi
+        }%
+    \fi
+    \closein\@inputcheck
+}
+\begingroup
+\@makeother{.}
+\gdef\currfile@parseext#1.#2\\{%
+    \ifx\\#2\\%
+        \ifx\filename@base\@gobble
+            \def\filename@base{#1}%
+            \let\filename@ext\currfile@defaultext%
+        \else
+            \def\filename@ext{#1}%
+        \fi
+    \else
+        \edef\filename@base{\filename@base.#1}%
+        \def\@tempa{\currfile@parseext#2\\}%
+        \expandafter\@tempa
+    \fi
+}
+\endgroup
+\def\currfile@defaultext{tex}
+\@onelevel@sanitize\currfile@defaultext
+\ifcurrfile@abspath
+\def\currfile@push{%
+  \xdef\currfile@stack{%
+    {\currfiledir}%
+    {\currfilebase}%
+    {\currfileext}%
+    {\currfileabsdir}%
+    \currfile@stack
+  }%
+}
+\else
+\def\currfile@push{%
+  \xdef\currfile@stack{%
+    {\currfiledir}%
+    {\currfilebase}%
+    {\currfileext}%
+    \currfile@stack
+  }%
+}
+\fi
+\def\currfile@pop{%
+  \ifcase0%
+    \ifx\currfile@stack\empty 1\else
+    \ifnum\value{currfiledepth}<\@ne 1\fi\fi
+  \relax
+    \addtocounter{currfiledepth}\m@ne
+  \else
+    \PackageWarning{currfile}{File stack underflow!}%
+    \global\let\currfile@stack\currfile@stackinit
+    \setcounter{currfiledepth}\z@
+  \fi
+  \expandafter\currfile@pop@\currfile@stack\relax
+  \relax\relax\relax\relax\relax\relax\relax
+}
+\ifcurrfile@abspath
+\def\currfile@pop@#1#2#3#4{%
+  \gdef\currfiledir{#1}%
+  \gdef\currfilebase{#2}%
+  \gdef\currfileext{#3}%
+  \xdef\currfilename{\currfilebase\ifx\currfileext\empty\else.\currfileext\fi}%
+  \xdef\currfilepath{\currfiledir\currfilename}%
+  \gdef\currfileabsdir{#4}%
+  \xdef\currfileabspath{\ifx\currfileabsdir\@empty\else\currfileabsdir\currfilename\fi}%
+  \currfile@updatestack
+}
+\else
+\def\currfile@pop@#1#2#3{%
+  \gdef\currfiledir{#1}%
+  \gdef\currfilebase{#2}%
+  \gdef\currfileext{#3}%
+  \xdef\currfilename{\currfilebase\ifx\currfileext\empty\else.\currfileext\fi}%
+  \xdef\currfilepath{\currfiledir\currfilename}%
+  \currfile@updatestack
+}
+\fi
+\ifcurrfile@parent
+\ifcurrfile@abspath
+\def\currfile@updatestack#1#2#3#4#5\relax{%
+  \gdef\parentfiledir{#1}%
+  \gdef\parentfilebase{#2}%
+  \gdef\parentfileext{#3}%
+  \xdef\parentfilename{\parentfilebase\ifx\parentfileext\empty\else.\parentfileext\fi}%
+  \xdef\parentfilepath{\parentfiledir\parentfilename}%
+  \gdef\parentfileabsdir{#4}%
+  \xdef\parentfileabspath{\ifx\parentfileabsdir\@empty\else\parentfileabsdir\parentfilename\fi}%
+  \gdef\currfile@stack{{#1}{#2}{#3}{#4}#5}%
+}
+\else
+\def\currfile@updatestack#1#2#3#4\relax{%
+  \gdef\parentfiledir{#1}%
+  \gdef\parentfilebase{#2}%
+  \gdef\parentfileext{#3}%
+  \xdef\parentfilename{\parentfilebase\ifx\parentfileext\empty\else.\parentfileext\fi}%
+  \xdef\parentfilepath{\parentfiledir\parentfilename}%
+  \gdef\currfile@stack{{#1}{#2}{#3}#4}%
+}
+\fi
+\else
+\def\currfile@updatestack#1\relax{%
+  \gdef\currfile@stack{#1}%
+}
+\fi
+\ifcurrfile@parents
+\newcommand*\currfilegetparents{%
+  \@tempcnta\@ne
+  \expandafter\currfile@getparents\currfile@stack\relax
+  \relax\relax\relax\relax\relax\relax\relax
+}
+\ifcurrfile@abspath
+\def\currfile@getparents#1#2#3#4{%
+  \@namedef{parentfiledir\romannumeral\@tempcnta}{#1}%
+  \@namedef{parentfilebase\romannumeral\@tempcnta}{#2}%
+  \@namedef{parentfileext\romannumeral\@tempcnta}{#3}%
+  \expandafter\edef\csname parentfilename\romannumeral\@tempcnta\endcsname{#2\ifx\empty#3\empty\else.#3\fi}%
+  \expandafter\edef\csname parentfilepath\romannumeral\@tempcnta\endcsname{#1\csname parentfilename\romannumeral\@tempcnta\endcsname}%
+  \@namedef{parentfileabsdir\romannumeral\@tempcnta}{#4}%
+  \expandafter\edef\csname parentfileabspath\romannumeral\@tempcnta\endcsname{%
+    \expandafter\ifx\csname parentfileabsdir\romannumeral\@tempcnta\endcsname\@empty\else
+      \csname parentfileabsdir\romannumeral\@tempcnta\endcsname
+      \csname parentfilename\romannumeral\@tempcnta\endcsname
+    \fi
+  }%
+  \ifnum\@tempcnta<\c@currfiledepth
+    \advance\@tempcnta\@ne
+    \expandafter\currfile@getparents
+  \fi
+}
+\else
+\def\currfile@getparents#1#2#3{%
+  \@namedef{parentfiledir\romannumeral\@tempcnta}{#1}%
+  \@namedef{parentfilebase\romannumeral\@tempcnta}{#2}%
+  \@namedef{parentfileext\romannumeral\@tempcnta}{#3}%
+  \expandafter\edef\csname parentfilename\romannumeral\@tempcnta\endcsname{#2\ifx\empty#3\empty\else.#3\fi}%
+  \expandafter\edef\csname parentfilepath\romannumeral\@tempcnta\endcsname{#1\csname parentfilename\romannumeral\@tempcnta\endcsname}%
+  \ifnum\@tempcnta<\c@currfiledepth
+    \advance\@tempcnta\@ne
+    \expandafter\currfile@getparents
+  \fi
+}
+\fi
+\newcommand\parentfile[2]{%
+    \csname parentfile#1\romannumeral#2\endcsname
+}
+\fi
+\let\currfile@stack\@empty
+\let\currfiledir\@empty
+\let\currfilebase\@empty
+\let\currfileext\@empty
+\let\currfilename\@empty
+\let\currfilepath\@empty
+\let\currfileabspath\@empty
+\let\currfileabsdir\@empty
+\newcounter{currfiledepth}
+\setcounter{currfiledepth}\m@ne
+\currfile@push
+\ifcurrfile@realmainfile
+    \getmainfile
+    \ifx\themainfile\@empty
+        \currfile@set{\currfile@maindir\jobname.\currfile@mainext}
+    \else
+        \currfile@set{\themainfile}
+    \fi
+\else
+    \currfile@set{\currfile@maindir\jobname.\currfile@mainext}
+\fi
+\let\currfile@stackinit\currfile@stack
+\let\currfile@abspathfalse\relax
+\let\currfile@abspathtrue\relax
+\newcommand*\ifcurrfilename{\begingroup\currfile@if\currfilename}
+\newcommand*\ifcurrfilebase{\begingroup\currfile@if\currfilebase}
+\newcommand*\ifcurrfileext{\begingroup\currfile@if\currfileext}
+\newcommand*\ifcurrfiledir{\begingroup\currfile@if\currfiledir}
+\newcommand*\ifcurrfilepath{\begingroup\currfile@if\currfilepath}
+\ifcurrfile@abspath
+\newcommand*\ifcurrfileabspath{\begingroup\currfile@if\currfileabspath}
+\newcommand*\ifcurrfileabsdir{\begingroup\currfile@if\currfileabsdir}
+\fi
+\newcommand*\ifcurrfile[1]{%
+    \begingroup
+    \edef\@tempb{#1}%
+    \@onelevel@sanitize\@tempb
+    \currfile@if\@tempb
+}
+\def\currfile@if#1#2{%
+    \edef\@tempa{#2}%
+    \@onelevel@sanitize\@tempa
+    \ifx\@tempa#1%
+        \endgroup
+        \expandafter\@firstoftwo
+    \else
+        \endgroup
+        \expandafter\@secondoftwo
+    \fi
+}
+\ifcurrfile@fink
+    \def\finkfile{\currfilename}%
+    \def\finkdir{\currfiledir}%
+    \def\finkpath{\currfilepath}%
+    \def\finkbase{\currfilebase}%
+    \def\finkext{\currfileext}%
+    \@ifpackageloaded{fink}{%
+        \def\fink@restore#1{}%
+    }{%
+        \@namedef{ver@fink.sty}{2011/01/09}%
+        \expandafter\edef\csname opt@fink.sty\endcsname{%
+            maindir=\currfile@maindir,mainext=\currfile@mainext
+        }%
+    }%
+\else
+    \@ifpackageloaded{fink}{}{%
+        \AtBeginOfPackageFile{fink}{%
+            \PackageError{currfile}{The 'fink' package is now deprecated. %
+             Load 'currfile' with the 'fink' option or see the upgrade guide in the manual}{}%
+        }%
+    }%
+\fi
+\endinput
+%%
+%% End of file `currfile.sty'.

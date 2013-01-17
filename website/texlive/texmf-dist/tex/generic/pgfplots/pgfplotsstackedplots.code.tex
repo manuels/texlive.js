@@ -1,0 +1,584 @@
+%--------------------------------------------
+%
+% Package pgfplots
+%
+% Provides a user-friendly interface to create function plots (normal
+% plots, semi-logplots and double-logplots).
+% 
+% It is based on Till Tantau's PGF package.
+%
+% Copyright 2007/2008 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%--------------------------------------------
+
+%
+% This file contains the implementation for stacked plots.
+%
+% Stacked plots always keep record of the last plotted coordinates.
+% Any new plot will be ADDED on top of the last plotted coordinates.
+% 
+% Terminology: "last plotted coordinates" are called "zero levels"
+% because they actually work like shifts.
+%
+% Programming Structure:
+%
+% 1. We keep TWO lists of coordinates: a list of CURRENT zero level
+% coordinates and a list of NEXT zero level coordinates.
+%
+% The first one will be queried whenever a zero level coordinate is
+% requested.
+%
+% The second one will be used to form zero levels for the next plot.
+%
+% 2. At the beginning and end of each plot, the lists in 1.) are
+% initialised properly.
+%
+% 3.1 While plot coordinates are processed during the survey phase, the following methods
+% interact with the stacked API:
+% \pgfplots@stacked@preparepoint@inmacro
+% 	-> compute the 'stacked' sum.
+% 	This may need to be done with floating point arithmetics because
+% 	the data scaling trafo is not yet initialised
+% \pgfplots@stacked@rememberzerolevelpoint@for@next@plot
+% \pgfplots@stacked@getnextzerolevelpoint
+%
+%
+% 3.2 during the final visualization phase, we have
+% \pgfplots@stacked@finishpoint
+% 	-> takes coordinates as they will be given to Tikz. This method is
+% 	used to 
+% 		- communicate zero level coordinates to Tikz
+% 		- implement the 'closed paths' option (allows filled stacked plots).
+%
+% 4. Zero levels are communicated to Tikz by
+% \pgfplots@stacked@initzerolevelhandler. This routine initialises an
+% input stream for Tikz plot handlers which produces a sequence of
+% zero levels. It is used by [xy]comb and [xy]bar.
+%
+%
+
+\let\pgfplots@stacked@zerolevelpoint@x=\pgfutil@empty
+\let\pgfplots@stacked@zerolevelpoint@y=\pgfutil@empty
+\newif\ifpgfplots@stacked@isfirstplot
+\newif\ifpgfplots@stacked@isinitialised
+
+% Pre-initialisation.
+% Needs to be called before the first call to
+% \pgfplots@stacked@beginplot.
+\def\pgfplots@stacked@initialise{%
+	\gdef\pgfplots@stacked@coordcount{-1}%
+	\pgfplots@stacked@isfirstplottrue
+	\pgfplots@stacked@isinitialisedtrue
+}%
+
+% Cleanup method. Truncates any global variables to reduce string
+% space.
+\def\pgfplots@stacked@finalize{%
+	\global\pgfplotslistnewempty\pgfplots@stacked@zerolevellist
+	\global\pgfplotslistnewempty\pgfplots@stacked@nextzerolevellist
+	\pgfplots@stacked@isinitialisedfalse
+}%
+
+% (Re)defines the macro \pgfplots@stacked@getnextzerolevelpoint
+% at the beginning of each plot.
+%
+% The macro \pgfplots@stacked@getnextzerolevelpoint fills
+% \pgfplots@stacked@zerolevelpoint@[xy].
+%
+% ATTENTION: call \pgfplots@stacked@initialise before the first call
+% of beginplot!
+\def\pgfplots@stacked@beginplot{%
+%\message{pgfplots@stacked@beginplot: PLOT STARTED.}%
+	\ifpgfplots@stacked@isinitialised
+	\else
+		\pgfplots@error{LOGIC ERROR: please call \string\pgfplots@stacked@initialise.}%
+	\fi
+	\global\pgfplotslistnewempty\pgfplots@stacked@PGFzerolevels
+	% accumulate this command here for \closedcycle:
+	\let\pgfplots@stacked@closedcycle@impl=\pgfutil@empty
+	\ifpgfplots@stacked@isfirstplot
+		\global\pgfplotslistnewempty\pgfplots@stacked@zerolevellist
+		% only work with float if its really necessary - for
+		% example if the scaling trafo which maps to pgfmath is
+		% not yet initialised.
+		\ifpgfplots@datascaletrafo@initialised % FIXME : should be '!ifsurvey'
+			\def\pgfplots@stacked@zerolevelpoint@x{0}%
+			\def\pgfplots@stacked@zerolevelpoint@y{0}%
+			\def\pgfplots@stacked@zerolevelpoint@z{0}%
+		\else
+			% note that log plots are special: their "stacked zero" is
+			% computed with \pgfplotscoordmath{default}
+			%
+			\pgfplots@if{pgfplots@xislinear}{\pgfplotscoordmath{x}{zero}}{\pgfplotscoordmath{default}{zero}}%
+			\let\pgfplots@stacked@zerolevelpoint@x=\pgfmathresult
+			%
+			\pgfplots@if{pgfplots@yislinear}{\pgfplotscoordmath{y}{zero}}{\pgfplotscoordmath{default}{zero}}%
+			\let\pgfplots@stacked@zerolevelpoint@y=\pgfmathresult
+			%
+			\pgfplots@if{pgfplots@xislinear}{\pgfplotscoordmath{z}{zero}}{\pgfplotscoordmath{default}{zero}}%
+			\let\pgfplots@stacked@zerolevelpoint@z=\pgfmathresult
+		\fi
+		%
+		\def\pgfplots@stacked@getnextzerolevelpoint{}% will remain constant anyway.
+	\else
+		{\globaldefs=1
+		\pgfplotslistcopy\pgfplots@stacked@nextzerolevellist\to\pgfplots@stacked@zerolevellist
+		}%
+		\ifpgfplots@threedim
+			\def\pgfplots@stacked@getnextzerolevelpoint{%
+				\pgfplotslistcheckempty\pgfplots@stacked@zerolevellist
+				\ifpgfplotslistempty
+					\pgfplots@stacked@wrong@count@error
+				\else
+					{\globaldefs=1
+					\pgfplotslistpopfront\pgfplots@stacked@zerolevellist\to\pgfmathresult
+					}%
+					\expandafter\pgfplots@stacked@parsezerolevelpoint@threedim\pgfmathresult\relax
+				\fi
+			}%
+		\else
+			\def\pgfplots@stacked@getnextzerolevelpoint{%
+				\pgfplotslistcheckempty\pgfplots@stacked@zerolevellist
+				\ifpgfplotslistempty
+					\pgfplots@stacked@wrong@count@error
+				\else
+					{\globaldefs=1
+					\pgfplotslistpopfront\pgfplots@stacked@zerolevellist\to\pgfmathresult
+					}%
+					\expandafter\pgfplots@stacked@parsezerolevelpoint\pgfmathresult\relax
+				\fi
+			}%
+		\fi
+	\fi
+	\global\pgfplotslistnewempty\pgfplots@stacked@nextzerolevellist
+}%
+
+\def\pgfplots@stacked@parsezerolevelpoint(#1,#2)\relax{%
+	\def\pgfplots@stacked@zerolevelpoint@x{#1}%
+	\def\pgfplots@stacked@zerolevelpoint@y{#2}%
+}
+\def\pgfplots@stacked@parsezerolevelpoint@threedim(#1,#2,#3)\relax{%
+	\def\pgfplots@stacked@zerolevelpoint@x{#1}%
+	\def\pgfplots@stacked@zerolevelpoint@y{#2}%
+	\def\pgfplots@stacked@zerolevelpoint@z{#3}%
+}
+
+\def\pgfplots@stacked@wrong@count@error{%
+	\pgfplots@error{Sorry, pgfplots expects stacked plots to have exactly the same number of coordinates. Unfortunately, I encountered at plot with DIFFERENT NUMBERS OF COORDINATES. Please verify that 1. no point has been dropped by coordinate filters (for example log(0) or so) and 2. all plots have the same number of coordinates.}%
+}%
+
+\def\pgfplots@stacked@endplot{%
+	\ifpgfplots@stacked@isfirstplot
+		\let\pgfplots@stacked@closedcycle@impl=\pgfplots@path@closed@cycle@std
+	\else
+		\pgfplotslistcheckempty\pgfplots@stacked@zerolevellist
+		\ifpgfplotslistempty
+		\else
+			\pgfplots@stacked@wrong@count@error
+		\fi
+		\t@pgfplots@tokc=\expandafter{\pgfplots@stacked@closedcycle@impl}%
+		\edef\pgfplots@stacked@closedcycle@impl{%
+			[mark=none,/utils/exec=\noexpand\pgfplots@try@mirror@plot@handler]
+			--plot coordinates{\the\t@pgfplots@tokc}
+			--cycle
+		}%
+	\fi
+	\global\pgfplots@stacked@isfirstplotfalse
+%\message{pgfplots@stacked@endplot: PLOT ENDED}%
+}%
+
+% WARNING: when this method is called, NEITHER
+% \ifpgfplots@stacked@isfirstplot NOR the zero level lists are
+% initialised!
+\def\pgfplots@stacked@initzerolevelhandler{%
+	\if\pgfplots@stacked@dir x
+		\pgfplotxzerolevelstream@@list
+		\pgfplotyzerolevelstreamconstant{\pgfplots@ZERO@y}%
+	\else
+		\pgfplotxzerolevelstreamconstant{\pgfplots@ZERO@x}%
+		\pgfplotyzerolevelstream@@list
+	\fi
+}%
+
+% #1: a point as (x,y) (or (x,y,z) )
+\def\pgfplots@stacked@rememberzerolevelpoint@for@next@plot#1{%
+	\edef\pgfplots@loc@TMPa{#1}%
+	\expandafter\pgfplotslistpushbackglobal\pgfplots@loc@TMPa\to\pgfplots@stacked@nextzerolevellist
+}
+
+% PRECONDITION:
+% 	Is in invoked inside of a coord preparation routine, that means
+% 	- \pgfplots@current@point@[xyz] 
+% 	- \ifpgfplots@curplot@threedim
+% 	are all set properly.
+\def\pgfplots@stacked@finishpoint{%
+	\ifpgfplots@stacked@isfirstplot
+	\else
+		% FIXME : This needs to be converted to logical coords.
+		%
+		% FIXME : 3D is not supported by the low level plot interface (yet). 
+		\pgfpointxy{\pgfplots@stacked@zerolevelpoint@x}{\pgfplots@stacked@zerolevelpoint@y}%
+		\if\pgfplots@stacked@dir x
+			\edef\pgfplots@loc@TMPa{\the\pgf@x}%
+		\else
+			\edef\pgfplots@loc@TMPa{\the\pgf@y}%
+		\fi
+		\expandafter\pgfplotslistpushbackglobal\pgfplots@loc@TMPa\to\pgfplots@stacked@PGFzerolevels
+		\t@pgfplots@toka=\expandafter{\pgfplots@stacked@closedcycle@impl}%
+		\edef\pgfplots@stacked@closedcycle@impl{%
+			(\pgfplots@stacked@zerolevelpoint@x,\pgfplots@stacked@zerolevelpoint@y)%
+			\the\t@pgfplots@toka}%
+	\fi
+}%
+
+% PRECONDITION:
+% 	Is in invoked inside of a coord preparation routine, that means
+% 	- \pgfplots@current@point@[xyz] 
+% 	- \ifpgfplots@curplot@threedim
+% 	are all set properly.
+%
+% POSTCONDITION:
+% 	- \pgfplots@current@point@[xyz] are adjusted.
+\def\pgfplots@stacked@preparepoint@inmacro{%
+	\pgfplots@stacked@getnextzerolevelpoint
+	%
+	\ifpgfplots@stacked@plus
+		\def\pgfplots@stacked@op{add}%
+	\else
+		\def\pgfplots@stacked@op{subtract}%
+	\fi
+	\pgfplots@if{pgfplots@\pgfplots@stacked@dir islinear}{%
+		\pgfplotscoordmath{\pgfplots@stacked@dir}{op}{\pgfplots@stacked@op}{%
+			{\csname pgfplots@stacked@zerolevelpoint@\pgfplots@stacked@dir\endcsname}%
+			{\csname pgfplots@current@point@\pgfplots@stacked@dir\endcsname}}%
+	}{%
+		% LOG. we need to compute log(zerolevel + current):
+		\pgfplotscoordmath{default}{parsenumber}{\csname pgfplots@current@point@\pgfplots@stacked@dir\endcsname}%
+		\pgfplotscoordmath{default}{exp}{\pgfmathresult}%
+		\expandafter\let\csname pgfplots@current@point@\pgfplots@stacked@dir\endcsname=\pgfmathresult
+		\pgfplotscoordmath{default}{op}{\pgfplots@stacked@op}{%
+			{\csname pgfplots@stacked@zerolevelpoint@\pgfplots@stacked@dir\endcsname}%
+			{\csname pgfplots@current@point@\pgfplots@stacked@dir\endcsname}%
+		}%
+	}%
+	%
+	% for logs, I remember just zerolevel+current; not its log.
+	\expandafter\let\csname pgfplots@current@point@\pgfplots@stacked@dir\endcsname=\pgfmathresult
+	\ifpgfplots@threedim
+		\ifpgfplots@curplot@threedim
+			\pgfplots@stacked@rememberzerolevelpoint@for@next@plot{(\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z)}%
+		\else
+			\pgfplots@stacked@rememberzerolevelpoint@for@next@plot{(\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@logical@ZERO@z)}%
+		\fi
+	\else
+		\pgfplots@stacked@rememberzerolevelpoint@for@next@plot{(\pgfplots@current@point@x,\pgfplots@current@point@y)}%
+	\fi
+	%
+	\pgfplots@if{pgfplots@\pgfplots@stacked@dir islinear}{%
+	}{%
+		\pgfplotscoordmath{\pgfplots@stacked@dir}{log}{\csname pgfplots@current@point@\pgfplots@stacked@dir\endcsname}%
+		\expandafter\let\csname pgfplots@current@point@\pgfplots@stacked@dir\endcsname=\pgfmathresult
+	}%
+}
+
+% This here is a re-implementation of the stored plot processing.
+%
+% The idea is simple, although it requires quite some work:
+%
+% If we stack plots on top of each other, early drawing commands
+% (early plots) will be OVERDRAWN by later drawing commands (later
+% plots). This is especially unfortunate if we use filled bar plots
+% or comb plots.
+%
+% IDEA: draw plots in REVERSE order. The positioning, styles and
+% whatever must not be affected, only the sequence of drawing commands
+% shall change.
+%
+% So, this command here does all numerics which is to be done and
+% assembles a NEW, REVERSED STORED PLOT LIST.
+\def\pgfplots@stacked@finalize@stored@plots{%
+	\pgfplotslistnewempty\pgfplots@stored@plotlist@reversed
+	\begingroup
+	\pgfplotslistforeachungrouped\pgfplots@stored@plotlist\as\pgfplots@loc@TMPa{%
+		\expandafter\pgfplots@stored@plotlist@EXTRACTENTRY\pgfplots@loc@TMPa
+		\ifx\pgfplots@stored@current@cmd\pgfutil@empty
+		\else
+			% Apply the data scaling transformation and compute
+			% stacked coordinates, but do NOT
+			% issue any drawing commands:
+			\expandafter\pgfplots@stacked@finalize@stored@coords@START\pgfplots@stored@current@data
+				\to
+				{\pgfplots@stored@current@data}%
+				{\pgfplots@stored@current@precmdappend}%
+			% store preparation commands into "precmd":
+			\t@pgfplots@tokb=\expandafter{\pgfplots@stored@current@precmd}%
+			\t@pgfplots@toka=\expandafter{\pgfplots@stored@current@precmdappend}%
+			\edef\pgfplots@stored@current@precmd{\the\t@pgfplots@tokb\the\t@pgfplots@toka}%
+		\fi
+		% Now, we need to insert all stored entities into the new,
+		% reversed list. We only expand them ONCE.
+		\t@pgfplots@toka=\expandafter{\pgfplots@stored@current@precmd}%
+		\t@pgfplots@tokb=\expandafter{\pgfplots@stored@current@cmd}%
+		\edef\pgfplots@loc@TMPa{%
+			{\the\t@pgfplots@toka}{\the\t@pgfplots@tokb}}%
+		\t@pgfplots@tokc=\expandafter{\pgfplots@loc@TMPa}%
+		\t@pgfplots@toka=\expandafter{\pgfplots@stored@current@data}%
+		\t@pgfplots@tokb=\expandafter{\pgfplots@stored@current@postcmd}%
+		\edef\pgfplots@loc@TMPa{%
+			\the\t@pgfplots@tokc
+			{\the\t@pgfplots@toka}{\the\t@pgfplots@tokb}}%
+		% Reverse sequence:
+		\expandafter\pgfplotslistpushfront\pgfplots@loc@TMPa\to\pgfplots@stored@plotlist@reversed
+	}%
+	% Now, overwrite the original list:
+	\global\let\pgfplots@stored@plotlist=\pgfplots@stored@plotlist@reversed
+	\global\let\pgfplots@stored@plotlist@reversed=\relax
+	\endgroup
+}%
+
+% This command finalizes the stored plot data. It records a coordinate
+% stream into '#3' and assembles a macro '#4' which contains all
+% preparation commands to ensure the functionality of
+% \pgfplots@stacked@finalize@stored@plots
+%
+% The macro #4 will - if used as "precommand"
+% befor a draw operation - restore all required options and performs
+% pre-drawing.
+\long\def\pgfplots@stacked@finalize@stored@coords@START normalized coordinates #1#2;\to#3#4{%
+	\pgfplots@stacked@beginplot
+	\pgfplots@coord@stream@INIT@finalize@stackedcoords@recordto{#3}{\pgfplots@recorded@marker@stream}%
+	\pgfplots@coord@stream@foreach@NORMALIZED{#1}%
+	\pgfplots@stacked@endplot
+	\pgfplots@stacked@savestateto\pgfplots@loc@TMPa
+	\t@pgfplots@toka=\expandafter{\pgfplots@loc@TMPa\def\pgfplots@stacked@stored@postpath{#2}}%
+	\pgfplots@addplot@get@named@startendpoints@command\pgfplots@loc@TMPa
+	\t@pgfplots@tokc=\expandafter{\pgfplots@loc@TMPa}%
+	\ifpgfplots@record@marker@stream
+		\t@pgfplots@tokb=\expandafter{\pgfplots@recorded@marker@stream}%
+	\else
+		\t@pgfplots@tokb={}%
+	\fi
+	\edef#4{%
+		\the\t@pgfplots@tokc
+		\noexpand\gdef\noexpand\pgfplots@recorded@marker@stream{\the\t@pgfplots@tokb}%
+		\the\t@pgfplots@toka
+	}%
+}%
+
+% #1: for coordinates
+% #2: for markers
+\def\pgfplots@coord@stream@INIT@finalize@stackedcoords@recordto#1#2{%
+	\pgfplots@record@marker@streamtrue
+	%
+	\def\pgfplots@coord@stream@start@{%
+		\gdef#1{\pgfplotstreamstart}%
+		\ifpgfplots@record@marker@stream
+			\pgfplotsapplistXnewempty\pgfplots@stacked@record@mark@cmds
+			\pgfplotsapplistXpushback\pgfplotstreamstart\to\pgfplots@stacked@record@mark@cmds
+		\fi
+	}%
+	\def\pgfplots@coord@stream@end@{%
+		\expandafter\gdef\expandafter#1\expandafter{#1\pgfplotstreamend}%
+		\ifpgfplots@record@marker@stream
+			\pgfplotsapplistXpushback\pgfplotstreamend\to\pgfplots@stacked@record@mark@cmds
+			\pgfplotsapplistXlet\pgfplots@loc@TMPa=\pgfplots@stacked@record@mark@cmds
+			\global\let#2=\pgfplots@loc@TMPa
+		\fi
+	}%
+	%
+	\begingroup
+	\let\E=\noexpand
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\pgfplots@coord@stream@INIT@finalize@storedcoords@prepare@scaletrafomacro
+	% Will be inserted in one of two possible places below:
+	\def\pgfplots@loc@TMPa{%
+		\ifx\pgfplotspointmetainputhandler\pgfutil@empty
+			% we don't have per-point meta data. Nothing special to
+			% do:
+			\E\edef\E\pgfmathresult{\E\noexpand\E\pgfplots@stream@{\E\the\E\c@pgfplots@coordindex}{\E\the\E\pgf@x}{\E\the\E\pgf@y}}%
+			\E\expandafter\E\pgfplotsapplistXpushback\E\expandafter{\E\pgfmathresult}\E\to\E\pgfplots@stacked@record@mark@cmds%
+		\else
+			% Ok, then we need to process the meta data as well:
+			\E\edef\E\pgfmathresult{\E\noexpand\E\pgfplots@stream@withmeta@{\E\the\E\c@pgfplots@coordindex}{\E\the\E\pgf@x}{\E\the\E\pgf@y}{\E\pgfplots@current@point@meta}}%
+			\E\expandafter\E\pgfplotsapplistXpushback\E\expandafter{\E\pgfmathresult}\E\to\E\pgfplots@stacked@record@mark@cmds%
+		\fi
+	}%
+	% This finalize command maps the logical coordinate into PGF's
+	% point space. Furthermore, it collects marker coordinates
+	% (properly clipped by position) if markers are required (see
+	% above).
+	%
+	% It is prepared here to eliminate if's.
+	\xdef\pgfplots@coord@stream@finalize@currentpt{%
+		\ifpgfplots@curplot@threedim
+			\E\pgfplotsqpointxyz{\E\pgfplots@current@point@x}{\E\pgfplots@current@point@y}{\E\pgfplots@current@point@z}%
+		\else
+			\ifpgfplots@threedim
+				\E\pgfplotsqpointxyz{\E\pgfplots@current@point@x}{\E\pgfplots@current@point@y}{0.0}%
+			\else
+				\E\pgfplotsqpointxy{\E\pgfplots@current@point@x}{\E\pgfplots@current@point@y}%
+			\fi
+		\fi
+		\E\edef\E\pgfmathresult{{\E\the\E\pgf@x}{\E\the\E\pgf@y}}%
+		\E\t@pgfplots@toka=\E\expandafter{\E#1}%
+		\E\t@pgfplots@tokb=\E\expandafter{\E\pgfmathresult}%
+		\E\xdef\E#1{\E\the\E\t@pgfplots@toka
+			\E\noexpand\E\pgfplots@stream\E\the\E\t@pgfplots@tokb}%
+		%
+		\ifpgfplots@record@marker@stream
+			\E\pgf@xa=\E\pgfplots@current@point@x pt % FIXME : SCOPE REGISTERS!?
+			\E\pgf@ya=\E\pgfplots@current@point@y pt %
+			\ifpgfplots@curplot@threedim
+				\E\pgf@yb=\E\pgfplots@current@point@z pt %
+			\fi
+			\E\ifdim\E\pgf@xa<\E\pgfplots@xmin@reg
+			\E\else
+				\E\ifdim\E\pgf@xa>\E\pgfplots@xmax@reg
+				\E\else
+					\E\ifdim\E\pgf@ya<\E\pgfplots@ymin@reg
+					\E\else
+						\E\ifdim\E\pgf@ya>\E\pgfplots@ymax@reg
+						\E\else
+							\ifpgfplots@curplot@threedim
+								\E\ifdim\E\pgf@yb<\E\pgfplots@zmin@reg
+								\E\else
+									\E\ifdim\E\pgf@yb>\E\pgfplots@zmax@reg
+									\E\else
+										\pgfplots@loc@TMPa
+									\E\fi
+								\E\fi
+							\else
+								\pgfplots@loc@TMPa
+							\fi
+						\E\fi
+					\E\fi
+				\E\fi
+			\E\fi
+		\fi
+	}%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\endgroup
+	%
+	\def\pgfplots@coord@stream@coord@{%
+		\pgfplotsaxisvisphasetransformcoordinate\pgfplots@current@point@x\pgfplots@current@point@y\pgfplots@current@point@z%
+		\pgfplotsaxisvisphasepreparedatapoint
+		\pgfplots@coord@stream@finalize@currentpt
+	}%
+}
+
+% This command gets called after the sequence reversal has been done.
+% It unpacks everything prepared by 
+% \pgfplots@stacked@finalize@stored@coords@START
+% and draws the plot (and markers).
+\def\pgfplots@stacked@draw@reversed@plot{%
+	\pgfplots@stored@current@cmd% [current plot style] <---- keys are already set
+	\pgfextra
+		\tikzset{every plot/.try}%
+		\pgfplots@getcurrent@plothandler\pgfplots@basiclevel@plothandler
+		\pgfplots@basiclevel@plothandler
+		% this here contains a recorded plot stream, see above. 
+		\pgfplots@stored@current@data
+		%
+		\pgfplots@assert@tikzinternal@exists{tikz@make@last@position}%
+		\tikz@make@last@position{\pgfplotlastpoint}%  
+	\expandafter
+	\endpgfextra
+	\pgfplots@stacked@stored@postpath
+	;
+	% this here has been assigned by the precommand as well.
+	\ifx\pgfplots@recorded@marker@stream\pgfutil@empty
+	\else
+		\ifpgfplots@clip@marker@paths
+			\scope% make sure that 'fill opacity' and 'dotted' styles remain local!
+			\pgfplots@stored@current@cmd%[current plot style] <---- keys are already set
+			\pgfextra 
+				\pgfplots@install@plotmark@handler
+				\pgfplots@recorded@marker@stream 
+			\endpgfextra
+			;
+			\endscope
+		\else
+			\pgfplots@stored@REMEMBER@MARK@COMMAND
+		\fi
+	\fi
+	\gdef\pgfplots@recorded@marker@stream{}% clear
+}%
+
+
+\def\pgfplots@stacked@path@closed@cycle{%
+	\pgfplots@stacked@closedcycle@impl
+}
+
+% Saves the finalized variables into macro #1 such that a call to #1
+% restores them.
+%
+% This affects pgf zero level handlers and whether this here is the
+% first plot or not..
+\def\pgfplots@stacked@savestateto#1{%
+	\t@pgfplots@toka=\expandafter{\pgfplots@stacked@PGFzerolevels}%
+	\ifpgfplots@stacked@isfirstplot
+		\t@pgfplots@tokb={\pgfplots@stacked@isfirstplottrue}%
+	\else
+		\t@pgfplots@tokb={\pgfplots@stacked@isfirstplotfalse}%
+	\fi
+	\t@pgfplots@tokc=\expandafter{\pgfplots@stacked@closedcycle@impl}%
+	\edef#1{%
+		\noexpand\gdef\noexpand\pgfplots@stacked@PGFzerolevels{\the\t@pgfplots@toka}%
+		\the\t@pgfplots@tokb
+		\noexpand\def\noexpand\pgfplots@stacked@closedcycle@impl{\the\t@pgfplots@tokc}%
+	}%
+}
+
+% PGF interfaces:
+\def\pgfplotxzerolevelstream@@list{%
+	\def\pgf@plotxzerolevelstreamstart{%
+		\global\let\pgfplotxzerolevelstream@@list@@backup=\pgfplots@stacked@PGFzerolevels
+		\gdef\pgf@plotxzerolevelstreamnext{%
+			\pgfplotslistcheckempty\pgfplots@stacked@PGFzerolevels
+			\ifpgfplotslistempty
+				\global\pgf@x=\pgfplots@ZERO@x\relax
+			\else
+				{\globaldefs=1\relax
+				\pgfplotslistpopfront\pgfplots@stacked@PGFzerolevels\to\pgfmathresult
+				}%
+				\global\pgf@x=\pgfmathresult\relax
+			\fi
+		}%
+	}%
+	\def\pgf@plotxzerolevelstreamend{%
+		\global\let\pgfplots@stacked@PGFzerolevels=\pgfplotxzerolevelstream@@list@@backup
+	}%
+}%
+
+\def\pgfplotyzerolevelstream@@list{%
+	\def\pgf@plotyzerolevelstreamstart{%
+		\global\let\pgfplotyzerolevelstream@@list@@backup=\pgfplots@stacked@PGFzerolevels
+		\gdef\pgf@plotyzerolevelstreamnext{%
+			\pgfplotslistcheckempty\pgfplots@stacked@PGFzerolevels
+			\ifpgfplotslistempty
+				\global\pgf@x=\pgfplots@ZERO@y\relax
+			\else
+				{\globaldefs=1\relax
+				\pgfplotslistpopfront\pgfplots@stacked@PGFzerolevels\to\pgfmathresult
+				}%
+				\global\pgf@x=\pgfmathresult\relax
+			\fi
+		}%
+	}%
+	\def\pgf@plotyzerolevelstreamend{%
+		\global\let\pgfplots@stacked@PGFzerolevels=\pgfplotyzerolevelstream@@list@@backup
+	}%
+}%

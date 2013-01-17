@@ -1,0 +1,257 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%     CAP  ---  Macros for typesetting programs in C and Pascal     %
+%       Micha\l{} Gulczy\'nski, Szczecin, Feb 1997 / Feb 1998       %
+%                     mgulcz@we.tuniv.szczecin.pl                   %
+%      Some (non-essential) changes to support COLORDVI output      %
+%                 Danilo \v Segan, Beograd, Sep 2002                %
+%                      mm01142@alas.matf.bg.ac.yu                   %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  version 1.2d
+%    Added DVIPS color support (actually, any output is replaced with
+%    a macro call to \Ispis --- search for it to see the changes)
+%    Also extended a mechanism for marking "special" symbols, so they
+%    would get applicable color in a string, comment, or otherwise
+%    NOTE: It should be backwards compatible, so there is no need to
+%          change anything else, except of course adding color
+%          settings if you wish
+%     -- by Danilo {\v S}egan, mm01142@alas.matf.bg.ac.yu
+%  version 1.2
+%    This file contains common definitions used in the CAP package.
+%    It does not contain any useful macros itself.
+%
+
+% If you don't have dvips's colordvi.tex, then fetch it from somewhere
+% to avoid errors in processing (it inserts specials which will
+% probably be ignored by anything other than COLORDVI aware software)
+% The alternate solution is to comment out all color definitions
+% (\let's) and to define writeout function as \def\Ispis#1{#1}
+\input colordvi
+
+% If you don't have color printer, you may choose to remain compatible
+% with those that do, and only use analogous dvips's input file
+%\input blackdvi
+
+%
+%      font and color declarations
+%
+\font\tenttsl = cmsltt10     % <---  modify these two lines if you don't use
+\font\tenttit = cmitt10      % <---  CM fonts
+\let\IdentifierFont  = \it
+\let\IdentifierColor = \Black
+\let\TextFont  = \sl
+\let\TextColor = \Black
+\let\KeywordFont  = \bf
+\let\KeywordColor = \Black
+\let\CommentFont  = \tenttit
+\let\CommentColor = \Black
+\let\DirectiveFont  = \tenttsl
+\let\DirectiveColor = \Black
+\let\SymbolFont  = \tt
+\let\SymbolColor = \Black
+\let\SpecialFont  = \tt     % some characters: { } < > _ \ and | are very
+\let\SpecialColor = \Black  % special -- they exist only in tt fonts
+
+%
+%      how much does a single "space" skip (retained the default 1ex from CAP)
+%
+\newdimen\SpaceSkip          % Changeable space skip (instead of the old fixed 1ex)
+\SpaceSkip=1ex
+
+
+%\def\GenState#1{%
+%\expandafter\expandafter\def\csname @#1State\endcsname{%
+%        \def\@Color{\csname#1Color\endcsname}%
+%        \def\@@State{#1}%
+%        \expandafter\csname #1Font\endcsname}}
+\def\GenState#1{%
+\expandafter\expandafter\def\csname @#1State\endcsname{%
+        \def\@tmpName{#1}%
+%	\ifx\@@State\@tmpName\else% if already in this state, skip
+        \def\@Color{\csname#1Color\endcsname}%
+        \def\@@State{#1}%
+        \expandafter\csname #1Font\endcsname%\fi}}
+	}}
+
+\GenState{Identifier}
+\GenState{Text}
+\GenState{Keyword}
+\GenState{Comment}
+\GenState{Directive}
+\GenState{Symbol}
+% One \GenState{NAME} replaces the following definition
+%    \def\@NAMEState{\let\@Color=\NAMEColor\NAMEFont\def\@@State{NAME}}
+\def\@SpecialState{%
+        \def\neka##1{\edef\@@stanje{##1}}%
+        \neka{Directive}\ifx\@@State\@@stanje%
+                \let\@Color=\DirectiveColor%
+        \else
+          \neka{Comment}\ifx\@@State\@@stanje%
+                \let\@Color=\CommentColor%
+          \else
+            \neka{Text}\ifx\@@State\@@stanje%
+                \let\@Color=\TextColor%
+            \else%
+                \let\@Color=\SpecialColor
+        \fi\fi\fi%
+        \SpecialFont}
+
+\def\@Output#1{\@Color{#1}}
+
+%
+%      registers and constants used in the program
+%
+\newif\if@TempBool            % temporary boolean
+\newread\@InFile              % file read by \Input macros
+\newcount\@CharCode           % code of current character
+\newcount\@PrevChar           % code of previous charater
+\newcount\@WhereAmI           % one of the following values:
+\chardef\@NothingSpecial = 0
+\chardef\@Text = 1
+\chardef\@Directive = 2       % used only in C
+\chardef\@ShortComment = 3    % C: //... ;    Pascal: (* ... *)
+\chardef\@LongComment = 4     % C: /* ... */; Pascal: { ... }
+%
+%      macro that compares two strings
+%
+\def\@Identical#1#2{%
+  MG\fi
+  \edef\@FirstString{#1}%
+  \edef\@SecondString{#2}%
+  \ifx \@FirstString \@SecondString
+}
+%
+%      I need a "not eof" function
+%
+\def\neof#1{%
+  MG\fi
+  \ifeof#1
+    \@TempBoolfalse
+  \else
+    \@TempBooltrue
+  \fi
+  \if@TempBool
+}
+%
+%      macro for changing catcodes of some special characters
+%
+\def\@TurnSpecialCharsOff{%
+  \catcode`\/=12
+  \catcode`\~=12
+  \catcode`\#=12
+  \catcode`\$=12
+  \catcode`\%=12
+  \catcode`\^=12
+  \catcode`\&=12
+  \catcode`\_=12
+  \catcode`\\=12
+  \catcode`\{=12
+  \catcode`\}=12
+  \catcode`\ =12
+  \catcode`\^^M=12
+}
+%
+%      macro that initiates all the variables
+%
+\def\@PrepareCPas{%
+  \begingroup
+  \parindent=0pt
+  \rightskip=0pt plus 1fil
+  \@TurnSpecialCharsOff
+  \def\@Word{}%
+  \@WhereAmI = \@NothingSpecial
+  \@PrevChar = 32
+  \@SymbolState
+}
+%
+%      macro that outputs the char specified as the argument;
+%      characters < > _  \ { | } are written with \SpecialState,
+%      except for _ which is written with \IdentifierColor and \SpecialFont
+%
+\def\@WriteChar#1{%
+  \def\@Check##1{%
+    \ifnum `#1=`##1%
+      {\@SpecialState \@Output{#1}}%
+      \@TempBooltrue%
+    \fi
+  }%
+  \@TempBoolfalse
+  \@Check{<}%
+  \@Check{>}%
+%  \@Check{_}%
+  \ifnum`#1=`\_%
+    \@IdentifierState\SpecialFont%
+    \@Output{#1}\@TempBooltrue%
+  \fi%
+  \@Check{\\}%
+  \@Check{\{}%
+  \@Check{\}}%
+  \@Check{|}%
+  \if@TempBool
+  \else
+    \ifnum `#1=13
+      \par\leavevmode
+    \else
+      \ifnum `#1=32
+        \hskip\SpaceSkip
+      \else
+        \@Output{#1}%
+      \fi
+    \fi
+  \fi
+}
+%
+%      checks if word #1 is a keyword and writes it out;
+%      #2 is a list of keywords separated with spaces
+%
+\def\@WriteWord#1#2{%
+  \if\@OnListOfKeywords{ #1 }{#2}%
+    {\@KeywordState\@Output{#1}}%
+  \else
+    {\@IdentifierState\@Output{#1}}%
+  \fi
+}
+%
+%      checks if string #2 contains string #1
+%
+\def\@OnListOfKeywords#1#2{%
+  MG\fi
+  \edef\@ExpandedArgument{{#1}}%
+  \expandafter\@@OnListOfKeywords\@ExpandedArgument{#2}\relax
+}
+\def\@@OnListOfKeywords#1#2{%
+  \def\@CheckList##1#1##2\@EndOfList{%
+    \if\@Identical{##2}{}%
+      \@TempBoolfalse
+    \else
+      \@TempBooltrue
+    \fi
+  }%
+  \expandafter\@CheckList#2#1\@EndOfList\relax
+  \if@TempBool
+}
+%
+%      checks if the specified character is a digit or a letter
+%
+\def\@DigitLetter#1{%
+  MG\fi
+  \@TempBoolfalse
+  \ifnum `\` < #1\relax   %   small letter?
+    \ifnum `\{ > #1\relax
+      \@TempBooltrue
+    \fi
+  \fi
+  \ifnum `\@ < #1\relax   %   capital letter?
+    \ifnum `\[ > #1\relax
+      \@TempBooltrue
+    \fi
+  \fi
+  \ifnum `\/ < #1\relax   %   digit?
+    \ifnum `\: > #1\relax
+      \@TempBooltrue
+    \fi
+  \fi
+  \if@TempBool
+}
+
+\endinput

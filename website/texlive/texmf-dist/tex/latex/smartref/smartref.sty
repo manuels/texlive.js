@@ -1,0 +1,207 @@
+\def\fileversion{v1.9}
+\def\filedate{2002/02/28}
+% smartref.sty
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Giuseppe Bilotta
+%
+% Phone +39 095 338103
+%
+% Email: bourbaki@bigfoot.com
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% This package is distributed under the terms
+% of the LaTeX Project Public License
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Please read the readme.txt file for details
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{smartref}[\filedate\space\fileversion\space Increase
+reference capability (deep reference)]
+%
+\newcounter{@smartlistlen}
+\newcounter{less@smartlist}
+\setcounter{less@smartlist}{-2}
+\newcommand*{\@increasesmartlist}{%
+    \addtocounter{@smartlistlen}{1}%
+    \addtocounter{less@smartlist}{1}}
+\def\sm@rtreflist{{\@currentlabel}}
+\@increasesmartlist
+%
+\newcommand*{\@getsmartreflist}[3]{%
+    \ifx#1%
+        \relax\protect\G@refundefinedtrue%
+        \@latex@warning {SmartReference `#2' on page %
+            \thepage \space undefined}%
+        \nfss@text{\reset@font \bfseries ??}%
+    \else%
+        \expandafter #2#1%
+    \fi}
+\newcounter{@currsmartlistplace}
+\newcommand*{\@getsmartref}[3]{%Paramaters are: #1: Where #2: Label, #3: place in list
+    \edef\@smartlistplace{#3}%
+    \setcounter{@currsmartlistplace}{0}%
+    \edef\@originalsmartlist{%
+        \expandafter\@getsmartreflist\csname sr@#2\endcsname{}{}}%
+    \edef\@currsmartlist{\@originalsmartlist}%
+    \loop%
+        \edef\@currsmartvalue{\expandafter\@car\@currsmartlist\@nil}%
+        \ifnum\the@currsmartlistplace=\theless@smartlist
+            \edef\@currsmartlist{\noexpand{\expandafter\@cdr\@currsmartlist\@nil\noexpand}}%
+        \else
+            \edef\@currsmartlist{\expandafter\@cdr\@currsmartlist\@nil}%
+        \fi
+        \ifnum\the@currsmartlistplace<\@smartlistplace%
+            \addtocounter{@currsmartlistplace}{1}%
+    \repeat
+    \edef#1{\@currsmartvalue}%
+%    \typeout{Got Smart Reference (place #3, value \@currsmartvalue)}%
+    }
+% Hack label: also write the SmartRef data ...
+\def\newsmartlabel{\@newl@bel {sr}}
+%save previous \label
+\AtBeginDocument{%
+    \let\sr@ldlabel=\label
+    \renewcommand*{\label}[1]{%
+        \sr@ldlabel{#1}%
+        \@bsphack%
+        \protected@write\@auxout{}%
+            {\string\newsmartlabel{#1}{\sm@rtreflist}}%
+        \@esphack}%
+% This one is needed for those who use AMS-LaTeX, to ensure that
+% smartref labelling system is used wih equations too (AMS-LaTeX
+% uses its own labeling system for equations
+    \let\ltx@label=\label}
+% Command to add new items to reflist:
+%
+\newtoks\sm@rtintern@ltok
+\newcommand*{\addtoreflist}[1]{% Add item ...
+    \@ifundefined{c@#1}% Check if real counter;
+        {\@nocounterr{#1}}% If not, give error
+        {\@ifundefined{#1posinlist}{% If yes, check if already defined:
+        \sm@rtintern@ltok=\expandafter{\sm@rtreflist}% If not, define everything ...
+        \expandafter\edef\csname sm@rtreflist\endcsname{%
+            \the\sm@rtintern@ltok{\noexpand\csname the#1\endcsname}}% Add it ...
+% Set position of counter in list:
+        \expandafter\edef\csname #1posinlist\endcsname{\the@smartlistlen}%
+        \@increasesmartlist%
+% Define SmartCommands:
+% Define command to get number of <name> for <label>; parameters:
+% #1 is where the value goes, #2 is label name.
+        \typeout{Defining \csname sget#1val\endcsname ...}
+% `smart get <name> value'
+% Usage \sgetchapternum{\holder}{labelname}
+        \expandafter\def\csname sget#1val\endcsname##1##2{%
+            \@ifundefined{sr@##2}{%
+                \G@refundefinedtrue%
+                \@latex@warning{SmartReference `##2' on page \thepage \space undefined}%
+                \def##1{0}}%
+                {\expandafter\@getsmartref{##1}{##2}{\csname #1posinlist\endcsname}}%
+            }%
+% Define command to check if number of <name> for <label> is different from current
+% <name> value; parameters:
+% #1 is label name.
+        \typeout{Defining \csname s#1ref\endcsname ...}
+% `smart <name> \ref'
+% Usage \schapterref{labelname}
+% TODOs:
+%   - check for counters that get reset.
+        \expandafter\newif\csname if#1changed\endcsname % define if consctruct
+        \expandafter\def\csname is#1changed\endcsname##1{% checker for change
+            \csname sget#1val\endcsname{\sm@rtrefvalue}{##1}%
+            \edef\@currentrefvalue{\csname the#1\endcsname}%
+            \ifx\sm@rtrefvalue\@currentrefvalue%
+                \csname #1changedfalse\endcsname%
+            \else%
+                \csname #1changedtrue\endcsname%
+            \fi}%
+        \expandafter\def\csname s#1ref\endcsname##1{%
+            \csname is#1changed\endcsname{##1}%
+            \csname if#1changed\endcsname%
+                , \csname short#1name\endcsname~\csname #1ref\endcsname{##1}%
+%                , \csname short#1name\endcsname~\sm@rtrefvalue%
+            \else%
+                \relax%
+            \fi%
+            }%
+% Define shorthand for \ref{labelname}\s<name>ref{labelname}; parameters:
+% #1 is label name.
+        \typeout{Defining \csname sref#1ref\endcsname ...}
+% Usage \srefchapterref{labelname}
+% If HyperRef is used, let it use no-link refs
+% TODO: define starred and unstarred version; maybe the same for the next.
+        \@ifpackageloaded{hyperref}{%
+            \expandafter\def\csname sref#1ref\endcsname##1{%
+                \@refstar{##1}\csname s#1ref\endcsname{##1}%
+                }
+            }{
+            \expandafter\def\csname sref#1ref\endcsname##1{%
+                \ref{##1}\csname s#1ref\endcsname{##1}%
+                }%
+            }%
+% Define equivalent of \pageref; parameters:
+% #1 is label name.
+        \typeout{Defining \csname #1ref\endcsname ...}
+% Usage \chapterref{labelname}
+        \expandafter\def\csname #1ref\endcsname##1{%
+            \csname sget#1val\endcsname{\sm@rtrefv@lue}{##1}%
+            \sm@rtrefv@lue%
+            }%
+        }{}%
+        }%
+    }
+%
+\DeclareOption{page}{%
+    \AtBeginDocument{%
+    \addtoreflist{page}%
+    \providecommand*\shortpagename{pag.}%
+    }}
+\DeclareOption{chapter}{%
+    \AtBeginDocument{%
+    \addtoreflist{chapter}%
+    \@ifundefined{smartref}{%
+        \newcommand*{\smartref}[1]{%
+            \srefchapterref{#1}%
+            }%
+        }{%
+        \let\nochapter@smartref=\smartref%
+        \renewcommand*{\smartref}[1]{%
+            \nochapter@smartref{#1}\schapterref{#1}}%
+        }
+    %\DeclareRobustCommand{\smartref}%
+    \@ifpackagewith{babel}{italian}{%
+        \providecommand*\shortchaptername{Cap.}}{%
+        \providecommand*\shortchaptername{Chap.}}
+    \typeout{Short chapter name defined: \shortchaptername}%
+    }}
+\DeclareOption{part}{%
+    \AtBeginDocument{%
+    \addtoreflist{part}%
+    \@ifundefined{smartref}{%
+        \newcommand*{\smartref}[1]{%
+            \srefpartref{#1}%
+            }%
+        }{%
+        \let\nopart@smartref=\smartref%
+        \renewcommand*{\smartref}[1]{%
+            \nopart@smartref{#1}\spartref{#1}}%
+        }
+    %\DeclareRobustCommand{\smartref}%
+    \@ifpackagewith{babel}{italian}{%
+        \providecommand*\shortpartname{Parte}}{%
+        \providecommand*\shortpartname{Part}}%
+    \typeout{Short part name defined: \shortpartname}%
+    }}
+\DeclareOption*{%
+    \PackageWarning{smartref}%
+                   {Option `\CurrentOption' unknown!\MessageBreak%
+                    Adding `\CurrentOption' as a reflevel}%
+    \expandafter\addtoreflist\expandafter{\CurrentOption}
+    }
+\DeclareOption{byname}{\AtEndOfPackage{\usepackage{byname}}}
+\ProcessOptions\relax
+\endinput

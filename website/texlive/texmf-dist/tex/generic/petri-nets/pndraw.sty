@@ -1,0 +1,152 @@
+% This file is part of the Petri-nets packages. See file README for
+% copyright notice.
+
+\ProvidesPackage{pndraw}
+
+\newenvironment{petrinet}{\beginnet}{\endnet}
+
+%%
+%% running standard LaTeX
+%%
+
+\usepackage{ifpdf}
+
+\ifpdf
+  \relax
+\else
+  \input pndraw.tex
+  \endinput
+\fi
+
+%%
+%% running pdfLaTeX
+%%
+
+\message{ ** Petri-nets / draw commands ** }
+
+\input pnversion
+
+\usepackage{graphicx}
+
+\newcounter{pncount}
+\setcounter{pncount}{1}
+
+\catcode`\:=11
+
+%%
+%% check for write18
+%%
+
+\begingroup
+  \edef\test{\jobname.\the\year\the\month\the\day\the\time}
+  \immediate\write18{pn2pdf --test \test}
+  \IfFileExists\test{
+    \global\def\pnpdf:run ##1{\immediate\write18{pn2pdf ##1}}
+    \pnpdf:run{--delete \test}
+  }{
+    \newwrite\pnpdf:batch
+    \immediate\openout\pnpdf:batch=\jobname.bpn
+    \global\def\pnpdf:run ##1{\immediate\write\pnpdf:batch{pn2pdf ##1}}
+    \AtEndDocument{\pnpdf:run{--delete \jobname.bpn}}
+  }
+\endgroup
+
+\let\pnpdf:warn=\relax
+
+\newwrite\pnpdf:stream
+
+\def\pnpdf:open:always{%
+  \edef\pnpdf:file{\jobname-fig\thepncount.pn}%
+  \immediate\openout\pnpdf:stream=\pnpdf:file
+  \global\let\pnpdf:open=\relax}
+\global\let\pnpdf:open=\pnpdf:open:always
+
+\def\pnpdf:write #1{\pnpdf:open
+  \immediate\write\pnpdf:stream{#1}}
+
+\begingroup
+  \catcode`|=0
+  \catcode`[=1
+  \catcode`]=2
+  \catcode`\{=12
+  \catcode`\}=12
+  \catcode`\\=12
+  |long|gdef|pnpdf:read #1\end{petrinet}[|pnpdf:write[#1]|end[petrinet]]
+|endgroup
+
+{\catcode`\^^M=\active %
+\gdef\pnpdf:catcodes{\bgroup %
+  \catcode`\{=12 \catcode`\}=12 \catcode`\$=12 %
+  \catcode`\&=12 \catcode`\#=12 \catcode`\^=12 %
+  \catcode`\%=12 \catcode`\ =12 \catcode`\_=12 %
+  \catcode`\~=12 \catcode`\\=12 \catcode`\^^M=\active \def^^M{^^J}}}
+
+{\catcode`\%=12 \catcode`\!=14 \catcode`\^^M=\active !
+ \gdef\beginnet{\pnpdf:write{\string\begin{petrinet}\string%}!
+   \catcode`\^^M=\active\let^^M=\relax !
+   \pnpdf:catcodes\pnpdf:read}}
+
+\def\show:net:always{%
+  \IfFileExists{\jobname-fig\thepncount.pdf}%
+               {\includegraphics{\jobname-fig\thepncount.pdf}}%
+               {\message{<missing \jobname-fig\thepncount.pdf>}%
+                \global\def\pnpdf:warn{\typeout{^^J*** Run "pn2pdf
+                  --batch \jobname.bpn" in order to build the
+                  figures^^J}}}}
+
+\def\endnet{\egroup
+  \pnpdf:write{\string\end{petrinet}}%
+  \immediate\closeout\pnpdf:stream
+  \global\let\pnpdf:open=\pnpdf:open:always
+  \pnpdf:run{\jobname-fig\thepncount.pn}%
+  \show:net\addtocounter{pncount}{1}}
+
+\let\show:net=\show:net:always
+\def\savenet{\global\def\show:net{\global\let\show:net\show:net:always}}
+
+\def\shownet{\addtocounter{pncount}{-1}\show:net:always
+             \addtocounter{pncount}{1}}
+
+\def\everynet{\begingroup\afterassignment\endgroup\toks0}
+\def\everylabel{\begingroup\afterassignment\endgroup\toks0}
+\def\psset #1{}
+\def\nodessize #1{}
+\def\placesize{\begingroup\afterassignment\endgroup\dimen0}
+\def\transsize{\begingroup\afterassignment\endgroup\dimen0}
+\def\storesize{\begingroup\afterassignment\endgroup\dimen0}
+\def\modulesize{\begingroup\afterassignment\endgroup\dimen0}
+\def\sourcesize{\begingroup\afterassignment\endgroup\dimen0}
+
+\AtBeginDocument{
+  \def\everynet{\bgroup\afterassignment\everynet:next\toks0}
+  \def\everynet:next{\pnpdf:write{\string\everynet{\expandafter
+    \noexpand\the\toks0}}\egroup}
+  \def\everylabel{\bgroup\afterassignment\everylabel:next\toks0}
+  \def\everylabel:next{\pnpdf:write{\string\everylabel{\expandafter
+    \noexpand\the\toks0}}\egroup}
+  \def\psset{\bgroup\afterassignment\psset:next\toks0}
+  \def\psset:next{\pnpdf:write{\string\psset{\expandafter
+    \noexpand\the\toks0}}\egroup}
+  \def\nodessize{\bgroup\afterassignment\nodessize:next\toks0}
+  \def\nodessize:next{\pnpdf:write{\string\nodessize{\expandafter
+    \noexpand\the\toks0}}\egroup}
+  \def\placesize{\bgroup\afterassignment\placesize:next\dim0}
+  \def\placesize:next{\edef\command{{\string\placesize=\the\dim0}}%
+    \expandafter\pnpdf:write\command}
+  \def\transsize{\bgroup\afterassignment\transsize:next\dim0}
+  \def\transsize:next{\edef\command{{\string\transsize=\the\dim0}}%
+    \expandafter\pnpdf:write\command}
+  \def\storesize{\bgroup\afterassignment\storesize:next\dim0}
+  \def\storesize:next{\edef\command{{\string\storesize=\the\dim0}}%
+    \expandafter\pnpdf:write\command}
+  \def\modulesize{\bgroup\afterassignment\modulesize:next\dim0}
+  \def\modulesize:next{\edef\command{{\string\modulesize=\the\dim0}}%
+    \expandafter\pnpdf:write\command}
+  \def\sourcesize{\bgroup\afterassignment\sourcesize:next\dim0}
+  \def\sourcesize:next{\edef\command{{\string\sourcesize=\the\dim0}}%
+    \expandafter\pnpdf:write\command}}
+
+\AtEndDocument{\pnpdf:run{--delete \jobname.pre}
+               \pnpdf:warn}
+
+\catcode`\:=12

@@ -1,0 +1,475 @@
+%%
+%% This is file `pst-diffraction.tex',
+%%
+%% IMPORTANT NOTICE:
+%%
+%% Package `pst-diffraction.tex'
+%%
+%% Manuel Luque <ml@pstricks.de>
+%% Herbert Voss <hv@pstricks.de>
+%%
+%% with contributions of Julien Cubizolles
+%%
+%% This program can be redistributed and/or modified under the terms
+%% of the LaTeX Project Public License Distributed from CTAN archives
+%% in directory macros/latex/base/lppl.txt.
+%%
+%% DESCRIPTION:
+%%   `pst-diffraction' is a PSTricks package to plot special diffractions
+%%
+%% 
+\csname PSTDiffractionLoaded\endcsname
+\let\PSTDiffractionLoaded\endinput
+% Require PSTricks
+\ifx\PSTricksLoaded\endinput\else\input pstricks.tex\fi
+\ifx\PSTThreeDplotLoaded\endinput\else\input pst-3dplot.tex\fi
+\ifx\PSTXKeyLoaded\endinput\else \input pst-xkey \fi
+%
+\def\fileversion{2.03}%
+\def\filedate{2008/09/03}%
+\message{`PST-diffraction v\fileversion, \filedate\space (ML,hv)}%
+\edef\PstAtCode{\the\catcode`\@} \catcode`\@=11\relax
+\pst@addfams{pst-diff}
+
+\define@key[psset]{pst-diff}{a}{\def\psk@Diffraction@Slit@A{#1 }} % largeur de la fente en m
+\define@key[psset]{pst-diff}{k}{\pst@checknum{#1}\psk@Diffraction@Slit@k }
+\define@key[psset]{pst-diff}{r}{\def\psk@Diffraction@Circular@r{#1 }} % rayon du trou en m
+\define@key[psset]{pst-diff}{d}{\def\psk@Diffraction@Circular@d{#1 }} % demi-distance entre les trous en m
+\define@key[psset]{pst-diff}{h}{\def\psk@Diffraction@Triangle@h{#1 }} % hauteur du triangle en m
+\define@key[psset]{pst-diff}{scale}{\def\psk@Diffraction@Triangle@scale{#1 }} % hauteur du triangle en m
+\define@key[psset]{pst-diff}{s}{\def\psk@Diffraction@Slit@s{#1 }} % distance entre les fentes
+\define@key[psset]{pst-diff}{lambda}{\pst@checknum{#1}\psk@Diffraction@Slit@Lambda }% en nm
+\define@key[psset]{pst-diff}{f}{\pst@checknum{#1}\psk@Diffraction@Slit@F }% focus en m
+\define@key[psset]{pst-diff}{gamma}{\pst@checknum{#1}\psk@Diffraction@gamma@G }
+\define@key[psset]{pst-diff}{pixel}{\pst@checknum{#1}\psk@Diffraction@Slit@pixel }
+\define@key[psset]{pst-diff}{colorMode}{\pst@getint{#1}\psk@Diffraction@colorMode }
+% 0 black and white inverse
+% 1 black and white
+% 2 color cmyk
+%>2 color RGB
+%
+\define@key[psset]{pst-diff}{contrast}{%
+  \pst@cnta=#1\relax 
+  \ifnum\pst@cnta>38 
+    \typeout{!!! The contrast value is `\the\pst@cnta', but cannot be greater than 38.
+     Contrast=38 forced!}%
+    \pst@cnta=38 
+  \fi%
+  \edef\psk@Diffraction@Slit@contrast{\the\pst@cnta\space}}
+%
+\define@boolkey[psset]{pst-diff}[Pst@Diffraction@]{showFunc}[true]{}
+\define@boolkey[psset]{pst-diff}[Pst@Diffraction@]{IIID}[true]{}
+\define@boolkey[psset]{pst-diff}[Pst@Diffraction@Circular@]{twoHole}[true]{}
+\define@boolkey[psset]{pst-diff}[Pst@Diffraction@Rectangular@]{twoSlit}[true]{}
+%
+\psset[pst-diff]{a=0.2e-3,f=5,k=1,r=1e-3,
+    d=6e-3,s=12e-3,h=0.5e-3,
+    lambda=650,pixel=0.5,
+    contrast=38,gamma=0.8,twoHole=false,twoSlit=false,colorMode=3, scale=1,
+    IIID=false, showFunc=false}
+%
+% load the pstricks-add.pro only, if not already done
+\ifx\PSTricksAddLoaded\endinput\else\pstheader{pstricks-add.pro}\fi
+%
+\def\tx@RGBtoGRAY{ tx@addDict begin RGBtoGRAY end }
+\def\tx@RGBtoCMYK{ tx@addDict begin RGBtoCMYK end }
+%
+\def\psdiffractionRectangle{\pst@object{psdiffractionRectangle}}
+\def\psdiffractionRectangle@i{%
+  \begin@SpecialObj%
+  \addto@pscode{%
+    % les dimensions sont en mètres
+    /focus \psk@Diffraction@Slit@F def
+    /widthSlit \psk@Diffraction@Slit@A def
+    /heightSlit \psk@Diffraction@Slit@k widthSlit mul def
+    /Gamma \psk@Diffraction@gamma@G def
+    /pixel \psk@Diffraction@Slit@pixel def
+    /SlitSeparation \psk@Diffraction@Slit@s def
+    \psk@Diffraction@Slit@Lambda tx@addDict begin wavelengthToRGB Red Green Blue end
+    /Blue ED /Green ED /Red ED
+    0 0 translate
+    /ondeLongueur \psk@Diffraction@Slit@Lambda 1e-9 mul def % en m
+    % les bornes sont en pt
+    % +- 4 fois le premier minimum
+    /bornexpt 1 widthSlit div focus mul ondeLongueur mul 2845 mul def
+    /borneypt 1 heightSlit div focus mul ondeLongueur mul 2845 mul def
+    \ifPst@Diffraction@IIID 
+      \psk@ThreeDplot@zMax dup \tx@ScreenCoor pop /zScale ED 
+      tx@3DPlotDict begin \IIIDplot@variables end 
+    \fi
+    % Les calculs commencent...
+    /yEnd borneypt 4 mul def
+    yEnd neg pixel yEnd {
+     /ordonneept ED
+     % y en m
+     /ordonnee ordonneept 2845 div def
+     /argumenty ordonnee heightSlit mul ondeLongueur div focus div def
+     /argumentyRad argumenty Pi mul def
+     /argumentyDeg argumenty 180 mul def
+     /sincy argumentyRad 0 eq { 1 }{ argumentyDeg sin argumentyRad div } ifelse def
+     /xEnd bornexpt 4 mul def
+     /OldIntensity 0 def
+     xEnd neg pixel xEnd { 
+       /abscissept ED
+       \ifPst@Diffraction@IIID 
+         abscissept pixel sub ordonneept OldIntensity 
+         tx@3DPlotDict begin Conv3D2D end moveto 
+       \fi % go to first point
+       % x en m
+       /abscisse abscissept 2845 div def
+       /argumentx abscisse widthSlit mul ondeLongueur div focus div def
+       /argumentcosx abscisse SlitSeparation mul ondeLongueur div focus div def       
+       /argumentxRad argumentx Pi mul def
+       /argumentxDeg argumentx 180 mul def
+       /argumentcosxDeg argumentcosx 180 mul def
+       % sinus cardinal
+       /sincx argumentxRad 0 eq { 1 } { argumentxDeg sin argumentxRad div } ifelse def
+       %
+       1 1e\psk@Diffraction@Slit@contrast sincx dup mul sincy dup mul
+       \ifPst@Diffraction@Rectangular@twoSlit mul argumentcosxDeg cos dup mul \fi
+       mul neg exp sub dup 
+       /intensity ED
+       dup dup Red mul 3 -1 roll Green mul 3 -1 roll Blue mul 
+       \ifcase\psk@Diffraction@colorMode
+         \tx@RGBtoGRAY neg 1 add setgray \or
+         \tx@RGBtoGRAY setgray \or
+	 \tx@RGBtoCMYK setcmykcolor
+       \else setrgbcolor \fi
+       %
+       % newpath abscissept ordonneept 1 0 360 arc closepath fill stroke
+       % 30 juillet 2004
+       \ifPst@Diffraction@IIID 
+         abscissept ordonneept intensity zScale mul tx@3DPlotDict begin Conv3D2D end 
+         lineto stroke 		% draw line in specific color
+	 /OldIntensity intensity def
+       \else
+%         newpath		% done by stroke
+         abscissept pixel 2 div sub ordonneept pixel 2 div sub 
+         moveto
+         pixel 0 rlineto
+         0 pixel rlineto
+         pixel neg 0 rlineto closepath fill stroke
+       \fi
+     } for
+    } for
+  }% \addto@pscode
+  \end@OpenObj%
+}
+%
+\def\psdiffractionCircular{\pst@object{psdiffractionCircular}}
+\def\psdiffractionCircular@i{%
+  \begin@SpecialObj%
+  \addto@pscode{%
+    % les dimensions sont en mètres
+    /focus \psk@Diffraction@Slit@F def
+    /Gamma \psk@Diffraction@gamma@G def
+    /pixel \psk@Diffraction@Slit@pixel def
+    /contrast 1e\psk@Diffraction@Slit@contrast def
+    /r \psk@Diffraction@Circular@r def
+    /d \psk@Diffraction@Circular@d def
+    \psk@Diffraction@Slit@Lambda tx@addDict begin wavelengthToRGB Red Green Blue end
+    /Blue ED /Green ED /Red ED
+    \ifPst@Diffraction@IIID 
+      \psk@ThreeDplot@zMax dup \tx@ScreenCoor pop /zScale ED 
+      tx@3DPlotDict begin \IIIDplot@variables end 
+    \fi
+%    0 0 translate
+    %% Handbook of mathematical functions
+    %% ED. M.ABRAMOWITZ & I.A. STEGUN
+    %% Chap. 9 : Bessel Functions of Integer Order
+    %% Adapté en ps d'après le code de D.Martin
+    %% http://perso.univ-rennes1.fr/daniel.martin/melina/www/code_html/specfct/bejy01.html
+    %
+    % les coefficients pour le calcul des fonctions de Bessel
+    /COSO {0.79788456 1 X div sqrt mul  X 0.78539816 sub RadtoDeg cos mul} def
+    /SINO {.79788456 1 X div sqrt mul X 0.78539816 sub RadtoDeg sin mul} def
+    %
+    /PO { 0.209388721e-6 8  X div dup mul mul 0.207337064e-5 sub 8  X div dup mul mul
+          0.273451041e-4 add 8  X div dup mul mul 0.109862863e-2 sub 8  X div dup mul mul 1 add } def
+    /QO {-0.934945152e-7 8  X div dup mul mul 0.762109516e-6 add 8  X div dup mul mul
+          0.691114765e-5 sub 8  X div dup mul mul 0.143048876e-3 add 8  X div dup mul mul
+          0.15624499998e-1 sub 8 X div mul } def
+    /P1 { -0.240337019e-6 8  X div dup mul mul 0.2457520174e-5 add 8  X div dup mul mul
+           0.351639649e-4 sub 8  X div dup mul mul 0.183105e-2 add 8  X div dup mul mul 1 add } def
+    /Q1 {  0.105787412e-6 8  X div dup mul mul 0.88228987e-6   sub 8  X div dup mul mul
+           0.8449199096e-5 add 8  X div dup mul mul 0.2002690873e-3 sub 8  X div dup mul mul
+           0.4687499995e-1 add 8 X div mul } def
+    % les fonctions de Bessel
+    /J0 { 
+      /X exch def
+      X 0 lt { /X X neg def } if
+      X 8 le { X 0 eq { 1 }{
+        0.33848331e-10 X X dup mul 0.2895532e-7 sub X dup mul mul
+        0.113825372e-4 add X dup mul mul 0.258008068e-2 sub X dup mul mul
+        0.351527847 add X dup mul mul 27.7849812 sub X dup mul mul
+        0.114749848e4 add X dup mul mul 0.198342667e5 sub X dup mul mul
+        0.813241206e5 add
+        X dup mul 0.49676332e3 add X dup mul mul 0.813241206e5 add div } ifelse 
+      }{ PO COSO mul QO SINO mul sub } ifelse 
+    } def
+    %
+    /J1 { 
+      /X exch def
+      X 0 lt {/X X neg def /Signe {neg} def}{/Signe {} def} ifelse
+      X 8 le { X 0 eq {0}{
+        -0.47427072618e-9 X dup mul mul 0.35236457401e-6 add X dup mul mul
+        -0.11764050281e-3 add X dup mul mul 0.21979683808e-1 add X dup mul mul
+        -0.23652383961e+1 add X dup mul mul 0.13812534164e+3 add X dup mul mul
+        -0.373650260707e+4 add X dup mul mul 0.31625993793e+5 add
+        X dup mul 0.433493017e+3 add X dup mul mul 0.6325198765e+5 add div X mul
+        Signe } ifelse 
+      }{ P1 SINO mul Q1 COSO mul add Signe } ifelse 
+    } def
+    % J1 cardinal au carré : (J1(x)/x)^2
+    /J1Card { dup 0 eq {1}{J1 X div dup mul 4 mul} ifelse } def
+    %
+    /cm { 28.45 mul } def % centimétres -> pts
+    /m2pt { 284.5 mul } def % métres -> pts
+    /L { \psk@Diffraction@Slit@Lambda 1e-9 mul } bind def % longueur d'onde en m
+    /Coeff { TwoPi r mul L focus mul div } bind def
+    /Facteur { 180 d mul L focus mul div } bind def
+    /R_limite { 20 Coeff div 100 mul } bind def % en cm
+    % 05 08 2004
+    \ifPst@Diffraction@Circular@twoHole
+      R_limite 10 ge { /R_limite 10 def } if
+%      newpath
+%      R_limite neg 1.2 mul cm dup moveto
+%      R_limite 2.4 mul cm 0 rlineto
+%      0 R_limite 2.4 mul cm  rlineto
+%      R_limite neg 2.4 mul cm 0 rlineto
+%      closepath
+%      \ifnum\psk@Diffraction@colorMode=\z@ 1 \else 0 \fi
+%      setgray fill
+      R_limite neg cm 1 R_limite cm {
+        /xPts exch def
+        /x { xPts 2845 div } bind def
+        /OldIntensity 0 def
+        R_limite neg cm 1 R_limite cm {
+          /yPts exch def
+          \ifPst@Diffraction@IIID 
+            xPts 1 sub yPts OldIntensity 
+            tx@3DPlotDict begin Conv3D2D end moveto 
+          \fi % go to first point
+          /y { yPts 2845 div } bind def
+          /R { x dup mul y dup mul add sqrt } bind def % R en m
+          /m Coeff R mul def
+  	  1 1e38 m J1Card Facteur x mul cos dup mul mul neg exp sub
+          dup /intensity ED
+  	  dup dup
+	  Red mul 3 -1 roll
+	  Green mul 3 -1 roll
+	  Blue mul 
+	  \ifcase\psk@Diffraction@colorMode
+	    \tx@RGBtoGRAY neg 1 add setgray \or
+ 	    \tx@RGBtoGRAY setgray \or
+	    \tx@RGBtoCMYK setcmykcolor
+          \else setrgbcolor \fi
+          \ifPst@Diffraction@IIID 
+            xPts yPts intensity zScale mul tx@3DPlotDict begin Conv3D2D end 
+            lineto stroke 		% draw line in specific color
+	    /OldIntensity intensity def
+          \else
+            xPts 0.5 sub yPts 0.5 sub moveto
+            1 0 rlineto
+            0 1 rlineto
+	    1 neg 0 rlineto
+	    closepath fill
+  	    stroke
+	  \fi
+        } for
+      } for
+    %
+    \else 			% only one circular hole
+      \ifPst@Diffraction@IIID \else 
+        newpath
+        R_limite neg %1.5 mul 
+	cm dup moveto
+        R_limite 2 mul cm 0 rlineto
+        0 R_limite 2 mul cm  rlineto
+        R_limite neg 2 mul cm 0 rlineto
+        closepath
+      \fi
+      \ifnum\psk@Diffraction@colorMode=\z@ 1 \else 0 \fi setgray fill
+       /intensityOld 0 def
+       R_limite -0.001 0 {
+        /Radius exch def
+        /m Coeff Radius 0.01 mul mul def
+        1 1e38 m J1Card neg exp sub 
+	dup /intensity ED
+	dup dup
+	Red mul 3 -1 roll 	% R
+        Green mul 3 -1 roll 	% G
+	Blue mul 		% B
+	\ifcase\psk@Diffraction@colorMode
+	  \tx@RGBtoGRAY neg 1 add setgray \or
+	  \tx@RGBtoGRAY setgray \or
+	  \tx@RGBtoCMYK setcmykcolor
+        \else setrgbcolor \fi
+        \ifPst@Diffraction@IIID 
+%    	  Radius cm 0 intensity zScale mul tx@3DPlotDict begin Conv3D2D end moveto
+	  /notFilled true def
+	  0.1 setlinewidth
+	  intensity intensityOld gt {
+ 	    0 1 360 {
+	      /angle ED
+     	      Radius cm angle cos mul Radius cm angle sin mul intensity zScale mul 
+	      tx@3DPlotDict begin Conv3D2D end 
+              angle 0 eq { moveto }{ lineto } ifelse	% draw line in specific color
+	    } for
+	    notFilled { closepath fill /notFilled false def } if
+	    stroke
+	    /intensityOld intensity def
+	  }{ 
+ 	    0 1 360 {
+	      /angle ED
+     	      Radius cm angle cos mul Radius cm angle sin mul intensityOld zScale mul 
+	      tx@3DPlotDict begin Conv3D2D end 
+              angle 0 eq { moveto }{ lineto } ifelse	% draw line in specific color
+	    } for
+	    closepath stroke
+	  } ifelse	% intensity intensityOld gt 
+        \else
+          0 0 Radius cm 0 360 arc
+          stroke
+	\fi
+      } for
+      \ifPst@Diffraction@showFunc 
+      newpath
+      0 0 moveto
+      R_limite 1.5 mul cm 0 rlineto
+      0 R_limite 1.5 mul cm  rlineto
+      R_limite neg 1.5 mul cm 0 rlineto
+      closepath
+      clip
+      0.95 setgray fill
+      newpath
+      0 0 J1Card 1000 mul moveto
+      0 0.01 R_limite {
+        /Radius exch def
+	/m Coeff Radius 0.01 mul mul def
+	Radius cm m J1Card 1000 mul lineto
+      } for
+      \ifnum\psk@Diffraction@colorMode=\z@ 1 \else 0 \fi setgray
+      \pst@number\pslinewidth setlinewidth
+      stroke
+      \pst@number\pslinewidth 2 div setlinewidth
+      /grille {
+        -10 1 10 {
+	  /X exch def
+	  X cm -10 cm moveto
+	  X cm 10 cm lineto
+	  X 0 eq { 0 1 0 }{ 0 0 1 } ifelse
+  	  \ifcase\psk@Diffraction@colorMode
+	    \tx@RGBtoGRAY neg 1 add setgray \or
+	    \tx@RGBtoGRAY setgray \or
+ 	    \tx@RGBtoCMYK setcmykcolor
+          \else setrgbcolor \fi
+	  stroke
+        } for
+        -10 1 10 {
+	  /Y exch def
+	  -10 cm Y cm moveto
+	  10 cm Y cm lineto
+	  Y 0 eq { 0 1 0 }{ 0 0 1 } ifelse
+	  \ifcase\psk@Diffraction@colorMode
+	    \tx@RGBtoGRAY neg 1 add setgray \or
+	    \tx@RGBtoGRAY setgray \or
+  	    \tx@RGBtoCMYK setcmykcolor
+          \else setrgbcolor \fi
+	  stroke
+	} for
+      } def
+      newpath
+      grille
+    \fi
+  \fi
+  }% \addto@pscode
+  \end@SpecialObj%
+}
+%%
+%
+\def\psdiffractionTriangle{\pst@object{psdiffractionTriangle}}
+\def\psdiffractionTriangle@i{%
+  \begin@SpecialObj
+  \addto@pscode{%
+     0 0 translate
+     % les dimensions sont en mètres
+    /f \psk@Diffraction@Slit@F def
+    /h \psk@Diffraction@Triangle@h def
+    /Gamma \psk@Diffraction@gamma@G def
+    /L { \psk@Diffraction@Slit@Lambda 1e-9 mul} bind def % longueur d'onde en m
+    /pixel \psk@Diffraction@Slit@pixel def
+    /k { TwoPi f L mul div } bind def
+    /p { 30 dup sin exch cos div } bind def
+    \psk@Diffraction@Slit@Lambda tx@addDict begin wavelengthToRGB Red Green Blue end
+    /Blue ED /Green ED /Red ED
+    % les bornes sont en pt
+    % +- 4 fois le premier minimum
+    /bornexpt 1 h div f mul L mul 2845 mul def
+    /borneypt 1 h div f mul L mul 2845 mul def
+    \ifPst@Diffraction@IIID 
+      \psk@ThreeDplot@zMax dup \tx@ScreenCoor pop /zScale ED 
+      tx@3DPlotDict begin \IIIDplot@variables end 
+    \fi
+    /P {
+      1 k y mul x p y mul sub mul div 
+      1 k h mul x p y mul sub mul RadtoDeg cos sub
+      mul
+      1 k y mul x p y mul add mul div
+      1 k h mul x p y mul add mul RadtoDeg cos sub
+      mul sub 
+    } def
+    /Q {
+      1 k y mul x p y mul sub mul div
+      k h mul x p y mul sub mul RadtoDeg sin
+      mul
+      1 k y mul x p y mul add mul div
+      k h mul x p y mul add mul RadtoDeg sin
+      mul sub
+    } def
+    /I { P dup mul Q dup mul add } def
+    /I_max 0 store
+    % Les calculs commencent...
+    borneypt 4 mul \psk@Diffraction@Triangle@scale mul dup neg pixel 3 -1 roll {
+      /ordonneept exch def
+      % y en m
+      /y ordonneept 2845 div def
+      /OldIntensity 0 def
+      bornexpt 4 mul \psk@Diffraction@Triangle@scale mul dup neg pixel 3 -1 roll {
+        /abscissept exch def
+        \ifPst@Diffraction@IIID 
+          abscissept ordonneept OldIntensity 
+          tx@3DPlotDict begin Conv3D2D end moveto 
+        \fi % go to first point
+        % x en m
+	/x abscissept 2845 div def
+	I_max I le { /I_max I def } if
+	%
+	1.05 1e\psk@Diffraction@Slit@contrast I neg exp sub
+        dup /intensity ED
+	dup dup
+	Red mul 3 -1 roll Green mul 3 -1 roll Blue mul
+	\ifcase\psk@Diffraction@colorMode
+	  \tx@RGBtoGRAY neg 1 add setgray \or
+	  \tx@RGBtoGRAY setgray \or
+	  \tx@RGBtoCMYK setcmykcolor
+        \else setrgbcolor \fi
+	%
+        \ifPst@Diffraction@IIID 
+          abscissept ordonneept intensity zScale mul tx@3DPlotDict begin Conv3D2D end 
+          lineto stroke 		% draw line in specific color
+	  /OldIntensity intensity def
+        \else
+	  newpath abscissept pixel 2 div sub ordonneept pixel 2 div sub moveto
+	  pixel 0 rlineto
+	  0 pixel rlineto
+	  pixel neg 0 rlineto closepath fill stroke
+	\fi
+      } for 
+    } for 
+  }% addto@pscode
+  \end@SpecialObj%
+}
+%
+\catcode`\@=\PstAtCode\relax
+\endinput

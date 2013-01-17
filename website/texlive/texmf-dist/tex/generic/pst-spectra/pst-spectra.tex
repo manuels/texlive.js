@@ -1,0 +1,309 @@
+%% BEGIN pst-spectra.tex
+%%
+%% This extension try to deals with wavelength in optics.
+%% Beginning with spectra
+%%
+%% COPYRIGHT 2005,2006 by Arnaud Schmittbuhl
+%%
+%% This program can be redistributed and/or modified under the terms
+%% of the LaTeX Project Public License Distributed from CTAN
+%% archives in directory macros/latex/base/lppl.txt.
+%%
+\csname PSTwlLoaded\endcsname
+\let\PSTwlLoaded\endinput
+%
+\def\pstwlfileversion{0.91}
+\def\pstwlfiledate{2006/01/01}
+\message{`pst-spectra'  v\pstwlfileversion, \pstwlfiledate\space (AS)}
+%
+% Requires pstricks, multido, pst-xkey
+\ifx\PSTricksLoaded\endinput\else\input pstricks.tex\fi
+\ifx\PSTXKeyLoaded\endinput\else\input pst-xkey \fi
+\ifx\MultidoLoaded\endinput\else\input multido.tex\fi
+%
+%
+\edef\TheAtCode{\the\catcode`\@}
+\catcode`\@=11\relax
+%
+%%% Stolen code from LaTeX file: latex.ltx (coming from ltcntrl.dtx)
+\def\@nnil{\@nil}
+\def\@empty{}
+\def\@fornoop#1\@@#2#3{}
+\long\def\@for#1:=#2\do#3{%
+  \expandafter\def\expandafter\@fortmp\expandafter{#2}%
+  \ifx\@fortmp\@empty \else
+    \expandafter\@forloop#2,\@nil,\@nil\@@#1{#3}\fi}
+\long\def\@forloop#1,#2,#3\@@#4#5{\def#4{#1}\ifx #4\@nnil \else
+      #5\def#4{#2}\ifx #4\@nnil \else#5\@iforloop #3\@@#4{#5}\fi\fi}
+\long\def\@iforloop#1,#2\@@#3#4{\def#3{#1}\ifx #3\@nnil
+      \expandafter\@fornoop \else
+      #4\relax\expandafter\@iforloop\fi#2\@@#3{#4}}
+%
+%
+%% Prologue for postscript
+\pstheader{pst-spectra.pro}
+%
+\SpecialCoor
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% display a continuum spectrum or lines?
+%% default is spectrum
+\newif\ifpst@psspectrum@spectrum \pst@psspectrum@spectrumtrue
+\newif\ifpst@psspectrum@lines    \pst@psspectrum@linesfalse
+\newif\ifpst@psspectrum@element  \pst@psspectrum@elementfalse
+\newif\ifpst@psspectrum@emission
+\newif\ifpst@psspectrum@axe
+\pst@addfams{pst-wl}
+\define@key[psset]{pst-wl}{begin}{\pst@checknum{#1}\psk@psspectrum@begin}
+\define@key[psset]{pst-wl}{end}{\pst@checknum{#1}\psk@psspectrum@end}
+\define@key[psset]{pst-wl}{axe}[true]{\@nameuse{pst@psspectrum@axe#1}}
+\define@key[psset]{pst-wl}{wlangle}{\pst@checknum{#1}\psk@psspectrum@wlangle}
+\define@key[psset]{pst-wl}{axecolor}{\edef\psk@psspectrum@axecolor{#1}}
+%% wlcmd must be \def, not \edef
+\define@key[psset]{pst-wl}{wlcmd}{\def\psk@psspectrum@wlcmd{#1}}
+\define@key[psset]{pst-wl}{axewidth}{\pst@getlength{#1}\psk@psspectrum@axewidth}
+\define@key[psset]{pst-wl}{Dl}{\pst@checknum{#1}\psk@psspectrum@Dl}
+\define@key[psset]{pst-wl}{brightness}{\pst@checknum{#1}\psk@psspectrum@brightness}
+\define@key[psset]{pst-wl}{gamma}{\pst@checknum{#1}\psk@psspectrum@gamma}
+\define@key[psset]{pst-wl}{Imin}{\pst@checknum{#1}\psk@psspectrum@UserImin}
+\define@key[psset]{pst-wl}{element}{\pst@psspectrum@elementtrue\edef\psk@psspectrum@element{#1}}
+\define@key[psset]{pst-wl}{lines}{\pst@psspectrum@linestrue\edef\psk@psspectrum@lines{#1}}
+\define@key[psset]{pst-wl}{emission}[true]{\@nameuse{pst@psspectrum@emission#1}}
+\def\@temp@wl@ii{true}%
+\define@key[psset]{pst-wl}{absorption}[true]%
+ {\def\@temp@wl@i{#1}%
+   \ifx\@temp@wl@i\@temp@wl@ii\@nameuse{pst@psspectrum@emissionfalse}%
+   \else\@nameuse{pst@psspectrum@emissiontrue}%
+   \fi}
+\define@key[psset]{pst-wl}{lwidth}{\pst@getlength{#1}\psk@psspectrum@lwidth}
+\define@key[psset]{pst-wl}{numlines}{\pst@getint{#1}\psk@psspectrum@numlines}
+%\define@key[psset]{pst-wl}{showlines}{\edef\psk@psspectrum@showlines{#1}}
+%\define@key[psset]{pst-wl}{redshift}{\pst@checknum{#1}\psk@psspectrum@redshift}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% default values
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\psset{begin=380, end=780, numlines=250, brightness=1, gamma=0.8, lwidth=0.02
+ ,emission=true
+ ,axe=false, Dl=20, wlangle=0, axecolor=black, axewidth=0.05
+ ,wlcmd={\small\sffamily\bfseries}
+ ,Imin=0}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% code
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Scan the name of the element to know if it is a neutral element or a cation
+% and to get the number of charge
+% output : \element@name and \element@charge
+\def\analyse@elt#1{%
+  \def\analyse@elt@arg{#1}%
+  \ifx\analyse@elt@arg\empty%
+  \else\analyse@elt@b#1\empty\empty\empty\analyse@elt@e%
+  \fi}
+\def\analyse@elt@b#1#2#3#4\analyse@elt@e{%
+ \gdef\element@name{}%
+ \gdef\element@charge{}%
+ \ifx#4\empty%
+  \ifx#3\empty%
+   \ifx#2\empty%
+     % One letter element
+     \gdef\element@name{#1}%
+     \gdef\element@charge{-2}%
+   \else%
+    \ifx0#2%
+      % Neutral one letter element
+      \gdef\element@name{#1}%
+      \gdef\element@charge{0}%
+    \else\ifx+#2%
+           % One letter single ionized element
+           \gdef\element@name{#1}%
+           \gdef\element@charge{1}%
+         \else \ifcat#2z%
+                 % Two letters element
+                 \gdef\element@name{#1#2}%
+                 \gdef\element@charge{-2}%
+               \else % Problem
+                 \@pstrickserr{Bad element or cation name: #1#2}\@ehpa
+               \fi%
+         \fi%
+    \fi%
+   \fi%
+  \else%
+   \ifx0#3%
+     % Neutral two letters element
+     \gdef\element@name{#1#2}%
+     \gdef\element@charge{0}%
+   \else\ifx+#3\ifcat#2z%
+                  % Two letter single ionized element
+                  \gdef\element@name{#1#2}%
+                  \gdef\element@charge{1}%
+                \else%
+                  % One letter multiple ionized element
+                  \gdef\element@name{#1}%
+                  \gdef\element@charge{#2}%
+                \fi%
+        \else% Problem
+          \@pstrickserr{Bad element or cation name: #1#2#3}\@ehpa
+        \fi%
+   \fi%
+  \fi%
+ \else%
+ \ifx+#4%
+%\ifcat1#3% <-- does not always work as expected
+           % Multiple ionized two letters element
+           \gdef\element@name{#1#2}%
+           \gdef\element@charge{#3}%
+%          \else% Problem
+%          \fi%
+  \else% Problem
+    \@pstrickserr{Bad element or cation name: #1#2#3#4}\@ehpa
+  \fi%
+ \fi%
+\ignorespaces}
+
+\newdimen\pstwl@DeltaX
+\newdimen\pstwl@DeltaL
+\def\pst@wl@getint#1.#2\endpst@wl@getint{\def\psk@wl@int{#1}}
+
+%% \psspectrum
+\def\psspectrum{\def\pst@par{}\pst@object{psspectrum}}
+\def\psspectrum@i{%
+  \@ifnextchar({\psspectrum@ii}{\psspectrum@iii(0,0)(12,1.5)}}
+\def\psspectrum@ii(#1){%
+  \@ifnextchar({\psspectrum@iii(#1)}{\psspectrum@iii(0,0)(#1)}}
+\def\psspectrum@iii(#1,#2)(#3,#4){{%
+  \begin@SpecialObj
+    \use@par%           Really needed ?
+    \pssetxlength\pst@dima{#1}
+    \pssetylength\pst@dimb{#2}
+    \pssetxlength\pst@dimc{#3}
+    \pssetylength\pst@dimd{#4}
+    \pst@getcoor{#1,#2}\pst@tempa%            coordinate in pst@tempa
+    \pst@@getcoor{#3,#4}%                      coordinate in pst@coor
+    %% emission spectrum
+    \ifpst@psspectrum@emission%                      emission is true
+    %% ...with lines
+      \ifpst@psspectrum@lines%                     drawing user lines
+        \pst@psspectrum@spectrumfalse\pst@psspectrum@linesfalse
+        \@for\lines@loop:=\psk@psspectrum@lines\do{%
+         \addto@pscode{[[\lines@loop\space 0 -2]] 1
+                        \psk@psspectrum@UserImin -2
+                         \psk@psspectrum@lwidth
+                          \pst@tempa \pst@coor
+                           \psk@psspectrum@gamma \psk@psspectrum@brightness
+                            \psk@psspectrum@end \psk@psspectrum@begin
+                             tx@PstWLDict begin tx@rays end}%
+        }%
+      \fi
+    %% ...with element
+      \ifpst@psspectrum@element%            drawing lines of elements
+        \pst@psspectrum@spectrumfalse\pst@psspectrum@elementfalse
+         \@for\element@loop:=\psk@psspectrum@element\do{%
+          \expandafter\analyse@elt\expandafter{\element@loop}
+            \addto@pscode{tx@PstWLDict begin wl@elt@\element@name\space end
+                           \psk@psspectrum@UserImin \element@charge\space
+                            \psk@psspectrum@lwidth
+                             \pst@tempa \pst@coor
+                              \psk@psspectrum@gamma \psk@psspectrum@brightness
+                               \psk@psspectrum@end \psk@psspectrum@begin
+                                tx@PstWLDict begin tx@rays end}%
+         }%
+      \fi
+      \ifpst@psspectrum@spectrum% drawing a spectrum
+        \addto@pscode{\pst@tempa \pst@coor \psk@psspectrum@gamma
+                       \psk@psspectrum@brightness \psk@psspectrum@numlines
+                         \psk@psspectrum@end \psk@psspectrum@begin
+                          tx@PstWLDict begin tx@psspectrum end}%
+      \fi
+    %% absorption spectrum
+    \else% emission is false, then draw a spectrum and set brightness to 0
+      \addto@pscode{\pst@tempa \pst@coor \psk@psspectrum@gamma
+                     \psk@psspectrum@brightness \psk@psspectrum@numlines
+                      \psk@psspectrum@end \psk@psspectrum@begin
+                       tx@PstWLDict begin tx@psspectrum end}%
+      \pst@checknum{0}\psk@psspectrum@brightness%
+      \ifpst@psspectrum@lines% absorption lines
+        \pst@psspectrum@linesfalse
+        \@for\lines@loop:=\psk@psspectrum@lines\do{%
+          \addto@pscode{[[\lines@loop\space 0 -2]] 1
+                         \psk@psspectrum@UserImin -2
+                          \psk@psspectrum@lwidth
+                           \pst@tempa \pst@coor
+                            \psk@psspectrum@gamma \psk@psspectrum@brightness
+                             \psk@psspectrum@end \psk@psspectrum@begin
+                              tx@PstWLDict begin tx@rays end}%
+         }%
+      \fi
+      \ifpst@psspectrum@element% absorption element
+        \pst@psspectrum@elementfalse
+         \@for\element@loop:=\psk@psspectrum@element\do{%
+          \expandafter\analyse@elt\expandafter{\element@loop}
+            \addto@pscode{tx@PstWLDict begin wl@elt@\element@name\space end
+                           \psk@psspectrum@UserImin \element@charge\space
+                            \psk@psspectrum@lwidth
+                             \pst@tempa \pst@coor
+                              \psk@psspectrum@gamma \psk@psspectrum@brightness
+                               \psk@psspectrum@end \psk@psspectrum@begin
+                                tx@PstWLDict begin tx@rays end}%
+         }%
+      \fi
+    \fi
+    \ifpst@psspectrum@axe
+      %% Calcul the number of ticks
+      %% (LambdaEnd - LambdaBegin) / DL
+      \pst@dimg=\z@
+      \advance\pst@dimg by  \psk@psspectrum@end\p@
+      \advance\pst@dimg by -\psk@psspectrum@begin\p@
+      \ifnum\pst@dimg>0
+        \advance\pst@dimg by \psk@psspectrum@Dl\p@
+      \else
+        \advance\pst@dimg by -\psk@psspectrum@Dl\p@
+      \fi
+      \pst@divide{\pst@dimg}{\psk@psspectrum@Dl\p@}\real@numofticks
+      %% integer number of ticks is stored in \psk@wl@int
+      \expandafter\pst@wl@getint\real@numofticks\endpst@wl@getint
+      %% Calcul the difference between the wavelengths
+      \pstwl@DeltaL=\z@
+      \advance\pstwl@DeltaL by  \psk@psspectrum@end\p@
+      \advance\pstwl@DeltaL by -\psk@psspectrum@begin\p@
+      %% Calcul the difference between the x-coordinate
+      \pstwl@DeltaX=\z@
+      \advance\pstwl@DeltaX by  \pst@dimc% in pt
+      \advance\pstwl@DeltaX by -\pst@dima% in pt
+      %% Calcul dx
+      \pst@divide{\pstwl@DeltaX}{\the\psxunit}\pst@tempa
+      \pst@divide{\pstwl@DeltaL}{\pst@tempa\p@}\pst@tempb
+      \pst@divide{\psk@psspectrum@Dl\p@}{\pst@tempb\p@}\dx%
+      \ifdim\pst@dimd>\pst@dimb
+        \def\pst@wl@angle{-90}%
+        \def\pst@wl@signe{-1\space}%
+      \else
+        \def\pst@wl@angle{90}%
+        \def\pst@wl@signe{1\space}%
+      \fi
+      \pst@divide{\psk@psspectrum@axewidth\p@}{28.4526\p@}\pst@tempa
+      \psline[linewidth=\pst@tempa,linecolor=\psk@psspectrum@axecolor,arrows=c-c]
+             (\pst@dima,\pst@dimb)(\pst@dimc,\pst@dimb)
+      \edef\pst@tempb{\pst@number\pst@dima}%
+      \pst@divide{\pst@tempb\p@}{\the\psxunit}\pst@tempa
+      \multido{\nL=\psk@psspectrum@begin+\psk@psspectrum@Dl,\rx=\pst@tempa+\dx}
+        {\psk@wl@int}%
+        {\psline[linecolor=\psk@psspectrum@axecolor]
+                (!\rx\space                                    % rx in cm
+                 \pst@number\pst@dimb \pst@number\psyunit div) % in pt !
+                (!\rx\space
+                 \pst@number\pst@dimb \pst@number\psyunit div
+                 0.2 \pst@wl@signe mul add)
+         \uput{0.3}[\pst@wl@angle]
+              (!\rx\space
+               \pst@number\pst@dimb \pst@number\psyunit div
+               0.1 \pst@wl@signe mul add)
+              {\rput{\psk@psspectrum@wlangle}{\psk@psspectrum@wlcmd\nL}}}%
+    \fi
+    \pst@psspectrum@spectrumtrue
+  \end@SpecialObj
+}}%
+
+\catcode`\@=\PstAtCode\relax
+\endinput
+%% END pst-spectra.tex
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

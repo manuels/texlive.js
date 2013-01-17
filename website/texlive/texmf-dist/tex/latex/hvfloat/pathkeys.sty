@@ -1,0 +1,703 @@
+%++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++%
+%                                                                          %
+% This is file 'pathkeys.sty', version 0.0.3, December 2011.               %
+%                                                                          %
+% This package and accompanying files may be distributed and/or            %
+% modified under the conditions of the LaTeX Project Public License,       %
+% either version 1.3 of this license or any later version. The latest      %
+% version of this license is in http://www.latex-project.org/lppl.txt      %
+% and version 1.3 or later is part of all distributions of LaTeX           %
+% version 2005/12/01 or later.                                             %
+%                                                                          %
+% The LPPL maintenance status of this software is 'author-maintained'.     %
+%                                                                          %
+% This software is provided 'as it is', without warranty of any kind,      %
+% either expressed or implied, including, but not limited to, the          %
+% implied warranties of merchantability and fitness for a particular       %
+% purpose.                                                                 %
+%                                                                          %
+% Copyright (c) 2011 Ahmed Musa (amusa22@gmail.com).                       %
+%                                                                          %
+%++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++%
+
+\@ifpackageloaded{ltxkeys}{%
+  \@ifpackagelater{ltxkeys}{2011/12/10}{}{%
+    \@latex@error{Loaded version of ltxkeys package is
+      not current}\@ehc
+  }%
+}{%
+  \RequirePackage{ltxkeys}[2011/12/10]%
+}
+\UseNormalCatcodes
+\StyleFilePurpose{A robust 'path' key-value parser (AM)}
+\StyleFileRCSInfo
+$Id: pathkeys.sty,v 0.0.3 2011/12/17 09:00:00 Ahmed Musa Exp $
+\ProvidesPackage{pathkeys}[\StyleFileInfo]
+\NeedsTeXFormat{LaTeX2e}[2011/06/27]
+\SetStyleFileMessages[pathkeys@]{info}{warn}{err}
+\cptnewvariables{count}[pathkeys@]{cnta}[\z@pt]
+\AtEndOfPackage{%
+  \newletcsset{%
+    \pathkeyscurrentpath=\pathkeys@currentpath,
+    \pathkeyspushcurrentpath=\pathkeys@pushcurrentpath,
+    \pathkeyspopcurrentpath=\pathkeys@popcurrentpath,
+    \pathkeysusedefaultpath=\pathkeys@usedefaultpath,
+    \pathkeysstorevalue=\pathkeys@storevalue,
+    \pathkeysstorevalueof=\pathkeys@storevalue,
+    \pathkeysval=\pathkeys@getval,
+    \pathkeysvalueof=\pathkeys@getval,
+    \pathkeyskeyval=\pathkeys@getkeyval,
+    \changepath=\defpath,
+    \pathkeys@c@rrentpath=\pathkeys@defaultpath,
+    \pathkeysuseshortcmds=\pathkeys@useshortcmds,
+    \pathkeysmakeshortcmds=\pathkeys@makeshortcmds
+  }%
+}
+\cpt@setupsafeactivesedef
+\robust@def*\pathkeys@getkeypath#1{%
+  \xifinsetTF{:}{\detokenize{#1}}{}{%
+    \pathkeys@err{I can't find ':' in argument of
+      \string\pathkeys}\ltxkeys@ehc
+  }%
+  \def\reserved@a##1:##2\ltxkeys@nil{%
+    \iflacus##1\dolacus
+      \pathkeys@err{Nil flag in argument of \string\pathkeys}\ltxkeys@ehc
+    \fi
+    \ltxkeys@trimspaces{##1}\key@path@flag
+    \ltxkeys@trimspaces{##2}\key@list
+    \csv@@normalize*[/]\key@path@flag
+    \s@expandarg\pathkeys@getkeyflag\key@path@flag
+  }%
+  \reserved@a#1\ltxkeys@nil
+}
+\robust@def*\pathkeys@getkeyflag#1{%
+  \ltxkeys@ifoneintokenlist{{define}{declareoptions}}{#1}{%
+    \pathkeys@g@tkeyflag{#1}%
+  }{%
+    \def\onekeytype{}%
+    \def\key@path@flag{#1}%
+  }%
+  \def\do##1,##2\ltxkeys@nil{%
+    \xifinsetTF{\detokenize{##1}\relax}{\cptoxdetok\key@path@flag\relax}{%
+      \def\reserved@a####1##1\relax{%
+        \ltxkeys@trimspaces{##1}\key@flag
+        \ltxkeys@trimspaces{####1}\key@path
+        \csv@@normalize*[/]\key@path
+        \cptsafeactivesedef\key@path\key@path
+      }%
+      \expandafter\reserved@a\key@path@flag\relax
+    }{%
+      \ifnullTF{##2}{%
+        \pathkeys@err{Unknown flag in argument of
+          \string\pathkeys}\ltxkeys@ehc
+      }{%
+        \do##2\ltxkeys@nil
+      }%
+    }%
+  }%
+  \do define*,define,declareoptions*,declareoptions,%
+    preset,preset!,postset,postset!,set*+,set*,set,setrm*+,%
+    setrm*,setrm,executeoptions,processoptions*,processoptions,%
+    launch,key handler,option handler,ifbool,add value,store value,%
+    print value,disable*,disable,ifdef,ifkeyonpath,\ltxkeys@nil
+}
+\robust@def*\pathkeys@g@tkeyflag#1{%
+  \xifinsetTF{)\relax}{\detokenize{#1}\relax}{%
+    \xifinsetTF{(}{\detokenize{#1}}{%
+      \def\reserved@a##1(##2)##3\ltxkeys@nil{%
+        \iflacus##3\dolacus
+          \def\key@path@flag{##1}%
+          \def\onekeytype{##2}%
+        \else
+          \pathkeys@err{Inconsistent path or flag in argument of
+            \string\pathkeys}{The invalid part is ||\detokenize{##3}||}%
+        \fi
+      }%
+      \reserved@a#1\ltxkeys@nil
+    }{%
+      \pathkeys@err{Inconsistent flag in argument of
+        \string\pathkeys}\ltxkeys@ehc
+    }%
+  }{%
+    \def\onekeytype{}%
+    \def\key@path@flag{#1}%
+  }%
+}
+\robust@def*\pathkeys@splitpath#1{%
+  \def\main@path{}\def\sub@path{}%
+  \@tempcnta\z@pt
+  \def\do##1/{%
+    \defifxTF{##1}\ltxkeys@nnil{}{%
+      \advance\@tempcnta\@ne
+      \ifnum\@tempcnta=\@ne
+        \def\main@path{##1}%
+      \else
+        \edef\sub@path{\csliststack{/}\sub@path##1}%
+      \fi
+      \do
+    }%
+  }%
+  \do#1/\ltxkeys@nil/%
+}
+\robust@def*\pathkeys@checkpath#1{%
+  \iflacus#1\dolacus
+    \ltxkeys@debug{==}{Empty key path in \string\pathkeys: default used}%
+    \let\key@path\pathkeys@c@rrentpath
+  \else
+    \def\reserved@a##1/##2/##3/##4\ltxkeys@nil{%
+      \iflacus##2\dolacus
+        \pathkeys@err{Empty key <sub> in \string\pathkeys}\ltxkeys@ehc
+      \fi
+    }%
+    \reserved@a#1///\ltxkeys@nil
+  \fi
+}
+\robust@def*\pathkeys@getkeyname#1{%
+  \def\reserved@a##1/##2\ltxkeys@nil{%
+    \ltxkeys@trimspaces{##1}\key@type
+  }%
+  \reserved@a#1\ltxkeys@nil
+  \xifstrcmpTF{\detokenize{choice}}{\cptoxdetok\key@type}{%
+    \def\reserved@a##1/##2.##3\ltxkeys@nil{%
+      \ltxkeys@trimspaces{##2}\key@name
+    }%
+    \reserved@a#1\ltxkeys@nil
+  }{%
+    \def\reserved@a##1/##2/##3\ltxkeys@nil{%
+      \ltxkeys@trimspaces{##2}\key@name
+      \ltxkeys@ifrejname{%
+        \pathkeys@err{I can't find key name in attributes of
+          key in ||\detokenize{#1}||}\ltxkeys@ehc
+      }%
+    }%
+    \reserved@a#1/^?^/\ltxkeys@nil
+  }%
+}
+\robust@def*\pathkeys@checkifdef{%
+  \def\ltxkeys@resa{}%
+  \def\ltxkeys@do##1{%
+    \ltxkeys@ifcsemptyTF\onekeytype{%
+      \edef\reserved@a{\unexpanded{##1}}%
+    }{%
+      \edef\reserved@a{\onekeytype/\unexpanded{##1}}%
+    }%
+    \cptexpandbracenext\pathkeys@getkeyname\reserved@a
+    \begingroup
+    \let\needvalue\cpttrimspace
+    \let\savevalue\cpttrimspace
+    \let\usevalue\cpttrimspace
+    \ifcsndefTF{pathkeys/curr/\ltxkeys@iffirstnull\main@path/%
+      \ltxkeys@iffirstnull\sub@path/\key@name
+    }{%
+      \xdef\ltxkeys@resa{\csliststack,\ltxkeys@resa\key@name}%
+    }{}%
+    \endgroup
+  }%
+  \cptexpandsecond{\ltxkeys@parse*1}{[\ltxkeys@keyparser]}\key@list
+  \ifx\ltxkeys@resa\@empty\else
+    \pathkeys@err{Key names ||\ltxkeys@resa||%
+      in argument of \noexpand\pathkeys are already in
+      use on path '\key@path'}\ltxkeys@ehc
+  \fi
+}
+\robust@def*\pathkeys#1{%
+  \pathkeys@getkeypath{#1}%
+  \ltxkeys@ifcsemptyTF\key@path{%
+    \let\key@path\pathkeys@c@rrentpath
+  }{}%
+  \pathkeys@addtopathhistory\key@path
+  \xifinsetTF{,\key@flag,}{,ifdef,ifkeyonpath,}\pathkeys@b\pathkeys@a
+}
+\robust@def*\pathkeys@a{%
+  \def\ltxkeys@do##1{%
+    \def\key@path{##1}%
+    \pathkeys@checkpath{##1}%
+    \pathkeys@splitpath{##1}%
+    \xifinsetTF{,\key@flag,}
+      {,define,define*,declareoptions,declareoptions*,}{%
+      \pathkeys@checkifdef
+    }{}%
+    \pathkeys@b
+  }%
+  \ltxkeys@parse*1[,]\key@path
+}
+\robust@def*\pathkeys@b{%
+  \begingroup
+  \let\xp\expandcsonce
+  \let\elta\ltxkeys@iffirstnull
+  \def\eltb{{\main@path}{\sub@path}{\xp\key@list}}%
+  \def\eltc{[\main@path]{\sub@path}{\xp\key@list}}%
+  \def\eltd{pathkeys/curr/\elta\main@path/\elta\sub@path/}%
+  \def\reserved@a##1{%
+    \def\reserved@a####1##1####2####3\ltxkeys@nil{%
+      \defifxTF{####2}\ltxkeys@nil{%
+        \endgroup
+        \pathkeys@err{Unknown flag '####1' in argument of
+          \string\pathkeys}\ltxkeys@ehc
+      }{%
+        \cptexpanded{\endgroup####2}%
+      }%
+    }%
+    \expandafter\reserved@a\pathkeys@act##1{\ltxkeys@nil}\ltxkeys@nil
+  }%
+  \s@expandarg\reserved@a\key@flag
+}
+\robust@def*\pathkeys@act{%
+  define{\pathkeys@defkey{define}{}}%
+  define*{\pathkeys@defkey{define}{*}}%
+  declareoptions{\pathkeys@defkey{declareoptions}{}}%
+  declareoptions*{\pathkeys@defkey{declareoptions}{*}}%
+  set{\pathkeys@setkeys{}{}\eltb}%
+  set*{\pathkeys@setkeys{}{*}\eltb}%
+  set*+{\pathkeys@setkeys{}{*+}\eltb}%
+  setrm{\pathkeys@setkeys{rm}{}\eltb}%
+  setrm*{\pathkeys@setkeys{rm}{*}\eltb}%
+  setrm*+{\pathkeys@setkeys{rm}{*+}\eltb}%
+  preset{\pathkeys@presetkeys{pre}{}}%
+  preset!{\pathkeys@presetkeys{pre}{!}}%
+  postset{\pathkeys@presetkeys{post}{}}%
+  postset!{\pathkeys@presetkeys{post}{!}}%
+  executeoptions{\pathkeys@executeoptions\eltb}%
+  processoptions{\pathkeys@processoptions{}\eltb}%
+  processoptions*{\pathkeys@processoptions{*}\eltb}%
+  launch{\ltxkeys@launchkeys\eltc}%
+  handler{\ltxkeys@unknownkeyhandler\eltc}%
+  key handler{\ltxkeys@unknownkeyhandler\eltc}%
+  option handler{\pathkeys@unknownoptionhandler}%
+  ifbool{\noexpand\ifp@thkeys@keyvalTF{\key@list}{\eltd\key@list}}%
+  add value{\p@thkeys@addtovalue{\xp\key@list}{\eltd}}%
+  store value{\p@thkeys@storevalue{\xp\key@list}{\eltd}}%
+  print value{\noexpand\p@thkeys@keyval{\key@list}{\eltd\key@list}}%
+  disable{\ltxkeys@disablekeys\eltc}%
+  disable*{\ltxkeys@disablekeys*\eltc}%
+  ifdef{\noexpand\ifp@thkeys@keydef{\key@path}{\key@list}}%
+  ifkeyonpath{\noexpand\ifp@thkeys@keydef{\key@path}{\key@list}}%
+}
+\new@def*\pathkeys@defkey#1#2{%
+  \noexpand\ltxkeys@inkeycmdtrue
+  \expandafter\noexpand\csname
+    ltxkeys@%
+    \cptifcasse\ifstrcmpTF{#1}
+      {define}{declarekeys}
+      {declareoptions}{declaremultitypeoptions}
+    \endif
+  \endcsname
+  #2\ltxkeys@ifcsemptyTF\onekeytype{}{(\onekeytype)}[\main@path]%
+  \cptifcasse\ifstrcmpTF{#1}
+    {define}{{\sub@path}}
+    {declareoptions}{<\sub@path>}
+  \endif
+  [\eltd]{\expandcsonce\key@list}%
+  \noexpand\ltxkeys@inkeycmdfalse
+}
+\new@def*\pathkeys@presetkeys#1#2{%
+  \noexpandcsn{ltxkeys@#1setkeys}%
+  #2[\main@path]{\sub@path}{\expandcsonce\key@list}%
+}
+\robust@def*\pathkeys@setkeys#1#2#3#4#5{%
+  \edef\ltxkeys@tempa{\noexpandcsn{ltxkeys@set#1keys}#2}%
+  \def\ltxkeys@tempb##1{%
+    \iflacus##1\dolacus\else
+      \ltxkeys@err{Wrong use syntax for flag 'setrm'}
+        {Only [na] keys are expected in attribute of flag 'setrm'.}%
+    \fi
+  }%
+  \xifinsetTF{\relax[}{\relax\detokenize{#5}}{%
+    \def\reserved@a[##1]##2\ltxkeys@nil{%
+      \ifstrcmpTF{#1}{rm}{%
+        \ltxkeys@tempb{##2}%
+        \ltxkeys@tempa[#3]{#4}[##1]%
+      }{%
+        \ltxkeys@tempa[#3]{#4}[##1]{##2}%
+      }%
+    }%
+    \reserved@a#5\ltxkeys@nil
+  }{%
+    \xifinsetTF{]\relax}{\detokenize{#5}\relax}{%
+      \def\reserved@a##1[##2]\ltxkeys@nil{%
+        \ifstrcmpTF{#1}{rm}{%
+          \ltxkeys@tempb{##1}%
+          \ltxkeys@tempa[#3]{#4}[##2]%
+        }{%
+          \ltxkeys@tempa[#3]{#4}[##2]{##1}%
+        }%
+      }%
+      \reserved@a#5\ltxkeys@nil
+    }{%
+      \ifstrcmpTF{#1}{rm}{%
+        \ltxkeys@tempb{#5}%
+        \ltxkeys@tempa[#3]{#4}%
+      }{%
+        \ltxkeys@tempa[#3]{#4}{#5}%
+      }%
+    }%
+  }%
+}
+\robust@def*\pathkeys@executeoptions#1#2#3{%
+  \xifinsetTF{\relax[}{\relax\detokenize{#3}}{%
+    \def\reserved@a[##1]##2\ltxkeys@nil{%
+      \ltxkeys@executeoptions[#1]<#2>[##1]{##2}%
+    }%
+    \reserved@a#3\ltxkeys@nil
+  }{%
+    \xifinsetTF{]\relax}{\detokenize{#3}\relax}{%
+      \def\reserved@a##1[##2]\ltxkeys@nil{%
+        \ltxkeys@executeoptions[#1]<#2>[##2]{##1}%
+      }%
+      \reserved@a#3\ltxkeys@nil
+    }{%
+      \ltxkeys@executeoptions[#1]<#2>{#3}%
+    }%
+  }%
+}
+\robust@def*\pathkeys@processoptions#1#2#3#4{%
+  \def\ltxkeys@tempb##1{%
+    \iflacus##1\dolacus\else
+      \pathkeys@err{Wrong use of 'processoptions' flag in
+        \string\pathkeys}{The invalid part is '\detokenize{##1}'}%
+    \fi
+  }%
+  \xifinsetTF{\relax[}{\relax\detokenize{#4}}{%
+    \def\reserved@a[##1]##2\ltxkeys@nil{%
+      \ltxkeys@tempb{##2}%
+      \ltxkeys@processoptions#1[#2]<#3>[##1]%
+    }%
+    \reserved@a#4\ltxkeys@nil
+  }{%
+    \xifinsetTF{]\relax}{\detokenize{#4}\relax}{%
+      \def\reserved@a##1[##2]\ltxkeys@nil{%
+        \ltxkeys@tempb{##1}%
+        \ltxkeys@processoptions#1[#2]<#3>[##2]%
+      }%
+      \reserved@a#4\ltxkeys@nil
+    }{%
+      \ltxkeys@tempb{#4}%
+      \ltxkeys@processoptions#1[#2]<#3>%
+    }%
+  }%
+}
+\new@def*\pathkeys@unknownoptionhandler{%
+  \ltxkeys@unknownoptionhandler
+    [\main@path]<\sub@path>{\xp\key@list}%
+}
+\robust@def*\p@thkeys@storevalue#1#2{%
+  \ltxkeys@getlasttoken{#1}%
+  \ltxkeys@trimspacesincs\ltxkeys@lasttoken
+  \ltxkeys@trimspacesincs\ltxkeys@resttokens
+  \ifcsndefTF{#2\ltxkeys@resttokens}{%
+    \expandafter\edef\ltxkeys@lasttoken
+      {\expandcsnonce{#2\ltxkeys@resttokens}}%
+  }{%
+    \pathkeys@err{Key '\ltxkeys@resttokens' not defined}\ltxkeys@ehc
+  }%
+}
+\robust@def*\p@thkeys@addtovalue#1#2{%
+  \begingroup
+  \ltxkeys@splitkeyval#1\ltxkeys@nil\ltxkeys@tempa\ltxkeys@tempb
+  \ifcsndefTF{#2\ltxkeys@tempa}{%
+    \csn@edef{#2\ltxkeys@tempa}{%
+      \expandcsnonce{#2\ltxkeys@tempa}%
+      \expandcsonce\ltxkeys@tempb
+    }%
+    \postgroupcsndef{#2\ltxkeys@tempa}\endgroup
+  }{%
+    \pathkeys@err{Key '\ltxkeys@tempa' not defined}\ltxkeys@ehc
+    \endgroup
+  }%
+}
+\new@def*\p@thkeys@keyval#1#2{%
+  \ifcsndefTF{#2}{%
+    \expandcsnonce{#2}%
+  }{%
+    \pathkeys@err{Key '#1' not defined on the given path}\ltxkeys@ehc
+  }%
+}
+\new@def*\ifp@thkeys@keyval#1#2\then{%
+  \ifcsndefTF{if#2}{%
+    \usename{if#2}%
+  }{%
+    \pathkeys@err{Key '#1' not defined or not a boolean}\ltxkeys@ehc
+  }%
+}
+\new@def*\ifp@thkeys@keyvalTF#1#2{%
+  \ifp@thkeys@keyval{#1}{#2}\then\expandafter\iofii\else
+    \expandafter\iiofii\fi
+}
+\robust@def*\ifp@thkeys@keydef#1#2{%
+  \begingroup
+  \def\pathkeys@chfd{01}%
+  \def\ltxkeys@do##1{%
+    \pathkeys@checkpath{##1}%
+    \pathkeys@splitpath{##1}%
+    \let\elt\ltxkeys@iffirstnull
+    \ifcsndefTF{pathkeys/curr/\elt\main@path/\elt\sub@path/#2}{%
+      \def\pathkeys@chfd{00}%
+      \loopbreak
+    }{%
+      \ifcsndefTF{\main@path @\sub@path @#2}{%
+        \def\pathkeys@chfd{00}%
+        \loopbreak
+      }{}%
+    }%
+  }%
+  \ltxkeys@parse1[,]{#1}%
+  \expandafter\endgroup\if\pathkeys@chfd
+    \expandafter\iofii\else\expandafter\iiofii\fi
+}
+
+\begingroup
+\uccode`\~=`\/%
+\uppercase{\endgroup
+  \def\pathkeys@normalizeslash#1{%
+    \unexpanded\expandafter{\romannumeral-`\q
+      \pathkeys@activeslash/#1/~\ltxkeys@nil}%
+  }%
+  \def\pathkeys@activeslash#1~#2\ltxkeys@nil{%
+    \ifblankTF{#2}
+      {\pathkeys@spaceslash#1 /\ltxkeys@nil}
+      {\pathkeys@activeslash#1/#2\ltxkeys@nil}%
+  }%
+}
+\def\pathkeys@spaceslash#1 /#2\ltxkeys@nil{%
+  \ifblankTF{#2}
+    {\pathkeys@slashspace#1/ \ltxkeys@nil}
+    {\pathkeys@spaceslash#1/#2\ltxkeys@nil}%
+}
+\def\pathkeys@slashspace#1/ #2\ltxkeys@nil{%
+  \ifblankTF{#2}
+    {\pathkeys@doubleslash#1//\ltxkeys@nil}
+    {\pathkeys@slashspace#1/#2\ltxkeys@nil}%
+}
+\def\pathkeys@doubleslash#1//#2\ltxkeys@nil{%
+  \ifblankTF{#2}{%
+    \ifblankTF{#1}{}{\@gobble#1}%
+  }{%
+    \pathkeys@doubleslash#1/#2\ltxkeys@nil
+  }%
+}
+\new@def*\pathkeys@n@rmalizeslash#1{%
+  \pathkeys@ifnopath{#1}{%
+    \expandafter\pathkeys@normalizeslash\expandafter
+    {\pathkeys@c@rrentpath/#1}%
+  }{%
+    \pathkeys@normalizeslash{#1}%
+  }%
+}
+\def\pathkeys@replaceslash#1/#2\ltxkeys@nil{%
+  \ifblankTF{#2}{%
+    #1%
+  }{%
+    \pathkeys@replaceslash#1@#2\ltxkeys@nil
+  }%
+}
+\new@def*\pathkeys@pathhistory{}
+\robust@def*\pathkeys@addtopathhistory#1{%
+  \begingroup
+  \cptsafeactivesedef\reserved@e{#1}%
+  \def\reserved@f##1{%
+    \xifinsetTF{;##1;}{;\pathkeys@pathhistory;}{}{%
+      \xdef\pathkeys@pathhistory{\csliststack;\pathkeys@pathhistory##1}%
+    }%
+  }%
+  \xifinsetTF,\reserved@e{%
+    \def\ltxkeys@do##1{\reserved@f{##1}}%
+    \ltxkeys@parse*1[,]\reserved@e
+  }{%
+    \reserved@f\reserved@e
+  }%
+  \endgroup
+}
+\robust@def*\newpath#1#2{%
+  \ifcsndefTF{pathkeys@path@\cpttrimspace{#1}}{%
+    \pathkeys@err{Path '#1' already in use}\@ehc
+  }{%
+    \csn@edef{pathkeys@path@\cpttrimspace{#1}}{\cpttrimspace{#2}}%
+    \pathkeys@addtopathhistory{#2}%
+  }%
+}
+\robust@def*\defpath#1#2{%
+  \csn@edef{pathkeys@path@\cpttrimspace{#1}}{\cpttrimspace{#2}}%
+  \pathkeys@addtopathhistory{#2}%
+}
+\robust@def*\undefpath#1{%
+  \edef\ltxkeys@tempa{\usename{pathkeys@path@\cpttrimspace{#1}}}%
+  \pathkeys@undefpath
+  \undefcsn{pathkeys@path@\cpttrimspace{#1}}%
+}
+\robust@def*\pathkeys@undefpath{%
+  \xifinsetTF{;\ltxkeys@tempa;}{;\pathkeys@pathhistory;}{%
+    \def\reserved@a##1{%
+      \def\reserved@a####1##1####2\ltxkeys@nil{%
+        \def\pathkeys@pathhistory{####1####2}%
+        \xifinsetTF{;;}\pathkeys@pathhistory{%
+          \def\reserved@a########1;;########2\ltxkeys@nil{%
+            \def\pathkeys@pathhistory{########1;########2}%
+          }%
+          \expandafter\reserved@a\pathkeys@pathhistory\ltxkeys@nil
+        }{}%
+        \pathkeys@undefpath
+      }%
+      \expandafter\reserved@a\pathkeys@pathhistory\ltxkeys@nil
+    }%
+    \s@expandarg\reserved@a\ltxkeys@tempa
+  }{}%
+}
+\new@def*\usepath#1{%
+  \expandafter\pathkeys@usepath\romannumeral
+    -`\q\cptcommanormalize{#1},\ltxkeys@nil,\ltxkeys@nnil{}%
+}
+\new@def*\pathkeys@usepath#1,#2\ltxkeys@nnil#3{%
+  \ifstrcmpTF{#1}\ltxkeys@nil{%
+    \@gobble#3%
+  }{%
+    \ifcsndefTF{pathkeys@path@#1}{%
+      \pathkeys@usepath#2\ltxkeys@nnil{#3,\usename{pathkeys@path@#1}}%
+    }{%
+      \pathkeys@usepath#2\ltxkeys@nnil{#3,\usename{#1=undefinedpath}}%
+    }%
+  }%
+}
+\new@def*\pathkeys@defaultpath{dft@main/dft@sub}
+\robust@def*\pathkeys@addtodefaultpath#1{%
+  \edef\pathkeys@defaultpath
+    {\expandcsonce\pathkeys@defaultpath/\expandcsonce{#1}}%
+  \csv@@normalize*[/]\pathkeys@defaultpath
+  \pathkeys@addtopathhistory\pathkeys@defaultpath
+}
+\robust@def*\pathkeys@changedefaultpath#1{%
+  \edef\pathkeys@defaultpath{\expandcsonce{#1}}%
+  \csv@@normalize*[/]\pathkeys@defaultpath
+  \pathkeys@addtopathhistory\pathkeys@defaultpath
+}
+\robust@def*\pathkeys@currentpath#1{%
+  \edef\pathkeys@c@rrentpath{\expandcsonce{#1}}%
+  \csv@@normalize*[/]\pathkeys@c@rrentpath
+  \pathkeys@addtopathhistory\pathkeys@c@rrentpath
+}
+\robust@def*\pathkeys@usedefaultpath{%
+  \let\pathkeys@c@rrentpath\pathkeys@defaultpath
+  \pathkeys@addtopathhistory\pathkeys@c@rrentpath
+}
+\new@def*\pathkeys@currentpathstack{}
+\robust@def*\pathkeys@pushcurrentpath{%
+  \xdef\pathkeys@currentpathstack{%
+    \gdef\noexpand\pathkeys@c@rrentpath
+      {\expandcsonce\pathkeys@c@rrentpath}%
+    \ltxkeys@nil{\expandcsonce\pathkeys@currentpathstack}%
+  }%
+}
+\robust@def*\pathkeys@popcurrentpath{%
+  \begingroup
+  \def\reserved@a##1\ltxkeys@nil{\endgroup
+    ##1\gdef\pathkeys@currentpathstack
+  }%
+  \expandafter\reserved@a\pathkeys@currentpathstack
+  \pathkeys@addtopathhistory\pathkeys@c@rrentpath
+}
+\new@def*\pathkeys@ifnop@th#1/{}
+\new@def*\pathkeys@ifnopath#1{%
+  \ifcat$\cptoxdetok{\pathkeys@ifnop@th#1{}/}$%
+  \expandafter\iofii\else\expandafter\iiofii\fi
+}
+\new@def*\pathkeys@getkeyval#1{%
+  \ifcsndefTF{pathkeys/curr/\pathkeys@n@rmalizeslash{#1}}{%
+    \expandcsnonce{pathkeys/curr/\pathkeys@n@rmalizeslash{#1}}%
+  }{%
+    \pathkeys@err{Key '\cpttrimspace{#1}' not defined}\ltxkeys@ehc
+  }%
+}
+\new@def*\pathkeys@storevalue#1#2{%
+  \ifescapedTF{#2}{%
+    \edef#2{\unexpanded\expandafter
+    {\romannumeral-`\q\pathkeys@getkeyval{#1}}}%
+  }{%
+    \cpt@notescapederr{#2}%
+  }%
+}
+\new@def*\ifpathkeyskeyval#1\then{%
+  \usename{if\pathkeys@getkeyval{#1}}%
+}
+\new@def*\ifpathkeyskeyvalTF#1{%
+  \ifpathkeyskeyval#1\then\expandafter\iofii\else
+    \expandafter\iiofii\fi
+}
+\new@def*\pathkeys@getval#1{%
+  \ifcsndefTF{pathkeys/curr/\pathkeys@n@rmalizeslash{#1}}{%
+    \expandcsnonce{pathkeys/curr/\pathkeys@n@rmalizeslash{#1}}%
+  }{%
+    undefinedpathkey%
+  }%
+}
+\new@def*\ifundefinedpathkey{undefinedpathkey\iffalse}
+\new@def*\ifpathkeysval#1\then{\usename{if\pathkeys@getval{#1}}}
+\new@def*\ifpathkeysvalTF#1{%
+  \ifpathkeysval#1\then\expandafter\iofii\else
+    \expandafter\iiofii\fi
+}
+\robust@def*\pathkeys@useshortcmds{%
+  \let\pathkeys@useshortcmds\relax
+  \pathkeys@makeshortcmds{%
+    \pkv=\pathkeysval,\ifpkv=\ifpathkeysval,\ifpkvTF=\ifpathkeysvalTF,
+    \pkkv=\pathkeyskeyval,\ifpkkv=\ifpathkeyskeyval,
+    \ifpkkvTF=\ifpathkeyskeyvalTF
+  }%
+}
+\robust@def*\pathkeys@makeshortcmds#1{%
+  \def\ltxkeys@do##1{%
+    \ifinsetTF{=}{##1}{%
+      \def\reserved@a####1=####2\@nil{%
+        \ifdefTF{####1}{%
+          \ifx####1####2\else
+            \pathkeys@err{Command '\string####1' already exists:
+              \MsgBrk it can't be redefined by
+              \string\pathkeys@makeshortcmds}\@ehc
+          \fi
+        }{%
+          \let####1=####2%
+        }%
+      }%
+      \reserved@a##1\@nil
+    }{%
+      \pathkeys@err{No '=' in short command assignment}\ltxkeys@ehc
+    }%
+  }%
+  \ltxkeys@parse3[,]{#1}%
+}
+\robust@def*\pathkeys@defineoptions#1{%
+  \begintoksgroup
+  \def\do##1/##2/##3\ltxkeys@nil{%
+    \toks@\expandafter{\the\toks@
+      \ifstrcmpTF{##2}{pathkeys}{%
+        \usename{ltxkeys@declare##1option}%
+          [KV]<pathkeys>[pathkeys@]{##2}[##3]{}%
+      }{%
+        \usename{ltxkeys@declare##1option}%
+          [KV]<pathkeys>[pathkeys@]{##2}[##3]{%
+          \ltxkeys@options{##2=####1}%
+        }%
+      }%
+    }%
+  }%
+  \def\ltxkeys@do##1{\do##1\ltxkeys@nil}%
+  \ltxkeys@parse1[;]{#1}%
+  \endtoksgroup
+}
+\pathkeys@defineoptions{%
+  cmd/keyparser/{;};
+  cmd/keydepthlimit/4;
+  cmd/keystacklimit/4;
+  bool/tracingkeys/true;
+  bool/reservenopath/true;
+  bool/allowemptypath/true;
+  bool/pathkeys/false;
+}
+\ltxkeys@declareoption*[KV]<pathkeys>{%
+  \pathkeys@warn{Unknown option '\CurrentKey' with
+    value '\InnocentVal' ignored.}%
+}
+\ltxkeys@processoptions*[KV]<pathkeys>\relax
+\cpt@optioncleanup\ltxkeys@processedoptions
+
+\endinput
+
+%% End of file pathkeys.sty %%

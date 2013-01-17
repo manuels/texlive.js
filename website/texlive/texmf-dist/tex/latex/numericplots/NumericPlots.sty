@@ -1,0 +1,1206 @@
+% Copyright 2010 Thomas Koenig, Alexander Michel, Michael Baumgart
+%
+% This file is part of NumericPlots.
+%
+% NumericPlots is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% any later version.
+%
+% NumericPlots is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+%
+% You should have received a copy of the GNU General Public License
+% along with NumericPlots.  If not, see <http://www.gnu.org/licenses/>.
+
+\NeedsTeXFormat{LaTeX2e}
+
+\ProvidesPackage{NumericPlots}[2011/01/07 LaTeX package to plot numeric data]
+
+% ==========================================================
+% ||   TODO
+% ||
+% || - implementation should be independant of psset
+% || - factor for x and y axis?
+% || - add option beamer (change default Sep/Sizes..)
+% || - change calculation of lengths (LabelSep) -> see TickLength
+
+
+
+\RequirePackage{calc}
+\RequirePackage[nomessages]{fp}
+
+\RequirePackage{ifthen}
+\RequirePackage{pstricks}
+\RequirePackage{pst-node}
+\RequirePackage{pst-plot}
+\RequirePackage{pstricks-add} % has to be the last of the pst-packages to be loaded!
+% the following seems not to work. xcolor must be included with x11names option!
+\RequirePackage{xcolor}
+
+
+
+% =======================================
+% === Definition of keys and commands ===
+% =======================================
+%
+% All the provided options (keys) are defined in the following section. Maybe it
+% is possible to store the values of the keys somehow. We then wouldn't have to
+% define all the new commands..
+
+\RequirePackage{xkeyval}
+\RequirePackage{xkvview} % keep track of all keys that are defined
+
+% globally needed values as newcommands
+\newcommand{\NumDataPlotxRange}{1}
+\newcommand{\NumDataPlotxCoordRange}{1}
+\newcommand{\NumDataPlotxDataCoordRatio}{1}
+\newcommand{\NumDataPlotyRange}{1}
+\newcommand{\NumDataPlotyCoordRange}{1}
+\newcommand{\NumDataPlotyDataCoordRatio}{1}
+\newcommand{\NumDataPlotLnTen}{2.3025850929940}
+\newcommand{\NumDataPlotTickPos}{0}
+
+\newcommand{\xScaling}{}
+\newcommand{\yScaling}{}
+
+\newcommand{\NDPputXcoord}{0}
+\newcommand{\NDPputYcoord}{0}
+\newcommand{\NDPRefPoint}{c}
+
+\newcommand{\NumDataPlotBuffer}{0}
+\newcommand{\NumDataPlotBufferI}{0}
+\newcommand{\TicksXRight}{0}
+\newcommand{\TicksXLeft}{0}
+\newcommand{\TicksYRight}{0}
+\newcommand{\TicksYLeft}{0}
+\newcommand{\xTickLength}{-10}
+\newcommand{\yTickLength}{-10}
+
+\newcommand{\xNrTicks}{1}
+\newcommand{\yNrTicks}{1}
+
+\newboolean{PlotLeftAxis}
+\setboolean{PlotLeftAxis}{true}
+\newboolean{PlotRightAxis}
+\setboolean{PlotRightAxis}{true}
+
+\newboolean{PlotLowerAxis}
+\setboolean{PlotLowerAxis}{true}
+\newboolean{PlotUpperAxis}
+\setboolean{PlotUpperAxis}{true}
+
+\newcommand{\nrLegendCols}{1}
+\newcommand{\StdLabelOption}{{}}
+\newcommand{\StdTickLabelOption}{{}}
+\newlength{\LegLineWidth}\setlength{\LegLineWidth}{20pt}
+
+\newboolean{LegendOrientationLeft}
+\newboolean{LegendOrientationRight}
+\newboolean{LegendOrientationCenter}
+\setboolean{LegendOrientationLeft}{true}
+\setboolean{LegendOrientationRight}{false}
+\setboolean{LegendOrientationCenter}{false}
+
+
+\newcommand{\LogxAxis}{}
+\newcommand{\LogxAxisLabel}[1]{#1}
+\newcommand{\LogyAxis}{}
+\newcommand{\LogyAxisLabel}[1]{#1}
+
+\newcounter{BufferCounter}
+% ----------------------------------------------------------------------------
+% | define keys for the axis style etc.
+% ----------------------------------------------------------------------------
+
+% define some command keys
+% the command keys only save the provided value in \NumDataPlot<key> for later
+% use. The standard values for the command keys are set at the end of the
+% package.
+
+\define@cmdkeys[NumericDataPlot]{Axis}[NumDataPlot]
+	{xMax, xMin,
+	Dx,
+	dx, % so far, these are always calculated and cannot be set by user
+	xCoordMax, xCoordMin,
+	yMax, yMin,
+	Dy,
+	dy, % so far, these are always calculated and cannot be set by user
+	yCoordMax, yCoordMin
+	}
+	
+\define@cmdkeys[NumericDataPlot]{xAxis}[NumDataPlotx]{
+	LabelRotation, LabelPos, TickSep, LabelOption, TickLabelOption
+	}
+\define@cmdkeys[NumericDataPlot]{yAxis}[NumDataPloty]{
+	LabelRotation, LabelPos, TickSep, LabelOption, TickLabelOption
+	}
+	
+\define@boolkey[NumericDataPlot]{Axis}{xLog}[true]{
+	\ifNumericDataPlot@Axis@xLog
+		\renewcommand{\LogxAxis}{log}
+		\renewcommand{\LogxAxisLabel}[1]{10^{##1}}
+	\else
+		\renewcommand{\LogxAxis}{}
+		\renewcommand{\LogxAxisLabel}[1]{##1}
+	\fi
+}
+
+\define@boolkey[NumericDataPlot]{Axis}{yLog}[true]{
+	\ifNumericDataPlot@Axis@yLog
+		\renewcommand{\LogyAxis}{log}
+		\renewcommand{\LogyAxisLabel}[1]{10^{##1}}
+	\else
+		\renewcommand{\LogyAxis}{}
+		\renewcommand{\LogyAxisLabel}[1]{##1}
+	\fi
+}
+
+\define@boolkey[NumericDataPlot]{Axis}{yNearlyTight}[false]{}
+
+% xMin and yMin also set xO/yO. It will later be ensured that if the user
+% provides a value for xO/yO, these values will be used! (in order to do so, it
+% is always necessary to call the following two commands in the given order:
+% \setkeys[NumericDataPlot]{Axis}{<list of keys>}
+% \setrmkeys[NumericDataPlot]{AxisWait}
+% where <list of keys> can contain all the keys from Axis and from AxisWait)
+\define@cmdkeys[NumericDataPlot]{AxisWait}[NumDataPlot]{xO, yO}{}
+
+\define@boolkeys[NumericDataPlot]{xAxis}
+	{NoGrid, NoTicks, NoLabel, NoTickLabel}[true]
+
+\define@boolkeys[NumericDataPlot]{yAxis}
+	{NoGrid, NoTicks, NoLabel, NoTickLabel}[true]
+
+\define@key[NumericDataPlot]{yAxis}{yLabelSep}[\origXLabelSep]{\setlength{\yLabelSep}{#1}}
+\define@key[NumericDataPlot]{xAxis}{xLabelSep}[\origYLabelSep]{\setlength{\xLabelSep}{#1}}
+
+\define@choicekey+[NumericDataPlot]{xAxis}{AxisStyle}[\val\nrAxisStyle]
+{Boxed,Lower,Upper,None}{
+	\ifcase\nrAxisStyle\relax
+		\setboolean{PlotLowerAxis}{true}
+        \setboolean{PlotUpperAxis}{true}
+    \or
+        \setboolean{PlotLowerAxis}{true}
+        \setboolean{PlotUpperAxis}{false}
+    \or
+    	\setboolean{PlotLowerAxis}{false}
+    	\setboolean{PlotUpperAxis}{true}
+    \or
+    	\setboolean{PlotLowerAxis}{false}
+    	\setboolean{PlotUpperAxis}{false}
+    \fi
+}{
+	\PackageWarning{NumericPlots}
+		{AxisStyle #1 not defined. Use Boxed, Lower, Upper or None}
+}
+
+\define@choicekey+[NumericDataPlot]{yAxis}{AxisStyle}[\val\nrAxisStyle]
+{Boxed,Right,Left,None}{
+	\ifcase\nrAxisStyle\relax
+		\setboolean{PlotRightAxis}{true}
+        \setboolean{PlotLeftAxis}{true}
+    \or
+        \setboolean{PlotRightAxis}{true}
+        \setboolean{PlotLeftAxis}{false}
+    \or
+    	\setboolean{PlotRightAxis}{false}
+    	\setboolean{PlotLeftAxis}{true}
+    \or
+    	\setboolean{PlotRightAxis}{false}
+    	\setboolean{PlotLeftAxis}{false}
+    \fi
+}{
+	\PackageWarning{NumericPlots}
+		{AxisStyle #1 not defined. Use Boxed, Right, Left or None}
+}
+
+
+% ----------------------------------------------------------------------------
+% | general keys
+% |
+% | picture width etc.
+% ----------------------------------------------------------------------------
+
+\define@cmdkeys[NumericDataPlot]{General}[NumDataPlotG]{
+	xPicMin, yPicMin, xPicMax, yPicMax,
+	TickLength
+}
+
+
+\define@key[NumericDataPlot]{General}{llx}[\StdLLX]{
+	\psset{llx=-#1}
+	\addtolength{\OffsetWidth}{\StdLLX}
+	\addtolength{\OffsetWidth}{-#1}
+}
+\define@key[NumericDataPlot]{General}{urx}[\StdURX]{
+	\psset{urx=#1}
+	\addtolength{\OffsetWidth}{-\StdURX}
+	\addtolength{\OffsetWidth}{#1}
+}
+\define@key[NumericDataPlot]{General}{lly}[\StdLLY]{\psset{lly=#1}}
+\define@key[NumericDataPlot]{General}{ury}[\StdURY]{\psset{ury=#1}}
+
+
+% ----------------------------------------------------------------------------
+% | keys for the legend
+% ----------------------------------------------------------------------------
+
+\define@key[NumericDataPlot]{Legend}{nrCols}[1]{\renewcommand{\nrLegendCols}{#1}}%
+\define@key[NumericDataPlot]{Legend}{LegLineWidth}[20pt]{\setlength{\LegLineWidth}{#1}}%
+
+\define@choicekey+[NumericDataPlot]{Legend}{LabelOrientation}[\val\nrLegOrient]
+{r,l,c}{%
+	\ifcase\nrLegOrient\relax%
+		\setboolean{LegendOrientationLeft}{false}%
+		\setboolean{LegendOrientationRight}{true}%
+		\setboolean{LegendOrientationCenter}{false}%
+    \or%
+        \setboolean{LegendOrientationLeft}{true}%
+		\setboolean{LegendOrientationRight}{false}%
+		\setboolean{LegendOrientationCenter}{false}%
+    \or%
+    	\setboolean{LegendOrientationLeft}{false}%
+		\setboolean{LegendOrientationRight}{false}%
+		\setboolean{LegendOrientationCenter}{true}%
+    \fi%
+}{
+	\PackageWarning{NumericPlots}{LabelOrientation #1 not defined. Use r, l or c}%
+}
+
+
+% ------------------------------------------------------------------------------
+% | keys for the put commands
+% ------------------------------------------------------------------------------
+
+\define@key[NumericDataPlot]{put}{x}{
+	\FPsub{\NumDataPlotBuffer}{#1}{\NumDataPlotxMin}
+	\FPmul{\NumDataPlotBuffer}{\NumDataPlotBuffer}{\NumDataPlotxDataCoordRatio}
+	\FPadd{\NDPputXcoord}{\NumDataPlotBuffer}{\NumDataPlotxCoordMin}
+}
+\define@key[NumericDataPlot]{put}{y}{
+	\FPsub{\NumDataPlotBuffer}{#1}{\NumDataPlotyMin}
+	\FPmul{\NumDataPlotBuffer}{\NumDataPlotBuffer}{\NumDataPlotyDataCoordRatio}
+	\FPadd{\NDPputYcoord}{\NumDataPlotBuffer}{\NumDataPlotyCoordMin}
+}
+\define@key[NumericDataPlot]{put}{RefPoint}[c]{
+	\renewcommand{\NDPRefPoint}{#1}
+}
+
+%-------------------------------------------------------------------------------
+
+
+\newlength{\picwidth}
+\newlength{\CPicWidth}
+\newlength{\StdLLX}\setlength{\StdLLX}{-1.5cm}
+\newlength{\StdLLY}\setlength{\StdLLY}{-1.25cm}
+\newlength{\StdURX}\setlength{\StdURX}{2pt}
+\newlength{\StdURY}\setlength{\StdURY}{2pt}
+\newlength{\OffsetWidth}
+
+
+\newlength{\origXLabelSep}\setlength{\origXLabelSep}{10pt}
+\newlength{\origYLabelSep}\setlength{\origYLabelSep}{20pt}
+\newlength{\xLabelSep}\setlength{\xLabelSep}{\origXLabelSep}
+\newlength{\yLabelSep}\setlength{\yLabelSep}{\origYLabelSep}
+
+% ==============================================================================
+% ||
+% || legend
+% ||
+% ==============================================================================
+
+
+\newcommand{\LegLineOld}[2][]{%
+	\setkeys[NumericDataPlot]{Legend}{#1}
+	%
+	\centering\Rnode{lab#2}{}%
+	\psline[style=#2,showpoints=false]([nodesep=0.5\LegLineWidth]lab#2)([nodesep=-0.5\LegLineWidth]lab#2)%
+	\psline[style=#2](lab#2)(lab#2)%
+}
+
+% \newcommand{\LegLine}[2][]{%
+% 	\setkeys[NumericDataPlot]{Legend}{#1}
+% 	%
+% 	\centering\Rnode{LegLineNode}{}%
+% 	\psline[#2,showpoints=false]([nodesep=0.5\LegLineWidth]LegLineNode)([nodesep=-0.5\LegLineWidth]LegLineNode)%
+% 	\psline[#2, linestyle=none](LegLineNode)(LegLineNode)
+% }
+% 
+% 
+% \newcommand{\LegendDefinition}[2][nrCols]{%
+% 	\setkeys[NumericDataPlot]{Legend}{#1}%
+% 	%
+% 	\psframebox[style=LegendBoxStyle]{%
+% 		\ifLegendOrientationLeft
+% 			\begin{tabular}{*{\nrLegendCols}{p{\LegLineWidth}l}}%
+% 				#2%
+% 			\end{tabular}%
+% 		\fi
+% 		\ifLegendOrientationCenter
+% 			\begin{tabular}{*{\nrLegendCols}{p{\LegLineWidth}c}}
+% 				#2
+% 			\end{tabular}
+% 		\fi
+% 		\ifLegendOrientationRight
+% 			\begin{tabular}{*{\nrLegendCols}{p{\LegLineWidth}r}}
+% 				#2
+% 			\end{tabular}
+% 		\fi
+% 	}%psframebox
+% }
+
+\newcommand{\LegLine}[2][]{%
+	\setkeys[NumericDataPlot]{Legend}{#1}%
+	\parbox[t]{\LegLineWidth}{%	
+	\centering\Rnode{LegLineNode}{}%
+	\psline[#2,showpoints=false]([nodesep=0.5\LegLineWidth]LegLineNode)([nodesep=-0.5\LegLineWidth]LegLineNode)%	
+	\psline[#2, linestyle=none](LegLineNode)(LegLineNode)%
+	}
+}
+
+
+\newcommand{\LegendDefinition}[2][nrCols]{%
+	\setkeys[NumericDataPlot]{Legend}{#1}%
+	%
+	\psframebox[style=LegendBoxStyle]{%
+		\ifLegendOrientationLeft%
+			\begin{tabular}{*{\nrLegendCols}{ll}}%
+				#2%
+			\end{tabular}%
+		\fi
+		\ifLegendOrientationCenter
+			\begin{tabular}{*{\nrLegendCols}{cc}}
+				#2
+			\end{tabular}
+		\fi
+		\ifLegendOrientationRight
+			\begin{tabular}{*{\nrLegendCols}{cr}}
+				#2
+			\end{tabular}
+		\fi
+	}%psframebox
+}
+
+% ==============================================================================
+% ||
+% || axis labels
+% ||
+% ==============================================================================
+
+
+\newcommand{\LeftyLabel}[1]{
+	\rput[b]
+		{!90 \NumDataPlotyLabelRotation\space add}
+		(!\NumDataPlotxCoordMin\space
+		\NumDataPlotyCoordRange\space \NumDataPlotyLabelPos\space mul
+		\NumDataPlotyCoordMin\space add){
+			\begin{tabular}{c}
+		    	\NumDataPlotyLabelOption{}#1\\
+		    	\vspace{\yLabelSep}
+		    \end{tabular}}
+	\setlength{\yLabelSep}{\origYLabelSep}
+}
+		
+\newcommand{\RightyLabel}[1]{
+	\rput[b]
+		{!270 \NumDataPlotyLabelRotation\space add}
+		(!\NumDataPlotxCoordMax\space
+		\NumDataPlotyCoordRange\space \NumDataPlotyLabelPos\space mul
+		\NumDataPlotyCoordMin\space add){
+			\begin{tabular}{c}
+                \NumDataPlotyLabelOption{}#1\\
+		    	\vspace{\yLabelSep}
+		    \end{tabular}}
+	\setlength{\yLabelSep}{\origYLabelSep}
+}
+		
+\newcommand{\UpperxLabel}[1]{
+	\rput[b]{!0 \NumDataPlotxLabelRotation\space add}
+		(!\NumDataPlotxCoordRange\space \NumDataPlotxLabelPos\space mul
+		\NumDataPlotxCoordMin\space add \NumDataPlotyCoordMax){
+			\begin{tabular}{c}
+		    	\NumDataPlotxLabelOption{}#1\\
+		    	\vspace{\xLabelSep}
+		    \end{tabular}}
+	\setlength{\xLabelSep}{\origXLabelSep}
+}
+
+\newcommand{\LowerxLabel}[1]{
+	\rput[t]{!0 \NumDataPlotxLabelRotation\space add}
+		(!\NumDataPlotxCoordRange\space \NumDataPlotxLabelPos\space mul
+		\NumDataPlotxCoordMin\space add \NumDataPlotyCoordMin){
+			\begin{tabular}{c}
+		    	\vspace{\xLabelSep}\\
+		    	\NumDataPlotxLabelOption{}#1
+		    \end{tabular}}
+	\setlength{\xLabelSep}{\origXLabelSep}
+}
+% ==============================================================================
+% ||
+% || Axis (Scaling)
+% ||
+% ==============================================================================
+
+\newcommand{\ScaleAxes}{
+	% calculate scaling:
+	% (<x> - xMin) * xDataCoordRatio + xCoordMin
+	% (<y> - yMin) * yDataCoordRatio + yCoordMin
+	% DataCoordRatio = (CoordMax-CoordMin)/(Max-Min)
+	% for logarithmic axes:
+	% (log(<x>) - log(xMin)) * xDataCoordRatio + xCoordMin
+	% (log(<y>) - log(yMin)) * yDataCoordRatio + yCoordMin
+	% DataCoordRatio = (CoordMax-CoordMin)/(log(Max)-log(Min))
+	\renewcommand{\xScaling}{\LogxAxis\space \NumDataPlotxMin\space sub
+		\NumDataPlotxDataCoordRatio\space mul \NumDataPlotxCoordMin\space add}
+	\renewcommand{\yScaling}{\LogyAxis\space \NumDataPlotyMin\space sub
+		\NumDataPlotyDataCoordRatio\space mul \NumDataPlotyCoordMin\space add}
+	\pstScalePoints(1.0, 1.0){\xScaling}{\yScaling}
+}
+
+% ==============================================================================
+% ||
+% || x-Axis
+% ||
+% ==============================================================================
+
+\newcommand{\setxAxis}[1]{
+	% set the keys. xO and yO have to be set after xMin and yMin have been set!
+	% (xMin and yMin also set xO and yO but when xO and yO are set by the user,
+	% these values should be overwritten.)
+	\setkeys*[NumericDataPlot]{Axis}
+		[yO, yMin, yMax, Dy, dy, yCoordMin, yCoordMax, yLog]{#1}
+	\setrmkeys[NumericDataPlot]{AxisWait}[yO]
+	
+	% for logarithmic axes: calculate log(xMax), log(xMin), Dx=1, xO=ceil(xMin)
+	\ifNumericDataPlot@Axis@xLog
+		\FPln{\NumDataPlotBuffer}{\NumDataPlotxMax}
+		\FPdiv{\NumDataPlotxMax}{\NumDataPlotBuffer}{\NumDataPlotLnTen}
+		\FPround{\NumDataPlotxMax}{\NumDataPlotxMax}{3}
+		\FPln{\NumDataPlotBuffer}{\NumDataPlotxMin}
+  		\FPdiv{\NumDataPlotxMin}{\NumDataPlotBuffer}{\NumDataPlotLnTen}
+  		\FPround{\NumDataPlotxMin}{\NumDataPlotxMin}{3}
+  		\renewcommand{\NumDataPlotDx}{1}
+  		\FPadd{\NumDataPlotBuffer}{\NumDataPlotxMin}{0.5}
+  		\FPtrunc{\NumDataPlotxO}{\NumDataPlotBuffer}{0}
+	\fi
+	
+	\FPsub{\NumDataPlotxRange}{\NumDataPlotxMax}{\NumDataPlotxMin}
+	\FPsub{\NumDataPlotxCoordRange}{\NumDataPlotxCoordMax}{\NumDataPlotxCoordMin}
+	\FPdiv{\NumDataPlotxDataCoordRatio}{\NumDataPlotxCoordRange}{\NumDataPlotxRange}
+	
+	% calculate number of ticks
+	\FPdiv{\xNrTicks}{\NumDataPlotxRange}{\NumDataPlotDx}
+	\FPtrunc{\xNrTicks}{\xNrTicks}{0}
+	
+	% calculate dx
+	\FPmul{\NumDataPlotdx}{\NumDataPlotxDataCoordRatio}{\NumDataPlotDx}
+	\FPround{\NumDataPlotdx}{\NumDataPlotdx}{2}
+	
+	% calculate coordinates of x origin
+	\FPsub{\NumDataPlotBuffer}{\NumDataPlotxO}{\NumDataPlotxMin}
+	\FPmul{\NumDataPlotBuffer}{\NumDataPlotxDataCoordRatio}{\NumDataPlotBuffer}
+	\FPadd{\xCoordOrig}{\NumDataPlotBuffer}{\NumDataPlotxCoordMin}
+    \FPround{\xCoordOrig}{\xCoordOrig}{2}
+
+    % calculate number of ticks on right side of the origin
+	\FPsub{\TicksXRight}{\NumDataPlotxMax}{\NumDataPlotxO}
+	\FPdiv{\TicksXRight}{\TicksXRight}{\NumDataPlotDx}
+	\FPtrunc{\TicksXRight}{\TicksXRight}{0}
+
+	% calculate number of ticks on left side of the origin (number is negative!)
+	\FPsub{\TicksXLeft}{\NumDataPlotxMin}{\NumDataPlotxO}
+	\FPdiv{\TicksXLeft}{\TicksXLeft}{\NumDataPlotDx}
+	\FPsub{\TicksXLeft}{\TicksXLeft}{1}
+	\FPtrunc{\TicksXLeft}{\TicksXLeft}{0}
+	
+	\ScaleAxes{}
+}
+
+
+\newcommand{\plotxGridLine}[1]{
+	\FPsub{\NumDataPlotBuffer}{\NumDataPlotxCoordMax}{#1}
+	\FPsub{\NumDataPlotBufferI}{#1}{\NumDataPlotxCoordMin}
+	\FPmin{\NumDataPlotBuffer}{\NumDataPlotBuffer}{\NumDataPlotBufferI}
+% 	\FPifneg{\NumDataPlotBuffer}
+% 	\else
+		% plot grid line
+		\ifNumericDataPlot@xAxis@NoGrid
+		\else
+			\psline[style=GridSt](#1, \NumDataPlotyCoordMin)(#1, \NumDataPlotyCoordMax)
+		\fi
+		% plot tick for lower axis and upper axis - if desired
+		\ifNumericDataPlot@xAxis@NoTicks
+		\else
+			\ifthenelse{\boolean{PlotLowerAxis}}{
+				\psline[style=TickSt](#1, \NumDataPlotyCoordMin)
+					(!#1\space \NumDataPlotyCoordMin\space \xTickLength \space sub)
+			}{}
+			\ifthenelse{\boolean{PlotUpperAxis}}{
+				\psline[style=TickSt](#1, \NumDataPlotyCoordMax)
+					(!#1 \NumDataPlotyCoordMax\space \xTickLength \space add)
+			}{}
+		\fi
+% 	\fi
+}
+
+\newcommand{\plotxSubGridLine}[1]{
+	\FPsub{\NumDataPlotBuffer}{\NumDataPlotxCoordMax}{#1}
+	\FPsub{\NumDataPlotBufferI}{#1}{\NumDataPlotxCoordMin}
+	\FPmin{\NumDataPlotBuffer}{\NumDataPlotBuffer}{\NumDataPlotBufferI}
+	\FPifneg{\NumDataPlotBuffer}
+	\else
+		% plot grid line
+		\ifNumericDataPlot@xAxis@NoGrid
+		\else
+			\psline[style=GridSt](#1,\NumDataPlotyCoordMin)(#1,\NumDataPlotyCoordMax)
+		\fi
+	\fi
+}
+
+% for logarithmic axes, LogxAxisLabel returns 10^#1. Normally it just returns
+% #1.
+\newcommand{\plotxTickLabels}[3]{
+	\FPadd{\NumDataPlotBuffer}{\TicksXLeft}{1}
+	\FPround{\NumDataPlotBuffer}{\NumDataPlotBuffer}{0}
+	
+    % plot ticks on right side of the origin
+    \mmultido{\n=\NumDataPlotxO+\NumDataPlotDx}{\TicksXRight}
+    {
+        \rput[#3]{0}(!\NumDataPlotdx \space \NumDataPlotDx \space div \n
+        \space \NumDataPlotxO \space sub mul \xCoordOrig \space add \space #1
+        \space \NumDataPlotxTickSep \space #2)
+        {\NumDataPlotxTickLabelOption{}$\LogxAxisLabel{\n}$}
+    }
+    % plot ticks on left side of the origin
+    \mmultido{\n=\NumDataPlotxO+\NumDataPlotDx}{\NumDataPlotBuffer}
+    {
+        \rput[#3]{0}(!\xCoordOrig \space \NumDataPlotdx \space
+        \NumDataPlotDx \space div \n \space \NumDataPlotxO \space sub mul add \space #1 \space \NumDataPlotxTickSep \space #2)
+        {\NumDataPlotxTickLabelOption{}$\LogxAxisLabel{\n}$}
+    }
+    % plot tick at origin
+    \rput[#3]{0}(!\xCoordOrig\space #1 \space
+    	\NumDataPlotxTickSep\space #2)
+    	{\NumDataPlotxTickLabelOption{}$\LogxAxisLabel{\NumDataPlotxO}$}
+}
+
+\newcommand{\xLogSubGrid}[1]{
+	\ifNumericDataPlot@Axis@xLog
+		\multido{\iSubb=2+2}{4}{
+			\FPln{\NumDataPlotBuffer}{\iSubb}
+			\FPdiv{\NumDataPlotBuffer}{\NumDataPlotBuffer}{\NumDataPlotLnTen}
+			\FPmul{\NumDataPlotBuffer}{\NumDataPlotBuffer}{\NumDataPlotxDataCoordRatio}
+			\FPadd{\NumDataPlotTickPos}{#1}{\NumDataPlotBuffer}
+			\plotxSubGridLine{\NumDataPlotTickPos}		
+		}
+	\fi
+}
+
+\newcommand{\plotxGrid}{
+	% plot gridline on right side of the origin
+	\mmultido{\n=\xCoordOrig+\NumDataPlotdx}{\TicksXRight}{
+		\plotxGridLine{\n}
+		\xLogSubGrid{\n}
+	}
+	% plot gridline on left side of the origin and at origin
+	\multido{\n=\xCoordOrig+\NumDataPlotdx}{\TicksXLeft}{
+		\plotxGridLine{\n}
+	}
+	\FPsub{\NumDataPlotBuffer}{\TicksXLeft}{1}
+	\FPround{\NumDataPlotBuffer}{\NumDataPlotBuffer}{0}
+	\multido{\n=\xCoordOrig+\NumDataPlotdx}{\NumDataPlotBuffer}{
+		\xLogSubGrid{\n}
+	}
+}
+
+\newcommand{\plotxAxis}[2][]{
+	\setkeys[NumericDataPlot]{xAxis}{#1}
+
+    % plot grid, ticks and ticklabels
+	\plotxGrid{}
+	
+
+    % plot lower axis
+    \ifthenelse{\boolean{PlotLowerAxis}}
+    {
+        \psline{C-C}%
+        	(\NumDataPlotxCoordMin, \NumDataPlotyCoordMin)%
+        	(\NumDataPlotxCoordMax, \NumDataPlotyCoordMin)
+        \ifNumericDataPlot@xAxis@NoTickLabel
+        \else
+            \plotxTickLabels{\NumDataPlotyCoordMin}{sub}{t}
+        \fi
+        % plot label
+    	\ifNumericDataPlot@xAxis@NoLabel
+    	\else
+    		\LowerxLabel{#2}
+    	\fi
+    	%plot upper axis (boxed)
+    	\ifthenelse{\boolean{PlotUpperAxis}}{
+            % plot upper axis
+            \psline{C-C}%
+            	(\NumDataPlotxCoordMin,\NumDataPlotyCoordMax)%
+            	(\NumDataPlotxCoordMax,\NumDataPlotyCoordMax)
+        }{}
+    }{
+        % plot upper axis (only upper axis)
+        \ifthenelse{\boolean{PlotUpperAxis}}{
+            % plot upper axis
+            \psline{C-C}%
+            	(\NumDataPlotxCoordMin,\NumDataPlotyCoordMax)%
+            	(\NumDataPlotxCoordMax, \NumDataPlotyCoordMax)
+            % plot ticklabels
+        	\ifNumericDataPlot@xAxis@NoTickLabel
+            \else
+                \plotxTickLabels{\NumDataPlotyCoordMax}{add}{b}
+            \fi
+           % plot label
+        	\ifNumericDataPlot@xAxis@NoLabel
+        	\else
+        		\UpperxLabel{#2}
+        	\fi
+        }{}
+     }
+}
+
+\newcommand{\repeatxAxis}{\plotxAxis[NoLabel, NoTickLabel]{}}
+
+% ==============================================================================
+% ||
+% || y-Axis
+% ||
+% ==============================================================================
+
+\newcommand{\plotyTickLabels}[3]{
+	\FPadd{\NumDataPlotBuffer}{\TicksYLeft}{1}
+	\FPround{\NumDataPlotBuffer}{\NumDataPlotBuffer}{0}
+    % plot ticks on right side of the origin
+	\mmultido{\n=\NumDataPlotyO+\NumDataPlotDy}{\TicksYRight}
+	{
+        \rput[#3]{0}(!#1 \space \NumDataPlotyTickSep
+        \space #2 \space \NumDataPlotdy \space \NumDataPlotDy \space div \n \space \NumDataPlotyO \space sub mul \yCoordOrig \space add)
+        {\NumDataPlotyTickLabelOption{}$\LogyAxisLabel{\n}$}
+    }
+	% plot ticks on left side of the origin
+	\mmultido{\n=\NumDataPlotyO+\NumDataPlotDy}{\NumDataPlotBuffer}
+    {
+        \rput[#3]{0}(!#1 \space \NumDataPlotyTickSep
+        \space #2 \space \NumDataPlotdy \space \NumDataPlotDy \space div \n \space \NumDataPlotyO \space sub mul \yCoordOrig \space add)
+        {\NumDataPlotyTickLabelOption{}$\LogyAxisLabel{\n}$}
+    }
+    % plot tick at origin
+    \rput[#3]{0}(!#1 \space \NumDataPlotyTickSep\space #2 \space \yCoordOrig)
+    	{\NumDataPlotyTickLabelOption{}$\LogyAxisLabel{\NumDataPlotyO}$}
+}
+
+\newcommand{\setyAxis}[1]{
+% values from the x-axis must be ignored! If they weren't, the default values
+	% would be set!
+	\setkeys*[NumericDataPlot]{Axis}
+		[xO, xMin, xMax, xCoordMin, xCoordMax, Dx, dx, xLog]{#1}
+	\setrmkeys[NumericDataPlot]{AxisWait}[xO]
+
+    %\ifNumericDataPlot@Axis@yNearlyTight
+%        \FPifpos{\NumDataPlotyMax} \FPmul{\NumDataPlotyMax}{\NumDataPlotyMax}{1.1} \else \FPmul{\NumDataPlotyMax}{\NumDataPlotyMax}{0.9}\fi
+%        \FPifpos{\NumDataPlotyMin} \FPmul{\NumDataPlotyMin}{\NumDataPlotyMin}{0.9} \else \FPmul{\NumDataPlotyMin}{\NumDataPlotyMin}{1.1}\fi
+%    \fi
+
+	% for logarithmic axes: calculate log(xMax), log(xMin), Dx=1, xO=ceil(xMin)
+	\ifNumericDataPlot@Axis@yLog
+		\FPln{\NumDataPlotBuffer}{\NumDataPlotyMax}
+		\FPdiv{\NumDataPlotyMax}{\NumDataPlotBuffer}{\NumDataPlotLnTen}
+		\FPround{\NumDataPlotyMax}{\NumDataPlotyMax}{6}
+		\FPln{\NumDataPlotBuffer}{\NumDataPlotyMin}
+  		\FPdiv{\NumDataPlotyMin}{\NumDataPlotBuffer}{\NumDataPlotLnTen}
+  		\FPround{\NumDataPlotyMin}{\NumDataPlotyMin}{6}
+  		\renewcommand{\NumDataPlotDy}{1}
+  		\FPadd{\NumDataPlotBuffer}{\NumDataPlotyMin}{0.5}
+  		\FPtrunc{\NumDataPlotyO}{\NumDataPlotBuffer}{0}
+	\fi
+	
+	\FPsub{\NumDataPlotyRange}{\NumDataPlotyMax}{\NumDataPlotyMin}
+	\FPsub{\NumDataPlotyCoordRange}{\NumDataPlotyCoordMax}{\NumDataPlotyCoordMin}
+	\FPdiv{\NumDataPlotyDataCoordRatio}{\NumDataPlotyCoordRange}{\NumDataPlotyRange}
+	
+	% calculate number of ticks
+	\FPdiv{\yNrTicks}{\NumDataPlotyRange}{\NumDataPlotDy}
+	\FPtrunc{\yNrTicks}{\yNrTicks}{0}
+	
+	% calculate dy
+	\FPmul{\NumDataPlotdy}{\NumDataPlotyDataCoordRatio}{\NumDataPlotDy}
+	\FPround{\NumDataPlotdy}{\NumDataPlotdy}{2}
+	
+	% calculate coordinates of y origin
+	\FPsub{\NumDataPlotBuffer}{\NumDataPlotyO}{\NumDataPlotyMin}
+	\FPmul{\NumDataPlotBuffer}{\NumDataPlotyDataCoordRatio}{\NumDataPlotBuffer}
+	\FPadd{\yCoordOrig}{\NumDataPlotBuffer}{\NumDataPlotyCoordMin}
+    \FPround{\yCoordOrig}{\yCoordOrig}{2}
+	
+    % calculate number of ticks on right side of the origin
+	\FPsub{\TicksYRight}{\NumDataPlotyMax}{\NumDataPlotyO}
+	\FPdiv{\TicksYRight}{\TicksYRight}{\NumDataPlotDy}
+	\FPtrunc{\TicksYRight}{\TicksYRight}{0}
+
+	% calculate number of ticks on left side of the origin (number is negative!)
+	\FPsub{\TicksYLeft}{\NumDataPlotyMin}{\NumDataPlotyO}
+	\FPdiv{\TicksYLeft}{\TicksYLeft}{\NumDataPlotDy}
+	\FPsub{\TicksYLeft}{\TicksYLeft}{1}
+	\FPtrunc{\TicksYLeft}{\TicksYLeft}{0}
+
+	% --- scaling ---
+	\ScaleAxes{}
+}
+
+
+\newcommand{\plotyGridLine}[1]{
+	\FPsub{\NumDataPlotBuffer}{\NumDataPlotyCoordMax}{#1}
+	\FPsub{\NumDataPlotBufferI}{#1}{\NumDataPlotyCoordMin}
+	\FPmin{\NumDataPlotBuffer}{\NumDataPlotBuffer}{\NumDataPlotBufferI}
+	\FPifpos{\NumDataPlotBuffer}
+		% plot grid line
+		\ifNumericDataPlot@yAxis@NoGrid
+		\else
+			\psline[style=GridSt](\NumDataPlotxCoordMin, #1)(\NumDataPlotxCoordMax, #1)
+		\fi
+		% plot tick for lower axis and upper axis - if desired
+		\ifNumericDataPlot@yAxis@NoTicks
+		\else
+			\ifthenelse{\boolean{PlotLeftAxis}}{
+				\psline[style=TickSt](\NumDataPlotxCoordMin, #1)
+					(!\NumDataPlotxCoordMin\space \yTickLength \space sub #1)
+			}{}
+			\ifthenelse{\boolean{PlotRightAxis}}{
+				\psline[style=TickSt](\NumDataPlotxCoordMax, #1)
+					(!\NumDataPlotxCoordMax\space \yTickLength \space add #1)
+			}{}
+		\fi
+	\fi
+}
+
+\newcommand{\plotySubGridLine}[1]{
+	\FPsub{\NumDataPlotBuffer}{\NumDataPlotyCoordMax}{#1}
+	\FPsub{\NumDataPlotBufferI}{#1}{\NumDataPlotyCoordMin}
+	\FPmin{\NumDataPlotBuffer}{\NumDataPlotBuffer}{\NumDataPlotBufferI}
+	\FPifpos{\NumDataPlotBuffer}
+		% plot grid line
+		\ifNumericDataPlot@yAxis@NoGrid
+		\else
+			\psline[style=GridSt](\NumDataPlotxCoordMin, #1)(\NumDataPlotxCoordMax, #1)
+		\fi
+	\fi
+}
+
+
+
+\newcommand{\yLogSubGrid}[1]{
+	\ifNumericDataPlot@Axis@yLog
+		\multido{\iSubb=2+2}{4}{
+			\FPln{\NumDataPlotBuffer}{\iSubb}
+			\FPdiv{\NumDataPlotBuffer}{\NumDataPlotBuffer}{\NumDataPlotLnTen}
+			\FPmul{\NumDataPlotBuffer}{\NumDataPlotBuffer}{\NumDataPlotyDataCoordRatio}
+			\FPadd{\NumDataPlotTickPos}{#1}{\NumDataPlotBuffer}
+			\plotySubGridLine{\NumDataPlotTickPos}		
+		}
+	\fi
+}
+
+\newcommand{\plotyGrid}{
+	% plot gridline on right side of the origin
+	\mmultido{\n=\yCoordOrig+\NumDataPlotdy}{\TicksYRight}{
+		\plotyGridLine{\n}
+		\yLogSubGrid{\n}
+	}
+	% plot gridline on left side of the origin
+	\multido{\n=\yCoordOrig+\NumDataPlotdy}{\TicksYLeft}{
+		\plotyGridLine{\n}
+	}
+	\FPsub{\NumDataPlotBuffer}{\TicksYLeft}{1}
+	\FPround{\NumDataPlotBuffer}{\NumDataPlotBuffer}{0}
+	\multido{\n=\yCoordOrig+\NumDataPlotdy}{\NumDataPlotBuffer}{
+		\yLogSubGrid{\n}
+	}
+% 	\putS{
+% 		TicksYLeft: \TicksYLeft
+% 	}
+}
+
+\newcommand{\plotyGridBoxed}{
+	% plot gridline on right side of the origin
+	\mmultido{\n=\yCoordOrig+\NumDataPlotdy}{\TicksYRight-1}{
+		\plotyGridLine{\n}
+		\yLogSubGrid{\n}
+	}
+	% plot gridline on left side of the origin
+	\multido{\n=\yCoordOrig+\NumDataPlotdy}{\TicksYLeft-1}{
+		\plotyGridLine{\n}
+	}
+	\FPsub{\NumDataPlotBuffer}{\TicksYLeft}{1}
+	\FPround{\NumDataPlotBuffer}{\NumDataPlotBuffer}{0}
+	\multido{\n=\yCoordOrig+\NumDataPlotdy}{\NumDataPlotBuffer}{
+		\yLogSubGrid{\n}
+	}
+% 	\putS{
+% 		TicksYLeft: \TicksYLeft
+% 	}
+}
+
+
+\newcommand{\plotyAxis}[2][]{
+	\setkeys[NumericDataPlot]{yAxis}{#1}
+	
+	% plot grid
+	\plotyGrid
+	
+    % plot lower axis
+    \ifthenelse{\boolean{PlotLeftAxis}}
+    {
+        \psline{C-C}%
+        	(\NumDataPlotxCoordMin,\NumDataPlotyCoordMin)%
+        	(\NumDataPlotxCoordMin, \NumDataPlotyCoordMax)
+        \ifNumericDataPlot@yAxis@NoTickLabel
+        \else
+            \plotyTickLabels{\NumDataPlotxCoordMin}{sub}{r}
+        \fi
+        % plot upper axis
+        \ifthenelse{\boolean{PlotRightAxis}}
+        {
+            \psline{C-C}%
+            	(\NumDataPlotxCoordMax,\NumDataPlotyCoordMin)%
+            	(\NumDataPlotxCoordMax, \NumDataPlotyCoordMax)
+        }{}
+        % --- label ---
+    	\ifNumericDataPlot@yAxis@NoLabel
+    	\else
+    		\LeftyLabel{#2}
+    	\fi
+    }{
+        \ifthenelse{\boolean{PlotRightAxis}}
+        {
+            \psline{C-C}%
+            	(\NumDataPlotxCoordMax,\NumDataPlotyCoordMin)%
+            	(\NumDataPlotxCoordMax, \NumDataPlotyCoordMax)
+        	\ifNumericDataPlot@yAxis@NoTickLabel
+            \else
+                \plotyTickLabels{\NumDataPlotxCoordMax}{add}{l}
+            \fi
+            % --- label ---
+        	\ifNumericDataPlot@yAxis@NoLabel
+        	\else
+        		\RightyLabel{#2}
+        	\fi
+        }{}
+    }
+}
+
+% ==============================================================================
+% ||
+% || commands...
+% ||
+% ==============================================================================
+
+\newcommand{\NDPput}[2][]{
+	\setkeys[NumericDataPlot]{put}{RefPoint=c}
+	\setkeys[NumericDataPlot]{put}{#1}
+	\rput[\NDPRefPoint](\NDPputXcoord, \NDPputYcoord){#2}
+}
+
+\newcommand{\NDPhline}[2][]{
+%
+	\FPsub{\NumDataPlotBuffer}{#2}{\NumDataPlotyMin}
+	\FPmul{\NumDataPlotBuffer}{\NumDataPlotBuffer}{\NumDataPlotyDataCoordRatio}
+	\FPadd{\NDPputYcoord}{\NumDataPlotBuffer}{\NumDataPlotyCoordMin}
+
+	\psline[#1](\NumDataPlotxCoordMin, \NDPputYcoord)
+		(\NumDataPlotxCoordMax,	\NDPputYcoord)
+}
+
+\newcommand{\NDPvline}[2][]{
+%
+	\FPsub{\NumDataPlotBuffer}{#2}{\NumDataPlotxMin}
+	\FPmul{\NumDataPlotBuffer}{\NumDataPlotBuffer}{\NumDataPlotxDataCoordRatio}
+	\FPadd{\NDPputXcoord}{\NumDataPlotBuffer}{\NumDataPlotxCoordMin}
+%
+	\psline[#1](\NDPputXcoord, \NumDataPlotyCoordMin)
+		(\NDPputXcoord, \NumDataPlotyCoordMax)
+}
+
+\newcommand{\NDPline}[5][]{
+%
+	\FPsub{\NumDataPlotBuffer}{#2}{\NumDataPlotxMin}
+	\FPmul{\NumDataPlotBuffer}{\NumDataPlotBuffer}{\NumDataPlotxDataCoordRatio}
+	\FPadd{\NDPputXcoordOne}{\NumDataPlotBuffer}{\NumDataPlotxCoordMin}
+	
+	\FPsub{\NumDataPlotBuffer}{#2}{\NumDataPlotxMin}
+	\FPmul{\NumDataPlotBuffer}{\NumDataPlotBuffer}{\NumDataPlotxDataCoordRatio}
+	\FPadd{\NDPputXcoordOne}{\NumDataPlotBuffer}{\NumDataPlotxCoordMin}
+	
+	
+	\psline[#1]
+		(!#2 \NumDataPlotxMin\space sub	\NumDataPlotxDataCoordRatio\space mul
+		\NumDataPlotxCoordMin\space	add
+		#3 \NumDataPlotyMin\space sub	\NumDataPlotyDataCoordRatio\space mul
+		\NumDataPlotyCoordMin\space	add)
+		(!#4 \NumDataPlotxMin\space sub	\NumDataPlotxDataCoordRatio\space mul
+		\NumDataPlotxCoordMin\space	add
+		#5 \NumDataPlotyMin\space sub	\NumDataPlotyDataCoordRatio\space mul
+		\NumDataPlotyCoordMin\space	add)
+}
+
+\newcommand{\NDPvbox}[3][]{
+
+	\psframe[#1]
+		(!#2 \NumDataPlotxMin\space sub	\NumDataPlotxDataCoordRatio\space mul \NumDataPlotxCoordMin\space	add
+		\NumDataPlotyCoordMin)
+		(!#3 \NumDataPlotxMin\space sub	\NumDataPlotxDataCoordRatio\space mul \NumDataPlotxCoordMin\space	add
+		\NumDataPlotyCoordMax)
+}
+
+\newcommand{\NDPhbox}[3][]{
+	
+    \psframe[#1]
+		(!\NumDataPlotxCoordMin \space
+		#2 \NumDataPlotyMin\space sub \NumDataPlotyDataCoordRatio\space mul \NumDataPlotyCoordMin\space	add)
+		(!\NumDataPlotxCoordMax \space
+		#3 \NumDataPlotyMin\space sub \NumDataPlotyDataCoordRatio\space mul \NumDataPlotyCoordMin\space	add)
+}
+
+\newcommand{\NDPbox}[5][]{
+%	\FPsub{\NumDataPlotBuffer}{#2}{\NumDataPlotxMin}
+%	\FPmul{\NumDataPlotBuffer}{\NumDataPlotBuffer}{\NumDataPlotxDataCoordRatio}
+%	\FPadd{\NDPputXcoordOne}{\NumDataPlotBuffer}{\NumDataPlotxCoordMin}
+%	
+%	\FPsub{\NumDataPlotBuffer}{#2}{\NumDataPlotxMin}
+%	\FPmul{\NumDataPlotBuffer}{\NumDataPlotBuffer}{\NumDataPlotxDataCoordRatio}
+%	\FPadd{\NDPputXcoordOne}{\NumDataPlotBuffer}{\NumDataPlotxCoordMin}
+%	
+%	
+	\psframe[#1]
+		(!#2 \NumDataPlotxMin\space sub	\NumDataPlotxDataCoordRatio\space mul
+		\NumDataPlotxCoordMin\space	add
+		#3 \NumDataPlotyMin\space sub	\NumDataPlotyDataCoordRatio\space mul
+		\NumDataPlotyCoordMin\space	add)
+		(!#4 \NumDataPlotxMin\space sub	\NumDataPlotxDataCoordRatio\space mul
+		\NumDataPlotxCoordMin\space	add
+		#5 \NumDataPlotyMin\space sub	\NumDataPlotyDataCoordRatio\space mul
+		\NumDataPlotyCoordMin\space	add)
+}
+
+% ==============================================================================
+% ||
+% || environment NumericDataPlot
+% ||
+% ==============================================================================
+
+
+\newenvironment{NumericDataPlot}[3][]{
+	%
+	\setlength{\OffsetWidth}{-\StdLLX +\StdURX}
+	% set standard values (they will be reset by setkeys if defined)
+ 	\psset{llx=\StdLLX, lly=\StdLLY, ury=\StdURY, urx=\StdURX}
+	%
+	\setkeys[NumericDataPlot]{General}{#1}
+	%
+	\setlength{\CPicWidth}{#2 - \OffsetWidth}
+	% calculate length of the yTicks:
+	% PicCoordWidth (=GxPicMax-GxPicMin) -> PicWidth (=#2)
+	% Length -> 1mm * yTickLength
+	% yTickLength must be negative
+ 	\setcounter{BufferCounter}{1*\ratio{#2}{1mm}}
+ 	\FPsub{\NumDataPlotBuffer}{\NumDataPlotGxPicMax}{\NumDataPlotGxPicMin}
+ 	\FPdiv{\NumDataPlotBufferI}{\NumDataPlotBuffer}{\theBufferCounter}
+ 	\FPmul{\yTickLength}{\NumDataPlotBufferI}{\NumDataPlotGTickLength}
+ 	\FPmul{\yTickLength}{\NumDataPlotBufferI}{-1}
+ 	% calculate length of the xTicks
+ 	\setcounter{BufferCounter}{1*\ratio{#3}{1mm}}
+ 	\FPsub{\NumDataPlotBuffer}{\NumDataPlotGyPicMax}{\NumDataPlotGyPicMin}
+ 	\FPdiv{\NumDataPlotBufferI}{\NumDataPlotBuffer}{\theBufferCounter}
+ 	\FPmul{\xTickLength}{\NumDataPlotBufferI}{\NumDataPlotGTickLength}
+ 	\FPmul{\xTickLength}{\NumDataPlotBufferI}{-1}
+ 	
+    \FPdiv{\NumDataPlotxTickSep}{\NumDataPlotGxPicMax}{20}
+    \FPround{\NumDataPlotxTickSep}{\NumDataPlotxTickSep}{0}
+    \FPdiv{\NumDataPlotyTickSep}{\NumDataPlotGyPicMax}{20}
+    \FPround{\NumDataPlotyTickSep}{\NumDataPlotyTickSep}{0}
+%     \FPdiv{\xTickLength}{\NumDataPlotGxPicMax}{-75}
+%     \FPround{\xTickLength}{\xTickLength}{0}
+%     \FPdiv{\yTickLength}{\NumDataPlotGyPicMax}{-75}
+%     \FPround{\yTickLength}{\yTickLength}{0}
+	\begin{psgraph}[fillstyle=solid, fillcolor=gray,
+	xAxis=false, yAxis=false] (\NumDataPlotGxPicMin, \NumDataPlotGyPicMin)(\NumDataPlotGxPicMin, \NumDataPlotGyPicMin)(\NumDataPlotGxPicMax, \NumDataPlotGyPicMax)
+    	{\CPicWidth}{#3}
+}{
+	\pstScalePoints(1.0, 1.0){0 add}{0 add}
+	\end{psgraph}
+}
+
+
+\psset{xunit=1mm, yunit=1mm, xAxisLabel={}, yAxisLabel={}}
+
+
+% ============================================================================
+% ||
+% ||  Definition of styles
+% ||
+% ============================================================================
+
+\newpsstyle{GridSt}{linecolor=gray, linestyle=dotted, linewidth=0.75pt}
+\newpsstyle{TickSt}{linecolor=black, linestyle=solid, linewidth=0.5pt}
+	
+
+\definecolor{LineColorA}{cmyk}{0.6 0.21 0.0 0.2} %blue
+\definecolor{LineColorB}{cmyk}{0.7 0.1 1 0.2} %green
+\definecolor{LineColorC}{cmyk}{0 1 1 0.2} %red
+\definecolor{LineColorD}{cmyk}{0 0.7 1 0.1} % orange
+\definecolor{LineColorE}{cmyk}{0.5 1 0 0.1} % purple
+\definecolor{LineColorF}{cmyk}{0 1 0 0.2} % magenta
+\definecolor{LineColorG}{cmyk}{0 0.25 1 0.1} % yellow
+\definecolor{LineColorX}{cmyk}{0.3 0.2 0.0 0.1} %blue
+\definecolor{LineColorY}{cmyk}{0 1 1 0.2} %red
+
+\newpsstyle{StdLineStyA}{linecolor=LineColorA}
+\newpsstyle{StdLineStyB}{linecolor=LineColorB}
+\newpsstyle{StdLineStyC}{linecolor=LineColorC}
+\newpsstyle{StdLineStyD}{linecolor=LineColorD}
+\newpsstyle{StdLineStyE}{linecolor=LineColorE}
+\newpsstyle{StdLineStyF}{linecolor=LineColorF}
+\newpsstyle{StdLineStyG}{linecolor=LineColorG}
+
+\newpsstyle{StdLineStyX}{linecolor=LineColorX,linestyle=solid,linewidth=2pt}
+\newpsstyle{StdLineStyY}{linecolor=LineColorY,linestyle=dashed, dash=4pt 3pt 1pt
+3pt}
+\newpsstyle{BWStdLineStyX}{linecolor=lightgray,linestyle=solid,linewidth=2pt}
+\newpsstyle{BWStdLineStyY}{linecolor=black,linestyle=dashed, dash=4pt 3pt 1pt
+3pt}
+
+\newpsstyle{BWStdLineStyA}
+	{linecolor=lightgray,linestyle=solid,linewidth = 1.5pt}
+\newpsstyle{BWStdLineStyB}
+	{linecolor=gray,linestyle=solid,linewidth = 1.0pt}
+\newpsstyle{BWStdLineStyC}
+	{linecolor=black,linestyle=solid,linewidth = 0.75pt}
+\newpsstyle{BWStdLineStyD}
+	{linecolor=black,linestyle=dashed, dash = 3pt 2pt,linewidth = 0.75pt}
+\newpsstyle{BWStdLineStyE}
+	{linecolor=gray,linestyle=dashed,dash = 3pt 2pt,linewidth = 1.0pt}
+\newpsstyle{BWStdLineStyF}
+	{linecolor=black,linestyle=dotted, dotsep =2pt,linewidth = 1.5pt}
+\newpsstyle{BWStdLineStyG}
+	{linecolor=gray,linestyle=dotted, dotsep =2pt,linewidth = 1.5pt}
+	
+\newpsstyle{LegendBoxStyle}
+	{fillcolor=white, fillstyle=solid}
+	
+% ===========================================================================
+% ||
+% || commands to put something at a location of the plot
+% ||
+% ===========================================================================
+
+% put in the NorthWest corner of the plot
+\newcommand{\putNW}[1]{
+\rput[lt]{0}(\NumDataPlotxCoordMin, \NumDataPlotyCoordMax){#1}}
+% put in the SouthWest corner of the plot
+\newcommand{\putSW}[1]{
+\rput[lb]{0}(\NumDataPlotxCoordMin, \NumDataPlotyCoordMin){#1}}
+% put in the NorthEast corner of the plot
+\newcommand{\putNE}[1]{
+\rput[rt]{0}(\NumDataPlotxCoordMax, \NumDataPlotyCoordMax){#1}}
+% put in the SouthEast corner of the plot
+\newcommand{\putSE}[1]{
+\rput[rb]{0}(\NumDataPlotxCoordMax, \NumDataPlotyCoordMin){#1}}
+% put in the South of the plot
+\newcommand{\putS}[1]{
+\rput[b]{0}(!\NumDataPlotxCoordMax\space\NumDataPlotxMin\space sub 2 div
+\NumDataPlotxCoordMin\space add \NumDataPlotyCoordMin){#1}}
+% put in the North of the plot
+\newcommand{\putN}[1]{
+\rput[t]{0}(!\NumDataPlotxCoordMax\space\NumDataPlotxCoordMin\space sub 2 div
+\NumDataPlotxCoordMin\space add \NumDataPlotyCoordMax){#1}}
+% put in the West of the plot
+\newcommand{\putW}[1]{
+\rput[l]{0}(!\NumDataPlotxCoordMin\space
+\NumDataPlotyCoordMax\space\NumDataPlotyCoordMin\space sub 2 div \NumDataPlotyCoordMin\space add){#1}}
+% put in the East of the plot
+\newcommand{\putE}[1]{
+\rput[r]{0}(!\NumDataPlotxCoordMax\space
+\NumDataPlotyCoordMax\space\NumDataPlotyCoordMin\space sub 2 div \NumDataPlotyCoordMin\space add){#1}}
+% put exponent at y-axis
+\newcommand{\putExpY}[1]{
+\rput[lb]{0}(\NumDataPlotxCoordMin, \NumDataPlotyCoordMax){#1}
+}
+% put exponent at x-axis
+\newcommand{\putExpX}[1]{
+\rput[lb]{0}(\NumDataPlotxCoordMax, \NumDataPlotyCoordMin){#1}
+}
+
+
+\DeclareOptionX{BW}{
+    \addtopsstyle{StdLineStyA}{style=BWStdLineStyA}
+    \addtopsstyle{StdLineStyB}{style=BWStdLineStyB}
+    \addtopsstyle{StdLineStyC}{style=BWStdLineStyC}
+    \addtopsstyle{StdLineStyD}{style=BWStdLineStyD}
+    \addtopsstyle{StdLineStyE}{style=BWStdLineStyE}
+    \addtopsstyle{StdLineStyF}{style=BWStdLineStyF}
+    \addtopsstyle{StdLineStyG}{style=BWStdLineStyG}
+}
+
+
+\DeclareOptionX{beamer}{
+	\renewcommand{\StdLLY}{-1.0cm}
+	\renewcommand{\StdTickLabelOption}{\footnotesize}
+	\setlength{\origXLabelSep}{1pt}
+}
+\DeclareOptionX{xAxisStyle}[Boxed]{
+	\presetkeys[NumericDataPlot]{xAxis}{AxisStyle=#1}{}
+}
+\DeclareOptionX{yAxisStyle}[Boxed]{
+	\presetkeys[NumericDataPlot]{yAxis}{AxisStyle=#1}{}
+}
+\DeclareOptionX{LabelOption}[{}]{
+	\renewcommand{\StdLabelOption}{#1}
+}
+\DeclareOptionX{TickLabelOption}[{}]{
+	\renewcommand{\StdTickLabelOption}{#1}
+}
+\ProcessOptionsX
+
+% \ProcessOptions
+
+% ===========================================================================
+% ||
+% || set standard values for keys
+% ||
+% ===========================================================================
+\presetkeys[NumericDataPlot]{Axis}{
+	xMax=100, xMin=0, Dx=10,
+	xCoordMax=\NumDataPlotGxPicMax,	xCoordMin=\NumDataPlotGxPicMin,
+	xLog=false,
+	yMax=100, yMin=0, Dy=10,
+	yCoordMax=\NumDataPlotGyPicMax, yCoordMin=\NumDataPlotGyPicMin,
+	yLog=false,
+    yNearlyTight=false,
+	}{}
+\presetkeys[NumericDataPlot]{xAxis}{
+	NoGrid=false, NoTicks=false, NoLabel=false, NoTickLabel=false,
+	LabelRotation=0, LabelPos=0.5, TickSep=20, LabelOption=\StdLabelOption{},
+	TickLabelOption=\StdTickLabelOption{} }{}
+\presetkeys[NumericDataPlot]{yAxis}{
+	NoGrid=false, NoTicks=false, NoLabel=false, NoTickLabel=false,
+	LabelRotation=0, LabelPos=0.5, TickSep=20, LabelOption=\StdLabelOption{},
+	TickLabelOption=\StdTickLabelOption{} }{}
+
+% if xO/yO are not set they'll be set to xMin/yMin
+\presetkeys[NumericDataPlot]{AxisWait}{
+	xO=\NumDataPlotxMin, yO=\NumDataPlotyMin
+}{}
+
+\presetkeys[NumericDataPlot]{General}{
+	xPicMin=0, yPicMin=0, xPicMax=1000, yPicMax=1000, TickLength=2}{}
+
+\presetkeys[NumericDataPlot]{Legend}{%
+	LabelOrientation=l%
+}{}%
+

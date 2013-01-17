@@ -1,0 +1,594 @@
+\ProvidesPackage{makebarcode}[2008/07/27 Make various bar codes]
+\PackageInfo{makebarcode}{$Id: makebarcode.sty 224 2008-07-26 23:07:27Z zw $\@gobble}
+
+\RequirePackage{kvoptions}
+\SetupKeyvalOptions{family=zwbc,prefix=zwbc@}
+
+\DeclareStringOption[.19mm]{X}[.19mm]
+\DeclareStringOption[\ZWbc@Hdefault]{H}[\ZWbc@Hdefault]
+\DeclareStringOption[0mm]{bcorr}[0mm]
+\DeclareStringOption[3]{ratio}[3]
+\DeclareStringOption[2]{K} % for 2/5 Matrix, should be in <1.5; 4>
+\DeclareStringOption[1]{MtoXratio}[1]
+\DeclareStringOption{code}
+\DeclareBoolOption{help}
+
+% For ITF codes
+% \ZWbc@ITFdefine X R H
+\def\ZWbc@ITFdefine #1 #2 #3 {\@tempdima #1mm \multiply\@tempdima 5 \divide\@tempdima 2
+  \expandafter\def\expandafter\ZWbc@r\expandafter{\the\@tempdima}%
+  \def\ZWbc@R{#2mm}\def\ZWbc@ITF{X=#1mm,H=#3mm,ratio=2.5,MtoXratio=1,code=2/5-Interleaved}}
+
+\DeclareVoidOption{S1.2}{\ZWbc@ITFdefine 1.219 13.1 38.2 }
+\DeclareVoidOption{S1.1}{\ZWbc@ITFdefine 1.118 12.0 35.0 }
+\DeclareVoidOption{S1}{\ZWbc@ITFdefine   1.016 10.9 31.8 }
+\DeclareVoidOption{S.9}{\ZWbc@ITFdefine  0.914  9.8 28.7 }
+\DeclareVoidOption{S.8}{\ZWbc@ITFdefine  0.813  8.7 25.4 }
+\DeclareVoidOption{S.7}{\ZWbc@ITFdefine  0.711  7.1 22.3 }
+\DeclareVoidOption{S.6}{\ZWbc@ITFdefine  0.635  6.4 19.8 }
+
+\DeclareBoolOption{lines}
+\DeclareComplementaryOption{frame}{lines}
+
+\ZWbc@ITFdefine 1.016 10.9 31.8 
+
+\ProcessKeyvalOptions*
+
+% List all bar code names at the end of the package
+\ifzwbc@help
+  \AtEndOfPackage{\PackageInfo{makebarcode}{\ZWbc@codeList\@gobble}}
+\fi
+
+% Disable help at the end of the package
+\AtEndOfPackage{\DisableKeyvalOption[action=warning,package=makebarcode]{zwbc}{help}}
+
+% Interleave two strings, use as \ZWbc@interleave#1/#2*, result goes to \ZWbc@CHAR
+\def\ZWbc@interleave{\def\ZWbc@CHAR{}\ZWbc@dointerleave}
+\def\ZWbc@dointerleave#1#2/#3*{%
+    \expandafter\def\expandafter\ZWbc@CHAR\expandafter{\ZWbc@CHAR #1}%
+    \ifcat_#3_%
+      \def\next{}%
+    \else
+      \def\next{\ZWbc@dointerleave#3/#2*}%
+    \fi \next}
+
+% Temp counter
+\newcount\ZWbc@ctr
+
+% Make the table: \ZWbc@mktable name code code code @
+% The code has the form key|value, if the key is empty, the table is
+% automatically numbered
+
+\def\ZWbc@mktable #1 {\ZWbc@ctr\z@
+    \def\ZWbc@name{#1}\futurelet\next\ZWbc@tblcode}
+
+\def\ZWbc@tblcode{\if\next\zw@sp \def\next{\ZWbc@xsp:}\else
+    \if\next @\let\next\@gobble\else \let\next\ZWbc@mkcode \fi \fi \next}
+
+\def\ZWbc@mkcode #1|#2 {%
+    \ifcat_#1_%
+      \edef\ZWbc@key{\number\ZWbc@ctr}\advance\ZWbc@ctr\@ne
+    \else
+      \def\ZWbc@key{#1}%
+    \fi
+    \expandafter\gdef\csname ZWbc@tbl_\ZWbc@name_\ZWbc@key\endcsname{#2}%
+    \ZWbc@nextcode}
+
+\futurelet\zw@sp{ }
+\def\ZWbc@xsp: {\ZWbc@nextcode}
+\def\ZWbc@nextcode{\futurelet\next\ZWbc@tblcode}
+
+{\catcode`\_12 \lccode`_=32 \lowercase{\gdef\ZWbc@inactspace{_}}}
+
+% Make alias: \ZWbc@alias tblname existing_key new_key
+
+\def\ZWbc@alias #1 #2 #3 {\expandafter\expandafter\expandafter
+    \let\expandafter\csname ZWbc@tbl_#1_#3\expandafter\endcsname
+                    \csname ZWbc@tbl_#1_#2\endcsname}
+
+% This macro contains the current bar code name for error messages
+
+\def\ZWbc@currentbarcodename{Unknown}
+
+% This macro performs table lookup. It returns the coresponding character(s). If the
+% character(s) cannot be found in the table, the starred version returns the input
+% character(s) while the standard version emits an error message and returns \ZWbc@.
+% The result will be stored in \ZWbc@CHAR.
+
+\def\ZWbc@lookup{\@ifstar\ZWbc@slookup\ZWbc@nlookup}
+\def\ZWbc@slookup{\ZWbc@dolookup*}
+\def\ZWbc@nlookup{\ZWbc@dolookup!}
+
+\def\ZWbc@dolookup#1#2#3{% switchchar # table_name # character(s)
+    \def\ZWbc@key{ZWbc@tbl_#2_#3}%
+    \expandafter\ifx\csname\ZWbc@key\endcsname\relax
+      \if*#1 #3\else
+        \PackageError{makebarcode}{%
+           Character(s) `#3' not allowed in \ZWbc@currentbarcodename.}%
+          {You want to print `#3' in the bar code \ZWbc@currentbarcodename\MessageBreak
+           but it is not defined in the code table. If you proceed,\MessageBreak
+           it will be ignored and the resulting bar code will be wrong.}%
+        \let\ZWbc@CHAR\ZWbc@
+      \else
+        \def\ZWbc@CHAR{#3}%
+      \fi
+    \else
+      \edef\ZWbc@CHAR{\csname\ZWbc@key\endcsname}%
+    \fi}
+
+% Make \ZWbc@ unexpandable
+\let\ZWbc@\relax
+
+% Dimensions
+
+\newdimen\ZWbc@dimX
+\newdimen\ZWbc@dimH
+\newdimen\ZWbc@dimB
+\newdimen\ZWbc@dim@
+
+% Make a bar or blank of a specified width
+
+\def\ZWbc@bar#1{\ZWbc@dim@#1\advance\ZWbc@dim@ -\ZWbc@dimB
+    \vrule height \ZWbc@dimH depth \z@ width \ZWbc@dim@}
+
+\def\ZWbc@blank#1{\ZWbc@dim@#1\advance\ZWbc@dim@ \ZWbc@dimB
+    \kern \ZWbc@dim@}
+
+% Make an element, bar or blank
+
+\def\ZWbc@element{\ifx\ZWbc@prevelem\ZWbc@blank
+    \let\ZWbc@prevelem\ZWbc@bar \else
+    \let\ZWbc@prevelem\ZWbc@blank \fi \ZWbc@prevelem}
+
+% Set required width to \@tempdima, two algorithms used
+
+\def\ZWbc@widenarrow#1{%
+    \if 0#1%
+      \@tempdima=\ZWbc@dimX
+    \else
+      \@tempdima=\zwbc@ratio\ZWbc@dimX
+      \if K#1%
+        \@tempdima=\zwbc@K\@tempdima
+      \fi
+    \fi}
+
+\def\ZWbc@propwidth#1{\@tempdima=#1\ZWbc@dimX}
+
+% Make a character, width algorithm given as the first token
+% bar specification is delimited by @
+
+\def\ZWbc@character#1{\let\ZWbc@alg#1\let\ZWbc@prevelem\ZWbc@blank
+    \ZWbc@printchar}
+
+\def\ZWbc@printchar#1#2@{\ZWbc@alg#1\ZWbc@element{\@tempdima}%
+    \ifcat_#2_\let\next\ZWbc@endchar\else
+    \def\next{\ZWbc@printchar#2@}\fi \next}
+
+\def\ZWbc@endchar{\ifx\ZWbc@prevelem\ZWbc@bar \ZWbc@blank{\zwbc@MtoXratio\ZWbc@dimX}\fi}
+
+% Make a barcode
+
+\DeclareRobustCommand\barcode{\begingroup \catcode`\-12 \catcode`\"12 \ZWbc@barcode}
+\newcommand*\ZWbc@barcode[1][]{\ifcat$#1$ \else \setkeys{zwbc}{#1}\fi
+  \let\ZWbc@mkbarcode\endgroup
+  \ifcat$\zwbc@code$
+    \PackageError{makebarcode}{%
+       No barcode type specified.}%
+      {You have not specified the type of the barcode. If you proceed,\MessageBreak
+       the argument will be displayed as a normal text.}%
+  \else
+    \edef\ZWbc@currentbarcodename{\zwbc@code}%
+    \edef\ZWbc@@@{ZWbc@code_\ZWbc@currentbarcodename}%
+    \expandafter\ifx\csname\ZWbc@@@\endcsname\relax
+      \PackageError{makebarcode}{%
+         Unknown barcode type \ZWbc@currentbarcodename}%
+        {You have requested barcode type \ZWbc@currentbarcodename which is not\MessageBreak
+         implemented in this package. If you proceed, the argument\MessageBreak
+         will be displayed as a normal text.}%
+    \else
+      \expandafter\let\expandafter\ZWbc@mkbarcode\csname\ZWbc@@@\endcsname\ZWbc@setdims
+    \fi
+  \fi \ZWbc@mkbarcode}
+
+\def\ZWbc@def#1{\ZWbc@addTo{\MessageBreak #1}\expandafter\def\csname ZWbc@code_#1\endcsname}
+
+\def\ZWbc@addTo#1{\expandafter\def\expandafter\ZWbc@codeList\expandafter{\ZWbc@codeList #1}}
+\def\ZWbc@codeList{List of supported bar codes:}
+
+% Set dimensions
+
+\def\ZWbc@setdims{%
+    \ZWbc@dimX=\zwbc@X
+    \ZWbc@dimH=\zwbc@H
+    \ZWbc@dimB=\zwbc@bcorr}
+
+\def\ZWbc@Hdefault{40\ZWbc@dimX}
+
+% Sanitization
+
+\def\BarcodeSanitize{\@sanitize \catcode`\\0 }
+
+% End barcode printing
+
+\def\ZWbc@endbarcode{%
+  \expandafter\ZWbc@character\expandafter\ZWbc@widenarrow\ZWbc@stop @\unkern
+  \endgroup}
+
+% Table for 2/5 codes
+
+\ZWbc@mktable 2/5
+     0|00110
+     1|10001
+     2|01001
+     3|11000
+     4|00101
+     5|10100
+     6|01100
+     7|00011
+     8|10010
+     9|01010
+     @
+
+% 2/5 Start/Stop characters
+
+\ZWbc@mktable 2/5startstop
+     Start|110
+     Stop|101
+     IATAstart|00
+     IATAstop|10
+     InterleavedStart|000
+     InterleavedStop|100
+     MatrixStart|K0000
+     @
+
+\ZWbc@alias 2/5startstop MatrixStart MatrixStop
+\ZWbc@alias 2/5startstop InterleavedStart DatalogicStart
+\ZWbc@alias 2/5startstop InterleavedStop DatalogicStop
+
+% 2/5 Industrial
+
+\ZWbc@def{2/5-Industrial}{%
+  \ZWbc@lookup{2/5startstop}{Start}%
+  \expandafter\ZWbc@interleave\ZWbc@CHAR/00*%
+  \edef\ZWbc@start{\ZWbc@CHAR}%
+  \ZWbc@lookup{2/5startstop}{Stop}%
+  \expandafter\ZWbc@interleave\ZWbc@CHAR/00*%
+  \edef\ZWbc@stop{\ZWbc@CHAR}\ZWbc@init@twofive}
+
+% 2/5 IATA
+
+\ZWbc@def{2/5-IATA}{%
+  \ZWbc@lookup{2/5startstop}{IATAstart}%
+  \expandafter\ZWbc@interleave\ZWbc@CHAR/0*%
+  \edef\ZWbc@start{\ZWbc@CHAR}%
+  \ZWbc@lookup{2/5startstop}{IATAstop}%
+  \expandafter\ZWbc@interleave\ZWbc@CHAR/0*%
+  \edef\ZWbc@stop{\ZWbc@CHAR}\ZWbc@init@twofive}
+
+% 2/5 Matrix
+
+\ZWbc@def{2/5-Matrix}{%
+  \ZWbc@lookup{2/5startstop}{MatrixStart}%
+  \edef\ZWbc@start{\ZWbc@CHAR}%
+  \ZWbc@lookup{2/5startstop}{MatrixStop}%
+  \edef\ZWbc@stop{\ZWbc@CHAR}\ZWbc@compacttrue\ZWbc@init@twofive}
+
+% 2/5 Datalogic
+
+\ZWbc@def{2/5-Datalogic}{%
+  \ZWbc@lookup{2/5startstop}{DatalogicStart}%
+  \edef\ZWbc@start{\ZWbc@CHAR}%
+  \ZWbc@lookup{2/5startstop}{DatalogicStop}%
+  \edef\ZWbc@stop{\ZWbc@CHAR}\ZWbc@compacttrue\ZWbc@init@twofive}
+
+% 2/5 Inverted
+
+\ZWbc@def{2/5-Inverted}{%
+  \ZWbc@lookup{2/5startstop}{Start}%
+  \edef\ZWbc@CHAR{000/\ZWbc@CHAR*}%
+  \expandafter\ZWbc@interleave\ZWbc@CHAR
+  \edef\ZWbc@start{\ZWbc@CHAR}%
+  \ZWbc@lookup{2/5startstop}{Stop}%
+  \edef\ZWbc@CHAR{0000/\ZWbc@CHAR*}%
+  \expandafter\ZWbc@interleave\ZWbc@CHAR
+  \edef\ZWbc@stop{\ZWbc@CHAR}\ZWbc@invertedtrue\ZWbc@init@twofive}
+
+% 2/5-Interleaved
+
+\ZWbc@def{2/5-Interleaved}{%
+  \ZWbc@lookup{2/5startstop}{InterleavedStart}%
+  \edef\ZWbc@start{\ZWbc@CHAR}%
+  \ZWbc@lookup{2/5startstop}{InterleavedStop}%
+  \edef\ZWbc@stop{\ZWbc@CHAR}\begingroup \BarcodeSanitize \ZWbc@count@twofive}
+
+% Optionally prepend leading zero
+\def\ZWbc@count@twofive#1{\endgroup
+  \edef\ZWbc@string{#1}\expandafter\ZWbc@nextchar\ZWbc@string*}
+
+\def\ZWbc@nextchar#1#2*{\ZWbc@flip
+  \ifcat_#2_%
+    \let\next\ZWbc@int@leading
+  \else
+    \def\next{\ZWbc@nextchar#2*}%
+  \fi \next}
+
+\def\ZWbc@int@leading{\ifZWbc@compact \edef\ZWbc@string{0\ZWbc@string}\fi
+  \expandafter\ZWbc@character\expandafter\ZWbc@widenarrow\ZWbc@start @%
+  \expandafter\ZWbc@int@twofive\ZWbc@string*}
+
+\def\ZWbc@int@twofive#1#2#3*{%
+  \ZWbc@lookup{2/5}{#1}%
+  \ifx\ZWbc@CHAR\ZWbc@ \else
+    \edef\ZWbc@temp{\ZWbc@CHAR}%
+    \ZWbc@lookup{2/5}{#2}%
+    \ifx\ZWbc@CHAR\ZWbc@ \else
+      \edef\ZWbc@temp{\ZWbc@temp/\ZWbc@CHAR*}%
+      \expandafter\ZWbc@interleave\ZWbc@temp
+      \expandafter\ZWbc@character\expandafter\ZWbc@widenarrow\ZWbc@CHAR @%
+    \fi
+  \fi
+  \ifcat_#3_\let\next\ZWbc@endbarcode\else
+  \def\next{\ZWbc@int@twofive#3*}\fi \next}
+
+\def\ZWbc@flip{\ifZWbc@compact \ZWbc@compactfalse \else \ZWbc@compacttrue \fi}
+
+% Common 2/5 commands
+
+\newif\ifZWbc@compact
+\newif\ifZWbc@inverted
+
+\def\ZWbc@init@twofive{\begingroup \BarcodeSanitize \ZWbc@twofive}
+
+\def\ZWbc@twofive#1{\endgroup \edef\ZWbc@string{#1}%
+  \expandafter\ZWbc@character\expandafter\ZWbc@widenarrow\ZWbc@start @%
+  \expandafter\ZWbc@dotwofive\ZWbc@string*}
+
+\def\ZWbc@dotwofive#1#2*{%
+  \ZWbc@lookup{2/5}{#1}%
+  \ifx\ZWbc@CHAR\ZWbc@ \else
+    \ifZWbc@compact \else
+      \ifZWbc@inverted
+        \edef\ZWbc@CHAR{00000/\ZWbc@CHAR*}%
+        \expandafter\ZWbc@interleave\ZWbc@CHAR
+      \else
+        \expandafter\ZWbc@interleave\ZWbc@CHAR/0000*%
+      \fi
+    \fi
+    \expandafter\ZWbc@character\expandafter\ZWbc@widenarrow\ZWbc@CHAR @%
+  \fi
+  \ifcat_#2_\let\next\ZWbc@endbarcode\else
+  \def\next{\ZWbc@dotwofive#2*}\fi \next}
+
+% Table for 39 codes (** is a start/stop character, not 2 stars)
+
+\ZWbc@mktable 39
+     |000110100
+     |100100001
+     |001100001
+     |101100000
+     |000110001
+     |100110000
+     |001110000
+     |000100101
+     |100100100
+     |001100100
+     |100001001
+     |001001001
+     |101001000
+     |000011001
+     |100011000
+     |001011000
+     |000001101
+     |100001100
+     |001001100
+     |000011100
+     |100000011
+     |001000011
+     |101000010
+     |000010011
+     |100010010
+     |001010010
+     |000000111
+     |100000110
+     |001000110
+     |000010110
+     |110000001
+     |011000001
+     |111000000
+     |010010001
+     |110010000
+     |011010000
+     |010000101
+     |110000100
+     |011000100
+     |010101000
+     |010100010
+     |010001010
+     |000101010
+     |010010100
+     @
+
+{\catcode`\$ 12 \catcode`\%12
+\ZWbc@mktable 39num
+     0|0
+     1|1
+     2|2
+     3|3
+     4|4
+     5|5
+     6|6
+     7|7
+     8|8
+     9|9
+     A|10
+     B|11
+     C|12
+     D|13
+     E|14
+     F|15
+     G|16
+     H|17
+     I|18
+     J|19
+     K|20
+     L|21
+     M|22
+     N|23
+     O|24
+     P|25
+     Q|26
+     R|27
+     S|28
+     T|29
+     U|30
+     V|31
+     W|32
+     X|33
+     Y|34
+     Z|35
+     -|36
+     .|37
+     { }|38
+     $|39
+     /|40
+     +|41
+     %|42
+     **|43
+     @
+}
+
+% Code39
+
+\ZWbc@def{Code39}{%
+  \ZWbc@lookup{39num}{**}%
+  \ZWbc@lookup{39}{\ZWbc@CHAR}%
+  \edef\ZWbc@start{\ZWbc@CHAR}%
+  \let\ZWbc@stop\ZWbc@start
+  \ZWbc@init@threenine}
+
+\def\ZWbc@init@threenine{\begingroup \BarcodeSanitize \ZWbc@threenine}
+
+\def\ZWbc@threenine#1{\endgroup \edef\ZWbc@string{#1}%
+  \expandafter\ZWbc@character\expandafter\ZWbc@widenarrow\ZWbc@start @%
+  \expandafter\ZWbc@dothreenine\ZWbc@string*}
+
+\def\ZWbc@dothreenine#1#2*{%
+  \ZWbc@lookup{39num}{#1}%
+  \ifx\ZWbc@CHAR\ZWbc@ \else
+    \ZWbc@lookup{39}{\ZWbc@CHAR}%
+    \expandafter\ZWbc@character\expandafter\ZWbc@widenarrow\ZWbc@CHAR @%
+  \fi
+  \ifcat_#2_\let\next\ZWbc@endbarcode\else
+  \def\next{\ZWbc@dothreenine#2*}\fi \next}
+
+% HPlabel, requires rotating, must be loaded separatelly
+% see http://www.hp.com/go/storagemedia
+
+\def\HPlabel{\begingroup \BarcodeSanitize \ZWbc@HPlabel}
+\ZWbc@addTo{\MessageBreak\string\HPlabel\space (using Code39)}
+
+\def\ZWbc@HPlabel#1{\endgroup \edef\ZWbc@hpstring{#1}%
+  \vbox to 16.5mm{\hsize 78mm \parindent\z@ \parskip\z@ \lineskiplimit\z@ \lineskip.9mm
+    \usefont{OT1}{phv}{m}{n}\leftskip 5.5mm \rightskip\leftskip
+    \noindent \barcode[code=Code39,X=.42mm,ratio=3,H=6.3mm,bcorr=0mm]{#1}\par
+    \setbox\ZWbc@hpbox=\hbox
+       {\begin{turn}{180}\barcode[code=Code39,X=.23mm,ratio=3,H=6.5mm,bcorr=0mm]{#1}\end{turn}}
+    \noindent \raise\dp\ZWbc@hpbox\box\ZWbc@hpbox \hfill
+    \begin{sideways}\vbox{\hsize 6.5mm \fontsize{10}{11}\selectfont
+      \leftskip\z@ \rightskip\z@ \centering
+      \expandafter\ZWbc@mkHPlabel\ZWbc@hpstring\ZWbc@}\end{sideways}\par
+  \vss
+  \centering \fontsize{6}{6}\selectfont
+  This edge of the label toward hub of tape\par}}
+
+\def\ZWbc@mkHPlabel#1#2#3#4#5#6#7#8#9\ZWbc@{%
+  \ifcat_#8_\ZWbc@HPtoofew\fi
+  \ifcat_#9_\else\ZWbc@HPtoomany\fi
+  #1\par#2\par#3\par#4\par#5\par#6\par#7#8\par}
+
+\newbox\ZWbc@hpbox
+
+\def\ZWbc@HPtoomany{\ZWbc@HPerror{many}}
+\def\ZWbc@HPtoofew{\ZWbc@HPerror{few}}
+\def\ZWbc@HPerror#1{\PackageError{makebarcode}%
+  {Too #1 characters supplied in HP label code \ZWbc@hpstring}%
+  {The label code must contain exactly 8 characters.\MessageBreak
+   Your label will be unusable.}}
+
+% ITF-6/14/16
+
+\def\ITFbarcode{\begingroup \BarcodeSanitize \ZWbc@ITFbarcode}
+\ZWbc@addTo{\MessageBreak\string\ITFbarcode\space (ITF-6/14/16)}
+
+\newbox\ZWbc@ITFbox
+\newdimen\ZWbc@ITFwidth
+\newtoks\ZWbc@ITFtoks
+
+\newcommand*\ZWbc@ITFbarcode[2][]{\ifcat$#1$\else \setkeys{zwbc}{#1}\fi
+  \vbox{\hbox{\vbox{%
+    \ifzwbc@lines
+      \hrule height \ZWbc@r
+    \else
+      \hrule height 4.8mm
+    \fi
+    \setbox\ZWbc@ITFbox=\hbox{%
+      \ifzwbc@lines
+        \hskip\ZWbc@r
+      \else
+        \vrule width 4.8mm \hskip\ZWbc@R
+      \fi
+      \relax
+      \expandafter\barcode\expandafter[\ZWbc@ITF]{#2}%
+      \ifzwbc@lines
+        \hskip\ZWbc@r
+      \else
+        \hskip\ZWbc@R \vrule width 4.8mm
+      \fi}%
+    \global\ZWbc@ITFwidth\wd\ZWbc@ITFbox \box\ZWbc@ITFbox
+    \ifzwbc@lines
+      \hrule height \ZWbc@r
+    \else
+      \hrule height 4.8mm
+    \fi}}%
+    \vskip\ZWbc@r
+    \ZWbc@startITFdigits #2\ZWbc@
+    \font\ocrb ocrb10 at 14.4pt
+    \hbox to \ZWbc@ITFwidth{\hskip\@tempdima \ocrb \the\ZWbc@ITFtoks\hskip\@tempdima}%
+  }%
+  \endgroup}
+
+
+\def\ZWbc@startITFdigits#1{\ZWbc@ctr\@ne
+  \@tempdima\ZWbc@r \multiply\@tempdima 2
+  \ifzwbc@lines
+    \advance\@tempdima\ZWbc@r
+  \else
+    \advance\@tempdima\ZWbc@R
+    \advance\@tempdima 4.8mm
+  \fi
+  \ZWbc@ITFtoks{#1}\ZWbc@ITFdigits}
+
+\def\ZWbc@ITFdigits#1#2\ZWbc@{%
+  \ZWbc@ITFtoks\expandafter{\the\ZWbc@ITFtoks\hfill #1}%
+  \advance\ZWbc@ctr\@ne
+  \ifcat$#2$%
+    \let\next\ZWbc@endITFdigits
+  \else
+    \def\next{\ZWbc@ITFdigits#2\ZWbc@}%
+  \fi \next}
+
+\def\ZWbc@endITFdigits{%
+  \ifnum\ZWbc@ctr=6 \else
+    \ifnum\ZWbc@ctr=14 \else
+      \ifnum\ZWbc@ctr=16 \else
+        \PackageError{makebarcode}%
+          {Wrong number of digits for ITF-6/14/16}%
+          {Only ITF-6, ITF-14, ITF-16 are allowed.\MessageBreak
+           You must supply corresponding number of digits.\MessageBreak
+           This bar code will be unusable.}%
+      \fi
+    \fi
+  \fi}
+
+% Test macro (to be removed)
+\def\ZWBCtest #1 {\csname ZWbc@#1\endcsname}

@@ -1,0 +1,190 @@
+% see the bottom of the file for a description and usage notes
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{theoremref}
+         [2008/05/13 References with automatic theorem names]
+
+\DeclareOption{lowercase}{\let\thmref@lc\lowercase}
+\DeclareOption{reftex}
+    {\renewcommand\th[1]{\csname th\expandafter\@gobble\string#1\endcsname}}
+\def\thmref@lc#1{#1}
+\ProcessOptions\relax
+
+%hook in \@thm to get the name
+\def\thmref@newthm#1#2{\thmref@lc{\def\thmref@currname{#2}}%
+   \thmref@oldthm{#1}{#2}}
+\def\thmref@amsthm#1#2#3{\thmref@lc{\def\thmref@currname{#3}}%
+   \thmref@oldthm{#1}{#2}{#3}}
+\def\thmref@setup{\let\thmref@oldthm\@thm
+   \@ifpackageloaded{amsthm}{\let\@thm\thmref@amsthm}%
+        {\let\@thm\thmref@newthm}}
+\AtBeginDocument{\thmref@setup}
+
+%hacked version of \label from the kernel
+\DeclareRobustCommand\thlabel[1]{\@bsphack
+    \protected@write\@auxout{}%
+           {\string\newlabel{#1}{{\@currentlabel}{\thmref@currname}}}%
+    \@esphack}
+
+%\let\thnameref\pageref fails miserably when the ref is undefined
+\DeclareRobustCommand\thnameref[1]
+           {\expandafter\thmref@setref\csname r@#1\endcsname}
+\def\thmref@setref#1{\ifx#1\relax?THM?\else\expandafter\@secondoftwo#1\fi}
+
+\newif\ifthmref@comma \newif\ifthmref@final \newcount\thmref@num
+\DeclareRobustCommand\thref[1]{\let\thmref@last\empty \let\thmref@stack\empty
+   \let\thmref@head\empty \thmref@commafalse \thmref@finalfalse 
+   \thmref@doref#1,,}
+\def\thmref@doref#1,{%
+   \ifx,#1,\ifthmref@comma\ifthmref@final,\fi\space and \fi
+      \thmref@commafalse \expandafter\thmref@flush
+   \else\edef\thmref@this{\thnameref{#1}}%
+      \ifx\thmref@this\thmref@last
+         \let\do\relax \edef\thmref@stack{\thmref@stack\do{\thmref@head}}%
+      \else \thmref@flush \let\thmref@last\thmref@this \fi
+      \def\thmref@head{#1}\expandafter\thmref@doref\fi}
+\def\thmref@flush{%
+   \ifx\thmref@last\empty\else
+      \ifthmref@comma, \thmref@finaltrue\fi \thmref@commatrue
+      \thmref@last \ifx\thmref@stack\empty\else s\fi \thmref@num 0
+      \let\do\thmref@one \thmref@stack
+      \ifcase\thmref@num\or\space and\else\thmref@finaltrue, and\fi
+      ~$\ref{\thmref@head}$\let\thmref@stack\empty\fi}
+\def\thmref@one#1{\ifnum\thmref@num>0,\fi
+   \space$\ref{#1}$\advance\thmref@num 1\relax}
+
+\endinput
+
+package: theoremref
+
+author: Emil Je\v{r}\'abek <jerabek@math.spam.cz> (replace spam with cas)
+
+
+INTRODUCTION
+
+So, you are writting up your math paper or thesis. There is the
+all-important Lemma 3.14 referenced from a dozen places throughout
+the paper, but you have just realized that its proof requires another
+lemma which should go before Lemma 3.14, hence all the references to
+Lemma 3.14 have to shift to Lemma 3.15. Now that's quite simple to do:
+you just insert the new lemma, and LaTeX relabels the references for you
+behind the scenes. Good.
+
+Then you decide that Lemma 3.15 is, in fact, so important that you
+better call it a Theorem rather than just a Lemma, hence all the
+references to Lemma 3.15 should change to Theorem 3.15. Now that's
+quite simple to do: you just replace the name of the theorem
+environment of 3.15, and LaTeX relabels the references for you behind
+the scenes... uhhh, except that it does not, actually. You have to go
+through the paper and manually change every occurrence of
+``Lemma~\ref{main}'' to ``Theorem~\ref{main}''. Your editor software may
+help with automatic text replacement, but that's no good by itself,
+you unfortunately still have to watch out for cases like ``Lemmas
+\ref{baz-quux} and~\ref{main}''. Needless to say, the whole business
+is rather error-prone, and very annoying, especially if you later
+decide that 3.15 is, after all, a Lemma, with the prospect of changing
+all those references back again.
+
+The theoremref package is designed to fill this gap in the LaTeX
+automatic reference system. It provides variants of the \label and
+\ref commands which automatically supply the correct theorem
+environment name into a reference, thus avoiding all the hassle
+described above.
+
+
+BASIC USAGE
+
+(1) Put ``\usepackage{theoremref}'' anywhere in the document preamble.
+
+(2) For each theorem which you intend to use in the new system, declare
+    its label by ``\thlabel{foobar}''. For example,
+
+       \begin{Lem}\thlabel{exact}
+          Every projective formula is exact.
+       \end{Lem}
+
+(3) There are three commands available for producing references to
+    your theorems: ``\ref{foo}'' gives the number, as usual;
+    ``\thref{foo}'' gives the theorem name followed by number; and
+    ``\thnameref{foo}'' gives just the theorem name. Example:
+
+       \ref{exact}        ->  5.7.7
+       \thref{exact}      ->  Lemma~5.7.7
+       \thnameref{exact}  ->  Lemma
+
+    The \thref command can handle an arbitrary number of arguments,
+    separated by commas:
+
+       \thref{exact,zorn,main} -> Lemmas 5.7.7 and~2.1.5 and Theorem~6.6.4
+
+
+OPTIONS
+
+- ``\usepackage[lowercase]{theoremref}'' will set your theorem
+  references in lowercase, e.g., ``lemma 5.7.7''. Note that there is
+  no provision for capitalization at the beginning of a sentence.
+
+- ``\usepackage[reftex]{theoremref}'' provides an alternative
+  interface to the main commands: you can say ``\th\label{foo}'' and
+  ``\th\ref{foo}'' instead of ``\thlabel{foo}'' and ``\thref{foo}''.
+  The effect is that the labelling and referencing commands are
+  correctly recognized as such by the Emacs reftex package (and,
+  presumably, other similar editing tools).
+
+
+CAVEATS
+
+- The \thlabel command reuses the slot for page number in the .aux
+  file. This should do no harm, as the latter is generally useless, I've
+  never seen anybody refer to a numbered theorem by its page number. But
+  to be on the safe side, here's an explicit warning: if you declare foo
+  by ``\thlabel{foo}'', you cannot use ``\pageref{foo}'' to get its page
+  number (it will actually give the theorem name). If you absolutely
+  need both, you can declare two labels for the same theorem:
+  ``\label{foo-page}\thlabel{foo-name}''.
+
+- If ``\thref{bar}'' gives you a cryptic result like ``12 3.15''
+  instead of the theorem name, you probably forgot to use ``\thlabel''
+  instead of ``\label'' (see the previous point for explanation). Note
+  that after you switch from one to the other, you may need to TeX the
+  file twice in order for the change to propagate to the .aux file and
+  back.
+
+- The new referencing commands only work for theorem environments
+  declared using the ``\newtheorem'' command. You *cannot* use them for
+  e.g. tables, figures, equations, sections, and other environments.
+
+- The implementation depends on some internals of the theorem
+  typesetting macros. It is compatible with the ``theorem'' and
+  ``amsthm'' packages, as well as the default theorem system in base
+  LaTeX. It may fail for other theorem-like packages.
+
+
+LICENSE
+
+The theoremref package is dually licensed under GPL or LPPL at your
+option:
+
+Copyright (C) 2008 Emil Je\v{r}\'abek
+
+This package may be distributed and/or modified under the
+conditions of the LaTeX Project Public License, either version 1.3
+of this license or (at your option) any later version.
+The latest version of this license is in
+   http://www.latex-project.org/lppl.txt
+and version 1.3 or later is part of all distributions of LaTeX
+version 2003/12/01 or later.
+
+This package is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This package is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+

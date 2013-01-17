@@ -1,0 +1,252 @@
+%
+% verbfwr.sty -- LaTeX package that writes verbatim to a file
+% by pts@fazekas.hu at Sat Sep 27 23:40:12 CEST 2003
+%
+% Code partially ripped from sverb.sty
+% Dat: space tokens at EOL are ignored by TeX's eyes
+%
+% Dat: changed \@tempa to \VerbFwrLines, so we have:
+%      ! File ended while scanning use of \VerbFwrLines.
+% !! use latex.ltx \begin{filecontents}
+%
+% Dat: callbacks are: (see below)
+%   \verbfwr@actemitlineone
+%   \verbfwr@actemitline
+%   \verbfwr@actemitdone
+%
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{verbfwr}[2003/09/25 v0.02 Verbatim file write]
+
+\newif\ifverbfwr@matched
+\def\verbfwr@matcher#1#2#3{%
+  \expandafter\def\csname\string#1$after\endcsname##1#2\relax{%
+    \def\verbfwr@@terminator{#2}% `\end{foo}' with \string
+    \def\verbfwr@@after{##1}}%
+  \expandafter\def\csname\string#1$match\endcsname##1#2##2##3\end{%
+    \ifx##2\relax\verbfwr@matchedfalse
+    \else\verbfwr@matchedtrue\csname\string#1$after\endcsname##2##3\fi
+    #3{##1}%
+  }%
+  \expandafter\def\expandafter#1\expandafter##\expandafter1\expandafter{%
+    \csname\string#1$match\endcsname##1#2\relax\end%
+  }%
+}
+\begingroup
+\catcode\string`\%=12
+\gdef\verbfwr@percent#1#2\relax
+    {\ifx\check@percent\@@undefined
+                     \ifx#1\relax\def\VerbFwrLines{}\else
+                         \def\VerbFwrLines{#1#2}\fi\else
+                     \ifx#1\relax\def\VerbFwrLines{}\else
+                         \ifx#1%\def\VerbFwrLines{#2}\else
+                             \def\VerbFwrLines{#1#2}\fi\fi\fi}
+\endgroup
+\begingroup
+\lccode\string`\~32
+\lowercase{\endgroup
+  \def\verbfwr@isspaces#1{%
+    \ifx#1\relax \def\@tempb{\@tempswafalse}%
+    \else\ifx#1~\let\@tempb\verbfwr@isspaces%
+    \else\def\@tempb##1\relax{}%
+    \fi\fi%
+    \@tempb%
+  }
+  \def\verbfwr@safespc{\catcode32 13 \def~{ }}
+}
+\def\verbfwr@default@acts{%
+%** Callback called before each line. Should call
+%** `\let\verbfwr@actemitlineone\@empty' to prevent subsequent callbacks.
+\gdef\verbfwr@actemitlineone{%
+  %\hrule
+  \let\verbfwr@actemitlineone\@empty
+}%
+%** Callback called after the last line (even if \verbfwr@actemitlineone
+%** isn't \@empty). This can detect the presence of lines by checking
+%** \ifx\verbfwr@actemitlineone\@empty .
+\let\verbfwr@actemitdone\@empty
+%** Called fore each line, with macro \VerbFwrLines containing the line itself
+%** @param #1 \cs process-line-proc
+\def\verbfwr@actemitline##1{%
+  \begingroup
+  \expandafter##1\expandafter{\VerbFwrLines}%
+  \endgroup
+}%
+}
+\verbfwr@default@acts
+%** Dat: discards spaces at EOL (but not at BOL if BOL!=EOL)
+%** @param #1 end-text
+%** @param #2 \cs process-line-proc
+%** @param #3 \cs end-proc
+\def\verbfwr@read#1#2#3{%
+  \begingroup%
+  \verbfwr@matcher\verbfwr@match{#1}\verbfwr@read@ii%
+  \@tempswafalse
+  \catcode13 13 \catcode32 13
+  \lccode\string`\~13\lowercase{%
+    \def\verbfwr@read@i##1~{\verbfwr@match{##1}}%
+  }%
+  \def\verbfwr@read@ii##1{%
+    % Dat: The TeXbook, page 46 says that characters with code 32 are removed
+    %      from the end of the lines. This is independent of \catcode32
+    %%\def\VerbFwrLines{##1}\show\VerbFwrLines
+    \verbfwr@percent##1\relax\relax%
+    \ifverbfwr@matched\@tempswafalse\fi%
+    % vvv Dat: ignore the very first line (with \begin{VerbWrite}), entirely
+    %     made of spaces -- will never occur, because
+    %     trailing spaces have already been trimmed
+    \if@tempswa\else\@tempswatrue\expandafter\verbfwr@isspaces\VerbFwrLines\relax\fi%
+    \if@tempswa
+      \verbfwr@actemitlineone
+      \verbfwr@actemitline{#2}%
+    \fi%
+    \@tempswatrue
+    \ifverbfwr@matched
+      \ifx\verbfwr@@after\@empty\else
+        \PackageWarning{verbfwr}{Text right from \verbfwr@@terminator\space was ignored}%
+      \fi
+      %\def\reserved@a{##1}%
+      \def\VerbFwrLines{%\ifx\verbfwr@actemitlineone\@empty\verbfwr@actemitdone\fi
+        \verbfwr@actemitdone \endgroup#3}%
+    \else\let\VerbFwrLines\verbfwr@read@i\fi%
+    \VerbFwrLines
+  }%
+  \verbfwr@read@i
+}
+\begingroup
+\lccode\string`\<=\string`\{ \lccode\string`\>=\string`\} \lccode\string`\|=\string`\\
+\lowercase{\endgroup
+  %** @example \verbfwr@readenv\verbfwr@read
+  \def\verbfwr@readenv#1{%
+    \expandafter\expandafter\expandafter%
+    #1\expandafter\verbfwr@readenv@i\@currenvir\hfuzz}
+  \def\verbfwr@readenv@i#1\hfuzz{{|end<#1>}{\end{#1}}}
+  %** @param #1 stop line
+  %** @param #2 code to call at stop
+  \def\verbfwr@readenv@ii#1\hfuzz#2{{|end<#1>}{#2}}
+}
+%** @param #1<-\end{VerbWrite} (with full catcode 12)
+%** @param #2<-\end {VerbWrite} (with various catcodes for \, e, { and }
+\def\verbfwr@write#1#2{%
+  \begingroup%
+  \@savsf1000 \@savsk\z@skip% in case \verbfwr@actemitlineone initiates horizontal mode
+  \@bsphack% Dat: too early to say \@bsphack here, because
+  \let\do\@makeother\dospecials% \catcode`\\=12 etc. (see latex.ltx for \dospecials)
+  \@tempcnta127
+  \loop\ifnum\@tempcnta<256 \catcode\@tempcnta12 \advance\@tempcnta\@ne\repeat
+  \catcode9=12 % tab: \t, will be emitted as ^^I to the file (force this!)
+  % Dat: eempost.sty has to be updated (?! not sure)
+  %\catcode\string`\^13 % allow ^^e1 hex...
+  \verbfwr@safespc% each space counts when reading (similar to \obeyspaces)
+  \verbfwr@read{#1}\verbfwr@actwriteline{\@esphack\endgroup#2}%
+}
+%** \let\verbfwr@actwriteline\verbfwr@writeline
+\def\verbfwr@writeline#1{%
+  %%\showthe\catcode92 \toks0{#1} \showthe\toks0
+  \immediate\write\verbfwr@writecs{#1}%
+}
+\newwrite\verbfwr@writefile
+%** Usage: \begin{VerbWrite}{filename.ext}...\end{VerbWrite}. File will end with \n. The
+%** line contents after \end{verbwrite} are ignored.
+\def\VerbWrite#1{%
+  \immediate\openout\verbfwr@writefile#1\relax%
+  \let\verbfwr@writecs\verbfwr@writefile
+  \let\verbfwr@actwriteline\verbfwr@writeline
+  \verbfwr@readenv\verbfwr@write
+  % \foo\bar % would write also this!
+}
+\def\endVerbWrite{\immediate\closeout\verbfwr@writefile}
+%\expandafter\def\csname verbwrite*\endcsname#1#2{%
+%  \immediate\openout\verbfwr@writefile#2\relax%
+%  \let\verbfwr@writecs\verbfwr@writefile
+%  \verbfwr@write{#1}{\immediate\closeout\verbfwr@writefile\end{verbwrite*}}%
+%}
+
+\begingroup\catcode\string`\^^M=3 % math shift. Weird enough.
+% ^^^ Dat: Each line following the prev. catcode def. must end with `%'
+%     otherwise we get `! Missing $ inserted' for
+%     \begin{PSource}[srcstyle=leftleft]
+%     a&b
+%     \end{PSource}
+\gdef\verbfwr@noter@endtest#1#2#3#4#5#6^^M{%%
+  \edef\reserved@a{\string#1}%%
+  \def\reserved@b{#1#2#3#4{#5}}%%
+}%%
+\gdef\verbfwr@noter@eachline#1^^M{%%
+  \expandafter\verbfwr@noter@endtest\string#1[][][]^^M% set \reserved@a and \reserved@b
+  %%\show\reserved@b%
+  \if\string^^M\reserved@a%%
+    % If we are here then our line, #1 begins with ^^M (with a \catcode
+    % different from 3, which we've set above). This means that somebody
+    % (our caller) has inserted a ^^M before we've been able to change
+    % \catcodes. The typical example is \@ifnextchar, looking for a `[', but
+    % finding only ^^M. That ^^M would have whatever catcode. Another typical
+    % example is \verbfwr@noter@read0, whose ^^M we should ignore immediately
+    %   Our strategy is to ignore that extra ^^M.
+    \expandafter\expandafter\expandafter\verbfwr@noter@endtest%%
+    \expandafter\string\@gobble#1[][][]^^M%%
+    % ^^^ this sets \reserved@b, so we can properly end the environment here
+    \let\reserved@a\@gobble%%
+  \else%%
+    \let\reserved@a\@empty%%
+  \fi%%
+  \ifx\reserved@b\verbfwr@@noter@end%%
+    %\ifx\verbfwr@actemitlineone\@empty\verbfwr@actemitdone\fi%
+    \verbfwr@actemitdone%% BUGFIX: added `%' to this line at Fri Nov 12 00:03:26 CET 2004
+    \endgroup%% &agroup;
+    \expandafter\end\expandafter{\@currenvir}%%
+  \else%%
+    \verbfwr@actemitlineone%%
+    \expandafter\def\expandafter\VerbFwrLines\expandafter{\reserved@a#1}%%
+    \verbfwr@actemitline{}%%
+    \expandafter\verbfwr@noter@eachline%%
+  \fi%%
+}%%
+\endgroup% \catcode
+
+%** by pts@fazekas.hu at Sun Dec  7 20:41:22 CET 2003
+%** Similar to \verbfwr@readenv\verbfwr@write (which doesn't write anything
+%** to a file if all \verbfwr@actemit.. callbacks are redefined), but always
+%** stops reading at end of \@currenvir (and doesn't gobble the rest of the
+%** line) provided that it is at BOL (/^\s*/). Calls the usual callbacks
+%** \verbfwr@actemitlineone, \verbfwr@actemitlineone and
+%** \verbfwr@actemitline. Works with normal \catcodes, only the \catcode of
+%** ^^M is changed.
+%** @param #1 0|1. Insert an empty line if \begin{...} is followed by ^^M?
+%** Dat: discards spaces at BOL and EOL
+%** Dat: doesn't discard empty lines
+%** Dat: accepts \end{...} marker only at BOL (/^\s*/)
+\def\verbfwr@noter@read#1{%
+  \begingroup% &agroup;
+  \edef\verbfwr@@noter@end{\string\end{\@currenvir}}%
+  \if1\noexpand#1%
+    \expandafter\verbfwr@noter@ignore@start% remember ^^M just after \begin{foo}
+  \else
+    \obeylines% \catcode\string`^^M=13
+    \expandafter\expandafter\expandafter\verbfwr@noter@ignore@start
+    \expandafter\noexpand% trick to ignore ^^M after \begin{foo}
+  \fi
+}
+\def\verbfwr@noter@ignore@start{%
+  \catcode\string`\^^M=3
+  \verbfwr@noter@eachline%
+}
+
+%** \begin{WFile}{filename}contents^^J\end{WFile}
+\def\WFile#1{%
+  \immediate\openout\verbfwr@writefile#1\relax
+  \let\verbfwr@writecs\verbfwr@writefile
+  \let\verbfwr@actwriteline\verbfwr@writeline
+  \verbfwr@default@acts
+  \verbfwr@readenv\verbfwr@write}% finish this \cs here
+\def\endWFile{\immediate\closeout\verbfwr@writefile}
+
+%** Writes directly to the aux file
+\def\WAux{%
+  \let\verbfwr@writecs\@auxout
+  \let\verbfwr@actwriteline\verbfwr@writeline
+  \verbfwr@default@acts
+  \verbfwr@readenv\verbfwr@write}% finish this \cs here
+\def\endWAux{}%
+
+\endinput%% End of verbfwr.sty

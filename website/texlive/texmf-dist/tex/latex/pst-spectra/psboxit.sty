@@ -1,0 +1,175 @@
+%       psboxes.sty
+%
+% This package enables to put a PostScript drawing behind a TeX box.
+% The drawing is parametrized by the position and the size of the
+% TeX box. To put a gray [rounded] box behind a word use
+%       \PScommands % Once at the begining
+%
+%       ... text text \psboxit{25 cartouche}{THE WORD} text text
+%       \psboxit{box 0.5 setgray fill}{\spbox{ANOTHER WORD}}
+%       text text ...
+%
+%            * If your boxes are ill sized try to change 16384 to
+% something else (original code used 65536).
+% % 65536 is the internal unit of TeX (scaled point, TeXBook page 57)
+% Those macros were adapted from Tom Sheffler (CMU)'s psframe.sty style. In
+% particular, the spacebox macro was just copied from his style.
+%
+%       Je'ro^me MAILLOT, INRIA
+%       maillot@bora.inria.fr
+%       August 1991
+%
+%
+% A Few PostScript definitions to use with \psboxit
+% Call \PScommands once at the begining of your program, this will
+% define : box roundedbox rectcartouche and cartouche. They are 4
+% PostScript programs. Change the values before setlinewidth end
+% setgray to customize your boxes
+%
+%     Ex : \psboxit{25 cartouche}{blah blah}
+%          \psboxit{rectcartouche}{blah blah}
+%
+\long\def\PScommands{\special{! TeXDict begin
+/box{%                  Processes the path of a rectangle.
+%                       Needs : x0 y0 x1 y1.
+newpath 2 copy moveto 3 copy pop exch lineto 4 copy pop pop
+lineto 4 copy exch pop exch pop lineto closepath } bind def
+%
+%
+/min{ 2 copy  gt { exch } if pop } bind def%
+/max{ 2 copy  lt { exch } if pop } bind def%
+/roundedbox{%           Processes the path of a rounded rectangle.
+%                       Needs : x0 y0 x1 y1 radius.
+%       The bounding box is augmented by +/- radius to allow easily to
+%       frame several rounded boxes around the same Texture box. Ex:
+%  \psboxit{4 copy 15 roundedbox 25 roundedbox} {\spbox{Some Text}}
+%       draws two scaled boxes arond the same word. Delete the `radius
+%       sub' and `radius add' commands to suppress that enlargement.
+%
+/radius exch store
+3 2 roll %              x0 x1 y1 y0
+2 copy min radius sub /miny exch store 
+       max radius add /maxy exch store
+2 copy min radius sub /minx exch store 
+       max radius add /maxx exch store
+newpath
+minx radius add miny moveto
+maxx miny maxx maxy radius arcto
+maxx maxy minx maxy radius arcto
+minx maxy minx miny radius arcto
+minx miny maxx miny radius arcto 16 {pop} repeat
+closepath
+}bind def
+%
+%
+/rectcartouche{%        Draws a filled and framed box
+%                       Needs : x0 y0 x1 y1
+box gsave  .95 setgray fill grestore 1 setlinewidth stroke }bind def
+%
+%
+/cartouche{%            Draws a filled and framed rounded box
+%                       Needs : x0 y0 x1 y1 radius
+roundedbox gsave .95 setgray fill grestore 1 setlinewidth stroke }bind def
+%
+end }%                  Closes dictionnary
+}\PScommands%
+%%
+%% PSBOXIT
+%%
+%% \psboxit{PS program}{TeX stuff}
+%%
+%% The bounding box of the TeX stuff is pushed on the PostScript stack
+%% and then the program in the first argument is called
+%%
+%% EXAMPLE: set some text on a gray background, Use the SPBOX macro to
+%% give some space around the text.
+%%
+%%      \psboxit{box 0.5 setgray fill}{\spbox{Some Text}}
+%%
+%% See \PScommands for the \box definition
+%%
+\chardef \atcode = \the \catcode `\@
+\catcode `\@ = 11
+ 
+\long\def\psboxit#1#2{%
+\begingroup\setbox0=\hbox{#2}%
+\dimen0=\ht0 \advance\dimen0 by \dp0%
+    % Write out the PS code to set the current path using HEIGHT,
+    % WIDTH , DEPTH of box0.
+    \hbox{%
+    \special{ps: gsave currentpoint translate
+        0
+        \number\dp0 \space 15800 div    % hand tuned for dvips
+        \number\wd0 \space 15800 div    % hand tuned for dvips
+        \number\ht0 \space -15800 div   % hand tuned for dvips
+%        \number\dp0 \space 16384 div
+%        \number\wd0 \space 16384 div
+%        \number\ht0 \space -16384 div   % Bounding box
+%        \number\dp0 \space 65536 div
+%        \number\wd0 \space 65536 div
+%        \number\ht0 \space -65536 div   % Bounding box
+        #1 grestore}%
+    \copy0%
+}%HBOX
+\endgroup%
+}%
+ 
+% SPACEBOX
+%
+% This macro simply takes some TeX stuff, and puts FOUR sides on it
+% so that the box is the same size as the thing you'd get with
+% an \fbox{} command.  (All I did was modify the code for \fbox{}
+% so that all rules were replaced with struts).
+%
+% USAGE: \spbox{text} is just like \fbox{text} but makes no rules
+%
+% REASON: so that if using \pspath{...}{\fbox{stuff}}
+%         there is a way to get another box the same size:
+%         \pspath{...}{\spbox{stuff}}
+%
+\long\def\spbox#1{\leavevmode\setbox1\hbox{#1}%
+    \dimen0\fboxrule \advance\dimen0 \fboxsep%
+    \advance\dimen0 \dp1%
+    \hbox{\lower \dimen0\hbox%
+    {\vbox{\hrule height \fboxrule width 0pt%
+          \hbox{\vrule width \fboxrule height 0pt \hskip\fboxsep%
+          \vbox{\vskip\fboxsep \box1\vskip\fboxsep}\hskip%
+                 \fboxsep\vrule width \fboxrule height 0pt}%
+                 \hrule height \fboxrule width 0pt}}}}%
+ 
+\def\Gbox#1{\psboxit{box 0.9 setgray fill}{#1}}
+%%
+\newsavebox{\gray@box}%
+\newdimen\gray@space
+%
+\long\def\Beginboxitpara#1{\edef\gray@tmp{#1}%
+\gray@space=\fboxsep \advance\gray@space by -\fboxrule
+\par\prevdepth=-1000pt\vskip 0.5\baselineskip\noindent
+\setbox\gray@box=%
+\hbox\bgroup \vrule width \fboxrule
+        \vtop\bgroup \hrule
+             \vbox\bgroup
+                   \kern\gray@space
+                   \hbox\bgroup
+                        \kern\gray@space
+                        \vtop\bgroup
+                   \hsize=\linewidth\advance\hsize-2\fboxsep\noindent
+                   \ignorespaces}
+\def\Endboxitpara{%
+                             \egroup
+                        \kern\gray@space
+                        \egroup
+                   \kern\gray@space
+                   \egroup \hrule
+             \egroup\vrule width \fboxrule
+     \egroup
+     \psboxit{\gray@tmp}{\box\gray@box}%
+     \vskip 0.5\baselineskip
+\par}
+
+\newenvironment{boxitpara}[1]{\Beginboxitpara{#1}}{\Endboxitpara}
+\newenvironment{boxitpara*}[1]{\Beginboxitpara{#1}\hbox to\hsize{}}%
+{\Endboxitpara}
+
+\catcode `\@ = \the \atcode
+\endinput

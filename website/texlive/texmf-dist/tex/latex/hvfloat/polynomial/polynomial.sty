@@ -1,0 +1,192 @@
+%%
+%% This is file `polynomial.sty',
+%% generated with the docstrip utility.
+%%
+%% The original source files were:
+%%
+%% polynomial.dtx  (with options: `package')
+%% This is a generated file.
+%% Copyright (C) 2007 by Stefan Höst (stefan.host@it.lth.se)
+%% 
+%% This file may be distributed and/or modified under the
+%% conditions of the LaTeX Project Public License, either
+%% version 1.2 of this license or (at your option) any later
+%% version. The latest version of this license is in:
+%% 
+%% http://www.latex-project.org/lppl.txt
+%% 
+%% and version 1.2 or later is part of all distributions of
+%% LaTeX version 1999/12/01 or later.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{polynomial}
+
+
+%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%% polynomial.sty
+%%
+%% v1.1
+%% 2007-03-17
+%%
+%% Stefan Höst
+%% (stefan.host@it.lth.se)
+%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%% Problems:
+%% * Very long numbers in coefficient result in overflow.
+%%
+%% Fixes
+%% 2007-03-17: Removed allocation of counter for each call of \polynomial.
+%% 2007-03-17: Replaced some other counters with \def.
+%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Counters
+\newcount\shpol@numcoeff% Number of coeffs parsed
+\newcount\shpol@coeffnum% loop var for coeffs
+\newcount\shpol@exponent% loop var for exponents (not same as coeffnum)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% ifs
+\newif\if@shpol@firstterm% If first term no '+'
+\newif\if@shpol@falling% If exponents falling
+\newif\if@shpol@reciprocal% If reciprocal
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% variables
+\def\shpol@var{x}% keyval: poly var
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% keyval
+\RequirePackage{keyval}
+%% in function
+\define@key{shpol}{start}[0]{\def\shpol@start{#1}}%{\shpol@start=#1}
+\define@key{shpol}{var}[x]{\def\shpol@tmpvar{#1}}
+\define@key{shpol}{step}[1]{\def\shpol@expstep{#1}}%{\shpol@expstep=#1}
+\define@key{shpol}{falling}[true]{\csname @shpol@falling#1\endcsname}
+\define@key{shpol}{reciprocal}[true]{\csname @shpol@reciprocal#1\endcsname}
+\define@key{shpol}{add}[+]{\def\shpol@add{#1}}
+\define@key{shpol}{sub}[-]{\def\shpol@sub{#1}\def\shpol@firstsub{#1}}
+\define@key{shpol}{firstsub}[-]{\def\shpol@firstsub{#1}}
+%% default values
+\define@key{shpoldefault}{start}[0]{\def\shpol@start{#1}}%{\shpol@start=#1}
+\define@key{shpoldefault}{var}[x]{\def\shpol@var{#1}}
+\define@key{shpoldefault}{step}[1]{\def\shpol@expstep{#1}}%{\shpol@expstep=#1}
+\define@key{shpoldefault}{falling}[true]{\csname @shpol@falling#1\endcsname}
+\define@key{shpoldefault}{reciprocal}[true]{\csname @shpol@reciprocal#1\endcsname}
+\define@key{shpoldefault}{add}[+]{\def\shpol@add@default{#1}}
+\define@key{shpoldefault}{sub}[-]{%
+  \def\shpol@sub@default{#1}\def\shpol@firstsub@default{#1}}
+\define@key{shpoldefault}{firstsub}[-]{\def\shpol@firstsub@default{#1}}
+%%
+\define@key{shpoldefault}{default}[true]{%
+  \setkeys{shpoldefault}{start,var,step,falling=false,reciprocal=false,add,sub,firstsub}}
+\setkeys{shpoldefault}{default}
+\def\polynomialstyle#1{\setkeys{shpoldefault}{#1}}
+%%%%%%%%%%%%%%%%%%%%%%%%
+%% help defs
+\def\shpol@splitcoeff#1{\shpol@@splitcoeff#1\@nil}
+\def\shpol@@splitcoeff#1#2\@nil{%
+  \def\shpol@firstofcoeff{#1}%
+  \def\shpol@restofcoeff{#2}
+}
+\def\shpol@minus{-}
+%% If #1 is a number that is =1 then #2 else #3
+%% see www.tex.ac.uk/cgi-bin/texfaq2html?label=isitanum
+\def\if@@one#1#2#3{%
+  \ifcat_\ifnum1=0#1 _\else A\fi #2\else #3\fi}
+%% If #1 a number that is =0 then #2 else #3
+\def\if@@zero#1#2#3{%
+  \ifcat_\ifnum0=0#1 _\else A\fi #2\else #3\fi}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% set one term in polynomial
+\def\shpol@setterm[#1]#2#3{% [variable]{koefficient}{exponent}
+  \def\@shpol@koeff{#2} %% To make it more clear
+  \ifnum#3=0 %% x^0
+    \@shpol@koeff
+  \else
+    \if@@one{#2}{}{\@shpol@koeff}
+    #1
+    \ifnum#3=1\else
+      ^{#3}
+    \fi
+  \fi}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\shpol@getcoeff#1{% Pars the coeffs and store in #1-vars
+  \shpol@numcoeff=0%
+  \@for\shpol@coeff:=#1\do{%
+    \advance\shpol@numcoeff by 1\relax%
+    \expandafter\let\csname shpol@coeff\romannumeral\shpol@numcoeff\endcsname\shpol@coeff%
+  }%
+}
+\def\shpol@writepoly{% Write the #1-vars as polynomial
+  \shpol@coeffnum=1
+  \shpol@exponent=0
+  \if@shpol@reciprocal
+    \if@shpol@falling
+      \advance\shpol@exponent by -\shpol@numcoeff
+      \advance\shpol@exponent by 1
+    \else
+      \advance\shpol@exponent by \shpol@numcoeff
+      \advance\shpol@exponent by -1
+    \fi
+    \multiply\shpol@exponent by \shpol@expstep
+  \fi
+  \advance\shpol@exponent by \shpol@start
+  \loop%
+    \expandafter\let\expandafter\shpol@coeff%
+      \csname shpol@coeff\romannumeral\shpol@coeffnum\endcsname
+    \if@@zero{\shpol@coeff}{}{% coeff not zero
+      %% Check if first char is '-'. Then remove it and replace + with -.
+      \expandafter\shpol@splitcoeff\expandafter{\shpol@coeff}
+      \ifx\shpol@firstofcoeff\shpol@minus
+        \if@shpol@firstterm\shpol@firstsub\else\shpol@sub\fi
+        \let\shpol@coeff\shpol@restofcoeff
+      \else
+        \if@shpol@firstterm\else\shpol@add\fi
+      \fi
+      %%\fi
+      \@shpol@firsttermfalse
+      \shpol@setterm[\shpol@tmpvar]%
+      {\shpol@coeff}%
+      {\the\shpol@exponent}%
+    }
+  \ifnum\shpol@coeffnum<\shpol@numcoeff
+    \advance\shpol@coeffnum by 1\relax%
+    \advance\shpol@exponent by
+      \if@shpol@falling
+        \if@shpol@reciprocal \shpol@expstep \else -\shpol@expstep \fi
+      \else
+        \if@shpol@reciprocal -\shpol@expstep \else \shpol@expstep \fi
+      \fi\relax%
+  \repeat
+}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\shpol@defaultvalues{% Set default values for keyval
+  \let\shpol@tmpvar\shpol@var
+  \let\shpol@add\shpol@add@default
+  \let\shpol@sub\shpol@sub@default
+  \let\shpol@firstsub\shpol@firstsub@default
+  \@shpol@firsttermtrue
+}
+\def\polynomial{%
+  \shpol@defaultvalues
+  \@ifnextchar[%]
+  {\opt@shpol@polynomial}{\shpol@polynomial}}
+\def\opt@shpol@polynomial[#1]{%
+  \setkeys{shpol}{#1}
+  \shpol@polynomial}
+\def\shpol@polynomial#1{%
+  \shpol@getcoeff{#1}
+  \shpol@writepoly
+}
+\def\polynomialfrac{%
+  \@ifnextchar[%]
+  {\opt@shpol@rational}{\@shpol@rational}}
+\def\@shpol@rational#1#2{%
+  \frac{\polynomial{#1}}{\polynomial{#2}}}
+\def\opt@shpol@rational[#1]#2#3{%
+  \frac{\polynomial[#1]{#2}}{\polynomial[#1]{#3}}}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\endinput
+%%
+%% End of file `polynomial.sty'.

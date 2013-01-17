@@ -1,0 +1,288 @@
+%% LTabPtch.sty---Uwe L"uck---patch for Longtable. 
+\def\filedate{2005/01/10} \def\fileversion{1.74d}
+%% For David Carlisle's Longtable.sty, version 4.11 
+%% Fixes tools/3180 (Sebastian Rahtz) and tools/3485: 
+%% missing/wrong interline glues above/below table. 
+%% 
+%% Copyright (C) 2002--2004 Uwe L"uck, 
+%% http://www.contact-ednotes.sty.de.vu 
+%% --author-maintained. 
+%%
+%% Usage, no warranty, distribution as in lppl.txt on CTAN 
+%% (macros/latex/base/lppl.txt). 
+%% 
+%% Loading Longtable.sty with options must be done earlier! 
+%% 
+\NeedsTeXFormat{LaTeX2e}[1994/05/20] % \CheckCommand 
+\ProvidesPackage{ltabptch}[\filedate\space v\fileversion\space
+   Longtable patch for tools/3180, 3485 (ul)]
+% 
+% The problem(s): 
+% Sebastian Rahtz (tools/3180) observed 2000/03/05 that there be 
+% a "spurios blank line" below the longtable. This impression 
+% may have been due to two spacing problems: 
+% (1) There is \parskip and some interline glue below longtable, 
+% while there is no \parskip and no interline glue above 
+% (without head as specified by \endhead or \firstendhead) 
+% or just \lineskip 0.0pt (with head---\endhead, \endfirsthead). 
+% (2) After longtable, \prevdepth is the depth of the last line 
+% before the longtable (if there is no head) or the depth of the 
+% head (otherwise). So \prevdepth may be 0pt. By contrast, the 
+% last table row has depth of at least \dp\@arstrutbox--which 
+% should rather matter, and this is 3.6pt or more. 
+% --I have reported something like this as tools/3485, not 
+% entirely correctly. Details are presented below \endinput. 
+% 
+% Solution presented: 
+% (1) I think there should be \parskip and usual interline glue 
+% above, since the same would happen with a table in a center 
+% environment (e.g.). 
+% \noindent seems to work fatally; moreover, \LT@start's decision 
+% whether to enter a new page would ignore \parskip and interline 
+% glue still needed. 
+% So emulate interline glue calculation according to TeXbook p. 80 
+% and add it by \vskip, along with \parskip. 
+% (This is rather a hack---a proper correction should perhaps not 
+% "emulate" but place the interlineglue changes of \LT@array inside 
+% the \vbox \LT@bchunk starts and treat glue between chunks in a 
+% new way.) 
+% (2) Set \prevdepth to depth of box 0 before the latter is 
+% \unvbox'ed (which leaves \prevdepth untouched, TeXbook p. 282) 
+% in \endlongtable. 
+% 
+% I thought David Carlisle would change Longtable according to my 
+% suggestions. By e-mail from 2003/04/07 however, he finds it 
+% better not to change Longtable, in order not to change layouts 
+% of works that have been made using Longtable so far 
+% (e-Mail 2003/04/08). 
+% 
+%% <- TODO: change this when David has changed his mind! 
+% By the way: 
+% 1.) There are two successive lines in the Longtable code (v4.11) 
+%     together saying: 
+%         \prevdepth\z@\global 
+%         \global\let\LT@setprevdepth\relax 
+%     Isn't the first \global just a typo? 
+%     --Yes--this is David Carlisle's answer in his e-mail 
+%     dating from 2004/05/14. 
+% 2.) Couldn't the one-column restriction easily be removed 
+%     by using \columnwidth instead of \hsize? 
+% 
+% Patching is to override Longtable.sty: 
+\RequirePackage{longtable}[2004/02/01] 
+%% TODO: Cf. \CheckCommand below. 
+% Load earlier on your own for choosing Longtable options! 
+% 
+% For (1), we are patching \LT@start, assumed to have been defined 
+% as follows (Longtable v4.11; sorry we can no longer handle v3.16 
+% through 4.10): 
+
+\CheckCommand*{\LT@start}{%
+  \let\LT@start\endgraf
+  \endgraf\penalty\z@\vskip\LTpre
+  \dimen@\pagetotal
+  \advance\dimen@ \ht\ifvoid\LT@firsthead\LT@head\else\LT@firsthead\fi
+  \advance\dimen@ \dp\ifvoid\LT@firsthead\LT@head\else\LT@firsthead\fi
+  \advance\dimen@ \ht\LT@foot
+  \dimen@ii\vfuzz
+  \vfuzz\maxdimen
+    \setbox\tw@\copy\z@
+    \setbox\tw@\vsplit\tw@ to \ht\@arstrutbox
+    \setbox\tw@\vbox{\unvbox\tw@}%
+  \vfuzz\dimen@ii
+  \advance\dimen@ \ht
+        \ifdim\ht\@arstrutbox>\ht\tw@\@arstrutbox\else\tw@\fi
+  \advance\dimen@\dp
+        \ifdim\dp\@arstrutbox>\dp\tw@\@arstrutbox\else\tw@\fi
+  \advance\dimen@ -\pagegoal
+  \ifdim \dimen@>\z@\vfil\break\fi
+      \global\@colroom\@colht
+  \ifvoid\LT@foot\else
+    \advance\vsize-\ht\LT@foot
+    \global\advance\@colroom-\ht\LT@foot
+    \dimen@\pagegoal\advance\dimen@-\ht\LT@foot\pagegoal\dimen@
+    \maxdepth\z@
+  \fi
+  \ifvoid\LT@firsthead\copy\LT@head\else\box\LT@firsthead\fi\nobreak 
+%% \nobreak new with Longtable v4.11. 
+  \output{\LT@output}}
+% 
+% Change it: 
+\def\LT@start{%
+  \let\LT@start\endgraf
+  \endgraf\penalty\z@\vskip\LTpre
+ \vskip\parskip %% U.L. 
+% I want to add the interline glue before \pagetotal goes to \dimen@. 
+% So I move \LT@start's \vsplit here. 
+ %% U.L. start: 
+ \dimen@ii\vfuzz 
+ \vfuzz\maxdimen
+   \setbox\tw@\copy\z@
+   \setbox\tw@\vsplit\tw@ to \ht\@arstrutbox
+   \setbox\tw@\vbox{\unvbox\tw@}%
+ \vfuzz\dimen@ii
+ \ifdim\prevdepth>-\@m\p@ 
+% First we need the maximum of the heights of \tw@ and head row. 
+% A little flaw might be here: I am ignoring \Lt@start's 
+% \@arstrutbox concern below, cf. remark there. 
+   \@tempskipa % \normalbaselineskip going to enter. 
+     \ht\ifvoid\LT@firsthead\LT@head\else\LT@firsthead\fi 
+%  \typeout{\@tempskipa=\the\@tempskipa}% TEST 
+   \@tempskipa-\ifdim\@tempskipa<\ht\tw@\ht\tw@\else\@tempskipa\fi 
+%  \typeout{\@tempskipa=\the\@tempskipa}% TEST 
+   \advance\@tempskipa-\prevdepth 
+%  \typeout{\string\prevdepth=\prevdepth}% TEST 
+%  \typeout{\@tempskipa=\the\@tempskipa}% TEST 
+   \advance\@tempskipa\normalbaselineskip 
+%  \typeout{\normallineskiplimit=\the\normallineskiplimit}% TEST 
+%  \typeout{\@tempskipa=\the\@tempskipa}% TEST 
+   \vskip \ifdim\@tempskipa<\normallineskiplimit 
+            \normallineskip 
+          \else 
+            \@tempskipa 
+          \fi 
+ \fi 
+ \nointerlineskip % v1.4 prevent head from adding more 
+%                 % (if only negative) glue. 
+%  \prevdepth -1000\p@ % Prevent head from adding more glue (v1.3). 
+ %% U.L. end. 
+  \dimen@\pagetotal
+  \advance\dimen@ \ht\ifvoid\LT@firsthead\LT@head\else\LT@firsthead\fi
+  \advance\dimen@ \dp\ifvoid\LT@firsthead\LT@head\else\LT@firsthead\fi
+  \advance\dimen@ \ht\LT@foot
+%   \dimen@ii\vfuzz
+%   \vfuzz\maxdimen
+%     \setbox\tw@\copy\z@
+%     \setbox\tw@\vsplit\tw@ to \ht\@arstrutbox
+%     \setbox\tw@\vbox{\unvbox\tw@}%
+%   \vfuzz\dimen@ii
+% 
+% Remark U.L.: The following four code lines seem strange to me: 
+% after all, \tw@ contains \@arstrutbox, doesn't it? 
+% And even if not: why should we need room for another \@arstrutbox? 
+  \advance\dimen@ \ht
+        \ifdim\ht\@arstrutbox>\ht\tw@\@arstrutbox\else\tw@\fi
+  \advance\dimen@\dp
+        \ifdim\dp\@arstrutbox>\dp\tw@\@arstrutbox\else\tw@\fi
+  \advance\dimen@ -\pagegoal
+  \ifdim \dimen@>\z@\vfil\break\fi
+      \global\@colroom\@colht
+  \ifvoid\LT@foot\else
+    \advance\vsize-\ht\LT@foot
+    \global\advance\@colroom-\ht\LT@foot
+    \dimen@\pagegoal\advance\dimen@-\ht\LT@foot\pagegoal\dimen@
+    \maxdepth\z@
+  \fi
+  \ifvoid\LT@firsthead\copy\LT@head\else\box\LT@firsthead\fi\nobreak 
+%% \nobreak new with Longtable 4.11. 
+  \output{\LT@output}}
+% 
+% 
+% For (2), we are patching \endlongtable: 
+% The patch should not change essentials of \endlongtable 
+% which may have changed when this patch meets longtable. 
+% We just assume that the final contribution to the main vertical 
+% list is done by \unvbox0 which is preceded by \LT@start. 
+% \prevdepth\dp0 can be put in between, it will then 
+% last till the end (TeXbook pp. 282, 277f.). 
+\def\@tempa#1\LT@start{#1\LT@start \prevdepth\dp\z@} 
+\expandafter\expandafter\expandafter \def 
+ \expandafter\expandafter\expandafter \endlongtable 
+  \expandafter\expandafter\expandafter 
+   {\expandafter\@tempa\endlongtable} 
+% 
+\endinput 
+
+DETAILED DIAGNOSIS: 
+
+Concerning the question of "bugs" vs. "features", you might 
+reason what features should be aimed at. 
+
+%% TODO: This can be shortened when David agrees. 
+
+    (A) If there is \parskip below a longtable, there should 
+be \parskip above as well--shouldn't it? 
+    (B) Interline glue above should (in general) depend on the 
+same values of \baselineskip and \lineskip as below---OK? 
+    (C) Interline glue below a longtable should depend on the 
+depth of the last row, not on the depth of the head or of the 
+last line above the longtable--OK? 
+
+The recent versions of longtable.sty have not satisfied any 
+of these three demands. 
+Concerning (A), \parskip appears below the longtable, but not 
+above. 
+Concerning (B), (i) no interline glue appears above if there 
+is no head, (ii) otherwise, only zero interline glue appears.
+Concerning (C), the interline glue below the longtable is 
+calculated using the depth of (i) the last line above the 
+longtable as \prevdepth when there is no head or of (ii) the 
+head otherwise. (Thus I was wrong earlier when I claimed that 
+\prevdepth were 0pt after longtable. This only holds in the 
+previous case (i) when the last line above the longtable has 
+zero depth.)
+
+You can observe this by playing with the demonstration file 
+ltabptch.tex in CTAN folder macros/latex/contrib/ltabptch. 
+
+Reasons: For contributing a head to the main vertical list, 
+longtable uses \copy or \box, which yields a <box> according 
+to TeXbook p. 278. Rows are contributed by \unvbox. Now, 
+violation of (A) is due to the fact that neither \copy or 
+\box of the head nor the \unvbox for table rows leads to 
+execution of an \indent or \noindent (TeXbook pp. 282f., see 
+also <horizontal command>). 
+Violation of (B) is due either to (i) the fact that \unvbox 
+is no <box> (TeXbook p. 282/278) or to (ii) the fact that at 
+\copy or \box \baselineskip and \lineskip are 0pt. 
+Violation of (C) is due to the fact that \unvbox does not 
+change \prevdepth (TeXbook p. 282). 
+
+As to recognizable effects: 
+    Violation of (A), of course, has very little effect in 
+general since \parskip is 0pt plus 1pt usually. This is hardly 
+recognizable in the presence of the \bigskipamount above and 
+below a longtable. 
+    Violation of (B) results in missing appropriate interline 
+glue above, which often should be 3.6pt or more. This may 
+rather be recognizable and may contribute to the impression 
+that there even is a spurious blank line below the longtable 
+(this is what Sebastion Rahtz reported in tools/3180). 
+    For the previous as well as for the details and the 
+effects of violation of (C), consider the algorithm for 
+calculating interline glue on p. 80 of the TeXbook. If there 
+is no head, and the depth of the last line before the 
+longtable is 0pt, the interline glue below the longtable is 
+\baselineskip minus the height of the first line after the 
+longtable. The interline glue *should be* \baselineskip minus 
+height of following line *minus* depth of last table row--if 
+this depth is not too large (depending on \lineskiplimit). 
+This depth is at least 3.6pt. So the interline glue is often 
+by 3.6pt or more greater than is appropriate. Considering the 
+missing interline glue above the longtable and the \parskip 
+below, the glue after the longtable is by 6.2pt (or more) plus 
+1pt larger than the glue before. Due to the shrink component 
+of the surrounding \bigskipamount, the glue following the 
+longtable may be nearly twice as large as the glue before.
+---Usually, violation of (C) has no effect at all. Namely, 
+there is a head usually, and its depth is usually the same as 
+the depth of the last row, namely \dp\@arstrutbox. 
+
+
+%% VERSION HISTORY: 
+v1.7  2003/01/07 Sent around 2003/01/13 with first release of 
+                 ednotes.sty. Sent to David Carlisle. Earlier versions 
+                 were sent to Frank Mittelbach and the team. 
+v1.71 2003/01/22 Added version history. 
+v1.72 2003/01/27 Changed copyright notice. 
+v1.73 2004/05/13 Adapted to Longtable v4.11; new copyright; 
+                 longtable -> Longtable (selectively). 
+                 Added `I have ... 3485'. 
+v1.74 2004/08/05 Added `---Yes---...'. 
+      2004/08/21 Typo fix for `problem'; added report on 2003/04/08. 
+      2004/08/23 Corrected and extended diagnosis, sent to CTAN. 
+v1.74b .../08/23 `---' -> `--'; added that (C) usually doesn't 
+                 matter. 
+v1.74c .../08/31 `author-maintained'. 
+v1.74d 2005/01/10 Contact via http. 
+

@@ -1,0 +1,319 @@
+%%% backgrnd.sty = background.sty
+%%% Experimental version 24 march 1996
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%
+%%%   This macro file aims at implementing marking of text,
+%%%   either by a grey background or by a changeebar
+%%%   using TeX's own resources only,
+%%%   (i.e., without resorting to any pstricks).
+%%%   Grey background uses a shade font defined using MetaFont
+%%% The macros seem to work satisfactory under plain TeX,
+%%%   however, I have also tried (rudimentarily) to integrate them with
+%%%   LaTeX, too. It seems to work with (simple) LaTeX 2.09, at least.
+%%%
+%%% commands :
+%%%     \RuleOn  and \RuleOff  : changebar
+%%%     \RuleON                : backs up to mark current line, too
+%%%     \RuleStyle { ( dimension )          % width of rule
+%%%                                         % rule offset on pages
+%%%                  [ # dimension |        %      with even pagenumbers
+%%%                    # dimension ] }      %      with odd pagenumbers
+%%%                                         % # is either < : left margin
+%%%                                         %          or > : right margin
+%%%     e.g.: default values are set by
+%%%           \RuleStyle { (2pt)[<18pt|>18pt] }
+%%%
+%%%
+%%%     \ShadeON               ( backs up to mark current line, too ) and
+%%%     \ShadeOn and \ShadeOff : grey background, requires shade.sty
+%%%                              therefore, by default,
+    \let\ifUseGrey\iffalse     % grey background will not be installed
+%%%                              - and will be replaced by rules
+%%%                              if grey background is required then
+%%%                              remove comment signs %%% from next line :
+%%% \let\ifUseGrey\iftrue
+%%%
+%%%            (At present) it is not possible to use both commands
+%%%            in the same document !
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%  Peter Schmitt                                  %%%
+%%%  Institut f\"ur Mathematik, Universit\"at Wien  %%%
+%%%  Strudlhofgasse 4, A-1090 Wien, Austria         %%%
+%%%  email: schmitt@awirap.bitnet                   %%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\catcode`\: 11                                  % make internal macros private
+\countdef\int: 255                              % scratch registers
+\dimendef\dim: 0
+\skipdef\skip: 0
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%   commands and options   %%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\def \RuleOn {\bg:ini \bg:rule
+              \RuleStyle { (2pt)[<18pt|>18pt] }
+              \bg:commands \RuleOn \RuleON \RuleOff
+              \RuleOn
+             }
+\def \RuleStyle #1{\set:hsize #1(\bg:hsize)\\%
+                   \set:offsets #1[*|*]\iftrue]\iffalse\\%
+                  }
+
+\def \bg:rule   {\leaders\vrule width\bg:hsize\vskip}
+\def \bg:empty  {\vskip}
+\let \bg:offset \relax
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%   interface tools   %%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\def\bg:commands #1#2#3{\def #1{\bg:option {\vbox{}\pos:on}}
+                        \def #2{\bg:option {\nobreak\vskip-\baselineskip
+                                \vbox{}\pos:on
+                                \nobreak\vskip\baselineskip }
+                               }
+                        \def #3{\bg:option {\vbox{}\pos:off}}
+                       }
+\def \bg:ini {\output{\bg:output}     % should be followed by desired \bg:style
+              \zero:pos
+              \global\let \bg:skip \bg:empty
+              \let \bg:style
+             }
+\def\bg:option #1{\ifvmode #1\else \vadjust{#1}\fi }
+
+\def \set:hsize  #1(#2)#3\\{\edef\bg:hsize{#2}}
+\def \set:offsets #1[#2#3|#4#5]#6]#7#8\\{#7
+     \def\bg:shift{}
+     \set:offset #2#3
+     \set:offset #4#5
+     \expandafter \set:shifts \bg:shift
+                                         \fi }
+\def\set:offset #1#2 {\setbox0\hbox{\dim: #2\bg:offset\xdef\bg:offset{\the\dim:}}
+                      \dim:\bg:offset
+                      \expandafter\expandafter\expandafter
+                          \set:shift \csname bg:#1\endcsname
+                     }
+\def\set:shift #1#2{\dim: \bg:offset \advance\dim: #2%
+                    \edef\bg:shift {\bg:shift {#1\the\dim:}}
+                   }
+\expandafter\def \csname bg:<\endcsname {\moveleft \bg:hsize}
+\expandafter\def \csname bg:>\endcsname {\moveright \hsize}
+\def \set:shifts #1#2{\def\bg:shift{\ifodd\pageno #2\else #1\fi}}
+
+%%% not used :
+\def\bg:err #1{\errmessage {%
+               Warning ! Background mode \noexpand#1 already active ! }
+              }
+%%% saving position without eject yields not always correct result
+%%% \def\bg:on  {\switch:to \bg:style } \def\bg:off {\switch:to \bg:empty }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%   grey background   %%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\ifUseGrey
+
+\def\ShadeOn {\bg:ini \bg:grey
+              \let\bg:shift\relax
+              \let\bg:hsize\hsize
+              \setbox\grey:line
+                 \vbox{\shade{\line:{\vphantom{\grey:\char0}\hfil}}}
+              \bg:commands \ShadeOn \ShadeON \ShadeOff
+              \ShadeOn
+             }
+\csname newbox\endcsname\grey:line         % allow \newbox in conditional text
+\def\bg:grey {\leaders\copy\grey:line\vskip}
+\let\line:\line
+\input shade
+
+\else
+  \def\ShadeOn{\RuleOn} \def\ShadeOff{\RuleOff} \def\ShadeON{\RuleON}
+  \fi
+%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%   output routine   %%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+   \newbox \bg:page
+ \newdimen \v:size
+  \newskip \v:pos
+ \newcount \true:penalty
+  \chardef \the:page 255
+
+\def\option: #1{\advance\int: -1
+                \edef#1{\penalty\the\int: }
+                \expandafter\def\csname\the\int:\endcsname
+               } \int: -12345
+\def\bg:output{\expandafter\ifx\csname\the\outputpenalty\endcsname\relax
+                     \global\true:penalty\outputpenalty
+                     \expandafter\bg:pagecontents
+               \else \expandafter\expandafter
+                     \csname\the\outputpenalty\endcsname
+               \fi }
+\option: \pos:on  {\bg:switch \bg:style }
+\option: \pos:off {\bg:switch \bg:empty }
+\option:  \bg:top {\save:pos \add:bg\bg:empty\v:skip{}
+                   \repeat:page \unvbox\the:page }
+\option:  \bg:bot {\save:pos \repeat:page \unvbox\the:page }
+\option:  \fg:end {\save:pos \add:bg\bg:empty{}\v:skip \bg:makepage }
+
+\def \bg:switch #1{\setbox\the:page
+                          \vbox{\unvbox\the:page \setbox0\lastbox }
+                   \ifdim \pagetotal=\topskip
+                          \global\let \bg:skip #1
+                          \unvbox\the:page
+                    \else \switch:to #1
+                          \repeat:page\repeat:inserts \unvbox\the:page
+                      \fi
+                  }
+\def\switch:to #1{\save:pos
+                  \add:bg \bg:skip{}\v:skip
+                  \global\let \bg:skip #1}
+\def\bg:pagecontents {\switch:to \bg:skip
+                      \setbox\the:page \vbox
+                          {\vbox{}\bg:top \unvbox\the:page \bg:bot }
+                      \zero:pos \repeat:page
+                      \pagecontents \fg:end
+                     }
+\def\bg:makepage {\global\v:size\vsize \advance\v:size \dp\the:page
+                  \def\pagecontents{%
+                        \bg:shift
+                        \vbox to0pt{\vbox to\v:size{\unvbox\bg:page}\vss}
+                        \unvbox\the:page }
+                  \outputpenalty\true:penalty
+                  \plainoutput
+                  \zero:pos \reset:inserts
+                 }
+
+%%%%%%%%%%%%%%%%%
+%%%   tools   %%%
+%%%%%%%%%%%%%%%%%
+
+\def\repeat:page {\vbox{}\nobreak\kern-\topskip }
+\def\add:bg #1#2#3{\let\bg:vskip #1
+                   \global\setbox\bg:page \vbox{#2\unvbox\bg:page#3}
+                  }
+
+\newdimen \v:fil
+\newdimen \v:fill
+\newdimen \v:filll
+\def\zero:pos {\global   \v:pos 0pt
+               \global   \v:fil 0pt
+               \global  \v:fill 0pt
+               \global \v:filll 0pt
+              }
+\def\save:pos {\skip: -\v:pos                            % save -last:pos
+               \global         \v:pos \pagetotal
+               \global\advance \v:pos \pagedepth
+                      \ifnum \pagedepth=0 \advance\v:pos \dp\the:page \fi
+               \global\advance \v:pos 0ptplus\pagestretch minus\pageshrink
+               \save:skip
+              }
+\def\save:pos {\skip: -\v:pos                            % save -last:pos
+               \global         \v:pos \pagetotal
+               \global\advance \v:pos \pagedepth
+                      \ifnum \pagedepth=0 \advance\v:pos \dp\the:page \fi
+               \global\advance \v:pos 0ptplus\pagestretch minus\pageshrink
+               \save:skip
+               \global\skip\ins:size \vsize
+                      \global\advance\skip\ins:size -\pagegoal
+                      \global\advance\skip\ins:size -\ins:skip
+              }
+\def\save:skip {\advance\skip:\v:pos                     % v:pos - last:pos
+                \let\bg:vskip\relax
+                \edef\v:skip{\bg:vskip\the\skip:}
+                \fil:skip l \fil:skip ll \fil:skip lll
+               }
+\def\fil:skip #1 {\set:fil {\csname v:fi#1\endcsname}
+                           {\csname pagefi#1stretch\endcsname}
+                  \edef\v:skip{\v:skip \bg:vskip0ptplus\the:pt \dim: fi#1 }
+                 }
+\def\set:fil #1#2{\dim: -#1
+                  \advance \dim: #2
+                  \global #1 #2
+                 }
+\def\the:pt {\expandafter\PT:\the}
+                     {  \catcode`p 12 \catcode`t 12
+\gdef\PT: #1pt{#1}   }% \catcode`p 11 \catcode`t 11
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%   insert handling   %%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcount\ins:
+\newinsert\ins:size
+\newdimen\ins:skip
+
+\let\do:insert \insert
+\def\inserts:{}
+\def\insert {\afterassignment\adjust:pos\ins:}
+\def\adjust:pos {\csname ins:\the\ins:\endcsname\csname iftrue\endcsname
+                 \add:plus \ins: \add:minus \ins:
+                 \advance\ins:skip\skip\ins:
+                 \let\temp:\relax
+                 \edef\inserts:{\inserts: \temp:{\the\ins:}}
+                 \fi
+                 \global\expandafter\let\csname ins:\the\ins:\endcsname \iffalse
+                 \do:insert\ins: }
+\def\repeat:inserts{\def\temp:##1{\do:insert##1{}}\inserts: }
+\def\reset:inserts{%
+    \def\temp: ##1{\global\expandafter\let\csname ins:##1\endcsname \relax }
+    \inserts: \gdef\inserts:{}\global\ins:skip 0pt }
+
+%%%   tools for insert handling   %%%
+
+    \catcode `L12 \catcode `N12 \catcode `S12 \catcode `U12 \lowercase{
+\def\plus: #1LUS #2 #3\\{#2}
+\def\Plus: #1{\expandafter\plus:\the#1 LUS 0.0pt \\}
+\def\minus: #1NUS #2 #3\\{#2}
+\def\Minus: #1{\expandafter\minus:\the#1 NUS 0.0pt \\}
+    } \catcode `L11 \catcode `N11 \catcode `S11 \catcode `U11
+
+\def\set:int {\afterassignment\set:frac\int: }
+\def\set:frac #1{\afterassignment\csname\count0 }
+\def\adv:pos #1{\global\advance#1\the\int:.\the\count0 pt }
+\def   \pt:p {\adv:pos {\v:pos 0ptplus}}
+\def   \pt:m {\adv:pos {\v:pos 0ptminus}}
+\def  \fil:p {\adv:pos \v:fil }
+\def \fill:p {\adv:pos \v:fill }
+\def\filll:p {\adv:pos \v:filll }
+
+\def\add:plus  #1{{\expandafter\set:int \Plus: {\skip#1}:p\endcsname }}
+\def\add:minus #1{{\expandafter\set:int \Minus:{\skip#1}:m\endcsname }}
+
+%%%%%%%%%%%%%%%%%%%%%%%%
+%%%   LaTeX extras   %%%
+%%%%%%%%%%%%%%%%%%%%%%%%
+
+\catcode`@ 11
+\ifx \@outputbox\undefined \endinput \catcode`@12 \catcode`: 12 \fi
+
+\newtoks\latex:output \latex:output \output
+\newdimen\v:ht                             % possibly \textheight could be used
+
+\def\bg:@makecol {\switch:to \bg:skip
+                  \setbox\the:page \vbox
+                      {\vbox{}\bg:top \unvbox\the:page \bg:bot }
+                  \@makecol
+                  \global\v:ht\ht\@outputbox \global\v:size\v:ht
+                              \global\advance\v:size\dp\@outputbox
+                  \zero:pos \outputpenalty\true:penalty
+                  \repeat:page \unvbox\@outputbox \fg:end
+                 }
+\def\bg:@makepage {\setbox\@outputbox \vbox to \v:ht {%
+                       \bg:shift
+                       \vbox to0pt{\vbox to\v:size{\unvbox\bg:page}\vss}
+                       \unvbox\the:page }
+                   \outputpenalty\true:penalty
+                   \let\@makecol\relax \the\latex:output
+                   \zero:pos \reset:inserts
+                  }
+\let \bg:makepage \bg:@makepage
+\let \bg:pagecontents \bg:@makecol
+\def \line: {\hbox to\textwidth}
+\let \pageno \c@page
+
+\catcode`@ 12 \catcode`: 12
+
+\endinput %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%   end : background.sty  [ 0.3 ]   %%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

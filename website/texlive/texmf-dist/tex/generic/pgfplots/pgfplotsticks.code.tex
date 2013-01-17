@@ -1,0 +1,2125 @@
+%--------------------------------------------
+%
+% Package pgfplots
+%
+% Provides a user-friendly interface to create function plots (normal
+% plots, semi-logplots and double-logplots).
+% 
+% It is based on Till Tantau's PGF package.
+%
+% Copyright 2007/2008 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%--------------------------------------------
+
+\newif\ifpgfplots@log@tick@isminor@tick@pos
+% Checks whether the tick position given as #1.#2=log10(T) belongs to
+% T=i*10^j with an integer i>1.
+%
+% If T=i*10^j,  \ifpgfplots@log@tick@isminor@tick@pos will be set to true and
+% \pgfmathresult will contain T.
+%
+% Otherwise, \ifpgfplots@log@tick@isminor@tick@pos will be set to false and
+% pgfmathresult to #1.#2
+%
+% Arguments:
+% #1.#2  the value log10(T)
+%
+% Implementation:  
+% if T = i*10^j,  log10(T) = log10(i) + j.
+% That means if log10(T) in \Z,  we have T = 10^j. If not, we need to
+% check wether i is an integer. Please note that log10(i) < 1.
+%
+% Further note: log(T) < 0 <=>  j<0.
+% In case j<0, we have 
+%   #1.#2 = j + log(i) 
+%         = - ( -j - log(i) ) 
+%         = - ( -j - 1  + (1-log(i)) )
+%         = #1 '.' #2 [ up to the '0.'
+% that means #1 = j-1  and #2 = 1-log(i).
+\def\pgfplots@is@log@tick@a@minor@tick@pos#1.#2\relax{%
+	\pgfmathapproxequalto@{#1.#2}{#1.0}%
+	\ifpgfmathcomparison
+		% in MOST cases, this here will be true:
+		\pgfplots@log@tick@isminor@tick@posfalse
+		\def\pgfmathresult{#1.#2}%
+	\else
+		% I guess this won't happen too often. In fact, it's a very
+		% special case.
+		\begingroup
+		\c@pgf@counta=#1\relax
+		\ifnum\c@pgf@counta<0
+			\advance\c@pgf@counta by-1
+			\pgfmathsubtract@{1}{0.#2}%
+			\expandafter\pgfplots@is@log@tick@a@minor@tick@pos@IDENTIFY@LOGi\pgfmathresult\relax
+			\ifpgfplots@log@tick@isminor@tick@pos
+				\aftergroup\pgfplots@log@tick@isminor@tick@postrue
+				\edef\pgfmathresult{\pgfmathresult e\the\c@pgf@counta}%
+			\else
+			\aftergroup\pgfplots@log@tick@isminor@tick@posfalse
+				\def\pgfmathresult{#1.#2}%
+			\fi
+		\else
+			\pgfplots@is@log@tick@a@minor@tick@pos@IDENTIFY@LOGi0.#2\relax
+			\ifpgfplots@log@tick@isminor@tick@pos
+				\aftergroup\pgfplots@log@tick@isminor@tick@postrue
+				\edef\pgfmathresult{\pgfmathresult e\the\c@pgf@counta}%
+			\else
+				\aftergroup\pgfplots@log@tick@isminor@tick@posfalse
+				\def\pgfmathresult{#1.#2}%
+			\fi
+		\fi
+		\pgfmath@smuggleone\pgfmathresult
+		\endgroup
+	\fi
+}
+
+% expects a positive number.
+\def\pgfplots@is@log@tick@a@minor@tick@pos@IDENTIFY@LOGi0.#1\relax{%
+	\pgfplots@log@tick@isminor@tick@postrue
+	\pgfmathapproxequalto@{0.#1}{0.3010299956639}%
+	\ifpgfmathcomparison
+		\def\pgfmathresult{2}%
+	\else
+		\pgfmathapproxequalto@{0.#1}{0.4771212547196}%
+		\ifpgfmathcomparison
+			\def\pgfmathresult{3}%
+		\else
+			\pgfmathapproxequalto@{0.#1}{0.6020599913279}%
+			\ifpgfmathcomparison
+				\def\pgfmathresult{4}%
+			\else
+				\pgfmathapproxequalto@{0.#1}{0.698970004}%
+				\ifpgfmathcomparison
+					\def\pgfmathresult{5}%
+				\else
+					\pgfmathapproxequalto@{0.#1}{0.7781512503}%
+					\ifpgfmathcomparison
+						\def\pgfmathresult{6}%
+					\else
+						\pgfmathapproxequalto@{0.#1}{0.8450980400}%
+						\ifpgfmathcomparison
+							\def\pgfmathresult{7}%
+						\else
+							\pgfmathapproxequalto@{0.#1}{0.9030899869}%
+							\ifpgfmathcomparison
+								\def\pgfmathresult{8}%
+							\else
+								\pgfmathapproxequalto@{0.#1}{0.954242509439}%
+								\ifpgfmathcomparison
+									\def\pgfmathresult{9}%
+								\else
+									\pgfplots@log@tick@isminor@tick@posfalse
+								\fi
+							\fi
+						\fi
+					\fi
+				\fi
+			\fi
+		\fi
+	\fi
+}
+
+% Checks whether we need to create a separate 'tick scale label',
+% a node with ' * 10^3' on the side of the axis:
+%
+% PRECONDITION:
+%    Axis limits for #1 are given. I need their values before any data
+%    scale transformation has been applied.
+%    If  
+%    	\pgfplots@#1min@unscaled@as@float 
+%    and
+%    	\pgfplots@#1max@unscaled@as@float 
+%    exist; I will use these macros.
+%    Otherwise, I will use \pgfplots@#1min and \pgfplots@#1max;
+%    assuming that no data scale transformation is active.
+%    FIXME : does that need further attention?
+\def\pgfplots@init@scaled@tick@for#1{%
+	\global\def\pgfplots@glob@TMPa{0}%
+	\begingroup
+	\ifcase\csname pgfplots@scaled@ticks@#1@choice\endcsname\relax
+	% CASE 0 : scaled #1 ticks=false: do nothing here.
+	\or
+		% CASE 1 : scaled #1 ticks=true:
+		%--------------------------------
+		% the \pgfplots@xmin@unscaled@as@float  is set just before the data
+		% scale transformation is initialised.
+		%
+		% The variables are empty if there is no datascale transformation.
+		\expandafter\let\expandafter\pgfplots@cur@min@unscaled\csname pgfplots@#1min@unscaled@as@float\endcsname
+		\expandafter\let\expandafter\pgfplots@cur@max@unscaled\csname pgfplots@#1max@unscaled@as@float\endcsname
+		%
+		\ifx\pgfplots@cur@min@unscaled\pgfutil@empty
+			\edef\pgfplots@loc@TMPa{\csname pgfplots@#1min\endcsname}%
+			\expandafter\pgfmathfloatparsenumber\expandafter{\pgfplots@loc@TMPa}%
+			\let\pgfplots@cur@min@unscaled=\pgfmathresult
+			\edef\pgfplots@loc@TMPa{\csname pgfplots@#1max\endcsname}%
+			\expandafter\pgfmathfloatparsenumber\expandafter{\pgfplots@loc@TMPa}%
+			\let\pgfplots@cur@max@unscaled=\pgfmathresult
+		\fi
+		%
+		\expandafter\pgfmathfloat@decompose@E\pgfplots@cur@min@unscaled\relax\pgfmathfloat@a@E
+		\expandafter\pgfmathfloat@decompose@E\pgfplots@cur@max@unscaled\relax\pgfmathfloat@b@E
+		\ifnum\pgfmathfloat@b@E<\pgfmathfloat@a@E
+			\pgfmathfloat@b@E=\pgfmathfloat@a@E
+		\fi
+		\xdef\pgfplots@glob@TMPa{\pgfplots@scale@ticks@above@exponent}%
+		\expandafter\ifnum\pgfplots@glob@TMPa<\pgfmathfloat@b@E
+			% ok, scale it:
+			\multiply\pgfmathfloat@b@E by-1
+			\xdef\pgfplots@glob@TMPa{\the\pgfmathfloat@b@E}%
+		\else
+			\xdef\pgfplots@glob@TMPa{\pgfplots@scale@ticks@below@exponent}%
+			\expandafter\ifnum\pgfplots@glob@TMPa>\pgfmathfloat@b@E
+				% ok, scale it:
+				\multiply\pgfmathfloat@b@E by-1
+				\xdef\pgfplots@glob@TMPa{\the\pgfmathfloat@b@E}%
+			\else
+				% no scaling necessary:
+				\xdef\pgfplots@glob@TMPa{0}%
+			\fi
+		\fi
+	\or
+		% CASE 2 : scaled #1 ticks=base 10:
+		%--------------------------------
+		\c@pgf@counta=\csname pgfplots@scaled@ticks@#1@arg\endcsname\relax
+		%\multiply\c@pgf@counta by-1
+		\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+	\or
+		% CASE 3 : scaled #1 ticks=real:
+		%--------------------------------
+		\pgfmathfloatparsenumber{\csname pgfplots@scaled@ticks@#1@arg\endcsname}%
+		\global\let\pgfplots@glob@TMPa=\pgfmathresult
+	\or
+		% CASE 4 : scaled #1 ticks=manual:
+		\expandafter\global\expandafter\let\expandafter\pgfplots@glob@TMPa\csname pgfplots@scaled@ticks@#1@arg\endcsname
+	\fi
+	\endgroup
+	\expandafter\let\csname pgfplots@tick@scale@#1\endcsname=\pgfplots@glob@TMPa%
+}
+
+% x-axis tick labels for #1th tick
+% #1: the axis (x,y or z)
+% #2: the value
+% #3,#4+#5: arguments for \pgfplotspointonorientedsurfaceabwithbshift
+% #5: ticknumber
+\def\pgfplots@show@ticklabel#1#2(#3,#4+#5)#6{%
+	\begingroup%
+	\csname ifpgfplots@#1ticklabel@interval\endcsname
+		% Special case for the INTERVAL feature:
+		% we have to do additional work here.
+		\pgfmathparse{#3}%
+		\edef\pgfplots@show@ticklabel@coord@x@new{\pgfmathresult}%
+		\pgfmathparse{#4}%
+		\edef\pgfplots@show@ticklabel@coord@y@new{\pgfmathresult}%
+		%
+		\pgfplots@show@ticklabel@{#1}{#2}%
+		\let\nexttick=\tick
+		\ifx\pgfplots@show@ticklabel@LASTTICK\pgfutil@empty
+			% its the first call. Simply remember arguments and wait
+			% for interval boundary before proceeding.
+		\else
+			% acquire options of first interval boundary:
+			\pgfplots@show@ticklabel@LASTTICK
+			% compute new node position:
+			\pgfmathparse{0.5*(\pgfplots@show@ticklabel@coord@x + \pgfplots@show@ticklabel@coord@x@new)}%
+			\let\pgfplots@show@ticklabel@coord@x=\pgfmathresult%
+			\pgfmathparse{0.5*(\pgfplots@show@ticklabel@coord@y + \pgfplots@show@ticklabel@coord@y@new)}%
+			\let\pgfplots@show@ticklabel@coord@y=\pgfmathresult%
+			\let\ticknum=\pgfplots@show@ticklabel@num\relax%
+			\let\tick=\pgfplots@show@ticklabel@tick%
+			\pgfplots@show@ticklabel@@{#1}
+				{\pgfplotspointonorientedsurfaceabwithbshift{\pgfplots@show@ticklabel@coord@x}{\pgfplots@show@ticklabel@coord@y}{#5}}%
+		\fi
+		\xdef\pgfplots@show@ticklabel@LASTTICK{%
+			\noexpand\def\noexpand\pgfplots@show@ticklabel@tick{\nexttick}%
+			\noexpand\def\noexpand\pgfplots@show@ticklabel@coord@x{\pgfplots@show@ticklabel@coord@x@new}%
+			\noexpand\def\noexpand\pgfplots@show@ticklabel@coord@y{\pgfplots@show@ticklabel@coord@y@new}%
+			\noexpand\edef\noexpand\pgfplots@show@ticklabel@num{#6}%
+		}%
+	\else
+		\let\ticknum=#6\relax%
+		\pgfplots@show@ticklabel@{#1}{#2}%
+		\pgfplots@show@ticklabel@@{#1}{\pgfplotspointonorientedsurfaceabwithbshift{#3}{#4}{#5}}%
+	\fi
+	\endgroup
+}
+
+% #1: the axis (x,y or z)
+% #2: the location where to place it.
+\def\pgfplots@show@ticklabel@@#1#2{%
+	% Typeset the label!
+	\pgfinterruptboundingbox
+		% What makes this complicated is the 'ticklabel cs' feature.
+		% What we need is to compute the MAXIMUM LENGTH over each tick
+		% label IN DIRECTION OF THE OUTER NORMAL.
+		%
+		% This needs to
+		% 1. enable bounding box computation even in case of
+		% 'overlay',
+		% 2. projection of the bounding box in direction of the outer
+		% normal,
+		% 3. update of the bounding box if 'overlay' is not active.
+		\begingroup
+		%
+		% prepare step (1.):
+		\pgfkeysalso{%
+			/tikz/every node/.append code={%
+				\ifpgf@relevantforpicturesize
+					\gdef\pgfplots@show@ticklabel@@update@BB{1}%
+				\else
+					\gdef\pgfplots@show@ticklabel@@update@BB{0}%
+				\fi
+				\pgf@relevantforpicturesizetrue
+			}%
+		}%
+		%
+		% Compute and remember the position '#2':
+		\pgf@process{#2}%
+		\edef\pgfplots@ticklabel@at@x{\the\pgf@x}%
+		\edef\pgfplots@ticklabel@at@y{\the\pgf@y}%
+		%
+		% ok, generate the label!
+		\node at (\pgfplots@ticklabel@at@x,\pgfplots@ticklabel@at@y) {\csname pgfplots@#1ticklabel\endcsname};%
+		%
+		% compute the label's dimensions, step (2.):
+		\pgfplots@ticklabel@maxtickdimen@updateforcurrentpath
+			{#1}
+			{\pgf@x=\pgfplots@ticklabel@at@x\space\pgf@y=\pgfplots@ticklabel@at@y\space}%%
+		%
+		% prepare step (3.): update of bounding box:
+		\if\pgfplots@show@ticklabel@@update@BB1%
+			\xdef\pgfplots@glob@TMPa{%
+				\pgf@xa=\the\pgf@picminx\space
+				\pgf@xb=\the\pgf@picminy\space
+				\pgf@ya=\the\pgf@picmaxx\space
+				\pgf@yb=\the\pgf@picmaxy\space
+				\noexpand\pgf@protocolsizes{\pgf@xa}{\pgf@xb}%
+				\noexpand\pgf@protocolsizes{\pgf@ya}{\pgf@yb}%
+				\noexpand\pgf@resetpathsizes
+			}%
+		\else
+			\global\let\pgfplots@glob@TMPa=\relax
+		\fi
+		\endgroup
+	\endpgfinterruptboundingbox
+	\begingroup
+		\pgfplots@glob@TMPa
+	\endgroup
+}%
+
+% TICK LABEL DIMENSION CONTROL
+%
+% The following framework is supposed to accumulate the value for
+% \pgfplotsvalueoflargesttickdimen.
+%
+% It works like this:
+%
+% \pgfplots@ticklabel@maxtickdimen@reset{#1}
+% \pgfplots@ticklabel@maxtickdimen@prepare@for@normalvec{#1}{<normal vector>}
+% ...
+% \pgfplots@ticklabel@maxtickdimen@updateforcurrentpath{#1}
+% \pgfplots@ticklabel@maxtickdimen@updateforcurrentpath{#1}
+% \pgfplots@ticklabel@maxtickdimen@updateforcurrentpath{#1}
+% ...
+% \pgfplots@ticklabel@maxtickdimen@finish{#1}
+%
+% -> then, \pgfplotsvalueoflargesttickdimen expands to the largest
+%  distance from a tick's coordinate to its tick label bounding box in
+%  direction of the outer normal vector.
+\def\pgfplots@ticklabel@maxtickdimen@reset#1{%
+	\expandafter\gdef\csname pgfplots@maxtickdimen@#1\endcsname{0pt}%
+	\expandafter\gdef\csname pgfplots@maxtickdimen@extrashift@#1\endcsname{0pt}%
+}%
+
+% Adds the extra shift '#2' along the normal vector for axis '#1'.
+\def\pgfplots@ticklabel@maxtickdimen@extrashift#1#2{%
+	\begingroup
+	\afterassignment\pgfplots@gobble@until@relax
+	\pgf@xa=#2pt\relax
+	\advance\pgf@xa by\csname pgfplots@maxtickdimen@extrashift@#1\endcsname\relax
+	\expandafter\xdef\csname pgfplots@maxtickdimen@extrashift@#1\endcsname{\the\pgf@xa}%
+	\endgroup
+}
+
+% Finalizes the maxtickdimen computation.
+%
+% This applies any extra shifts (including '#1ticklabel shift').
+\def\pgfplots@ticklabel@maxtickdimen@finish#1{%
+	\pgfkeysgetvalue{/pgfplots/#1ticklabel shift}\pgfmathresult
+	\ifx\pgfmathresult\pgfutil@empty
+	\else
+		\pgfplots@ticklabel@maxtickdimen@extrashift{#1}{\pgfkeysvalueof{/pgfplots/#1ticklabel shift}}%
+	\fi
+	\begingroup
+	\pgf@xa=\csname pgfplots@maxtickdimen@extrashift@#1\endcsname\relax
+	\advance\pgf@xa by \csname pgfplots@maxtickdimen@#1\endcsname\relax
+	\expandafter\xdef\csname pgfplots@maxtickdimen@#1\endcsname{\the\pgf@xa}%
+	\endgroup
+}%
+% 
+% #1: the axis (x,y or z)
+% #2: the normal vector
+\def\pgfplots@ticklabel@maxtickdimen@prepare@for@normalvec#1#2{%
+	\pgf@process{#2}%
+	\edef\pgfplots@loc@vector@to@outside{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+	% Identify the corner point of the ticklabel bounding box which
+	% shall be used: 
+	\ifdim\pgf@x>0sp
+		\ifdim\pgf@y>0sp
+			% NORTH EAST
+			\def\pgfplots@loc@ticklabel@bb@corner{\pgf@x=\pgf@picmaxx\pgf@y=\pgf@picmaxy}%
+		\else
+			% SOUTH EAST
+			\def\pgfplots@loc@ticklabel@bb@corner{\pgf@x=\pgf@picmaxx\pgf@y=\pgf@picminy}%
+		\fi
+	\else
+		\ifdim\pgf@y>0sp
+			% NORTH WEST
+			\def\pgfplots@loc@ticklabel@bb@corner{\pgf@x=\pgf@picminx\pgf@y=\pgf@picmaxy}%
+		\else
+			% SOUTH WEST
+			\def\pgfplots@loc@ticklabel@bb@corner{\pgf@x=\pgf@picminx\pgf@y=\pgf@picminy}%
+		\fi
+	\fi
+}%
+
+% #1: the axis (x,y or z)
+% #2: the point from where dimension shall be computed (the 'at'
+% argument of the tick label)
+\def\pgfplots@ticklabel@maxtickdimen@updateforcurrentpath#1#2{%
+	\pgfplotsscalarproductofvectors
+		{\pgfplots@loc@vector@to@outside}%
+		{\pgfpointdiff
+			{#2}%
+			{\pgfplots@loc@ticklabel@bb@corner}}%
+	\ifdim\pgf@x>\csname pgfplots@maxtickdimen@#1\endcsname\relax
+		\expandafter\xdef\csname pgfplots@maxtickdimen@#1\endcsname{\the\pgf@x}%
+	\fi
+}%
+
+% Expands to the largest distance of a tick position to its tick label
+% bounding box in direction of the outer unit normal vector.
+%
+% It does also include the value of the 'ticklabel shift' key.
+%
+% This function assumes that
+% \pgfplots@ticklabel@maxtickdimen@reset{#1}
+% \pgfplots@ticklabel@maxtickdimen@prepare@for@normalvec{#1}{<normal vector>}
+% ...
+% \pgfplots@ticklabel@maxtickdimen@updateforcurrentpath{#1}
+% \pgfplots@ticklabel@maxtickdimen@updateforcurrentpath{#1}
+% \pgfplots@ticklabel@maxtickdimen@updateforcurrentpath{#1}
+% ...
+% \pgfplots@ticklabel@maxtickdimen@finish{#1}
+% has been invoked completely.
+%
+% #1: either x,y or z. It denotes the axis for which the ticks are
+% requested.
+\def\pgfplotsvalueoflargesttickdimen#1{%
+	\csname pgfplots@maxtickdimen@#1\endcsname
+}%
+
+% Just like \pgfplotsqpointoutsideofaxis, but this one here uses the
+% axis on which tick labels will be drawn.
+%
+% #1: one of x, y or z.
+% #2: the coordinate on the tick axis designated by '#1'.
+% #3: a scale (a dimen) in which the point is moved in direction of
+% the outward normal vector of the axis.
+%
+% @see \pgfplotsqpointoutsideofaxis
+\def\pgfplotsqpointoutsideofticklabelaxis#1#2#3{%
+	\pgfplotsqpointoutsideofaxis{\csname pgfplots@#1ticklabelaxisspec\endcsname}{#2}{#3}%
+}%
+\def\pgfplotsqpointoutsideofticklabelaxisrel#1#2#3{%
+	\pgfplotsqpointoutsideofaxisrel{\csname pgfplots@#1ticklabelaxisspec\endcsname}{#2}{#3}%
+}%
+\def\pgfplotsqpointoutsideofticklabelaxistransformed#1#2#3{%
+	\pgfplotsqpointoutsideofaxistransformed{\csname pgfplots@#1ticklabelaxisspec\endcsname}{#2}{#3}%
+}%
+
+% Expands to the three-character-identification for the axis
+% containing tick labels for axis #1.
+%
+% #1: either x, y or z.
+\def\pgfplotsticklabelaxisspec#1{\csname pgfplots@#1ticklabelaxisspec\endcsname}%
+
+% The unit outer normal vector for axis #1.
+% #1: one of x, y or z.
+\def\pgfplotspointouternormalvectorofticklabelaxis#1{%
+	\pgfplotspointouternormalvectorofaxis{\csname pgfplots@#1ticklabelaxisspec\endcsname}%
+}
+
+% Defines \tick by applying any necessary math to the (possibly
+% transformed) tick value #2.
+%
+% #1: axis (x or y)
+% #2: tick value.
+\def\pgfplots@show@ticklabel@#1#2{%
+	\csname ifpgfplots@apply@datatrafo@#1\endcsname
+		\pgfplotscoordmath{#1}{datascaletrafo inverse}{#2}%
+		\ifcase\csname pgfplots@scaled@ticks@#1@choice\endcsname
+		\or
+			\expandafter\pgfmathfloatshift@\expandafter{\pgfmathresult}{\csname pgfplots@tick@scale@#1\endcsname}%
+		\or
+			\expandafter\pgfmathfloatshift@\expandafter{\pgfmathresult}{\csname pgfplots@tick@scale@#1\endcsname}%
+		\or
+			\expandafter\pgfmathfloatdivide@\expandafter{\pgfmathresult}{\csname pgfplots@tick@scale@#1\endcsname}%
+		\or
+			% scaled #1 ticks=manual. Invoke manual tick scaling code:
+			\expandafter\let\expandafter\pgfplots@loc@TMPa\csname pgfplots@tick@scale@#1\endcsname
+			\begingroup
+			\pgfkeys{/pgf/fpu=true}%
+			\expandafter\pgfplots@loc@TMPa\expandafter{\pgfmathresult}%
+			\pgfmath@smuggleone\pgfmathresult
+			\endgroup
+			\pgfmathfloatparsenumber\pgfmathresult%
+		\fi
+		% .. and this here provides \tick as fixed point repr:
+		\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
+		\let\tick=\pgfmathresult
+	\else
+		\edef\tick{#2}%
+		\pgfplots@if{pgfplots@#1islinear}{%
+			\ifnum\csname pgfplots@scaled@ticks@#1@choice\endcsname=0
+			\else
+				\pgfmathfloatparsenumber{#2}%
+				\ifnum\csname pgfplots@scaled@ticks@#1@choice\endcsname=3
+					\expandafter\pgfmathfloatdivide@\expandafter{\pgfmathresult}{\csname pgfplots@tick@scale@#1\endcsname}%
+				\else
+					\expandafter\pgfmathfloatshift@\expandafter{\pgfmathresult}{\csname pgfplots@tick@scale@#1\endcsname}%
+				\fi
+				\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
+				\let\tick=\pgfmathresult
+			\fi
+		}{}%
+	\fi
+	\pgfplots@coord@inv@trafo@apply{#1}{\tick}%
+	\let\tick=\pgfmathresult
+}%
+
+\def\pgfplots@user@ticklabel@list@x{%
+	\pgfplotslistselectorempty\ticknum\of\pgfplots@xticklabels\to\tick
+	\tick
+}
+\def\pgfplots@user@ticklabel@list@y{%
+	\pgfplotslistselectorempty\ticknum\of\pgfplots@yticklabels\to\tick
+	\tick
+}
+\def\pgfplots@user@ticklabel@list@z{%
+	\pgfplotslistselectorempty\ticknum\of\pgfplots@zticklabels\to\tick
+	\tick
+}
+\def\pgfplots@user@extra@ticklabel@list@x{%
+	\pgfplotslistselectorempty\ticknum\of\pgfplots@extra@xticklabels\to\tick
+	\tick
+}
+\def\pgfplots@user@extra@ticklabel@list@y{%
+	\pgfplotslistselectorempty\ticknum\of\pgfplots@extra@yticklabels\to\tick
+	\tick
+}
+\def\pgfplots@user@extra@ticklabel@list@z{%
+	\pgfplotslistselectorempty\ticknum\of\pgfplots@extra@zticklabels\to\tick
+	\tick
+}
+
+% Check if a label does not cross the x-axis
+\def\pgfplots@ytick@check@tickshow{%
+	\pgfplots@tickshowtrue
+	\if\pgfplots@yaxislinesnum2% center
+		\ifcase\pgfplots@xaxislinesnum\relax
+			\pgfplotsmath@ifapproxequal@dim
+				{\pgfplots@tmpa}{\pgfplots@ymin@reg}
+				{\pgfplots@loc@tick@placement@tolerance}
+				{%
+					\pgfplots@tickshowfalse
+				}{}%
+			\pgfplotsmath@ifapproxequal@dim
+				{\pgfplots@tmpa}{\pgfplots@ymax@reg}
+				{\pgfplots@loc@tick@placement@tolerance}
+				{%
+					\pgfplots@tickshowfalse
+				}{}%
+		\or
+			\pgfplotsmath@ifapproxequal@dim
+				{\pgfplots@tmpa}{\pgfplots@ymin@reg}
+				{\pgfplots@loc@tick@placement@tolerance}
+				{%
+					\pgfplots@tickshowfalse
+				}{%
+				}%
+		\or
+			\pgfplotsmath@ifapproxequal@dim
+				{\pgfplots@tmpa}{\pgfplots@logical@ZERO@y pt}
+				{\pgfplots@loc@tick@placement@tolerance}
+				{%
+					\pgfplots@tickshowfalse
+				}{}%
+		\or
+			\pgfplotsmath@ifapproxequal@dim
+				{\pgfplots@tmpa}{\pgfplots@ymax@reg}
+				{\pgfplots@loc@tick@placement@tolerance}
+				{%
+					\pgfplots@tickshowfalse
+				}{}%
+		\fi
+	\fi
+}
+\def\pgfplots@ztick@check@tickshow{%
+	\pgfplots@tickshowtrue
+	\if\pgfplots@zaxislinesnum2% center
+		\pgfplotsmath@ifapproxequal@dim
+			{\pgfplots@tmpa}{\pgfplots@logical@ZERO@z pt}
+			{\pgfplots@loc@tick@placement@tolerance}
+			{%
+				\pgfplots@tickshowfalse
+			}{}%
+	\fi
+}%
+
+% Fills the macros
+%   \pgfplots@tick@LOWER@b \pgfplots@tick@end@a
+%   \pgfplots@tick@UPPER@b \pgfplots@tick@end@b
+% with coordinates such that 
+%   (\pgfplots@tick@LOWER@b,\pgfplots@tmpa) -- (\pgfplots@tick@end@a,\pgfplots@tmpa)
+% produces a correct tick line. 
+%
+% The '@b' variant is only used in case of \pgfplots@ytickposnum = 0
+%
+% #1 : the current axis (x or y).
+% #2 : the current tick width
+%
+\def\pgfplots@prepare@tick@offsets@for@#1#2{%
+	%
+	% FIXME : this stuff was ok for 2D.
+	% For 3D, it works only for the cases of boxed axes or centered
+	% axis lines.
+	\ifcase\csname pgfplots@#1tickposnum\endcsname\relax
+		% both
+		%(\pgfplots@xcoordminTEX-\pgfplots@tick@offset, \pgfplots@tmpa) -- ++( #2, 0pt)
+		\edef\pgfplots@tick@LOWER@b{\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname}%
+		%
+		%(\pgfplots@xcoordmaxTEX+\pgfplots@tick@offset, \pgfplots@tmpa)	-- ++(-#2, 0pt)
+		\edef\pgfplots@tick@UPPER@b{\csname pgfplots@\pgfplotspointonorientedsurfaceB max\endcsname}%
+	\or
+		% left
+		% (\pgfplots@xcoordminTEX-\pgfplots@tick@offset, \pgfplots@tmpa) -- ++( #2, 0pt);
+		\edef\pgfplots@tick@LOWER@b{\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname}%
+	\or
+		% center
+		% (\pgfplots@ZERO@x      -\pgfplots@tick@offset, \pgfplots@tmpa) -- ++( #2, 0pt);
+		\edef\pgfplots@tick@LOWER@b{\csname pgfplots@logical@ZERO@\pgfplotspointonorientedsurfaceB \endcsname}%
+	\or
+		% right
+		% (\pgfplots@xcoordmaxTEX+\pgfplots@tick@offset, \pgfplots@tmpa)	-- ++(-#2, 0pt);
+		\edef\pgfplots@tick@UPPER@b{\csname pgfplots@\pgfplotspointonorientedsurfaceB max\endcsname}%
+	\else
+		% FALL BACK. never used, I guess?
+		% (\pgfplots@xcoordminTEX-\pgfplots@tick@offset, \pgfplots@tmpa) -- ++( #2, 0pt);
+		\edef\pgfplots@tick@LOWER@b{\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname}%
+	\fi
+	%
+	\ifcase\csname pgfplots@#1tickalignnum\endcsname\relax
+		\def\pgfplots@tick@offset{0}%
+	\or
+		\edef\pgfplots@tick@offset{#2}%
+	\or
+		\pgfmathmultiply@{0.5}{#2}%
+		\let\pgfplots@tick@offset=\pgfmathresult%
+	\fi
+	%
+	\edef\pgfplots@tick@LOWER@shiftbeg{-\pgfplots@tick@offset}%
+	\pgfmathadd@{\pgfplots@tick@LOWER@shiftbeg}{#2}%
+	\let\pgfplots@tick@LOWER@shiftend=\pgfmathresult
+	%
+	\edef\pgfplots@tick@UPPER@shiftbeg{\pgfplots@tick@offset}%
+	\pgfmathsubtract@{\pgfplots@tick@UPPER@shiftbeg}{#2}%
+	\let\pgfplots@tick@UPPER@shiftend=\pgfmathresult
+	%
+	% Assemble the \pgfplots@drawticklines@for@placecomputedtick
+	% command.
+	\def\pgfplots@drawticklines@for@placecomputedtick{%
+		\if\pgfplots@drawticklines@for@placecomputedtick@LOWEROK1%
+			\pgfpathmoveto{\pgfplotspointonorientedsurfaceabwithbshift{\pgfplots@curtickpos}{\pgfplots@tick@LOWER@b}{\pgfplots@tick@LOWER@shiftbeg pt}}%
+			\pgfpathlineto{\pgfplotspointonorientedsurfaceabwithbshift{\pgfplots@curtickpos}{\pgfplots@tick@LOWER@b}{\pgfplots@tick@LOWER@shiftend pt}}%
+		\fi
+		\if\pgfplots@drawticklines@for@placecomputedtick@UPPEROK1%
+			\pgfpathmoveto{\pgfplotspointonorientedsurfaceabwithbshift{\pgfplots@curtickpos}{\pgfplots@tick@UPPER@b}{\pgfplots@tick@UPPER@shiftbeg pt}}%
+			\pgfpathlineto{\pgfplotspointonorientedsurfaceabwithbshift{\pgfplots@curtickpos}{\pgfplots@tick@UPPER@b}{\pgfplots@tick@UPPER@shiftend pt}}%
+		\fi
+	}%
+%\message{place computed tick: LOWEROK=\pgfplots@drawticklines@for@placecomputedtick@LOWEROK; UPPEROK=\pgfplots@drawticklines@for@placecomputedtick@UPPEROK.}%
+}%
+
+
+\newif\ifpgfplots@needsminorloop
+
+\def\pgfplots@draw@tick@scale@label@for#1{%
+	\csname ifpgfplots@#1islinear\endcsname
+		\begingroup
+			\def\pgfplots@temp@isbaseten{0}%
+			\ifcase\csname pgfplots@scaled@ticks@#1@choice\endcsname
+				\global\let\pgfplots@glob@TMPa=\pgfutil@empty
+			\or
+				\xdef\pgfplots@glob@TMPa{\csname pgfplots@tick@scale@#1\endcsname}%
+				\def\pgfplots@temp@isbaseten{1}%
+			\or
+				\xdef\pgfplots@glob@TMPa{\csname pgfplots@tick@scale@#1\endcsname}%
+				\def\pgfplots@temp@isbaseten{1}%
+			\or
+				\xdef\pgfplots@glob@TMPa{\csname pgfplots@tick@scale@#1\endcsname}%
+				% real:
+			\or
+				% manual:
+				\global\def\pgfplots@glob@TMPa{dummyargument}%
+			\fi
+			\if1\pgfplots@temp@isbaseten
+				\expandafter\c@pgf@counta\pgfplots@glob@TMPa\relax
+				\multiply\c@pgf@counta by-1
+				\ifnum\c@pgf@counta=0\relax
+					\global\let\pgfplots@glob@TMPa=\pgfutil@empty
+				\else
+					\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+				\fi
+			\fi
+		\endgroup
+		\ifx\pgfplots@glob@TMPa\pgfutil@empty
+		\else
+			\begingroup
+			\pgfkeysgetvalue{/pgfplots/#1tick scale label code/.@cmd}\pgfplots@loc@TMPa
+			\ifx\pgfplots@loc@TMPa\pgfplots@empty@command@key
+			\else
+				\edef\pgfplots@tick@scale@labels{\noexpand\pgfplots@invoke@pgfkeyscode{/pgfplots/#1tick scale label code/.@cmd}{\pgfplots@glob@TMPa}}%
+				%
+				\pgfplots@change@pgfpoints@to@descriptioncs
+				%
+				\node[%
+					/pgfplots/every tick label,%
+					/pgfplots/every #1 tick label,%
+					/pgfplots/every #1 tick scale label]
+				{\pgfplots@tick@scale@labels};
+			\fi
+			\endgroup
+		\fi
+	\fi
+}
+
+% Check if the current tick position, stored in \pgfplots@tmpa, 
+% does not cross the y-axis.
+%
+% This is just a special case for centered axis lines.
+\def\pgfplots@xtick@check@tickshow{%
+	\pgfplots@tickshowtrue
+	\if\pgfplots@xaxislinesnum2% center
+		\ifcase\pgfplots@yaxislinesnum\relax
+			\pgfplotsmath@ifapproxequal@dim
+				{\pgfplots@tmpa}{\pgfplots@xmin@reg}
+				{\pgfplots@loc@tick@placement@tolerance}
+				{%
+					\pgfplots@tickshowfalse
+				}{}%
+			\pgfplotsmath@ifapproxequal@dim
+				{\pgfplots@tmpa}{\pgfplots@xmax@reg}
+				{\pgfplots@loc@tick@placement@tolerance}
+				{%
+					\pgfplots@tickshowfalse
+				}{}%
+		\or
+			\pgfplotsmath@ifapproxequal@dim
+				{\pgfplots@tmpa}{\pgfplots@xmin@reg}
+				{\pgfplots@loc@tick@placement@tolerance}
+				{%
+					\pgfplots@tickshowfalse
+				}{}%
+		\or
+			\pgfplotsmath@ifapproxequal@dim
+				{\pgfplots@tmpa}{\pgfplots@logical@ZERO@x pt}
+				{\pgfplots@loc@tick@placement@tolerance}
+				{%
+					\pgfplots@tickshowfalse
+				}{}%
+		\or
+			\pgfplotsmath@ifapproxequal@dim
+				{\pgfplots@tmpa}{\pgfplots@xmax@reg}
+				{\pgfplots@loc@tick@placement@tolerance}
+				{%
+					\pgfplots@tickshowfalse
+				}{}%
+		\fi
+	\fi
+}
+
+% Draws extra ticks including grid lines, tick lines and tick labels
+% along the current oriented surface.
+%
+% See \pgfplots@drawticklines@onorientedsurf@ for a description of the
+% oriented surface.
+%
+% #1 : tick position list
+\def\pgfplots@draw@extra@ticks@onorientedsurf{%
+	\expandafter\pgfplots@draw@extra@ticks@onorientedsurf@\pgfplotspointonorientedsurfaceA
+}%
+% #1: axis (x or y)
+% #2: tick position list
+\def\pgfplots@draw@extra@ticks@onorientedsurf@#1#2{%
+	\begingroup
+	\def\pgfplots@scaled@ticks@x@choice{0}%
+	\def\pgfplots@scaled@ticks@y@choice{0}%
+	\def\pgfplots@scaled@ticks@z@choice{0}%
+	\csname pgfplots@#1minorticksfalse\endcsname
+	\csname pgfplots@#1minorgridsfalse\endcsname
+	\expandafter\let\expandafter\pgfplots@ticklabel@pos@orig\csname pgfplots@#1ticklabel@pos\endcsname%
+	\expandafter\let\expandafter\axis@TMP\csname pgfplots@extra@#1ticklabel\endcsname
+	\expandafter\let\csname pgfplots@#1ticklabel\endcsname=\axis@TMP
+%	\pgfplotsset{/pgfplots/every extra #1 tick}%
+	% use a scope here such that line width and draw color can be set.
+	\scope[/pgfplots/.cd,/pgfplots/every extra #1 tick]
+	\expandafter\let\expandafter\pgfplots@ticklabel@pos@\csname pgfplots@#1ticklabel@pos\endcsname
+	\ifx\pgfplots@ticklabel@pos@\pgfplots@ticklabel@pos@orig
+	\else
+		\pgfplots@init@ticklabelaxisspec
+	\fi
+	\pgfplots@prepare@tick@coordlists@for{#1}{#2}%
+	\pgfplots@drawgridlines@onorientedsurf%
+	\pgfplots@drawticklines@onorientedsurf%
+	\pgfplots@drawticklabels@onorientedsurf%
+	\endscope
+	\endgroup
+}
+
+% Computes final major and minor tick positions into global lists
+% \pgfplots@prepared@tick@positions@major@x
+% and
+% \pgfplots@prepared@tick@positions@minor@x.
+%
+% Both lists contain entries of the form {<index>}{<logical position>}
+% @see \pgfplots@prepared@tick@pos@unpack
+%
+% #1: the axis
+% #2: the tick list.
+%
+% PRECONDITION:  
+% 	- \pgfplots@determinedefaultvalues has been executed.
+% 		That means particularly that \pgfplots@[xy][min,max] are available in TeX point
+% 		range (after datascaling and logs).
+% POSTCONDITION:
+% 	- the lists
+% 		\pgfplots@prepared@tick@positions@major@x
+% 		\pgfplots@prepared@tick@positions@major@tickindices@x
+% 		\pgfplots@prepared@tick@positions@minor@x
+% 	  are ready.
+\def\pgfplots@prepare@tick@coordlists@for#1#2{%
+	\begingroup
+	\expandafter\let\expandafter\ifpgfplots@islinear\csname ifpgfplots@#1islinear\endcsname
+	\expandafter\let\expandafter\ifpgfplots@minorticks\csname ifpgfplots@#1minorticks\endcsname
+	\expandafter\let\expandafter\ifpgfplots@minorgrids\csname ifpgfplots@#1minorgrids\endcsname
+	% these lists need to be global such that I can fill them inside
+	% of \foreach statements. And, yes: I have also added a TeX group
+	% on my own (but that's not the problem).
+	\global\pgfplotslistnewempty\pgfplots@prepared@tick@positions@major
+	%\global\pgfplotslistnewempty\pgfplots@prepared@tick@positions@major@tickindices
+	\global\pgfplotslistnewempty\pgfplots@prepared@tick@positions@minor
+	%
+	\pgfplots@prepare@tick@coordlists@for@handletolerance#1%
+	%
+	\edef\pgfplots@loc@TMPa{#2}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+	\else
+		\ifpgfplots@minorticks
+			\pgfplots@needsminorlooptrue
+		\else
+			\ifpgfplots@minorgrids
+				\pgfplots@needsminorlooptrue
+			\else
+				\pgfplots@needsminorloopfalse
+			\fi
+		\fi
+		\pgfkeysgetvalue{/pgfplots/minor #1tick}\pgfplots@minor@tick@list
+		\ifx\pgfplots@minor@tick@list\pgfutil@empty
+		\else
+			\pgfplots@needsminorloopfalse
+		\fi
+		%
+		\ifpgfplots@needsminorloop
+			\ifpgfplots@islinear
+				\pgfkeysgetvalue{/pgfplots/minor #1 tick num}\pgfplots@minor@tick@num
+				\begingroup
+				\c@pgf@counta=\pgfplots@minor@tick@num\relax
+				\advance\c@pgf@counta by1\relax
+				\pgfplots@tmpa=\csname pgfplots@tick@distance@#1\endcsname pt %
+				\divide\pgfplots@tmpa by\c@pgf@counta
+				\edef\pgfmathresult{\pgf@sys@tonumber{\pgfplots@tmpa}}%
+				\pgfmath@smuggleone\pgfmathresult
+				\endgroup
+				\let\pgfplots@minor@tick@dist=\pgfmathresult
+			\else
+				\def\pgfplots@minor@tick@num{9}%
+			\fi
+		\fi
+		%
+		% Prepare the [xy]tick[min|max] key processing:
+		\let\pgfplots@checktickminmax=\pgfutil@empty
+		\expandafter\ifx\csname pgfplots@#1tickmin\endcsname\pgfutil@empty
+		\else
+			\expandafter\def\expandafter\pgfplots@checktickminmax\expandafter{%
+				\pgfplots@checktickminmax
+				\pgfplots@prepare@tick@coordlists@for@checktickmin#1%
+			}%
+		\fi
+		\expandafter\ifx\csname pgfplots@#1tickmax\endcsname\pgfutil@empty
+		\else
+			\expandafter\def\expandafter\pgfplots@checktickminmax\expandafter{%
+				\pgfplots@checktickminmax
+				\pgfplots@prepare@tick@coordlists@for@checktickmax#1%
+			}%
+		\fi
+		%
+		%
+		\gdef\pgfplots@glob@TMPa{0}%
+		\foreach \x in {#2} {%
+			\let\pgfplots@ticknum=\pgfplots@glob@TMPa
+			%
+			\pgfplots@prepare@tick@coordlists@for@assign\pgfplots@tmpa=\x
+			\csname pgfplots@#1tick@check@tickshow\endcsname
+			\pgfplots@prepare@tick@coordlists@for@checkdatalimits#1%
+			\pgfplots@checktickminmax
+			%
+			\ifpgfplots@tickshow
+				\edef\x{{\pgfplots@ticknum}{\x}}%
+				\expandafter\pgfplotslistpushbackglobal\x\to\pgfplots@prepared@tick@positions@major
+				%\expandafter\pgfplotslistpushbackglobal\pgfplots@ticknum\to\pgfplots@prepared@tick@positions@major@tickindices
+			\fi
+			% X-Axis ticks bottom and top
+			\ifpgfplots@needsminorloop
+				% SEE BELOW for the 'minor #1tick' feature -- it has a
+				% separate loop.
+				\foreach \pgfplots@i in {1,...,\pgfplots@minor@tick@num} {%
+					\ifpgfplots@islinear
+						\pgfmathmultiply@{\pgfplots@i}{\pgfplots@minor@tick@dist}%
+					\else
+						% in log:
+						%  log( i*10^k ) = log\pgfplots@i + k\log10 -> draw ticks for i=1..9
+						\pgfplotscoordmath{#1}{log unsigned int}{\pgfplots@i}%
+						\pgfplotscoordmath{#1}{tofixed}{\pgfmathresult}%
+					\fi
+					\pgfplots@prepare@tick@coordlists@for@advance\pgfplots@tmpa by\pgfmathresult
+					\pgfplots@tickshowtrue
+					\pgfplots@prepare@tick@coordlists@for@checkdatalimits#1%
+					\pgfplots@checktickminmax
+					\ifpgfplots@tickshow
+						\pgfplots@prepare@tick@coordlists@for@tofixed\pgfplots@tmpa
+						\c@pgf@counta=\pgfplots@ticknum\relax
+						\advance\c@pgf@counta by\pgfplots@i\relax
+						\edef\x{{\the\c@pgf@counta}{\pgfmathresult}}%
+						\expandafter\pgfplotslistpushbackglobal\x\to\pgfplots@prepared@tick@positions@minor
+					\fi
+				}%
+			\fi
+			\pgfplotsutil@advancestringcounter\pgfplots@ticknum
+			% carry \ticknum outside of this scope:
+			\global\let\pgfplots@glob@TMPa=\pgfplots@ticknum
+		}%
+		%
+		\ifx\pgfplots@minor@tick@list\pgfutil@empty
+		\else
+			% handle the 'minor #1tick' feature:
+			\def\pgfplots@loc@TMPa{\foreach \x in }%
+			\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplots@minor@tick@list} {%
+				\let\pgfplots@ticknum=\pgfplots@glob@TMPa
+				%
+				\pgfplots@prepare@tick@coordlists@for@assign\pgfplots@tmpa=\x
+				\pgfplots@tickshowtrue
+				\pgfplots@prepare@tick@coordlists@for@checkdatalimits#1%
+				\pgfplots@checktickminmax
+				\ifpgfplots@tickshow
+					\edef\x{{\pgfplots@ticknum}{\x}}%
+					\expandafter\pgfplotslistpushbackglobal\x\to\pgfplots@prepared@tick@positions@minor
+				\fi
+				\pgfplotsutil@advancestringcounter\pgfplots@ticknum
+				% carry \ticknum outside of this scope:
+				\global\let\pgfplots@glob@TMPa=\pgfplots@ticknum
+			}%
+		\fi
+	\fi
+	\endgroup
+	\expandafter\let\csname pgfplots@prepared@tick@positions@minor@#1\endcsname=\pgfplots@prepared@tick@positions@minor
+	\expandafter\let\csname pgfplots@prepared@tick@positions@major@#1\endcsname=\pgfplots@prepared@tick@positions@major
+	%\expandafter\let\csname pgfplots@prepared@tick@positions@major@tickindices@#1\endcsname=\pgfplots@prepared@tick@positions@major@tickindices
+	\global\let\pgfplots@prepared@tick@positions@major=\relax
+	%\global\let\pgfplots@prepared@tick@positions@major@tickindices=\relax
+	\global\let\pgfplots@prepared@tick@positions@minor=\relax
+}%
+
+% The following set of macros can be used to replace the TeX register
+% arithmetics used to speed up the computations inside of
+% \pgfplots@prepare@tick@coordlists@for by something different.
+%
+% FIXME : that is no clean programming! Perhaps a new math class
+% should be used here, and implemented during the complete tick
+% preparation!?
+%
+% Keep in mind that these tick positions are in "transformed
+% range", i.e. they are expected to be in the range -16000...16000. At
+% the time of this modification, only the smithchart lib needs special
+% handling here... does this justify a re-design?
+\def\pgfplots@prepare@tick@coordlists@for@assign#1=#2{%
+	#1=#2pt
+}%
+\def\pgfplots@prepare@tick@coordlists@for@advance#1by#2{%
+	\advance#1 by#2 pt %
+}%
+\def\pgfplots@prepare@tick@coordlists@for@tofixed#1{%
+	\edef\pgfmathresult{\pgf@sys@tonumber{#1}}%
+}%
+\def\pgfplots@prepare@tick@coordlists@for@handletolerance#1{%
+	\afterassignment\pgfplots@gobble@until@relax
+	\pgfplots@tmpa=\pgfkeysvalueof{/pgfplots/#1tick placement tolerance}pt\relax
+	\pgfplots@tmpa=\csname pgfplots@#1@inverseveclength\endcsname\pgfplots@tmpa
+	\edef\pgfplots@loc@tick@placement@tolerance{\the\pgfplots@tmpa}%
+	%
+	\advance\csname pgfplots@#1min@reg\endcsname by-\pgfplots@tmpa
+	\advance\csname pgfplots@#1max@reg\endcsname by\pgfplots@tmpa
+}%
+\def\pgfplots@prepare@tick@coordlists@for@checktickmin#1{%
+	\ifdim\pgfplots@tmpa<\csname pgfplots@#1tickmin\endcsname pt
+		\pgfplots@tickshowfalse
+	\fi
+}%
+\def\pgfplots@prepare@tick@coordlists@for@checktickmax#1{%
+	\ifdim\pgfplots@tmpa>\csname pgfplots@#1tickmax\endcsname pt
+		\pgfplots@tickshowfalse
+	\fi
+}%
+\def\pgfplots@prepare@tick@coordlists@for@checkdatalimits#1{%
+	\ifdim\pgfplots@tmpa<\csname pgfplots@#1min@reg\endcsname
+		\pgfplots@tickshowfalse
+	\else
+		\ifdim\pgfplots@tmpa>\csname pgfplots@#1max@reg\endcsname
+			\pgfplots@tickshowfalse
+		\fi
+	\fi
+}%
+
+% Unpacks entries of the \pgfplots@prepared@tick@positions@* lists.
+%
+% Defines \pgfplots@tick to be the actual tick position and
+% \pgfplots@ticknum to be its index.
+%
+% Usage:
+% \expandafter\pgfplots@prepared@tick@pos@unpack\entry
+\def\pgfplots@prepared@tick@pos@unpack#1#2{%
+	\def\pgfplots@tick{#2}%
+	\def\pgfplots@ticknum{#1}%
+}
+
+% Draws grid lines at the a-positions of the currently set oriented
+% surface.
+%
+% Tick positions are taken out of the already precomputed list
+% \pgfplots@prepared@tick@positions@major@...
+%
+% See \pgfplots@drawticklines@onorientedsurf@ for a description of the
+% oriented surface.
+%
+% #1 : the verbatim axis name (either 'x' or 'y')
+% #2 : the index of the axis  (either 0 or 1)
+\def\pgfplots@drawgridlines@onorientedsurf{%
+	\expandafter\pgfplots@drawgridlines@onorientedsurf@\pgfplotspointonorientedsurfaceA
+}%
+\def\pgfplots@drawgridlines@onorientedsurf@#1{%
+	\pgfplots@if{pgfplots@shownothingof@\pgfplotspointonorientedsurfaceB}{%
+		\relax
+	}{%
+		\begingroup
+		\pgfplots@ifgridlines@onorientedsurf@should@be@drawn{%
+			\expandafter\let\expandafter\pgfplots@prepared@tick@positions@major@\csname pgfplots@prepared@tick@positions@major@#1\endcsname
+			\expandafter\let\expandafter\pgfplots@prepared@tick@positions@minor@\csname pgfplots@prepared@tick@positions@minor@#1\endcsname
+			\pgfplots@loop@CONTINUEfalse
+			\pgfplots@if{pgfplots@#1majorgrids}{\pgfplots@loop@CONTINUEtrue}{}%
+			\pgfplots@if{pgfplots@#1minorgrids}{\pgfplots@loop@CONTINUEtrue}{}%
+			\ifpgfplots@loop@CONTINUE
+				\scope
+				\pgfplots@drawgridlines@INSTALLCLIP@onorientedsurf#1%
+				%
+				\pgfplots@if{pgfplots@#1minorgrids}{%
+					\draw[%
+						/pgfplots/every axis grid,
+						/pgfplots/every minor grid,
+						/pgfplots/every axis #1 grid,
+						/pgfplots/every minor #1 grid]%
+					\pgfextra
+					\pgfplotslistforeach\pgfplots@prepared@tick@positions@minor@\as\pgfplots@curgridpos{%
+						\expandafter\pgfplots@prepared@tick@pos@unpack\pgfplots@curgridpos
+						\pgfplots@drawgridlines@onorientedsurf@fromto\pgfplots@tick
+					}%
+					\endpgfextra;
+				}{}%
+				%
+				\pgfplots@if{pgfplots@#1majorgrids}{%
+					\draw[%
+						/pgfplots/every axis grid,
+						/pgfplots/every major grid,
+						/pgfplots/every axis #1 grid,
+						/pgfplots/every major #1 grid]%
+					\pgfextra
+					\pgfplotslistforeach\pgfplots@prepared@tick@positions@major@\as\pgfplots@curgridpos{%
+						\expandafter\pgfplots@prepared@tick@pos@unpack\pgfplots@curgridpos
+						\pgfplots@drawgridlines@onorientedsurf@fromto\pgfplots@tick
+					}%
+					\endpgfextra;
+				}{}%
+				%
+				\endscope
+			\fi
+		}{}%
+		\endgroup
+	}%
+}
+
+% Should draw a single grid line on the actual oriented surface.
+% #1 the value of the grid line.
+%
+% PRECONDITION
+% 	\pgfplots@ticknum contains the index of the current tick.
+\def\pgfplots@drawgridlines@onorientedsurf@fromto#1{%
+	\pgfpathmoveto{\pgfplotspointonorientedsurfaceab{#1}{\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname}}%
+	\pgfpathlineto{\pgfplotspointonorientedsurfaceab{#1}{\csname pgfplots@\pgfplotspointonorientedsurfaceB max\endcsname}}%
+}%
+
+% Draws ticks on the currently active "oriented surface".
+%
+% The oriented surface is two dimensional and has been initialised
+% with \pgfplotspointonorientedsurfaceabsetupfor*** somehow.
+%
+% The idea is now the following: 
+% - the tick positions change along the FIRST coordinate of this
+%   surface:
+%
+%   x ---- x ---- x ---- x
+%   --> FIRST -->
+%
+% - the tick lines are drawn along the SECOND coordinate of this
+%   surface:
+%
+%   | ---- | ---- | ---- |   | SECOND
+%   |      |      |      |   v
+%
+% for example, 
+% \pgfplotspointonorientedsurfaceab@setupfor@xyZ{1}
+% \pgfplots@drawticklines@onorientedsurf
+% will draw ticks at x-positions designated by \pgfplots@xtick. The
+% small tick lines will be drawn along the y axis.  For each processed
+% point, the z coordinate will be fixed to '1'.
+%
+% Another example:
+% \pgfplotspointonorientedsurfaceab@setupfor@yxZ{-1}
+% \pgfplots@drawticklines@onorientedsurf
+% will draw ticks at y-positions designated by \pgfplots@ytick. The
+% small tick lines will be drawn along the x axis.  For each processed
+% point, the z coordinate will be fixed to '-1'.
+% 
+% Tick positions are taken out of the already precomputed list
+% \pgfplots@prepared@tick@positions@major@...
+\def\pgfplots@drawticklines@onorientedsurf{%
+	\expandafter\pgfplots@drawticklines@onorientedsurf@\pgfplotspointonorientedsurfaceA
+}%
+
+\def\pgfplots@drawticklines@INSTALLCLIP@onorientedsurf#1{%
+	\pgfplots@drawtickgridlines@INSTALLCLIP@onorientedsurf{#1}%
+}%
+\def\pgfplots@drawgridlines@INSTALLCLIP@onorientedsurf#1{%
+	\pgfplots@drawtickgridlines@INSTALLCLIP@onorientedsurf{#1}%
+}%
+% Avoids tick lines which are too thick by introducing a clipping
+% region. Tick lines (and grid lines) won't extend to the left or
+% right of axis #1.
+\def\pgfplots@drawtickgridlines@INSTALLCLIP@onorientedsurf#1{%
+	\pgfinterruptboundingbox%
+	\begingroup
+		% the case ||e_b|| == 0 should never happen here! Should be
+		% caught before entering this routine.
+		\let\pgfplots@loc@LENGTH=\pgfmathresult
+		\expandafter\let\expandafter\pgfplots@loc@MIN\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname
+		\expandafter\let\expandafter\pgfplots@loc@MAX\csname pgfplots@\pgfplotspointonorientedsurfaceB max\endcsname
+		\pgfpathmoveto{\pgfplotspointonorientedsurfaceabwithbshift{\csname pgfplots@#1min\endcsname}{\pgfplots@loc@MIN}{-5cm}}%
+		\pgfpathlineto{\pgfplotspointonorientedsurfaceabwithbshift{\csname pgfplots@#1max\endcsname}{\pgfplots@loc@MIN}{-5cm}}%
+		\pgfpathlineto{\pgfplotspointonorientedsurfaceabwithbshift{\csname pgfplots@#1max\endcsname}{\pgfplots@loc@MAX}{5cm}}%
+		\pgfpathlineto{\pgfplotspointonorientedsurfaceabwithbshift{\csname pgfplots@#1min\endcsname}{\pgfplots@loc@MAX}{5cm}}%
+		\pgfusepath{clip}%
+	\endgroup
+	\endpgfinterruptboundingbox%
+}%
+
+\def\pgfplots@drawticklines@onorientedsurf@#1{%
+	\pgfplots@if{pgfplots@shownothingof@\pgfplotspointonorientedsurfaceB}{%
+		\relax
+	}{%
+		\scope
+		\pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn{0}{%
+			\def\pgfplots@drawticklines@for@placecomputedtick@LOWEROK{1}%
+		}{%
+			\def\pgfplots@drawticklines@for@placecomputedtick@LOWEROK{0}%
+		}%
+		\pgfplots@ifaxisline@B@onorientedsurf@should@be@drawn{1}{%
+			\def\pgfplots@drawticklines@for@placecomputedtick@UPPEROK{1}%
+		}{%
+			\def\pgfplots@drawticklines@for@placecomputedtick@UPPEROK{0}%
+		}%
+		\if\pgfkeysvalueof{/pgfplots/\pgfplotspointonorientedsurfaceB\space dir/value}r%
+			% local special handling for reversed axes: exchange
+			% meaning of 'left' and 'right' here.
+			%
+			% the rest of the pgfplots code does that automatically because
+			% there, tickposnum is relevant to determine the axes
+			% which contains tick labels. And this algorithm checks
+			% for reversed axes implicitly.
+			%
+			\if1\csname pgfplots@\pgfplotspointonorientedsurfaceA tickposnum\endcsname
+				\expandafter\def\csname pgfplots@\pgfplotspointonorientedsurfaceA tickposnum\endcsname{3}%
+			\else
+				\if3\csname pgfplots@\pgfplotspointonorientedsurfaceA tickposnum\endcsname
+					\expandafter\def\csname pgfplots@\pgfplotspointonorientedsurfaceA tickposnum\endcsname{1}%
+				\fi
+			\fi
+		\fi
+		\ifcase\csname pgfplots@\pgfplotspointonorientedsurfaceA tickposnum\endcsname\relax
+			% both
+		\or
+			% lower
+			\def\pgfplots@drawticklines@for@placecomputedtick@UPPEROK{0}%
+		\or
+			% center
+			\def\pgfplots@drawticklines@for@placecomputedtick@UPPEROK{0}%
+		\or
+			% upper
+			\def\pgfplots@drawticklines@for@placecomputedtick@LOWEROK{0}%
+		\else
+			% never used?
+			\def\pgfplots@drawticklines@for@placecomputedtick@UPPEROK{0}%
+		\fi
+		\expandafter\let\expandafter\pgfplots@prepared@tick@positions@major@\csname pgfplots@prepared@tick@positions@major@#1\endcsname
+		\expandafter\let\expandafter\pgfplots@prepared@tick@positions@minor@\csname pgfplots@prepared@tick@positions@minor@#1\endcsname
+		\pgfplots@drawticklines@INSTALLCLIP@onorientedsurf#1
+		%
+		\pgfplots@if{pgfplots@#1minorticks}{%
+			\draw[%
+				/pgfplots/every tick,
+				/pgfplots/every minor tick,
+				/pgfplots/every #1 tick,
+				/pgfplots/every minor #1 tick]%
+			\pgfextra
+			\pgfmathparse{\pgfplots@subtickwidth}%
+			\let\pgfplots@subtickwidth@=\pgfmathresult
+			\let\pgfplots@subtickwidth@=\pgfmathresult
+			\let\pgfplots@subtickwidth=\pgfmathresult
+			\pgfplots@prepare@tick@offsets@for@{#1}{\pgfplots@subtickwidth@}%
+			\pgfplotslistforeach\pgfplots@prepared@tick@positions@minor@\as\pgfplots@curtickpos{%
+				\expandafter\pgfplots@prepared@tick@pos@unpack\pgfplots@curtickpos
+				\let\pgfplots@curtickpos=\pgfplots@tick
+				\pgfplotspointouternormalvectorofaxissetv{}{\pgfplots@curtickpos}%
+				\pgfplots@drawticklines@for@placecomputedtick
+			}%
+			\endpgfextra;
+		}{}%
+		%
+		\pgfplots@if{pgfplots@#1majorticks}{%
+			\draw[%
+				/pgfplots/every tick,
+				/pgfplots/every major tick,
+				/pgfplots/every #1 tick,
+				/pgfplots/every major #1 tick]%
+			\pgfextra
+			\pgfmathparse{\pgfplots@tickwidth}%
+			\let\pgfplots@tickwidth@=\pgfmathresult
+			\let\pgfplots@tickwidth@=\pgfmathresult
+			\let\pgfplots@tickwidth=\pgfmathresult
+			\pgfplots@prepare@tick@offsets@for@{#1}{\pgfplots@tickwidth@}%
+			\pgfplotslistforeach\pgfplots@prepared@tick@positions@major@\as\pgfplots@curtickpos{%
+				\expandafter\pgfplots@prepared@tick@pos@unpack\pgfplots@curtickpos
+				\let\pgfplots@curtickpos=\pgfplots@tick
+				\pgfplotspointouternormalvectorofaxissetv{}{\pgfplots@curtickpos}%
+				\pgfplots@drawticklines@for@placecomputedtick
+			}%
+			\endpgfextra;
+		}{}%
+		%
+		\endscope
+	}%
+}
+
+% Draws tick labels at the positions of the currently set oriented
+% surface.
+%
+% Tick positions are taken out of the already precomputed list
+% \pgfplots@prepared@tick@positions@major@...
+%
+% For 2D axes, this task is relatively simple:
+% we iterate through every prepared major tick position and place a
+% tick label. Open points, however, are the question whether to use
+% the RIGHT or the LEFT axis line on the current oriented surface:
+%
+%        direction 'b' (second oriented)
+% |-------------------------|
+% |                         |
+% |                         |
+% |                         |direction 'a' (first oriented)
+% |                         |
+% |                         |
+% |                         |
+% |-------------------------|
+% Left                  Right
+%
+% Given the axis line which shall contain the labels, we have to
+% decide how to align the tick label nodes: on the left or on the
+% right? Of course, we want to align them such that they are "outside"
+% of the figure! That's simple as well: "Left axis line => outside
+% means left", "Right axis line => outside means right".
+%
+% That's all, basically.
+%
+% For 3D axes, all these points are basically ... the same! 
+% Now it can happen that the current oriented surface shall
+% not contain ANY tick label. In that case, we do nothing.
+% Furthermore, the "outside" direction (i.e. the anchoring of the
+% label nodes) is a little bit more difficult.
+% 
+%
+% See \pgfplots@drawticklines@onorientedsurf@ for a description of the
+% oriented surface.
+\def\pgfplots@drawticklabels@onorientedsurf{%
+	\expandafter\pgfplots@drawticklabels@onorientedsurf@\pgfplotspointonorientedsurfaceA
+}
+\def\pgfplots@drawticklabels@onorientedsurf@#1{%
+	\begingroup
+	\expandafter\let\expandafter\pgfplots@prepared@tick@positions@major@\csname pgfplots@prepared@tick@positions@major@#1\endcsname
+	% check whether
+	% - we need to place tick labels on the LEFT side,
+	% - we need to place tick labels on the RIGHT side,
+	% - we don't need tick labels for the current surface at all:
+	\pgfplotspointonorientedsurfaceabmatchaxisline{\csname pgfplots@#1ticklabelaxisspec\endcsname}{\pgfplots@ticklabelside}%
+	\ifx\pgfplots@ticklabelside\pgfutil@empty
+		% SKIP. The current oriented surface shall not get tick labels
+		% for #1.
+	\else
+		\pgfplots@if{pgfplots@#1majorticks}{%
+			\pgfplots@if{pgfplots@#1islinear}{%
+				\pgfplots@init@scaled@tick@for{#1}%
+			}{\relax}%
+			\begingroup
+			\pgfkeysalso{/tikz/every node/.append style={/pgfplots/every tick label,/pgfplots/every #1 tick label}}%
+			\pgfplots@drawticklabels@onorientedsurf@prepareanchor#1%
+			%
+			\pgfplotsmath@ifzero{\csname pgfplots@\pgfplotspointonorientedsurfaceB @veclength\endcsname}{%
+				\def\pgfplots@tick@offset{0}%
+			}{%
+				\ifcase\csname pgfplots@#1tickalignnum\endcsname\relax
+					\def\pgfmathresult{0}%
+				\or
+					\pgfmathparse{\pgfplots@tickwidth}%
+				\or
+					\pgfmathmultiply{0.5}{\pgfplots@tickwidth}%
+				\fi
+				\let\pgfplots@tick@offset=\pgfmathresult
+				\pgfplots@ticklabel@maxtickdimen@extrashift{#1}{\pgfplots@tick@offset}%
+				%\pgfmathmultiply@{\pgfplots@tick@offset}{\csname pgfplots@\pgfplotspointonorientedsurfaceB @inverseveclength\endcsname}%
+				\let\pgfplots@tick@offset=\pgfmathresult
+			}%
+			%				
+			\if2\csname pgfplots@#1axislinesnum\endcsname % Centered axis lines?
+				\expandafter\let\expandafter\pgfplots@tick@origin\csname pgfplots@logical@ZERO@\pgfplotspointonorientedsurfaceB\endcsname%
+				% FIXME : that stuff here does not respect
+				% '[xyz]tickpos num' keys!
+				\pgfplots@tickposchoiceb
+				\if r\pgfkeysvalueof{/pgfplots/\pgfplotspointonorientedsurfaceB\space dir/value}%
+					% special handling for reversed axes.
+					\pgfmathmultiply{-1}{\pgfplots@tick@offset}%
+					\let\pgfplots@tick@offset=\pgfmathresult
+				\fi
+				\edef\pgfplots@tick@offset{-\pgfplots@tick@offset}%
+				%\pgfmathsubtract@{\pgfplots@tick@origin}{\pgfplots@tick@offset}%
+			\else
+				\if0\pgfplots@ticklabelside
+				 	\expandafter\let\expandafter\pgfplots@tick@origin\csname pgfplots@\pgfplotspointonorientedsurfaceB min\endcsname%
+					\pgfplots@tickposchoiceb
+					%\pgfmathsubtract@{\pgfplots@tick@origin}{\pgfplots@tick@offset}%
+					\edef\pgfplots@tick@offset{-\pgfplots@tick@offset}%
+				\else
+					\if1\pgfplots@ticklabelside
+						\expandafter\let\expandafter\pgfplots@tick@origin\csname pgfplots@\pgfplotspointonorientedsurfaceB max\endcsname%
+						\pgfplots@tickposchoicea
+						%\pgfmathadd@{\pgfplots@tick@origin}{\pgfplots@tick@offset}%
+					\else
+						\expandafter\let\expandafter\pgfplots@tick@origin\csname pgfplots@logical@ZERO@\pgfplotspointonorientedsurfaceB\endcsname%
+						% FIXME : is that correct!?
+						\pgfplots@tickposchoiceb
+						%\pgfmathsubtract@{\pgfplots@tick@origin}{\pgfplots@tick@offset}%
+						%\edef\pgfplots@tick@offset{-\pgfplots@tick@offset}%
+						%
+						\if2\pgfplots@ticklabelside
+						\else
+							% Should never happen.
+							\pgfplots@error{Internal logic error during tick label placement (got placement character '\pgfplots@ticklabelside'). 
+									Please report this as a bug or verify your input arguments to #1ticklabel pos.}%
+						\fi
+					\fi
+				\fi
+			\fi
+			%\let\pgfplots@tick@origin=\pgfmathresult%
+			\edef\pgfplots@tick@offset{\pgfplots@tick@offset pt}%
+			%
+			% make sure the \pgfmathlogtologten method works even for
+			% non-standard 'log basis #1':
+			\def\pgfmathlogtologten@{\pgfplotscoordmath{#1}{log to log 10}}%
+			%
+			\xdef\pgfplots@show@ticklabel@LASTTICK{}%
+			\pgfplotslistforeachungrouped\pgfplots@prepared@tick@positions@major@\as\pgfplots@curtickpos{%
+				\expandafter\pgfplots@prepared@tick@pos@unpack\pgfplots@curtickpos
+				\let\pgfplots@curtickpos=\pgfplots@tick
+				%\expandafter\pgfplotslistpopfront\csname pgfplots@prepared@tick@positions@major@tickindices@#1\endcsname\to\pgfplots@ticknum
+				\pgfplotspointouternormalvectorofaxissetv{}{\pgfplots@curtickpos}%
+				\pgfplots@show@ticklabel
+					{#1}{\pgfplots@curtickpos}(\pgfplots@curtickpos,\pgfplots@tick@origin+\pgfplots@tick@offset)%
+					{\pgfplots@ticknum}%
+			}%
+			\pgfplots@ticklabel@maxtickdimen@finish{#1}%
+			\endgroup
+			\pgfplots@draw@tick@scale@label@for #1%
+		}%
+		{\relax}% if...@major==false
+	\fi
+	\endgroup
+}
+
+% This here does the main work for any tick label ANCHORING.
+%
+% FIXME : the new 'near ticklabel' anchors are now the default method
+% to place tick labels.
+%
+% This feature here can be used to disable this anchoring, i.e. set
+% 'ticklabel anchor=tikz' to use a stupid heuristics.
+%
+% There are actually two choices:
+% Choice 1: near ticklabel
+% 	This choice places tick labels fully automatic outside of the
+% 	figure, all on a line which is parallel to the axis which
+% 	contains the corresponding tick labels.
+%
+% 	Since we are currently working on a restricted surface, we have
+% 	three direction related to that surface:
+% 		'a': this is the direction in which tick positions are known.
+% 		'b': the 'orthogonal' axis to 'a' which is also in the surface.
+% 		'n': the surface normal.
+% 	Now, the idea for tick labels is to place them at 
+% 		SCALE_b * b + SCALE_n * n,
+% 	where the SCALE_[bn] numbers are choosen such that the label is
+% 	outside of the axis.
+%
+% 	The offset is simply added to the transformation matrix (as a
+% 	shift).
+%
+% Choice 2: tikz.
+%   This is more or less a backwards compatibility feature. It does
+%   not change the transformation matrix. It simply sets the 'at' key
+%   of each node to the tick position and prepares the correct anchors
+%   for the TikZ '\node' commands.
+%   That's all here.
+%
+% PRECONDITION:
+%   - called inside of  \pgfplots@drawticklabels@onorientedsurf@
+% POSTCONDITION:
+% 	- defines 
+% 		- \pgfplots@tickposchoicea
+% 			if called, sets keys such that tick labels are RIGHT (TOP) of
+% 			the axis,
+%
+% 		- \pgfplots@tickposchoiceb
+% 			if called, sets keys such that tick labels are LEFT
+% 			(BOTTOM) of the axis,
+\def\pgfplots@drawticklabels@onorientedsurf@prepareanchor#1{%
+	\if\csname pgfplots@ticklabel@anchor@#1\endcsname0%
+		% auto is the same as 'near ticklabel':
+		\expandafter\def\csname pgfplots@ticklabel@anchor@#1\endcsname{1}%
+	\fi
+	\ifcase\csname pgfplots@ticklabel@anchor@#1\endcsname%
+		% 0: doesn't happen, see above.
+	\or
+		% 1: near ticklabel.
+		% The following code contains automatically
+		% aligned tick labels (especially for 3D axes). 
+		% see the manual for the |near ticklabel| anchors.
+		\pgfkeys{/tikz/anchor=near #1ticklabel}%
+		%
+		% process the (optional) ticklabel distance:
+		\begingroup
+			\pgfkeysgetvalue{/pgfplots/#1ticklabel shift}\pgfmathresult
+			\ifx\pgfmathresult\pgfutil@empty
+			\else
+				\afterassignment\pgfplots@gobble@until@relax
+				\pgf@xa=\pgfkeysvalueof{/pgfplots/#1ticklabel shift}pt\relax
+				\multiply\pgf@xa by-1 % the direction vector points to the INSIDE. the shift should have opposite sign.
+				\edef\pgfmathresult{\pgf@sys@tonumber\pgf@xa}%
+			\fi
+			\pgfmath@smuggleone\pgfmathresult
+		\endgroup
+		\let\pgfplots@loc@TMPc=\pgfmathresult
+		\ifx\pgfplots@loc@TMPc\pgfutil@empty
+		\else
+			\pgfplotspointouternormalvectorofaxis@ifdependson@v{\pgfplotsticklabelaxisspec{#1}}{%
+				\tikzset{every node/.append code={%
+						\tikz@addtransform{%
+							\pgftransformshift{%
+								\pgfplotspointouternormalvectorofticklabelaxis{#1}%
+								\pgfqpointscale{-\pgfplots@loc@TMPc}{}%
+							}%
+						}%
+					}%
+				}%
+			}{%
+				\pgftransformshift{%
+					\pgfplotspointouternormalvectorofticklabelaxis{#1}%
+					\pgfqpointscale{-\pgfplots@loc@TMPc}{}%
+				}%
+			}%
+		\fi
+		%
+		% these things are irrelevant here:
+		\let\pgfplots@tickposchoicea=\pgfutil@empty
+		\let\pgfplots@tickposchoiceb=\pgfutil@empty
+	\or
+		% 2: tikz.
+		% We simply prepare the default anchor.
+		% Actually, this code is just for backwards compatibility -
+		% there may be people who prefer to set anchors. The
+		% 'near ticklabel' implementation is much more general, however.
+		\if\pgfplotspointonorientedsurfaceB x
+			\def\pgfplots@tickposchoicea{\tikzset{right}}%
+			\def\pgfplots@tickposchoiceb{\tikzset{left}}%
+		\else
+			\if\pgfplotspointonorientedsurfaceB y
+				\def\pgfplots@tickposchoicea{\tikzset{above}}%
+				\def\pgfplots@tickposchoiceb{\tikzset{below}}%
+			\else
+				\def\pgfplots@tickposchoicea{\tikzset{anchor=north east}}%
+				\def\pgfplots@tickposchoiceb{\tikzset{anchor=south east}}%
+			\fi
+		\fi
+	\fi
+	\pgfplots@ticklabel@maxtickdimen@prepare@for@normalvec
+		{#1}%
+		{\pgfplotspointouternormalvectorofticklabelaxis{#1}}%
+}%
+
+\newif\ifpgfplots@checkuniform@isfirst
+% Checks whether the argument to xtick or ytick is a UNIFORM tick
+% sequence.
+%
+% A uniform tick sequence is 0,...,10 and 3,4,5 and -5,-4,-2 but 
+% NOT 0,2,4 or 4,10.
+%
+% Furthermore, any NON-integer tick arguments are also assumed to be
+% NOT uniform.
+%
+% INPUT:
+% #1: a tick argument (i.e. something which can be put to 
+%     \foreach \x in {#1})
+%
+% OUTPUT:
+%    \pgfplots@isuniformticktrue
+%    or
+%    \pgfplots@isuniformtickfalse
+% depending on the check.
+% This variable will be set globally.
+\def\pgfplots@checkisuniformLOGtick#1{%
+	\begingroup
+	\global\pgfplots@isuniformticktrue
+	\pgfplots@checkuniform@isfirsttrue
+	\foreach \x in {#1}{%
+		\pgfmathmultiply@\x\reciproclogten
+		\let\cur=\pgfmathresult
+		% check whether
+		%  \cur - last == 1 (last = \pgfplots@glob@TMPb)
+		\ifpgfplots@checkuniform@isfirst
+			\global\pgfplots@checkuniform@isfirstfalse
+		\else
+			\pgfmathsubtract@\cur\pgfplots@glob@TMPb%
+			\pgfmathapproxequalto@\pgfmathresult{1.0}%
+			\ifpgfmathcomparison
+			\else
+				\global\pgfplots@isuniformtickfalse
+				\breakforeach
+			\fi
+		\fi
+		\global\let\pgfplots@glob@TMPb=\cur
+	}%
+	\endgroup
+}
+
+% Checks whether the linear tick sequence #1 is a uniform tick.
+%
+% It also assigns pgfplots@tick@distance@#1  as the distance.
+%
+% see \pgfplots@checkisuniformLOGtick for details.
+%
+% #1: a tick sequence (expanded)
+% #2: a macro which will be filled with the tick distance. This is
+% only valid if \pgfplots@isuniformticktrue.
+\def\pgfplots@checkisuniformLINEARtick#1#2{%
+	\begingroup
+	\global\pgfplots@isuniformticktrue
+	\pgfplots@checkuniform@isfirsttrue
+	\global\let\pgfplots@glob@TMPb=\pgfutil@empty
+	\global\def\pgfplots@glob@TMPa{1}%
+	\foreach \x in {#1}{%
+		\ifx\pgfplots@glob@TMPb\pgfutil@empty
+		\else
+			\pgfmathsubtract@\x\pgfplots@glob@TMPb
+			\ifpgfplots@checkuniform@isfirst
+				% remember first distance h = x_1 - x_0
+				\global\let\pgfplots@glob@TMPa=\pgfmathresult
+				\global\pgfplots@checkuniform@isfirstfalse
+			\else
+				% check whether x_i - x_{i-1} = h
+				\pgfmathapproxequalto@\pgfmathresult\pgfplots@glob@TMPa%
+				\ifpgfmathcomparison
+				\else
+					\global\pgfplots@isuniformtickfalse
+					\breakforeach
+				\fi
+			\fi
+		\fi
+		\global\let\pgfplots@glob@TMPb=\x%
+	}%
+	\endgroup
+	\let#2=\pgfplots@glob@TMPa
+}
+
+% helper method which computes log10*\x foreach \x in {#1}.
+% The result will be \xdef'ed into #2.
+%
+% #1: the ticks
+% #2: the output macro
+% #3: the axis
+\def\pgfplots@compute@tick@times@logten#1\to#2#3{%
+	\global\let#2=\pgfutil@empty
+	\foreach \pgfplots@loc@TMPb in {#1} {%
+		\pgfplotscoordmath{#3}{log to display log}{\pgfplots@loc@TMPb}%
+		\pgfplotscoordmath{#3}{tofixed}{\pgfmathresult}%
+		\ifx#2\pgfutil@empty
+			\xdef#2{\pgfmathresult}%
+		\else
+			\xdef#2{#2,\pgfmathresult}%
+		\fi
+	}%
+}
+
+% Computes tick positions using the current axis limits.
+%
+% Parameters:
+% /pgfplots/max space between ticks
+%    Determines the maximum space which is not filled by at least one
+%    tick label (approximate, there is some rounding internally)
+% /pgfplots/try min ticks
+%    see manual
+%
+% Idea:
+% We want ticks at each 
+%    { i*H, i in \Z }.
+% Of course, there shouldn't be TOO MUCH ticks. 
+%
+% Our heuristics is to set
+%    desirednumticks = round(ACTUAL WIDTH / (max space between ticks) )
+% and generate H = (axis range) / (desirednumticks).
+%
+% Since not all step sizes H look well, restrict H to a set of allowed 
+% step sizes such as 
+%   { 1, 1/2, 1/5, 1/10 },
+% or, to be more precise:
+%   { 1*10^e, 2*10^e, 5*10^e }
+% -> round to the nearest matching number!
+% This yields H (for example as 2*10^e). Then, compute i*H, i \in \Z
+%
+% The data scaling transformation T(x) makes things more complicated.
+% Now, T(x) = q * x - p  and we need to check for problems with large
+% numbers:
+%   - q* H = ( T(Max) - T(Min) ) / desirednumticks = q * (Max - Min) / desirednumticks.
+%   - Using floating point arithmetics, (Max-Min)/desirednumticks (unscaled!)
+%   is analysed to restrict H to {1*10^e, 2*10^e, 5*10^e}.
+%   - So, we get  q * H  (we can't use the 'p' shift of the affine trafo here).
+%   - The next problem is to compute { I*H, I in \Z } because
+%   	I = trunc( Min / H )  = trunc(  ( T(Min) + p ) / (q*H) ).
+%     This can be seen by Min = I*H + rest   and thus T(Min) = I*q*H + q*rest -p.
+%     The Problem: (T(min)+p ) / (q*H) can be TOO BIG for pgfmath.
+%   -> for the data scaling case, I will use floating point
+%   arithmetics to compute that last step.
+%   I will acquire \pgfplots@[xy]min@unscaled@as@float here.
+%     
+%
+%
+%
+%
+% For log-plots, 
+% 	H in { j*log(10), j=1,2,3,... }
+% where the usual case should be j = 1.
+%
+% Then, the resulting tick is
+% TICK={MIN,MIN+H,...,MAX}
+% where
+%    MIN = I*H
+% is chosen such that 
+%    axis minimum limit = I*H + rest; |rest| < H.
+%
+% Again, log plots follow a slightly different approach: here,
+%   MIN = I * log(10)
+% is chosen such that
+%    axis minimum limit = I*log(10) + rest; |rest| < log(10)
+% while H = j*log(10), j>=1.
+%
+%
+% PRECONDITION:
+% - limits are correct
+% - axis width/height is set correctly
+%
+% POSTCONDITION:
+% - Tick for axis #1 is assigned
+% - \ifpgfplots@determinedefaultvalues@needs@check@uniformtick is set
+%
+% REMARKS:
+% - this algorithms works also if the data range has been transformed
+%   with a LINEAR transformation.
+%   ATTENTION: as of 2008-05-15, the scaling trafo is AFFINE LINEAR.
+%   That means we have to eliminate the 'affine' shifting before the
+%   algorithms works correctly.
+\def\pgfplots@assign@default@tick@foraxis#1{%
+	\begingroup
+	% Shortcut-names:
+	\expandafter\let\expandafter\ifpgfplots@is@datascaled\csname ifpgfplots@apply@datatrafo@#1\endcsname
+	% Attention here: use UNSHIFTET scalings, see remark above
+	\expandafter\let\expandafter\ifpgfplots@cur@is@linear\csname ifpgfplots@#1islinear\endcsname
+	%
+	\let\desirednumticks=\c@pgf@countd
+	\let\Wr=\pgf@xc
+	\Wr=\csname pgfplotspoint#1axislength\endcsname\relax
+	% r = max place without ticks in pt -> choose desirednumticks >= W/r
+	\divide\Wr by\axisdefaulttickwidth\relax
+	\afterassignment\pgfplots@gobble@until@relax
+	\desirednumticks=\the\Wr\relax
+	\advance\desirednumticks by1
+	\csname ifpgfplots@#1islinear\endcsname
+		\ifnum\axisdefaulttryminticks>\desirednumticks\relax
+			\desirednumticks=\axisdefaulttryminticks\relax
+		\fi
+	\else
+		\ifnum\pgfplots@default@try@minticks@log>\desirednumticks\relax
+			\desirednumticks=\pgfplots@default@try@minticks@log\relax
+		\fi
+		\expandafter\ifx\csname pgfplots@#1tickten\endcsname\pgfutil@empty
+		\else
+			% log plot and tickten-option: provide special processing.
+			\edef\pgfplots@loc@TMPa{\csname pgfplots@#1tickten\endcsname}%
+			\expandafter\pgfplots@compute@tick@times@logten\pgfplots@loc@TMPa\to\pgfplots@glob@TMPa{#1}%
+			\expandafter\let\csname pgfplots@#1tick\endcsname=\pgfplots@glob@TMPa
+		\fi
+	\fi
+	\ifpgfplots@cur@is@linear
+	\else
+		\pgfplotscoordmath{#1}{parsenumber}{1}%
+		\let\pgfplots@loc@TMPa=\pgfmathresult
+		\pgfplotscoordmath{#1}{log from display log}{\pgfplots@loc@TMPa}%
+		\pgfplotscoordmath{#1}{tofixed}{\pgfmathresult}%
+		\let\pgfplots@loc@log@from@display@log@scale=\pgfmathresult
+		%
+		\pgfplotscoordmath{#1}{log to display log}{\pgfplots@loc@TMPa}%
+		\pgfplotscoordmath{#1}{tofixed}{\pgfmathresult}%
+		\let\pgfplots@loc@log@to@display@log@scale=\pgfmathresult
+	\fi
+	%
+	\expandafter\ifx\csname pgfplots@#1tick\endcsname\pgfutil@empty
+		% Ok, we have either log or linear axis and need default
+		% ticks MIN,MIN+H,...,MAX.
+		\let\MINH=\pgf@xa
+		\let\H=\pgf@xb
+		\let\MAX=\pgf@ya
+		\let\MIN=\pgf@yb
+		% compute step size 'H':
+		\MAX=\csname pgfplots@#1max\endcsname pt %
+		\advance\MAX by0.001pt % avoid round errors
+		%\expandafter\MIN\the\c@pgf@counta pt
+		\MIN=\csname pgfplots@#1min\endcsname pt %
+		\H=\MAX
+		\advance\H by-\MIN
+		\ifdim\H<0pt \H=-1\H \fi
+%\message{Axis limit #1: [\the\MIN:\the\MAX], diff = \the\H.}%
+		\c@pgf@counta=\desirednumticks
+		\advance\c@pgf@counta by-1 %
+		\divide\H by\c@pgf@counta
+%\message{determining ticks for #1-axis: Wr := (width/max space between ticks) = \the\Wr, desirednumticks=max(\axisdefaulttryminticks, trunc(Wr)) = \the\desirednumticks, H#1=(axis range/(desirednumticks-1)) = \the\H}%
+		%
+		% SEARCH for the NEXT FEASABLE H.
+		\edef\Hmacro{\pgf@sys@tonumber\H}%
+		\ifpgfplots@cur@is@linear
+			% CASE LINEAR AXIS
+			\ifpgfplots@is@datascaled
+				% This here works if the scaling trafo is linear.
+				\pgfplotscoordmath{#1}{datascaletrafo noshift inverse}{\Hmacro}%
+				\let\Hmacro=\pgfmathresult
+			\else
+				\pgfmathfloatparsenumber{\Hmacro}%
+				\let\Hmacro=\pgfmathresult
+			\fi
+%\message{Got T^{-1}(H#1) = \Hmacro}%
+			%
+			\pgfplots@assign@default@tick@foraxis@normalizetickdist#1\Hmacro
+			\let\Hmacro=\pgfmathresult
+			%
+			\aftergroup\pgfplots@isuniformticktrue
+			% The following code is carried out in floating point
+			% arithmetics because it requires large data ranges.
+			%
+			% I want to compute MIN@new := I*H  where I is chosen
+			% such that MIN = I*H + rest with rest < H.
+			% The problem is the possibly large range of MIN. I
+			% can't work completely in the transformed datarange,
+			% so numbers get too large.
+			%
+			% So, compute I := int( MIN / H )  (integer truncation)
+			% in float arithmetics and then MIN@new := I*H
+			\pgfmathfloatdivide@{\csname pgfplots@#1min@unscaled@as@float\endcsname}{\Hmacro}%
+			\pgfmathfloatint@{\pgfmathresult}%
+			\pgfmathfloatmultiply@{\pgfmathresult}{\Hmacro}%
+			\let\MIN@new=\pgfmathresult
+			% Ok, we are ready.
+			% Now, convert everything into the fixed point data
+			% range:
+			\ifpgfplots@is@datascaled
+				\pgfplotscoordmath{#1}{datascaletrafo}{\MIN@new}%
+				\MIN=\pgfmathresult pt
+				\pgfplotscoordmath{#1}{datascaletrafo noshift}{\Hmacro}%
+				\H=\pgfmathresult pt
+			\else
+				\pgfmathfloattofixed\MIN@new
+				\MIN=\pgfmathresult pt
+				\pgfmathfloattofixed\Hmacro
+				\H=\pgfmathresult pt
+			\fi
+			%
+			% And, since we have used finite precision, I is most
+			% likely to be large. So: subtract one H. In the worst
+			% case, this produces one tick position too much (but
+			% it won't be printed).
+			\advance\MIN by-\H\relax
+		\else
+			% CASE LOG AXIS
+			%
+			% search for the "best" H= j* log(10),  j an integer.
+			%
+			% And prefer j=1 if that is possible (otherwise minor
+			% ticks are not useful).
+			\pgfmath@basic@multiply@{\Hmacro}{\pgfplots@loc@log@from@display@log@scale}%
+			\let\Hmacrobaseten=\pgfmathresult
+			\expandafter\H\pgfmathresult pt
+%\message{ [ H / log(10) = \pgfmathresult ]}%
+			\ifdim\H<2pt
+				\H=1pt
+			\else
+				\ifnum\H<1pt
+					\H=1pt
+				\else
+					\expandafter\pgfmathfloor\expandafter{\pgfmathresult}%
+					\expandafter\H\pgfmathresult pt
+				\fi
+			\fi
+			\ifdim\H=1pt
+				\aftergroup\pgfplots@isuniformticktrue
+				\pgfplots@isuniformticktrue
+			\else
+				\aftergroup\pgfplots@isuniformtickfalse
+				\pgfplots@isuniformtickfalse
+			\fi
+%\message{final H=\pgf@sys@tonumber{\H} * log(10)}%
+			\H=\pgfplots@loc@log@to@display@log@scale\H
+			% Now, we want to activate the Tick set 
+			%   {lowest, lowest+H, ..., highest}
+			%
+			% Where 
+			% 	lowest =  I * log(10) + rest, |rest| < log(10).
+			% this is conceptionally different from the approach for
+			% linear axes, because H = j*log(10).
+			%
+			% remember the original xmin in MINH:
+			\MINH=\MIN
+			%
+			% and compute I and I*log(10) here:
+			\MIN=\pgfplots@loc@log@from@display@log@scale \MIN
+			\edef\pgfmathresult{\pgf@sys@tonumber{\MIN}}%
+			\pgfmathsetcount{\c@pgf@counta}{\pgfmathresult}%
+			\ifdim\MIN<0pt
+				% the truncation rounds TOWARDS 0 which is not what I want.
+				\advance\c@pgf@counta by-1
+			\fi
+			\MIN=\pgfplots@loc@log@to@display@log@scale pt
+			\multiply\MIN by\c@pgf@counta
+			\ifpgfplots@isuniformtick
+			\else
+				% This here is a special case to move the first tick
+				% near the lower axis limit.
+				%
+				% "Near" means either directly above or directly below ymin.
+				% 
+				% My application example is as follows:
+				% Let H = 2*log(10).
+				% Furthermore, ymin = 3e-6, ymax= 8e-2. That means we can choose either
+				%    10^{-5}, 10^{-3}, 10^{-1}
+				% or
+				%    10^{-4}, 10^{-2}
+				% as ticks. Well, I prefer the first one.
+				%
+				% HEURISTICS: start as near to ymin as possible!
+				%
+				% We check here if we can come nearer to ymin if we
+				% shift the current tick by log(10):
+				%  if( ymin - I * log(10) < 0.5*H ->  use I+1, that means add log(10).
+				%
+				% that's equivalent to 
+				%  2*(ymin - I * log(10)) - H < 0.
+				\advance\MINH by-\MIN
+				\multiply\MINH by2
+				\advance\MINH by-\H
+				% 
+				\ifdim\MINH<0pt
+					\advance\MIN \pgfplots@loc@log@to@display@log@scale pt
+				\fi
+			\fi
+		\fi
+		\MINH=\MIN
+		\advance\MINH by\H
+		% Ok, now it can happen that only ONE tick label is placed in
+		% this range.
+		% That's useless, so check for it.
+		%
+		% That's the case if
+		%    MIN < ORIGMIN && MAX < MIN+2 H 
+		% MIN < ORIGMIN by construction (ok, MIN <= ORIGMIN by
+		% construction, but I don't care about this case). 
+		% So: check only the second condition.
+		\def\pgfplots@tick@returnval@ready{0}%
+		\pgfplots@tmpa=\MINH
+		\advance\pgfplots@tmpa by\H
+		\ifdim\MAX<\pgfplots@tmpa
+			\pgfplots@if{pgfplots@#1islinear}{%
+				\def\pgfplots@tick@returnval@ready{1}%
+				\begingroup
+					\c@pgf@counta=\axisdefaulttryminticks\relax
+					\advance\c@pgf@counta by1
+					\edef\axisdefaulttryminticks{\the\c@pgf@counta}%
+%\message{**TOO FEW TICK LABELS. RECURSION with try min ticks=\axisdefaulttryminticks.**}%
+					% recurse.
+					\pgfplots@assign@default@tick@foraxis{#1}%
+					\expandafter\global\expandafter\let\expandafter\pgfplots@glob@TMPa\csname pgfplots@#1tick\endcsname
+					\expandafter\global\expandafter\let\expandafter\pgfplots@glob@TMPb\csname pgfplots@tick@distance@#1\endcsname
+				\endgroup
+			}{%
+				% Case logarithmic axes and too few ticks.
+				\aftergroup\pgfplots@isuniformtickfalse
+				% ok, do something special.
+				%
+				% The idea is now to place ticks at
+				% 10^{i*h} with properly choosen 'h'.
+				%
+				% So: apply basically the SAME code as above for linear
+				% axis, just everything log 10!  And keep in mind that all
+				% coordinates are actually given as natural logarithms.
+				\MIN\csname pgfplots@#1min\endcsname pt
+				\H=\MAX
+				\advance\H by-\MIN
+				\ifdim\H<0pt \H=-1\H \fi
+				\H=\pgfplots@loc@log@from@display@log@scale \H
+%\message{Axis limit #1: [\the\MIN:\the\MAX], diff/log(10) = \the\H.}%
+				\c@pgf@counta=\desirednumticks\relax
+				\advance\c@pgf@counta by-1
+				\ifnum\c@pgf@counta>2
+					% subtract one more. This algorithm here produces more
+					% ticks than the normal one which is designed for 10^i
+					\advance\c@pgf@counta by-1
+				\fi
+				\divide\H by\c@pgf@counta\relax
+%\message{determining ticks for #1-axis: Wr := (width/max space between ticks) = \the\Wr, desirednumticks=max(\axisdefaulttryminticks, trunc(Wr)) = \the\desirednumticks, H#1=(axis range/(desirednumticks-1)) = \the\H}%
+				%
+				% SEARCH for the NEXT FEASABLE H.
+				\edef\Hmacro{\pgf@sys@tonumber\H}%
+				\pgfmathfloatparsenumber{\Hmacro}%
+				\pgfplots@assign@default@tick@foraxis@normalizetickdist#1\pgfmathresult
+				%
+				\expandafter\pgfmathfloattofixed\expandafter{\pgfmathresult}%
+				\let\Hmacro=\pgfmathresult
+				\H=\Hmacro pt %
+				% Ok, our step size h for 10^{i*h} is ready!
+%\message{determined step size 10^{\Hmacro}}%
+				% Now, we want to activate the Tick set {10^{i*H}, i in \Z}
+				% compute I such that
+				%   10^{min} = 10^{I * H + rest};  |rest| < H
+				% -> I = round(xmin/H)
+				% -> MIN = I * H
+				% BUT EVERYTHING to log(10) basis!
+				\MIN=\pgfplots@loc@log@from@display@log@scale \MIN
+				\pgfmathlog@invoke@expanded\pgfmathdivide@{%
+					{\pgf@sys@tonumber\MIN}%
+					{\Hmacro}%
+				}%
+				\pgfmathsetcount{\c@pgf@counta}{\pgfmathresult}%
+				\ifdim\MIN<0pt
+					% the truncation rounds TOWARDS 0 which is not what I want.
+					\advance\c@pgf@counta by-1
+				\fi
+				\MIN=\H\relax
+				\multiply\MIN by\c@pgf@counta\relax
+				%
+				% convert back to basis 'e':
+				\MIN=\pgfplots@loc@log@to@display@log@scale\MIN\relax
+				\H=\pgfplots@loc@log@to@display@log@scale\H\relax
+				\MINH=\MIN\relax
+				\advance\MINH by\H\relax
+			}%
+		\fi
+%\message{final H=\the\H.}%
+		\if0\pgfplots@tick@returnval@ready
+			\xdef\pgfplots@glob@TMPb{\pgf@sys@tonumber{\H}}%
+			\advance\MAX by0.5\H % avoid rounding inaccuracies:
+			\xdef\pgfplots@glob@TMPa{\pgf@sys@tonumber{\MIN},\pgf@sys@tonumber{\MINH},...,\pgf@sys@tonumber{\MAX}}%
+		\fi
+		\aftergroup\pgfplots@determinedefaultvalues@needs@check@uniformtickfalse
+	\else
+		\expandafter\global\expandafter\let\expandafter\pgfplots@glob@TMPa\csname pgfplots@#1tick\endcsname
+		\gdef\pgfplots@glob@TMPb{}% will be computed later, in 'check uniform tick'
+		\aftergroup\pgfplots@determinedefaultvalues@needs@check@uniformticktrue
+	\fi
+	\endgroup
+	\expandafter\let\csname pgfplots@#1tick\endcsname=\pgfplots@glob@TMPa
+	\expandafter\let\csname pgfplots@tick@distance@#1\endcsname=\pgfplots@glob@TMPb
+%\message{pgfplots.sty: #1tick set to \csname pgfplots@#1tick\endcsname [#1min=\csname pgfplots@#1min\endcsname, #1max=\csname pgfplots@#1max\endcsname].}%
+}
+
+% Takes the distance between adjacent ticks as floating point number
+% and returns a normalized tick distance.
+% 
+%
+% The idea is to get "nice" (human readable) distances instead of
+% strange fractions or real numbers.
+%
+% The result will be assigned to \pgfmathresult (in float).
+% 
+% #1 the axis (x or y or z)
+% #2 the unnormalized tick distance computed so far
+%
+% Example:
+% \pgfmathfloatparsenumber{x}{1234}
+% \pgfplots@assign@default@tick@foraxis@normalizetickdist\pgfmathresult
+% \pgfmathfloatotfixed\pgfmathresult
+% -->
+%
+%  \pgfmathresult={1200}
+% or something like that. 
+\def\pgfplots@assign@default@tick@foraxis@normalizetickdist#1#2{%
+	\begingroup
+	\let\H=\pgf@xb
+	\expandafter\pgfmathfloat@decompose#2\relax\pgfmathfloat@a@S\H\pgfmathfloat@a@E
+	% modify the mantisse:
+	\ifdim\H<2pt
+		\ifdim\H<1.5pt
+			\H=1.0pt
+		\else
+			\H=2.0pt
+		\fi
+	\else
+		\ifdim\H<4.9999pt
+			\ifdim\H<3.5pt
+				\H=2.0pt\relax
+			\else
+				\H=5.0pt\relax
+			\fi
+		\else
+			\ifdim\H<7.5pt
+				\H=5.0pt\relax
+			\else
+				\H=1.0pt\relax
+				\advance\pgfmathfloat@a@E by1
+			\fi
+		\fi
+	\fi
+	\pgfmathfloatcreate{\the\pgfmathfloat@a@S}{\pgf@sys@tonumber{\H}}{\the\pgfmathfloat@a@E}%
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+}%
+
+% Helper method for 
+%  \pgfplots@apply@data@scale@trafo@to@options@for
+% #1: the ticks
+% #2: the trafo routine (not necessarily a single macro, but should
+% take one arg) 
+% #3: the output macro name
+\long\def\pgfplots@apply@data@scale@trafo@to@user@ticks#1#2\to#3{%
+	\let#3=\pgfutil@empty
+	\foreach \pgfplots@loc@TMPb in {#1} {%
+		\pgfmathfloatparsenumber{\pgfplots@loc@TMPb}%
+		#2{\pgfmathresult}%
+		\ifx#3\pgfutil@empty
+			\xdef#3{\pgfmathresult}%
+		\else
+			\xdef#3{#3,\pgfmathresult}%
+		\fi
+	}%
+	%
+}%
+
+% Helper method for 
+%  \pgfplots@apply@data@scale@trafo@to@options@for
+% #1: the ticks ALREADY IN FLOAT FORMAT
+% #2: the trafo macro name 
+% #3: the output macro name
+\long\def\pgfplots@apply@data@scale@trafo@to@user@ticks@isfloat#1#2\to#3{%
+	\let#3=\pgfutil@empty
+	\foreach \pgfplots@loc@TMPb in {#1} {%
+		#2{\pgfplots@loc@TMPb}%
+		\ifx#3\pgfutil@empty
+			\xdef#3{\pgfmathresult}%
+		\else
+			\xdef#3{#3,\pgfmathresult}%
+		\fi
+	}%
+	%
+}%
+
+% Adds a further, temporary anchor to every node which will be
+% processed. The anchor will be named '#2'. It is placed such that
+% 1. the node's center is on a line in direction of the inwards normal
+% vector of the #1 ticklabel axis and the 'at' position of the node,
+% 2. the node does not intrude the axis.
+%
+% In effect, one of the node's standard anchors (north, east, ... )
+% will be placed on the line
+%    \draw[blue,thick,->] (xticklabel cs:0,0) -- (xticklabel cs:1,0);
+%
+% This command is identical to calling
+% \pgfplotsdeclareborderanchorforaxis{#1}{<three-char-string-of-#1-ticklabel-axis>}{#2}
+%
+% @REMARKS:
+% 	- it is -by no means- necessary that any ticks or tick labels are
+% 	drawn or defined for this method.
+% 	- in fact, tick labels use such an anchor (the 'near #1ticklabel'
+% 	anchor is defined in this way)
+\def\pgfplotsdeclareborderanchorforticklabelaxis#1#2{%
+	\pgfplotsdeclareborderanchorforaxis{#1}{\pgfplotsticklabelaxisspec{#1}}{#2}%
+}
+

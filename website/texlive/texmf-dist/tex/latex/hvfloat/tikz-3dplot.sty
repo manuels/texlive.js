@@ -1,0 +1,931 @@
+%% tikz-3dplot.sty
+%% Copyright 2010 Jeffrey D. Hein
+%
+% This work may be distributed and/or modified under the
+% conditions of the LaTeX Project Public License, either version 1.3
+% of this license or (at your option) any later version.
+% The latest version of this license is in
+%   http://www.latex-project.org/lppl.txt
+% and version 1.3 or later is part of all distributions of LaTeX
+% version 2005/12/01 or later.
+%
+% This work has the LPPL maintenance status `maintained'.
+% 
+% The Current Maintainer of this work is Jeffrey D. Hein.
+%
+% This work consists of the files 3dplot.sty and 3dplot_documentation.tex
+
+%Description
+%-----------
+
+%tikz-3dplot.sty - package for plotting three dimensional axes and coordinates in TikZ.  The user can specify orientation of the display, and also define rotated coordinate systems within the 3d display coordinate system.  
+
+%Created 2009-11-07 by Jeff Hein.  Last updated: 2010-07-30
+%----------------------------------------------------------
+
+%Requirements
+%------------
+%This requires the tikz package.
+
+%Update Notes
+%------------
+
+%see the documentation for update notes
+
+
+\RequirePackage{pgf}
+\RequirePackage{ifthen}
+
+%Style definitions and includes
+%------------------------------
+\usetikzlibrary{calc,3d,arrows}
+
+\tikzset{tdplot_screen_coords/.style={x={(1 cm,0 cm)},y={(0 cm, 1 cm)},z={(-1 cm, -1 cm)}}}%
+
+\pgfmathsetmacro{\tdplotlowerphi}{0}
+\pgfmathsetmacro{\tdplotupperphi}{360}
+\pgfmathsetmacro{\tdplotlowertheta}{0}
+\pgfmathsetmacro{\tdplotuppertheta}{180}
+%\pgfmathsetmacro{\tdplotlinewidth}{.25pt}
+
+%Commands
+%--------
+
+%\tdplotsinandcos{sin}{cos}{theta}
+%determines the sin and cos of the specified angle (in degrees).
+%#1: returns sin(#3)
+%#2: returns cos(#3)
+%#3: user-specified angle
+\newcommand{\tdplotsinandcos}[3]{%
+\pgfmathsetmacro{#1}{sin(#3)}%
+\pgfmathsetmacro{#2}{cos(#3)}%
+}
+
+%\tdplotmult{result}{multiplicand}{multiplicator}
+%determines the multiplication of specified values.
+%#1: returns #2*#3
+%#2: user-specified multiplicand
+%#3: user-specified multiplicator
+\newcommand{\tdplotmult}[3]{%
+\pgfmathsetmacro{#1}{#2*#3}%
+}
+
+%\tdplotdiv{result}{dividend}{divisor}
+%determines the division of specified values.
+%#1: returns #2/#3
+%TODO: handle divide by zero?
+%#2: user-specified dividend
+%#3: user-specified divisor
+\newcommand{\tdplotdiv}[3]{%
+\pgfmathsetmacro{#1}{#2/#3}%
+}
+
+%\tdplotcheckdiff{first value}{right value}{tolerance}{true code}{false code}
+%compares two values to within specified tolerance.  Executes either the true code or false code depending on the comparison result.
+%#1: value 1 to compare
+%#2: value 2 to compare
+%#3: tolerance
+%#4: true condition result
+%#5: false condition result
+\newcommand{\tdplotcheckdiff}[5]{%
+%
+	%\pgfmathsubtract{#2}{#1}
+	%\pgfmathparse{ abs(#2 - #1)}
+	
+	%\typeout{ #2, #1, \pgfmathresult, #3 }
+	
+	\pgfmathparse{ abs(#2 - #1)<#3 }
+	
+	%\typeout{ \pgfmathresult }
+	\ifthenelse{\equal{\pgfmathresult}{1}}{#4}{#5}
+}
+
+%\tdplotsetdisplay{\theta_d}{\phi_d}
+%generates the coordinate transformation for defining a TikZ 3d plot display coordinates.
+%#1: user-specified \theta_d, defining the angle through which the system is rotated about the x-axis.  0 points the z-axis "out of the page", while 90 points the z-axis vertically upward on the page.
+%#2: user-specified \phi_d, defining the angle through which the system is rotated about the z-axis.  0 points the x-axis to the right.
+\newcommand{\tdplotsetmaincoords}[2]{%
+%perform some trig for the display transformation
+%
+%
+%store the user-specified angles for possible future use
+\pgfmathsetmacro{\tdplotmaintheta}{#1}
+\pgfmathsetmacro{\tdplotmainphi}{#2}
+%
+%
+\tdplotcalctransformmainscreen
+%
+%now here is where the output is performed
+\tikzset{tdplot_main_coords/.style={x={(\raarot cm,\rbarot cm)},y={(\rabrot cm, \rbbrot cm)},z={(\racrot cm, \rbcrot cm)}}}%
+}
+
+
+%This performs the calculation to define the main coordinate frame orientation style, and is also used to transform a coordinate from the main coordinate frame the the screen coordinate frame
+\newcommand{\tdplotcalctransformmainscreen}{%
+%
+%TODO: choose less obvious macro names?  or look into scoping?
+\tdplotsinandcos{\sintheta}{\costheta}{\tdplotmaintheta}%
+\tdplotsinandcos{\sinphi}{\cosphi}{\tdplotmainphi}%
+%
+\tdplotmult{\stsp}{\sintheta}{\sinphi}%
+\tdplotmult{\stcp}{\sintheta}{\cosphi}%
+\tdplotmult{\ctsp}{\costheta}{\sinphi}%
+\tdplotmult{\ctcp}{\costheta}{\cosphi}%
+%
+%determine rotation matrix elements for display transformation
+\pgfmathsetmacro{\raarot}{\cosphi}%
+\pgfmathsetmacro{\rabrot}{\sinphi}%
+%NOTE: \rac is zero for this rotation, where z^c always points vertical on the page
+\pgfmathsetmacro{\racrot}{0}%
+\pgfmathsetmacro{\rbarot}{-\ctsp}%
+\pgfmathsetmacro{\rbbrot}{\ctcp}%
+\pgfmathsetmacro{\rbcrot}{\sintheta}%
+%NOTE: third row of rotation matrix not needed for display since screen z is always flat on the page.  It is, however, needed when performing further transformations using the Euler transformation.
+\pgfmathsetmacro{\rcarot}{\stsp}%
+\pgfmathsetmacro{\rcbrot}{-\stcp}%
+\pgfmathsetmacro{\rccrot}{\costheta}%
+%
+}
+
+
+
+
+%determines the rotation matrix for transformation from the rotation coordinate frame to the main coordinate frame.  This also defines the rotation to produce the rotated coordinate frame.
+\newcommand{\tdplotcalctransformrotmain}{%
+%perform some trig for the Euler transformation
+\tdplotsinandcos{\sinalpha}{\cosalpha}{\tdplotalpha} 
+\tdplotsinandcos{\sinbeta}{\cosbeta}{\tdplotbeta}
+\tdplotsinandcos{\singamma}{\cosgamma}{\tdplotgamma}
+%
+\tdplotmult{\sasb}{\sinalpha}{\sinbeta}
+\tdplotmult{\sbsg}{\sinbeta}{\singamma}
+\tdplotmult{\sasg}{\sinalpha}{\singamma}
+\tdplotmult{\sasbsg}{\sasb}{\singamma}
+%
+\tdplotmult{\sacb}{\sinalpha}{\cosbeta}
+\tdplotmult{\sacg}{\sinalpha}{\cosgamma}
+\tdplotmult{\sbcg}{\sinbeta}{\cosgamma}
+\tdplotmult{\sacbsg}{\sacb}{\singamma}
+\tdplotmult{\sacbcg}{\sacb}{\cosgamma}
+%
+\tdplotmult{\casb}{\cosalpha}{\sinbeta}
+\tdplotmult{\cacb}{\cosalpha}{\cosbeta}
+\tdplotmult{\cacg}{\cosalpha}{\cosgamma}
+\tdplotmult{\casg}{\cosalpha}{\singamma}
+%
+\tdplotmult{\cacbsg}{\cacb}{\singamma}
+\tdplotmult{\cacbcg}{\cacb}{\cosgamma}
+%
+%determine rotation matrix elements for Euler transformation
+\pgfmathsetmacro{\raaeul}{\cacbcg - \sasg}
+\pgfmathsetmacro{\rabeul}{-\cacbsg - \sacg}
+\pgfmathsetmacro{\raceul}{\casb}
+\pgfmathsetmacro{\rbaeul}{\sacbcg + \casg}
+\pgfmathsetmacro{\rbbeul}{-\sacbsg + \cacg}
+\pgfmathsetmacro{\rbceul}{\sasb}
+\pgfmathsetmacro{\rcaeul}{-\sbcg}
+\pgfmathsetmacro{\rcbeul}{\sbsg}
+\pgfmathsetmacro{\rcceul}{\cosbeta}
+%
+%DEBUG: display euler matrix elements
+%\raaeul\ \rabeul\ \raceul
+%
+%\rbaeul\ \rbbeul\ \rbceul
+%
+%\rcaeul\ \rcbeul\ \rcceul
+}
+
+
+%determines the rotation matrix for transformation from the main coordinate frame to the rotated coordinate frame.
+\newcommand{\tdplotcalctransformmainrot}{%
+%perform some trig for the Euler transformation
+\tdplotsinandcos{\sinalpha}{\cosalpha}{\tdplotalpha} 
+\tdplotsinandcos{\sinbeta}{\cosbeta}{\tdplotbeta}
+\tdplotsinandcos{\singamma}{\cosgamma}{\tdplotgamma}
+%
+\tdplotmult{\sasb}{\sinalpha}{\sinbeta}
+\tdplotmult{\sbsg}{\sinbeta}{\singamma}
+\tdplotmult{\sasg}{\sinalpha}{\singamma}
+\tdplotmult{\sasbsg}{\sasb}{\singamma}
+%
+\tdplotmult{\sacb}{\sinalpha}{\cosbeta}
+\tdplotmult{\sacg}{\sinalpha}{\cosgamma}
+\tdplotmult{\sbcg}{\sinbeta}{\cosgamma}
+\tdplotmult{\sacbsg}{\sacb}{\singamma}
+\tdplotmult{\sacbcg}{\sacb}{\cosgamma}
+%
+\tdplotmult{\casb}{\cosalpha}{\sinbeta}
+\tdplotmult{\cacb}{\cosalpha}{\cosbeta}
+\tdplotmult{\cacg}{\cosalpha}{\cosgamma}
+\tdplotmult{\casg}{\cosalpha}{\singamma}
+%
+\tdplotmult{\cacbsg}{\cacb}{\singamma}
+\tdplotmult{\cacbcg}{\cacb}{\cosgamma}
+%
+%determine rotation matrix elements for Euler transformation
+\pgfmathsetmacro{\raaeul}{\cacbcg - \sasg}
+\pgfmathsetmacro{\rabeul}{\sacbcg + \casg}
+\pgfmathsetmacro{\raceul}{-\sbcg}
+\pgfmathsetmacro{\rbaeul}{-\cacbsg - \sacg}
+\pgfmathsetmacro{\rbbeul}{-\sacbsg + \cacg}
+\pgfmathsetmacro{\rbceul}{\sbsg}
+\pgfmathsetmacro{\rcaeul}{\casb}
+\pgfmathsetmacro{\rcbeul}{\sasb}
+\pgfmathsetmacro{\rcceul}{\cosbeta}
+%
+%DEBUG: display euler matrix elements
+%\raaeul\ \rabeul\ \raceul
+%
+%\rbaeul\ \rbbeul\ \rbceul
+%
+%\rcaeul\ \rcbeul\ \rcceul
+}
+
+%transforms a coordinate from the main coordinate frame to the rotated coordinate frame
+\newcommand{\tdplottransformmainrot}[3]{%
+	\tdplotcalctransformmainrot
+
+	\pgfmathsetmacro{\tdplotresx}{\raaeul * #1 + \rabeul * #2 + \raceul * #3}
+	\pgfmathsetmacro{\tdplotresy}{\rbaeul * #1 + \rbbeul * #2 + \rbceul * #3}
+	\pgfmathsetmacro{\tdplotresz}{\rcaeul * #1 + \rcbeul * #2 + \rcceul * #3}
+}
+
+%transforms a coordinate from the rotated coordinate frame to the main coordinate frame
+\newcommand{\tdplottransformrotmain}[3]{%
+	\tdplotcalctransformrotmain
+
+	\pgfmathsetmacro{\tdplotresx}{\raaeul * #1 + \rabeul * #2 + \raceul * #3}
+	\pgfmathsetmacro{\tdplotresy}{\rbaeul * #1 + \rbbeul * #2 + \rbceul * #3}
+	\pgfmathsetmacro{\tdplotresz}{\rcaeul * #1 + \rcbeul * #2 + \rcceul * #3}
+}
+
+
+%transforms a coordinate from the main coordinate frame to the rotated coordinate frame
+\newcommand{\tdplottransformmainscreen}[3]{%
+	\tdplotcalctransformmainscreen
+
+	\pgfmathsetmacro{\tdplotresx}{\raarot * #1 + \rabrot * #2 + \racrot * #3}
+	\pgfmathsetmacro{\tdplotresy}{\rbarot * #1 + \rbbrot * #2 + \rbcrot * #3}
+}
+
+
+
+%\tdplotsetrotatedcoords{\alpha}{\beta}{\gamma}
+%generates the coordinate transformation for the rotated coordinate system within the display coordinate system.  This should be called only after the display coordinate system has been defined.  If the display coordinate system changes, this will have to be updated.
+%#1: user-specified euler angle \alpha.
+%#2: user-specified euler angle \beta.
+%#3: user-specified euler angle \gamma.
+\newcommand{\tdplotsetrotatedcoords}[3]{%
+%
+\pgfmathsetmacro{\tdplotalpha}{#1}
+\pgfmathsetmacro{\tdplotbeta}{#2}
+\pgfmathsetmacro{\tdplotgamma}{#3}
+%
+\tdplotcalctransformrotmain
+
+%
+%now, determine master rotation matrix to define euler-rotated coordinates within the display coordinate frame
+\tdplotmult{\raaeaa}{\raarot}{\raaeul}
+\tdplotmult{\rabeba}{\rabrot}{\rbaeul}
+\tdplotmult{\raceca}{\racrot}{\rcaeul}
+%
+\tdplotmult{\raaeab}{\raarot}{\rabeul}
+\tdplotmult{\rabebb}{\rabrot}{\rbbeul}
+\tdplotmult{\racecb}{\racrot}{\rcbeul}
+%
+\tdplotmult{\raaeac}{\raarot}{\raceul}
+\tdplotmult{\rabebc}{\rabrot}{\rbceul}
+\tdplotmult{\racecc}{\racrot}{\rcceul}
+%
+\tdplotmult{\rbaeaa}{\rbarot}{\raaeul}
+\tdplotmult{\rbbeba}{\rbbrot}{\rbaeul}
+\tdplotmult{\rbceca}{\rbcrot}{\rcaeul}
+%
+\tdplotmult{\rbaeab}{\rbarot}{\rabeul}
+\tdplotmult{\rbbebb}{\rbbrot}{\rbbeul}
+\tdplotmult{\rbcecb}{\rbcrot}{\rcbeul}
+%
+\tdplotmult{\rbaeac}{\rbarot}{\raceul}
+\tdplotmult{\rbbebc}{\rbbrot}{\rbceul}
+\tdplotmult{\rbcecc}{\rbcrot}{\rcceul}
+%
+%the third row is not needed for screen display
+%\tdplotmult{\rcaeaa}{\rcarot}{\raaeul}
+%\tdplotmult{\rcbeba}{\rcbrot}{\rbaeul}
+%\tdplotmult{\rcceca}{\rccrot}{\rcaeul}
+%
+%\tdplotmult{\rcaeab}{\rcarot}{\rabeul}
+%\tdplotmult{\rcbebb}{\rcbrot}{\rbbeul}
+%\tdplotmult{\rccecb}{\rccrot}{\rcbeul}
+%
+%\tdplotmult{\rcaeac}{\rcarot}{\raceul}
+%\tdplotmult{\rcbebc}{\rcbrot}{\rbceul}
+%\tdplotmult{\rccecc}{\rccrot}{\rcceul}
+%
+%set up the master rotation matrix elements
+\pgfmathsetmacro{\raarc}{\raaeaa + \rabeba + \raceca}
+\pgfmathsetmacro{\rabrc}{\raaeab + \rabebb + \racecb}
+\pgfmathsetmacro{\racrc}{\raaeac + \rabebc + \racecc}
+\pgfmathsetmacro{\rbarc}{\rbaeaa + \rbbeba + \rbceca}
+\pgfmathsetmacro{\rbbrc}{\rbaeab + \rbbebb + \rbcecb}
+\pgfmathsetmacro{\rbcrc}{\rbaeac + \rbbebc + \rbcecc}
+%the third row is not needed for screen display
+%\pgfmathsetmacro{\rcarc}{\rcaeaa + \rcbeba + \rcceca}
+%\pgfmathsetmacro{\rcbrc}{\rcaeab + \rcbebb + \rccecb}
+%\pgfmathsetmacro{\rccrc}{\rcaeac + \rcbebc + \rccecc}
+%
+%DEBUG: display master matrix elements
+%\raarc\ \rabrc\ \racrc
+%
+%\rbarc\ \rbbrc\ \rbcrc
+%
+%\rcarc\ \rcbrc\ \rccrc
+%
+\tikzset{tdplot_rotated_coords/.append style={x={(\raarc cm,\rbarc cm)},y={(\rabrc cm, \rbbrc cm)},z={(\racrc cm, \rbcrc cm)}}}%
+}
+
+%\tdplotsetrotatedcoordsorigin{point}
+%this translates the rotated coordinate system to the specified point.
+%#1: user-specified coordinate
+\newcommand{\tdplotsetrotatedcoordsorigin}[1]{%
+%\pgfmathsetmacro{\tdplotrotatedcoordsorigin}{#1}%
+\tikzset{tdplot_rotated_coords/.append style={shift=#1}}%
+}
+
+%\tdplotresetrotatedcoordsorigin
+%this resets the rotated coordinate system translation back to the origin of the main coordinate system
+\newcommand{\tdplotresetrotatedcoordsorigin}{%
+%\pgfmathsetmacro{\tdplotrotatedcoordsorigin}{#1}%
+\tikzset{tdplot_rotated_coords/.append style={shift={(0,0,0)}}}%
+}
+
+%\tdplotsetthetaplanecoords{\phi}
+%this places the rotated coordinate system such that it's x'-y' plane coincides with a "theta plane" for the main coordinate system:  This plane contains the z axis, and lies at angle \phi from the x axis.
+%#1: user-specified \phi angle from x-axis
+\newcommand{\tdplotsetthetaplanecoords}[1]{%
+%
+	\tdplotresetrotatedcoordsorigin
+	\tdplotsetrotatedcoords{270 + #1}{270}{0}%
+}
+%note: the following rotation permutes the x, y, and z axes in forward progression.  Any value of \alpha greater than 270 will rotate the axes further, allowing for easy selection of the ``theta plane''.
+%\tdplotsetrotatedcoords{270}{270}{00}
+
+%note: the following rotation permutes the x,y, and z axes in backward progression.
+%\tdplotsetrotatedcoords{0}{90}{90}
+
+%\tdplotsetrotatedthetaplanecoords{\phi'}
+%this places the rotated coordinate system into the "theta plane" for the current rotated coordinate system, at user-specified angle \phi'.  Note that it replaces the current rotated coordinate system
+%#1: user-specified \phi' angle from x'-axis
+\newcommand{\tdplotsetrotatedthetaplanecoords}[1]{%
+	\tdplotsetrotatedcoords{\tdplotalpha}{\tdplotbeta}{\tdplotgamma + #1}%
+	%
+	%permute the coordinates
+	\tikzset{tdplot_rotated_coords/.append style={y={(\raarc cm,\rbarc cm)},z={(\rabrc cm, \rbbrc cm)},x={(\racrc cm, \rbcrc cm)}}}%
+}
+
+%\tdplotsetcoord{point}{r}{theta}{phi}
+%sets a 3d point using spherical polar coordinates.  This also generates xy, xz, and yz projections of this point using appropriately named points
+%#1: name of point to set
+%#2: user-specified r coordinate
+%#3: user-specified \theta coordinate
+%#4: user-specified \phi coordinate
+\newcommand{\tdplotsetcoord}[4]{%
+%
+%do some trig to determine angular part of coordinate
+\tdplotsinandcos{\sinthetavec}{\costhetavec}{#3}%
+\tdplotsinandcos{\sinphivec}{\cosphivec}{#4}%
+\tdplotmult{\stcpv}{\sinthetavec}{\cosphivec}%
+\tdplotmult{\stspv}{\sinthetavec}{\sinphivec}%
+%
+%assign the point
+\coordinate (#1) at ($#2*(\stcpv,\stspv,\costhetavec)$);
+%assign the xy, xz, and yz projections of the point
+\coordinate (#1xy) at ($#2*(\stcpv,\stspv,0)$);
+\coordinate (#1xz) at ($#2*(\stcpv,0,\costhetavec)$);
+\coordinate (#1yz) at ($#2*(0,\stspv,\costhetavec)$);
+%assign the x, y, and z projections of the point
+\coordinate (#1x) at ($#2*(\stcpv,0,0)$);
+\coordinate (#1y) at ($#2*(0,\stspv,0)$);
+\coordinate (#1z) at ($#2*(0,0,\costhetavec)$);
+}
+
+\newcommand{\tdplotsimplesetcoord}[4]{%
+%
+%do some trig to determine angular part of coordinate
+\tdplotsinandcos{\sinthetavec}{\costhetavec}{#3}%
+\tdplotsinandcos{\sinphivec}{\cosphivec}{#4}%
+\tdplotmult{\stcpv}{\sinthetavec}{\cosphivec}%
+\tdplotmult{\stspv}{\sinthetavec}{\sinphivec}%
+%
+%assign the point
+\coordinate (#1) at ($#2*(\stcpv,\stspv,\costhetavec)$);
+}
+
+
+%\tdplotdrawarc[coordinate system, draw styles]{center}{r}{angle start}{angle end}{label options}{label}
+%draws an arc and puts a label in the center with specified node options
+%#1: Optional, specifies the coordinate system and any draw style
+%#2: center point of arc
+%#3: radius of arc
+%#4: start angle
+%#5: end angle
+%#6: label options
+%#7: label
+%	\tdplotdrawarc{(O)}{0.2}{0}{\phivec}{anchor=north}{$\phi$}
+\newcommand{\tdplotdrawarc}[7][tdplot_main_coords]{%
+\pgfmathsetmacro{\tdplottemp}{#5 + #4}
+\tdplotdiv{\tdplottemp}{\tdplottemp}{2}
+\path[#1] #2 + (\tdplottemp:#3) node[#6]{#7};
+\draw[#1] #2 + (#4:#3) arc (#4:#5:#3);
+}
+
+\def\tdplotdefinepoints(#1,#2,#3)(#4,#5,#6)(#7,#8,#9){%
+ \pgfmathsetmacro{\tdplotvertexx}{#1}
+ \pgfmathsetmacro{\tdplotvertexy}{#2}
+ \pgfmathsetmacro{\tdplotvertexz}{#3}
+ \pgfmathsetmacro{\tdplotax}{#4}
+ \pgfmathsetmacro{\tdplotay}{#5}
+ \pgfmathsetmacro{\tdplotaz}{#6}
+ \pgfmathsetmacro{\tdplotbx}{#7}
+ \pgfmathsetmacro{\tdplotby}{#8}
+ \pgfmathsetmacro{\tdplotbz}{#9}
+}%
+
+
+%draws an arc using three specified points
+%\tdplotdrawpolytopearc[thick]{1}{anchor=west}{$\theta$}
+\newcommand{\tdplotdrawpolytopearc}[4][]{%
+
+	%determine vector lengths
+	\pgfmathsetmacro{\ax}{\tdplotax - \tdplotvertexx}
+	\pgfmathsetmacro{\ay}{\tdplotay - \tdplotvertexy}
+	\pgfmathsetmacro{\az}{\tdplotaz - \tdplotvertexz}
+
+	\pgfmathsetmacro{\bx}{\tdplotbx - \tdplotvertexx}
+	\pgfmathsetmacro{\by}{\tdplotby - \tdplotvertexy}
+	\pgfmathsetmacro{\bz}{\tdplotbz - \tdplotvertexz}
+
+	%determine normal to vectors
+	\tdplotcrossprod(\ax,\ay,\az)(\bx,\by,\bz)
+
+	%DEBUG: show the cross product
+	%\draw[->,blue] (\tdplotvertexx,\tdplotvertexy,\tdplotvertexz) 
+		-- ++(\tdplotresx,\tdplotresy,\tdplotresz);
+
+	%get angles for this vector
+	\tdplotgetpolarcoords{\tdplotresx}{\tdplotresy}{\tdplotresz}
+
+	\typeout{angles for cross product: phi: \tdplotresphi theta: \tdplotrestheta}
+
+	%place the rotated coordinate system so that the z' axis points along this vector
+	\tdplotsetrotatedcoords{\tdplotresphi}{\tdplotrestheta}{0}
+	\coordinate (Vertex) at (\tdplotvertexx,\tdplotvertexy,\tdplotvertexz);
+	\tdplotsetrotatedcoordsorigin{(Vertex)}
+
+	%DEBUG: show the rotated coordinate system
+	%\draw[thick,tdplot_rotated_coords,->] (0,0,0) -- (1,0,0) node[anchor=north east]{$x'$};
+	%\draw[thick,tdplot_rotated_coords,->] (0,0,0) -- (0,1,0) node[anchor=north west]{$y'$};
+	%\draw[thick,tdplot_rotated_coords,->] (0,0,0) -- (0,0,1) node[anchor=south]{$z'$};
+
+	%calculate the start angle of the arc
+	\tdplottransformmainrot{\ax}{\ay}{\az}
+	\tdplotgetpolarcoords{\tdplotresx}{\tdplotresy}{\tdplotresz}
+	\pgfmathsetmacro{\tdplotstartphi}{\tdplotresphi}
+
+
+	%calculate the end angle of the arc
+	\tdplottransformmainrot{\bx}{\by}{\bz}
+	\tdplotgetpolarcoords{\tdplotresx}{\tdplotresy}{\tdplotresz}
+
+	%draw the arc
+	\pgfmathparse{\tdplotstartphi < \tdplotresphi}
+	\ifthenelse{\equal{\pgfmathresult}{1}}%
+		{}%
+		{
+			\pgfmathsetmacro{\tdplotstartphi}{\tdplotstartphi - 360}
+		}
+		
+	%\typeout{startphi: \tdplotstartphi}
+	%\typeout{endphi: \tdplotresphi}
+
+	\draw[tdplot_rotated_coords,#1] (0,0,0) + (\tdplotstartphi:#2) arc (\tdplotstartphi:\tdplotresphi:#2);
+
+	\pgfmathsetmacro{\tdplotresphi}{(\tdplotresphi + \tdplotstartphi)/2}
+
+	\draw[tdplot_rotated_coords] (0,0,0) + (\tdplotresphi:#2) node[#3]{#4};
+}
+
+
+%	\tdplotsphericalsurfaceplot[fill mode]{theta step size}{phi step size}{r}
+%draws a surface in spherical polar coordinates given by r(\theta,\phi), where angular ranges and steps are defined.  
+%#1: draw styles
+%#2: theta segments
+%#3: phi segments
+%#4: r(\tdplottheta,\tdplotphi)
+%#5: stroke color
+%#6: fill color
+%#7: x axis instructions, to be rendered when \phi = 0
+%#8: y axis instructions, to be rendered when \phi = 90
+%#9: z axis instructions, to be rendered when plotting is half done
+%TODO: fix axes drawing function when the main display axis phi is at 0, 90, etc.  
+\newcommand{\tdplotsphericalsurfaceplot}[9][literal]{%
+%
+	\typeout{3dplot: processing 3d surface plot...}
+
+	%retrieve the angular step sizes
+	\pgfmathsetmacro{\origviewthetastep}{360/#2}
+	\pgfmathsetmacro{\origviewphistep}{360/#3}
+
+	%determing the angular starting point, based on the step size and display orientation
+	\pgfmathparse{ mod(90 + \tdplotmainphi,\origviewphistep)}
+	\pgfmathsetmacro{\originalphi}{90 + \tdplotmainphi - \pgfmathresult}
+
+	\pgfmathparse{ mod(\tdplotmaintheta,\origviewthetastep)}
+	\pgfmathsetmacro{\originaltheta}{\tdplotmaintheta - \pgfmathresult}
+
+
+	%this fudge factor helps when properly rendering x and y axes
+	\pgfmathsetmacro{\tdplotsuperfudge}{\originaltheta > 90}
+
+	%draw back part of shape, doing left and right side individually
+	\foreach \leftright in {1,-1}
+	{
+		\pgfmathsetmacro{\viewphistart}{\originalphi}
+		\pgfmathsetmacro{\viewphistep}{\leftright * \origviewphistep}
+		\pgfmathsetmacro{\viewphiinc}{\viewphistart + \viewphistep}
+		\pgfmathsetmacro{\viewphiend}{\viewphistart + \leftright * 90 - \viewphistep}
+		
+		%sweep over phi
+		\foreach \curphi in{\viewphistart,\viewphiinc,...,\viewphiend}
+		{
+			%draw upper and lower parts individually, starting at the point opposite display angle
+			\foreach \topbottom in {1,-1}
+			{
+				\pgfmathsetmacro{\viewthetastep}{\topbottom * \origviewthetastep}
+				\pgfmathsetmacro{\viewthetastart}{180 - \originaltheta}
+
+				\ifnum \topbottom=1
+					\pgfmathsetmacro{\viewthetaend}{180 - \origviewthetastep}
+				\else
+					\pgfmathsetmacro{\viewthetaend}{\origviewthetastep}
+				\fi
+				\pgfmathsetmacro{\viewthetainc}{\viewthetastart + \viewthetastep}
+
+				%perform the rendering of each slice of phi over a range of theta angles
+				\tdplotdosurfaceplot{#4}{#7}{#8}{#5}{#6}{#1}
+			}
+		}
+	}
+	
+	%now that the back half is done, draw the z axis
+	\begin{scope}[opacity=1]
+		#9 %draw z axis content
+	\end{scope}
+
+	%next, draw front part of shape, doing left and right sides individually.  This is essentially the same process as before
+	\pgfmathsetmacro{\tdplotsuperfudge}{\originaltheta < 90}
+	\foreach \leftright in {1,-1}
+	{
+		\pgfmathsetmacro{\viewphistep}{\leftright * \origviewphistep}
+		\pgfmathsetmacro{\viewphistart}{\originalphi + \leftright * 90}
+		\pgfmathsetmacro{\viewphiinc}{\viewphistart + \viewphistep}
+		\pgfmathsetmacro{\viewphiend}{\viewphistart + \leftright * 90 - \viewphistep}
+		
+		%sweep over phi
+		\foreach \curphi in{\viewphistart,\viewphiinc,...,\viewphiend}
+		{
+			%draw upper and lower parts individually, starting at the either the north or south pole
+			\foreach \topbottom in {1,-1}
+			{
+				\pgfmathsetmacro{\viewthetastep}{-\topbottom * \origviewthetastep}
+				\ifnum \topbottom=1
+					\pgfmathsetmacro{\viewthetastart}{180}
+				\else
+					\pgfmathsetmacro{\viewthetastart}{0}
+				\fi
+
+				\pgfmathsetmacro{\viewthetaend}{\originaltheta - \viewthetastep}
+				\pgfmathsetmacro{\viewthetainc}{\viewthetastart + \viewthetastep}
+
+				%perform the rendering
+				\tdplotdosurfaceplot{#4}{#7}{#8}{#5}{#6}{#1}
+			}
+		}
+	}
+}
+
+%sets the angular range of the polar plot to user-specified values
+\newcommand{\tdplotsetpolarplotrange}[4]{%
+	\pgfmathsetmacro{\tdplotlowerphi}{#3}
+	\pgfmathsetmacro{\tdplotupperphi}{#4}
+	\pgfmathsetmacro{\tdplotlowertheta}{#1}
+	\pgfmathsetmacro{\tdplotuppertheta}{#2}
+}
+
+\newcommand{\tdplotresetpolarplotrange}{%
+	\pgfmathsetmacro{\tdplotlowerphi}{0}
+	\pgfmathsetmacro{\tdplotupperphi}{360}
+	\pgfmathsetmacro{\tdplotlowertheta}{0}
+	\pgfmathsetmacro{\tdplotuppertheta}{180}
+}
+
+
+
+%internal command, performs the actual rendering for the \tdplotsphericalsurfaceplot command
+%TODO: find proper syntax and format for internal commands not intended to be used by the general user
+\newcommand{\tdplotdosurfaceplot}[6]{%
+
+	\pgfmathsetmacro{\nextphi}{\curphi + \tdplotsuperfudge*\viewphistep}
+
+	\begin{scope}[opacity=1]
+	
+		%\typeout{ ----------------------------------- }
+
+		%check if the current phi angle is in position to draw the x axis
+		\tdplotcheckdiff{\nextphi}{360}{\origviewphistep}{#2}{}
+		\tdplotcheckdiff{\nextphi}{0}{\origviewphistep}{#2}{}
+
+		%check if the current phi angle is in position to draw the y axis
+		\tdplotcheckdiff{\nextphi}{90}{\origviewphistep}{#3}{}
+		\tdplotcheckdiff{\nextphi}{450}{\origviewphistep}{#3}{}
+	\end{scope}
+
+	%do the theta sweep
+	\foreach \curtheta in{\viewthetastart,\viewthetainc,...,\viewthetaend}
+	{
+
+		%convert phi, theta coords into longitude, latitude to make use of pgfpointspherical coordinates
+		\pgfmathsetmacro{\curlongitude}{90 - \curphi}
+		\pgfmathsetmacro{\curlatitude}{90 - \curtheta}
+
+		%If sweeping to the right, shift the value of phi to the lower value of phi.
+		\ifthenelse{\equal{\leftright}{-1.0}}%
+			{%
+				\pgfmathsetmacro{\curphi}{\curphi - \origviewphistep}
+			}{}
+		%\fi
+
+		\pgfmathsetmacro{\tdplottheta}{mod(\curtheta,360)}
+		\pgfmathsetmacro{\tdplotphi}{mod(\curphi,360)}
+
+		\pgfmathparse{\tdplotphi < 0}
+		\ifthenelse{\equal{\pgfmathresult}{1}}{
+			\pgfmathsetmacro{\tdplotphi}{\tdplotphi + 360}
+		}{}%
+
+		%test to see if this value is within the specified angular range
+		\pgfmathparse{\tdplottheta > \tdplotuppertheta}
+		\pgfmathsetmacro{\logictest}{1 - \pgfmathresult}
+		
+		\pgfmathparse{\tdplottheta < \tdplotlowertheta}
+		\pgfmathsetmacro{\logictest}{\logictest * (1 - \pgfmathresult)}
+
+		\pgfmathsetmacro{\tdplottheta}{\tdplottheta + \viewthetastep}
+		\pgfmathparse{\tdplottheta > \tdplotuppertheta}
+		\pgfmathsetmacro{\logictest}{\logictest * (1 - \pgfmathresult)}
+		
+		\pgfmathparse{\tdplottheta < \tdplotlowertheta}
+		\pgfmathsetmacro{\logictest}{\logictest * (1 - \pgfmathresult)}
+
+		\pgfmathparse{\tdplotphi > \tdplotupperphi}
+		\pgfmathsetmacro{\logictest}{\logictest * (1 - \pgfmathresult)}
+		
+		\pgfmathparse{\tdplotphi < \tdplotlowerphi}
+		\pgfmathsetmacro{\logictest}{\logictest * (1 - \pgfmathresult)}
+
+		\pgfmathsetmacro{\tdplotphi}{\tdplotphi + \viewphistep}
+
+		\pgfmathparse{\tdplotphi < 0}
+		\ifthenelse{\equal{\pgfmathresult}{1}}{
+			\pgfmathsetmacro{\tdplotphi}{\tdplotphi + 360}
+		}{}%
+
+		\pgfmathparse{\tdplotphi > \tdplotupperphi}
+		\pgfmathsetmacro{\logictest}{\logictest * (1 - \pgfmathresult)}
+		
+		\pgfmathparse{\tdplotphi < \tdplotlowerphi}
+		\pgfmathsetmacro{\logictest}{\logictest * (1 - \pgfmathresult)}
+
+
+		\pgfmathsetmacro{\tdplottheta}{\curtheta}
+		\pgfmathsetmacro{\tdplotphi}{\curphi}
+
+		%if using fill color parametric to angles
+		\ifthenelse{\equal{#6}{parametricfill}}{%
+			%and, if it's being plotted
+			\ifthenelse{\equal{\logictest}{1.0}}{%
+			\pgfmathsetmacro{\radius}{#1}
+			\pgfmathsetmacro{\tdplotr}{\radius*360}  %factor of 360 lets the radius change hue through one full cycle for each unit radius
+			
+			\pgfmathlessthan{\radius}{0}
+			\pgfmathsetmacro{\phaseshift}{180 * \pgfmathresult}
+
+			\pgfmathsetmacro{\colorarg}{#5}
+			\pgfmathsetmacro{\colorarg}{\colorarg + \phaseshift}
+			\pgfmathsetmacro{\colorarg}{mod(\colorarg,360)}
+
+			\pgfmathlessthan{\colorarg}{0}
+			\pgfmathsetmacro{\colorarg}{\colorarg + 360*\pgfmathresult}
+
+			\pgfmathdivide{\colorarg}{360}
+			\definecolor{tdplotfillcolor}{hsb}{\pgfmathresult, 1, 1}
+			\color{tdplotfillcolor}
+			}{}%
+		}%
+		{%
+			\pgfsetfillcolor{#5}
+		}
+		\pgfsetstrokecolor{#4}
+
+		\ifthenelse{\equal{\leftright}{-1.0}}%
+			{%
+			\pgfmathsetmacro{\curphi}{\curphi + \origviewphistep}
+			}{}
+		%\fi
+
+		%if this section is being plotted
+		\ifthenelse{\equal{\logictest}{1.0}}{%
+		\pgfmathsetmacro{\radius}{abs(#1)}
+		\pgfpathmoveto{\pgfpointspherical{\curlongitude}{\curlatitude}{\radius}}
+
+		\pgfmathsetmacro{\tdplotphi}{\curphi + \viewphistep}
+		\pgfmathsetmacro{\radius}{abs(#1)}
+		\pgfpathlineto{\pgfpointspherical{\curlongitude - \viewphistep}{\curlatitude}{\radius}}
+
+		\pgfmathsetmacro{\tdplottheta}{\curtheta + \viewthetastep}
+		\pgfmathsetmacro{\radius}{abs(#1)}
+		\pgfpathlineto{\pgfpointspherical{\curlongitude - \viewphistep}{\curlatitude - \viewthetastep}{\radius}}
+
+		\pgfmathsetmacro{\tdplotphi}{\curphi}
+		\pgfmathsetmacro{\radius}{abs(#1)}
+		\pgfpathlineto{\pgfpointspherical{\curlongitude}{\curlatitude - \viewthetastep}{\radius}}
+		\pgfpathclose
+	
+		\pgfusepath{fill,stroke}
+		}{}
+	}
+}
+
+%\tdplotshowargcolorguide{x position}{y position}{x size}{y size}
+%#1: screen x position
+%#2: screen y position
+%#3: x size (susceptible to scale)
+%#4: y size (susceptible to scale)
+\newcommand{\tdplotshowargcolorguide}[4]{
+
+\pgfmathsetmacro{\tdplotx}{#1}
+\pgfmathsetmacro{\tdploty}{#2}
+\pgfmathsetmacro{\tdplothuestep}{5}
+\pgfmathsetmacro{\tdplotxsize}{#3}
+\pgfmathsetmacro{\tdplotysize}{#4}
+
+\pgfmathsetmacro{\tdplotyscale}{\tdplotysize/360}
+
+\foreach \tdplotphi in {0,\tdplothuestep,...,360}
+{
+	\pgfmathdivide{\tdplotphi}{360}
+	\definecolor{tdplotfillcolor}{hsb}{\pgfmathresult, 1, 1}
+	\color{tdplotfillcolor}
+	
+	\pgfmathsetmacro{\tdplotstarty}{\tdploty + \tdplotphi * \tdplotyscale}
+	\pgfmathsetmacro{\tdplotstopy}{\tdplotstarty + \tdplothuestep * \tdplotyscale}
+	\pgfmathsetmacro{\tdplotstartx}{\tdplotx}
+	\pgfmathsetmacro{\tdplotstopx}{\tdplotx + \tdplotxsize}
+	\filldraw[tdplot_screen_coords] (\tdplotstartx,\tdplotstarty) rectangle (\tdplotstopx,\tdplotstopy);
+}
+
+	\pgfmathsetmacro{\tdplotstopy}{\tdploty + (360+\tdplothuestep)*\tdplotyscale }
+	\pgfmathsetmacro{\tdplotstopx}{\tdplotx + \tdplotxsize}
+
+\draw[tdplot_screen_coords] (\tdplotx,\tdploty) rectangle (\tdplotstopx,\tdplotstopy);
+
+\node[tdplot_screen_coords,anchor=west,xshift=5pt] at (\tdplotstopx,\tdploty) {$0$};
+\node[tdplot_screen_coords,anchor=west,xshift=5pt] at (\tdplotstopx,\tdplotstopy) {$2\pi$};
+
+	\pgfmathsetmacro{\tdplotstopy}{\tdploty + (360+\tdplothuestep)/2*\tdplotyscale }
+\node[tdplot_screen_coords,anchor=west, xshift=5pt] at (\tdplotstopx, \tdplotstopy) {$\pi$};
+}
+
+
+%\tdplotgetpolarcoords{\vx}{\vy}{\vz}
+%determines the theta and phi angle associated with the specified x, y, and z components of a vector
+\newcommand{\tdplotgetpolarcoords}[3]{%
+%
+	\pgfmathsetmacro{\vxcalc}{#1}
+	\pgfmathsetmacro{\vycalc}{#2}
+	\pgfmathsetmacro{\vzcalc}{#3}
+%
+	\pgfmathsetmacro{\vcalc}{ sqrt((\vxcalc)^2 + (\vycalc)^2 + (\vzcalc)^2) }
+%	\pgfmathsetmacro{\vcalc}{ (\vxcalc^2 + \vycalc^2 + \vzcalc^2)^.5 }
+
+	\pgfmathsetmacro{\vxycalc}{ sqrt((\vxcalc)^2 + (\vycalc)^2) }
+%	\pgfmathsetmacro{\vxycalc}{ (\vxcalc^2 + \vycalc^2)^.5 }
+
+	\pgfmathsetmacro{\tdplotrestheta}{asin(\vxycalc/\vcalc)}
+%
+	%check for angles larger than 90
+	\pgfmathparse{\vzcalc < 0}
+	\ifthenelse{\equal{\pgfmathresult}{1}}%
+		{%
+			\pgfmathsetmacro{\tdplotrestheta}{180 - \tdplotrestheta}
+		}
+		{}
+%
+	%check for special case: vx = 0
+	\ifthenelse{\equal{\vxcalc}{0.0}}%
+		{%
+			%check the sign of vy, and set angle appropriately
+			\pgfmathparse{\vycalc < 0}
+			\ifthenelse{\equal{\pgfmathresult}{1}}%
+				{%
+					\pgfmathsetmacro{\tdplotresphi}{270}
+				}
+				{%
+					\pgfmathparse{\vycalc > 0}
+					\ifthenelse{\equal{\pgfmathresult}{1}}%
+						{%
+							%\typeout{\vycalc}
+							\pgfmathsetmacro{\tdplotresphi}{90}
+						}
+						{%
+							%\typeout{OVER HERE!!!!}
+							\pgfmathsetmacro{\tdplotresphi}{0}
+						}
+				}
+		}
+		{%
+			%perform the arctan calculation
+			\pgfmathsetmacro{\tdplotresphi}{atan(\vycalc/\vxcalc)}
+%
+			%check if vx is less than zero, to properly identify the quadrant
+			\pgfmathparse{\vxcalc < 0}
+			%\typeout{x: \vxcalc\ y: \vycalc\ Raw phi: \tdplotresphi\ math result: \pgfmathresult}
+			\ifthenelse{\equal{\pgfmathresult}{1}}%
+				{%
+					%\typeout{HERE!}
+					%increase by half a rotation if necessary
+					\pgfmathsetmacro{\tdplotresphi}{\tdplotresphi+180}
+				}
+				{
+					%\typeout{SPOON!}
+				}
+
+			%ensure the angle lies between 0 and 360 degrees
+			\pgfmathparse{\tdplotresphi < 0}
+			\ifthenelse{\equal{\pgfmathresult}{1}}%
+				{%
+					\pgfmathsetmacro{\tdplotresphi}{\tdplotresphi+360}
+				}
+				{}
+		}
+}
+
+
+%	\tdplotcrossprod(\ax,\ay,\az)(\bx,\by,\bz)
+\def\tdplotcrossprod(#1,#2,#3)(#4,#5,#6){%
+	\pgfmathsetmacro{\tdplotresx}{#2 * #6 - #3 * #5}
+	\pgfmathsetmacro{\tdplotresy}{#3 * #4 - #1 * #6}
+	\pgfmathsetmacro{\tdplotresz}{#1 * #5 - #2 * #4}
+
+}
+
+%\newcommand{\tdplottransform
+%
+%
+%\newcommand{\tdplotgetplane}{
+%
+%}
+
+
+%Notes
+%-----
+
+%PROBLEM:
+%the line-by-line coordinate transformation does not accept predefined points.  It only works with literal points.  Example:
+%\begin{tikzpicture}[smooth]
+%	\draw plot coordinates{(1,0)(2,0.5)(3,0)(3,1)};
+%	\draw[x={(0cm,1cm)},y={(1cm,0cm)},color=red] plot coordinates{(1,0)(2,0.5)(3,0)(3,1)};
+%\end{tikzpicture}
+%
+%\begin{tikzpicture}[smooth]
+%	\coordinate (A) at (1,0);
+%	\coordinate (B) at (2,0.5);
+%	\coordinate (C) at (3,0);
+%	\coordinate (D) at (3,1);
+%	\draw plot coordinates{(A)(B)(C)(D)};
+%	\draw[x={(0cm,1cm)},y={(1cm,0cm)},color=red] plot coordinates{(A)(B)(C)(D)};
+%\end{tikzpicture}
+%SOLUTION: none so far, other than use literal points.
+
+
+%PROBLEM:
+%	\node[tdplot_rotated_coords,anchor=south west] at (\thetavec/2:.5){$\theta$};
+%it looks like the \node command can't be placed properly when a shift={} is defined in a style?
+%SOLUTION:  Use something like this instead:
+%\draw[tdplot_rotated_coords] (O) + (\thetavec/2:.5) node[anchor=south west]{$\theta$};
+
+
+%PROBLEM:
+	%\draw[-stealth,color=orange] (0,0,0) -- (xyz spherical cs:radius=.5,longitude=60,latitude=120);
+%this gives the compile error:  Undefined control sequence. <argument> \tikz@cs@radius.  Not sure if this is due to some missing code in the TikZ 3d library.
+%SOLUTION: none found yet.

@@ -1,0 +1,1208 @@
+%%
+%% This is file `sseq.sty',
+%% generated with the docstrip utility.
+%%
+%% The original source files were:
+%%
+%% sseq.dtx  (with options: `package')
+%% 
+%% IMPORTANT NOTICE:
+%% 
+%% For the copyright see the source file.
+%% 
+%% Any modified versions of this file must be renamed
+%% with new filenames distinct from sseq.sty.
+%% 
+%% For distribution of the original source see the terms
+%% for copying and modification in the file sseq.dtx.
+%% 
+%% This generated file may be distributed as long as the
+%% original source files, as listed above, are part of the
+%% same distribution. (The sources need not necessarily be
+%% in the same archive or directory.)
+
+\NeedsTeXFormat{LaTeX2e}
+
+\ProvidesPackage{sseq}[2009/04/09 ver 2.0]
+
+\RequirePackage{ifthen,calc,pifont}
+\RequirePackage{pgf}[2006/01/01]
+\RequirePackage{xkeyval}
+\usepgflibrary{snakes}
+
+\newboolean{usescolor}
+\setboolean{usescolor}{true}
+\newboolean{debug}
+\setboolean{debug}{false}
+
+\DeclareOption{ps}{\errmessage{sseq: ps/nops is deprecated}}
+\DeclareOption{nops}{\errmessage{sseq: ps/nops is deprecated}}
+\DeclareOption{dvips}{\errmessage{sseq: deprecated option dvips ignored}}
+\DeclareOption{xdvi}{\errmessage{sseq: deprecated option xdvi ignored}}
+\DeclareOption{color}{\setboolean{usescolor}{true}}
+\DeclareOption{nocolor}{\setboolean{usescolor}{false}}
+\DeclareOption{debug}{\setboolean{debug}{true}}
+
+\ProcessOptions
+
+
+\def\sseq@currentname{}
+\def\sseq@previousname{}
+
+\newboolean{sseqhasopenconn}
+\setboolean{sseqhasopenconn}{false}
+\newboolean{sseqclip}
+\setboolean{sseqclip}{true}
+
+\def\sseqconncommand{}
+\def\sseq@connbuffer{}
+\def\sseq@currarrowstart{}
+\def\sseq@currarrowend{}
+
+\newif\ifsseq@connreverse
+
+\ifthenelse{\boolean{usescolor}}
+{
+ \definecolor{sseqgr}{gray}{0.65}
+ \definecolor{sslightgr}{gray}{0.8}
+ \definecolor{ssred}{rgb}{1,0,0}
+ \definecolor{ssblack}{rgb}{0,0,0}
+}{}
+\newcommand{\ssconncolor}{ssblack}
+\newcommand{\sslabelcolor}{ssblack}
+\newcommand{\ssplacecolor}{ssblack}
+
+\def\sseqpacking{\sspacksmart}
+
+%% ^^A Initialization
+\newcount\sseqxstart \sseqxstart=0
+\newcount\sseqystart \sseqystart=0
+\newcount\sseqxstep
+\newcount\sseqystep
+\newdimen\sseqentrysize
+\newdimen\sseq@xgap
+\newdimen\sseq@ygap
+\newdimen\sseq@xleak
+\newdimen\sseq@yleak
+\newdimen\ss@currsep \ss@currsep=\pgfshapeinnerxsep
+\newdimen\ss@size
+\newdimen\sseq@gridstrokethickness
+
+\newsavebox\sseq@labelbox
+
+\newif\ifssclipped
+\newif\ifcurroutofrange
+
+\newtoks\sseqcmdlist
+\sseqcmdlist={}
+
+\def\currprefix{}
+
+\long\def\ntimes#1#2{
+\ifnum#1>0
+ #2
+ \count0=#1
+ \advance\count0 by -1
+ \edef\tmpcnt{\the\count0}
+ \ntimes{\tmpcnt}{#2}
+\fi
+}
+
+\long\def\for #1=#2\to#3\do#4\od{#1=#2 \sseq@for #1\to #3\do #4\od}
+\long\def\sseq@for #1\to #2\do #3\od{%
+ \ifnum #1>#2 \else
+   #3\relax
+  \advance #1 by 1
+   \def\tempcmd{\sseq@for #1\to #2\do #3\od}%
+   \expandafter\tempcmd
+ \fi
+}
+
+\def\@eval#1#2{%
+  \edef\tempcmd{\noexpand#1#2}%
+  \tempcmd
+}
+\def\range@endmarker{END}
+\def\range@parseandnormalize#1#2#3{\def#1{}\range@parseandnormalizeinnerloop{#1}{#2}{-10000}#3,END,}
+\def\range@parseandnormalizeinnerloop#1#2#3#4,{%
+ \def\temp{#4}%
+ \ifx\temp\range@endmarker
+  \edef #1{#1END;END,}%
+ \else
+  \def\tempoutercmd{\range@parseinnerpart{#1}{#2}{#3}#4...END...}%
+  \expandafter\tempoutercmd
+ \fi
+}
+\def\range@parseinnerpart#1#2#3#4...#5...{%
+ \def\temp{#5}
+ \ifx\temp\range@endmarker
+   \count0=#2
+   \advance\count0 by #4
+   \advance\count0 by -1
+   \edef\tempcmd{\noexpand\range@parseinnerpart{\noexpand#1}{#2}{#3}#2...\number\count0...END...}
+ \else
+   \count0=#3
+   \count1=#4
+   \count2=#5
+   \ifnum\count1<\count0
+     \PackageError{sseq}{Illegal stepping in range}{In a range a...b,c...d, c has to be >= b+2. In your case, b+2=#3 and c=#4. I'll replace c by #3.}
+     \count1=#3
+   \fi
+   \ifnum\count2<\count1
+     \PackageError{sseq}{Illegal range}{In a range a...b, b has to be at least as big as a. In your case, a=\number\count1 and b=#5. I'll replace b by \number\count1.}
+     \count2=\count1
+   \fi
+   \count0=\count2
+   \advance\count0 by 2
+   \edef#1{#1\number\count1;\number\count2,}
+   \edef\tempcmd{\noexpand\range@parsegobbleend{\noexpand#1}{#2}{\number\count0}}
+ \fi
+ \tempcmd
+}
+\def\range@parsegobbleend#1#2#3#4...{%
+\range@parseandnormalizeinnerloop{#1}{#2}{#3}%
+}
+\newif\ifrangebreak
+\def\range@loop#1#2;#3,{
+ \rangebreakfalse
+ \def\temp{#2}
+ \def\tempcmd{}
+ \ifx\temp\range@endmarker\else
+   #1{#2}{#3}
+   \advance\sseqj by 1
+   \ifrangebreak
+    \def\tempcmd{\range@gobbletoend}
+   \else
+    \def\tempcmd{\range@loop{#1}}
+   \fi
+ \fi
+ \tempcmd
+}
+\newif\ifoutofrange
+\def\range@getabsoluteposition#1#2#3#4#5;#6,{
+ \outofrangefalse
+ \def\temp{#5}
+ \def\tempcmd{}
+ \count0=#1
+ \ifx\temp\range@endmarker
+   \outofrangetrue
+ \else % ^^A now #4 contains the current min and #5 the current max
+   \ifnum\count0<#5
+     \outofrangetrue
+     \def\tempcmd{\range@gobbletoend}
+   \else
+     \ifnum\count0>#6
+       \count0=#6
+       \advance\count0 by 1
+       \count1=#5
+       \multiply\count1 by -1
+       \advance\count0 by \count1
+       \dimen0=#2
+       \multiply\dimen0 by \count0
+       \advance\dimen0 by #4
+       \advance\dimen0 by #3
+       \edef\tempcmd{\noexpand\range@getabsoluteposition{#1}{#2}{#3}{\number\dimen0sp}}
+     \else
+       \count1=#5
+       \multiply\count1 by -1
+       \advance\count0 by \count1
+       \dimen0=#2
+       \multiply\dimen0 by \count0
+       \advance\dimen0 by #4
+       \def\tempcmd{\range@gobbletoend}
+     \fi
+   \fi
+ \fi
+ \tempcmd
+}
+\def\range@gobbletoend#1END,{}
+
+\def\ss@getcoords#1#2{
+ \edef\tempcmd{\noexpand\range@getabsoluteposition{#1}{\number\sseqentrysize sp}{\number\sseq@xgap sp}{0pt}}
+ \expandafter\tempcmd\sseq@xrange
+ \sseqx=\dimen0
+ \edef\tempcmd{\noexpand\range@getabsoluteposition{#2}{\number\sseqentrysize sp}{\number\sseq@ygap sp}{0pt}}
+ \ifoutofrange
+  \expandafter\tempcmd\sseq@yrange
+  \outofrangetrue
+ \else
+  \expandafter\tempcmd\sseq@yrange
+ \fi
+ \sseqy=\dimen0
+}
+
+\def\putxyq#1{\toks0={#1}%
+ \edef\act{\noexpand\sseqcmdlist={\the\sseqcmdlist \the\toks0}}%
+ \act
+}
+\def\putxy#1{%
+ \edef\act{\noexpand\sseqcmdlist={\the\sseqcmdlist #1}}%
+ \act
+}
+
+\def\sseqwritecolor#1{
+\ifthenelse{\boolean{usescolor}}{
+  \putxy{\noexpand\color{#1}}
+}{}
+}
+
+\def\sseqconcludeconnection{
+ \sseqconncommand
+ \setboolean{sseqhasopenconn}{false}
+}
+
+\def\dropvarname#1#2{\csname sseqdrop#1,#2\endcsname}
+
+\def\ifuniquedrop#1#2{
+\edef\tmpval{\dropvarname{#1}{#2}}
+\expandafter\ifx\tmpval1
+}
+
+\def\ifnodrop#1#2{
+\edef\tmpval{\dropvarname{#1}{#2}}
+\expandafter\ifx\tmpval\relax
+}
+
+\def\ssdroperrormsg#1#2{
+ \ifnodrop{#1}{#2}
+  \PackageError{sseq}{cannot open position (#1,#2): nothing dropped yet}{You cannot draw any connection until you have drawn the source.}
+ \else
+  \PackageError{sseq}{cannot open position (#1,#2): multiple drops}{You cannot specify this position by coordinates. Instead, name it.}
+ \fi
+}
+\def\sseq@updatecurrentdata{
+ \@eval\ss@getcoords{{\number\sseqposx}{\number\sseqposy}}
+ \sseqabsposx=\sseqx
+ \sseqabsposy=\sseqy
+ \let\ifcurroutofrange\ifoutofrange
+}
+
+\def\sseq@openposition{
+ \ifuniquedrop{\the\sseqposx}{\the\sseqposy}
+  \edef\sseq@currentname{ss(\number\sseqposx,\number\sseqposy)1}
+ \else
+  \ssdroperrormsg{\the\sseqposx}{\the\sseqposy}
+  \def\sseq@currentname{}
+ \fi
+}
+
+\def\ssassertsource{
+ \sseq@flushconn
+ \ifx\sseq@currentname\empty
+  \sseq@openposition
+ \fi
+}
+
+\def\ssfinishpos{
+ \sseq@flushconn
+ \ifx\sseq@currentname\empty
+ \else
+   \ifthenelse{\boolean{sseqhasopenconn}}
+   {
+     \sseqconcludeconnection
+   }{}
+   \edef\sseq@previousname{\sseq@currentname}
+   \def\sseq@currentname{}
+ \fi
+}
+
+\def\sspacksmart#1#2{
+ \ifcase\count11
+  % ^^A 0
+  \PackageError{sseq}{This can't happen!}{Internal error. Contact the author.}
+ \or % ^^A 1
+  \sseqrearrange{#1}{#2}{\the\count1}{\the\dimen6}{\the\dimen5}
+  \advance\sseqx by \dimen5
+  \advance\sseqy by \dimen6
+ \or % ^^A 2
+  \sseqrearrange{#1}{#2}{\the\count2}{0pt}{\the\dimen5}
+  \sseqrearrange{#1}{#2}{\the\count2}{0pt}{\the\dimen5}
+  \advance\sseqy by \dimen6
+ \or % ^^A 3
+  \sseqrearrange{#1}{#2}{\the\count3}{\the\dimen6}{0pt}
+  \advance\sseqx by \dimen5
+  \advance\sseqy by \dimen6
+ \or % ^^A 4 -- give up on being clever and put everything in one diagonal row.
+  \sseqrearrange{#1}{#2}{\the\count2}{\the\dimen6}{\the\dimen6}
+  \sseqrearrange{#1}{#2}{\the\count3}{\the\dimen5}{0pt}
+  \sseqrearrange{#1}{#2}{\the\count3}{\the\dimen5}{0pt}
+  \sseqrearrange{#1}{#2}{\the\count4}{\the\dimen5}{\the\dimen6}
+  \advance\sseqx by \dimen5
+  \advance\sseqx by \dimen5
+  \advance\sseqx by \dimen5
+  \advance\sseqy by \dimen6
+  \advance\sseqy by \dimen6
+  \advance\sseqy by \dimen6
+ \else
+  \advance\count11 by -1
+  \multiply\dimen5 by \count11
+  \multiply\dimen6 by \count11
+  \advance\sseqx by \dimen5
+  \advance\sseqy by \dimen6
+ \fi
+}
+
+\def\sspackhorizontal#1#2{
+ \divide\dimen6 by 2
+ \divide\dimen5 by 2
+ \for\count10=1 \to \count11 \do
+   \sseqrearrange{#1}{#2}{\the\count\count10}{\the\dimen6}{0pt}
+ \od
+ \multiply\dimen5 by \count11
+ \advance\sseqx by \dimen5
+}
+\def\sspackvertical#1#2{
+ \divide\dimen6 by 2
+ \divide\dimen5 by 2
+ \for\count10=1 \to \count11 \do
+   \sseqrearrange{#1}{#2}{\the\count\count10}{0pt}{\the\dimen6}
+ \od
+ \multiply\dimen5 by \count11
+ \advance\sseqy by \dimen5
+}
+\def\sspackdiagonal#1#2{
+ \divide\dimen6 by 2
+ \divide\dimen5 by 2
+ \for\count10=1 \to \count11 \do
+   \sseqrearrange{#1}{#2}{\the\count\count10}{\the\dimen6}{\the\dimen5}
+ \od
+ \multiply\dimen5 by \count11
+ \multiply\dimen6 by \count11
+ \advance\sseqx by \dimen5
+ \advance\sseqy by \dimen6
+}
+
+\def\sseqpack#1#2{
+\expandafter\ifx\sseqpacking\ssequndefined
+ \PackageError{sseq}{Unknown packing option, reverting to \string\sspacksmart}{You apparently have redefined \string\sspacksmart. The only allowed values are: \string\sspacksmart,\string\sspackhorizontal,\string\sspackdiagonal,\string\sspackvertical.}
+ \gdef\sseqpacking{\sspacksmart}
+\fi
+\sseqpacking{#1}{#2}
+}
+
+\def\sseqrearrange#1#2#3#4#5{
+\dimen0 = \csname sseqcoordx<#1,#2>#3\endcsname
+\dimen1 = \csname sseqcoordy<#1,#2>#3\endcsname
+\advance\dimen0 by #4
+\advance\dimen1 by #5
+\expandafter\edef\csname sseqcoordx<#1,#2>#3\endcsname{\the\dimen0}
+\expandafter\edef\csname sseqcoordy<#1,#2>#3\endcsname{\the\dimen1}
+}
+
+\def\sseqstacking#1#2#3{ % ^^A (xpos, ypos, number of previous drops)
+ \dimen5=\sseqentrysize
+ \divide\dimen5 by 4
+ \dimen6=\dimen5
+ \multiply\dimen6 by -1
+ \count11=0
+ \for\count10=1 \to #3 \do
+  \if1\csname sseqwillmove<#1,#2>\the\count10 \endcsname
+   \advance\count11 by 1
+   \expandafter\count\the\count11=\count10
+  \fi
+ \od
+ \ifnum\count11<9
+ \else
+   \PackageError{sseq}{Too many drops at (#1,#2)}{The sseq.sty algorithm can only place up to nine independent drops in one position.}
+ \fi
+ \sseqpack{#1}{#2}
+}
+
+\def\ss@setshapesep#1{
+ \ifdim\ss@currsep=#1\else
+   \putxy{\noexpand\pgfsetshapeinnerxsep{#1}\noexpand\pgfsetshapeinnerysep{#1}}
+   \ss@currsep=#1
+ \fi
+}
+
+\def\sseq@setcircumference{
+ \expandafter\ss@size\expandafter=\expandafter\csname\sseq@currentname size\endcsname
+ \advance\ss@size by 1pt
+ \ss@setshapesep{\the\ss@size}
+}
+
+\def\ss@placespecial#1#2#3#4#5{
+ \ssfinishpos
+ \ss@getcoords{#1}{#2}
+ \advance\sseqx by \sseqhalfentry
+ \advance\sseqy by \sseqhalfentry
+ \expandafter\def\expandafter\tmpname\expandafter{\csname sseqdrop#1,#2\endcsname}
+\ifnodrop{#1}{#2}
+\expandafter\def\tmpname{1}
+\else
+ \edef\setcnt{\noexpand\count0=\tmpname}
+ \setcnt
+ \sseqstacking{#1}{#2}{\tmpname}
+ \advance\count0 by 1
+ \expandafter\edef\tmpname{\the\count0}
+\fi
+\putxyq{\pgftransformshift}
+\putxy{{\noexpand\pgfpoint{\csname sseqcoordx<#1,#2>\tmpname\endcsname}{\csname sseqcoordy<#1,#2>\tmpname \endcsname}}}
+\ifoutofrange % ^^A Outside clipping region -- produce an empty node
+ \putxyq{\pgfnode{coordinate}{center}{}}
+ % ^^A now give it a unique name
+ \putxy{{ss(#1,#2)\tmpname}}
+ \putxyq{{}}
+\else
+ \sseqwritecolor{\ssplacecolor}
+ \putxyq{\pgfnode{#3}{center}}
+ \putxyq{{#5}}
+ \putxy{{ss(#1,#2)\tmpname}}
+ \putxyq{{#4}}
+\fi
+\putxyq{\pgftransformreset}
+\def\temp{#5}
+\ifx\temp\empty % ^^A It's a bullet or a circle or such
+  \dimen0=1pt
+\else
+  \setbox0=\hbox{#5}
+  \dimen0=0.5\wd0
+\fi
+\expandafter\edef\csname sseqcoordx<#1,#2>\tmpname\endcsname{\the\sseqx}
+\expandafter\edef\csname sseqcoordy<#1,#2>\tmpname\endcsname{\the\sseqy}
+\expandafter\edef\csname ss(#1,#2)\tmpname size\endcsname{\number\dimen0 sp}
+\expandafter\def\csname sseqwillmove<#1,#2>\tmpname\endcsname{1}
+\edef\sseq@currentname{ss(#1,#2)\tmpname}
+\ifthenelse{\boolean{sseqhasopenconn}}{\sseqconcludeconnection}{}
+}
+
+\newcommand{\ssplace}[3]{
+ \ss@setshapesep{0pt}
+ \putxyq{\pgfsetdash{}{0pt}}
+ \ss@placespecial{#1}{#2}{rectangle}{\pgfusepath{discard}}{\ensuremath{#3}}
+}
+
+\newcommand{\ssplaceboxed}[3]{
+ \ss@setshapesep{1pt}
+ \putxyq{\pgfsetdash{}{0pt}}
+ \ss@placespecial{#1}{#2}{rectangle}{\pgfusepath{stroke}}{\ensuremath{#3}}
+}
+
+\newcommand{\ssplacecircled}[3]{
+ \ifthenelse{\equal{#3}{1}
+         \OR \equal{#3}{2}
+         \OR \equal{#3}{3}
+         \OR \equal{#3}{4}
+         \OR \equal{#3}{5}
+         \OR \equal{#3}{6}
+         \OR \equal{#3}{7}
+         \OR \equal{#3}{8}
+         \OR \equal{#3}{9}}{
+  \ss@setshapesep{-.3ex}
+  \count0=191
+  \advance\count0 by #3
+  \def\ss@tmpcmd{\ss@placespecial{#1}{#2}{circle}{\pgfusepath{discard}}}
+  \expandafter\ss@tmpcmd\expandafter{\expandafter\ding\expandafter{\the\count0}}
+ }{
+   \putxyq{\pgfsetdash{}{0pt}}
+   \ss@setshapesep{0pt}
+   \ss@placespecial{#1}{#2}{circle}{\pgfusepath{stroke}}{\ensuremath{#3}}
+ }
+}
+
+\newcommand{\ssglobalname}[1]{\currprefix#1}
+
+\def\sssetglobalname#1{
+ \ssassertsource
+ \expandafter\edef\csname sseqpos<#1>\endcsname{\sseq@currentname}
+ \expandafter\edef\csname sseqx<#1>\endcsname{\the\sseqposx}
+ \expandafter\edef\csname sseqy<#1>\endcsname{\the\sseqposy}
+}
+\newcommand{\ssmoveto}[2]{
+ \ifthenelse{\boolean{sseqhasopenconn}}
+ {
+   \sseqconcludeconnection
+ }{}
+\ssfinishpos
+\sseqposx=#1
+\sseqposy=#2
+\sseq@updatecurrentdata
+}
+\newcommand{\ssmove}[2]{
+\sseqi=\sseqposx
+\advance\sseqi by #1
+\sseqj=\sseqposy
+\advance\sseqj by #2
+\@eval\ssmoveto{{\number\sseqi}{\number\sseqj}}
+}
+\define@key{sseqdrop}{circled}[true]{\newif\ifKV@sseqdrop@circled\csname KV@sseqdrop@circled#1\endcsname}
+\define@key{sseqdrop}{boxed}[true]{\newif\ifKV@sseqdrop@boxed\csname KV@sseqdrop@boxed#1\endcsname}
+\define@key{sseqdrop}{color}{\def\ssplacecolor{#1}}
+\define@key{sseqdrop}{name}{\def\sseq@name{#1}}
+\def\ssdrop{\@ifnextchar[\sseq@drop{\sseq@drop[]}}
+\def\sseq@drop[#1]#2{
+ \edef\sseq@savecolor{\ssplacecolor}
+ \def\sseq@name{\relax}
+ \presetkeys{sseqdrop}{circled=false,boxed=false}{}
+ \setkeys{sseqdrop}{#1}
+ \ifKV@sseqdrop@circled
+   \ssplacecircled{\number\sseqposx}{\number\sseqposy}{#2}
+ \else
+   \ifKV@sseqdrop@boxed
+     \ssplaceboxed{\number\sseqposx}{\number\sseqposy}{#2}
+   \else
+     \def\temp{#2}
+ \def\temptwo{\bullet}
+ \ifx\temp\temptwo
+   \ss@setshapesep{0pt}
+       \ss@placespecial{\number\sseqposx}{\number\sseqposy}{circle}{\pgfusepath{fill}}{}
+ \else
+   \def\temptwo{\circle}
+   \ifx\temp\temptwo
+     \ss@setshapesep{0pt}
+         \ss@placespecial{\number\sseqposx}{\number\sseqposy}{circle}{\pgfusepath{stroke}}{}
+       \else
+         \ssplace{\number\sseqposx}{\number\sseqposy}{#2}
+   \fi
+ \fi
+   \fi
+ \fi
+ \edef\ssplacecolor{\sseq@savecolor}
+ \def\temp{\relax}
+ \ifx\sseq@name\temp \else
+   \@eval\ssname{{\sseq@name}}
+ \fi
+}
+\newcommand{\ssdropbull}{\ssdrop{\bullet}}
+\newcommand{\ssdropboxed}[1]{\ssdrop[boxed]{#1}}
+\newcommand{\ssdropcircled}[1]{\ssdrop[circled]{#1}}
+\def\ssname#1{
+ \sssetglobalname{\ssglobalname{#1}}
+}
+\newcommand{\ssgoto}[1]{
+\ssabsgoto{\ssglobalname{#1}}
+}
+\newcommand{\ssprefix}[1]{
+  \edef\currprefix{\currprefix#1}
+}
+\newcommand{\ssresetprefix}{\def\currprefix{}}
+\newcommand{\ssabsgoto}[1]{
+ \ifthenelse{\boolean{sseqhasopenconn}}
+ {
+   \sseqconcludeconnection
+ }{}
+ \ssfinishpos
+ \edef\sseq@currentname{\csname sseqpos<#1>\endcsname}
+ \sseqposx=\csname sseqx<#1>\endcsname
+ \sseqposy=\csname sseqy<#1>\endcsname
+ \sseq@updatecurrentdata
+}
+\define@key{sseqlabel}{color}{\def\sslabelcolor{#1}}
+\define@key{sseqlabel}{pos}{\def\sseq@position{#1}}
+\define@key{sseqlabel}{U}[]{\def\sseq@position{U}}
+\define@key{sseqlabel}{LU}[]{\def\sseq@position{LU}}
+\define@key{sseqlabel}{L}[]{\def\sseq@position{L}}
+\define@key{sseqlabel}{LD}[]{\def\sseq@position{LD}}
+\define@key{sseqlabel}{D}[]{\def\sseq@position{D}}
+\define@key{sseqlabel}{RD}[]{\def\sseq@position{RD}}
+\define@key{sseqlabel}{R}[]{\def\sseq@position{R}}
+\define@key{sseqlabel}{RU}[]{\def\sseq@position{RU}}
+\def\ssdroplabel{\@ifnextchar[\sseq@droplabel{\sseq@droplabel[]}}
+\def\sseq@droplabel[#1]#2{
+\ssassertsource
+\ifcurroutofrange\else
+ \edef\sseq@savecolor{\sslabelcolor}
+ \def\sseq@position{L}
+ \setkeys{sseqlabel}{#1}
+ \ifthenelse{\equal{\sseq@position}{U}}{\def\sseq@anchor{north} \def\sseq@link{south}}{}
+ \ifthenelse{\equal{\sseq@position}{LU}}{\def\sseq@anchor{north west} \def\sseq@link{south east}}{}
+ \ifthenelse{\equal{\sseq@position}{L}}{\def\sseq@anchor{west} \def\sseq@link{east}}{}
+ \ifthenelse{\equal{\sseq@position}{LD}}{\def\sseq@anchor{south west} \def\sseq@link{north east}}{}
+ \ifthenelse{\equal{\sseq@position}{D}}{\def\sseq@anchor{south} \def\sseq@link{north}}{}
+ \ifthenelse{\equal{\sseq@position}{RD}}{\def\sseq@anchor{south east} \def\sseq@link{north west}}{}
+ \ifthenelse{\equal{\sseq@position}{R}}{\def\sseq@anchor{east} \def\sseq@link{west}}{}
+ \ifthenelse{\equal{\sseq@position}{RU}}{\def\sseq@anchor{north east} \def\sseq@link{south west}}{}
+ \sseqwritecolor{\sslabelcolor}
+ \putxyq{\pgftransformshift}
+ \putxy{{\noexpand\pgfpointanchor{\sseq@currentname}{\sseq@anchor}}}
+ \putxyq{\pgfnode{rectangle}}
+ \putxy{{\sseq@link}}
+ \putxyq{{\ensuremath{#2}}{}{\pgfusepath{discard}}}
+ \putxyq{\pgftransformreset}
+ \edef\sslabelcolor{\sseq@savecolor}
+\fi
+}
+\def\ssdropextension{
+ \ssassertsource
+ \expandafter\def\expandafter\tmpname\expandafter{\csname sseqdrop\the\sseqposx,\the\sseqposy\endcsname}
+ \edef\setcnt{\noexpand\count0=\tmpname}
+ \setcnt
+ \advance\count0 by 1
+ \expandafter\edef\tmpname{\the\count0}
+ \putxyq{\pgftransformshift}
+ \putxy{{\noexpand\pgfpointanchor{\sseq@currentname}{center}}}
+ \ifoutofrange
+  \putxyq{\pgfnode{coordinate}{center}{}}
+  \putxy{{ss(\the\sseqposx,\the\sseqposy)\tmpname}{}}
+ \else
+   \sseqwritecolor{\ssplacecolor}
+   \sseq@setcircumference
+   \putxyq{\pgfnode{circle}{center}{}}
+   \putxy{{ss(\the\sseqposx,\the\sseqposy)\tmpname}}
+   \putxyq{{\pgfusepath{stroke}}}
+ \fi
+ \putxyq{\pgftransformreset}
+ \edef\sseq@currentname{ss(\number\sseqposx,\number\sseqposy)\tmpname}
+ \expandafter\edef\csname \sseq@currentname size\endcsname{\number\ss@size sp}
+ \ifthenelse{\boolean{sseqhasopenconn}}{\sseqconcludeconnection}{}
+}
+\def\ssprepareline#1#2{
+ \ssassertsource\ssfinishpos
+ \advance\sseqposx by #1
+ \advance\sseqposy by #2
+ \sseq@updatecurrentdata
+ \setboolean{sseqhasopenconn}{true}
+}
+\def\extractcoords ss(#1,#2)#3{{#1}{#2}}
+\def\sseq@flushconn{
+ \ifx\sseq@connbuffer\empty\else
+   \ifsseq@connreverse
+     \putxy{\noexpand\pgfsetarrows{\sseq@currarrowend-\sseq@currarrowstart}}
+   \else
+     \putxy{\noexpand\pgfsetarrows{\sseq@currarrowstart-\sseq@currarrowend}}
+   \fi
+   \sseq@connbuffer
+   \def\sseq@connbuffer{}
+   \def\sseq@currarrowstart{}
+   \def\sseq@currarrowend{}
+ \fi
+}
+\def\sseq@connection#1#2#3{
+ \sseq@flushconn
+ \ifthenelse{\boolean{#3}}{}{\ssassertsource}
+ \sseq@connreversefalse
+ \edef\sseq@prevxy{\expandafter\extractcoords\sseq@previousname}
+ \expandafter\ss@getcoords\sseq@prevxy
+ \ifcurroutofrange
+   \ifoutofrange % ^^A both out of range -- do nothing
+   \else % ^^Afrom within range to out of range -- draw a void line
+     % ^^A need to recompute the relative coordinates
+     \@eval\sseq@diffhelper{\sseq@prevxy{\number\sseqposx}{\number\sseqposy}}
+     \@eval\sseq@lineintooff{{\sseq@previousname}\sseq@prevxy{\number\count0}{\number\count1}{#1}{#2}}
+   \fi
+ \else
+   \ifoutofrange % ^^A from out of range to within range -- draw a void line
+     \ifthenelse{\boolean{#3}}{}{ % ^^A if the target is also void -- do nothing.
+       \sseq@connreversetrue
+       \@eval\sseq@diffhelper{{\number\sseqposx}{\number\sseqposy}\sseq@prevxy}
+       \@eval\sseq@lineintooff{{\sseq@currentname}{\sseqposx}{\sseqposy}{\number\count0}{\number\count1}{#1}{#2}}
+ }
+   \else
+     \putxyq{\pgfsetdash{#1}{0pt}}
+ \ifthenelse{\boolean{#3}}{ % ^^A draw a void line
+   \multiply\sseqx by -1
+   \advance\sseqx by \sseqabsposx
+   \multiply\sseqy by -1
+   \advance\sseqy by \sseqabsposy
+       \putxy{\noexpand\pgftransformshift{\noexpand\pgfpointanchor{\sseq@previousname}{center}}}
+       \putxyq{\pgfpathmoveto}
+       \putxy{{\noexpand\pgfpointshapeborder{\sseq@previousname}%
+                                            {\noexpand\pgfpoint{\the\sseqx}{\the\sseqy}}}}
+ }{
+       \putxyq{\pgfpathmoveto}
+       \putxy{{\noexpand\pgfpointshapeborder{\sseq@previousname}{\noexpand \pgfpointanchor{\sseq@currentname}{center}}}}
+ }
+     \def\sseq@temp{#2}
+     \ifx\sseq@temp\empty
+       \putxyq{\pgfpathlineto}
+     \else
+       \putxyq{\pgfsnakesegmentamplitude=#2pc}
+       \putxyq{\multiply\pgfsnakesegmentamplitude by 3 }
+       \putxyq{\pgfsnakesegmentaspect=.3}
+       \putxyq{\pgfpathsnaketo{bent}}
+     \fi
+ \ifthenelse{\boolean{#3}}{
+       \putxy{{\noexpand\pgfpoint{\the\sseqx}{\the\sseqy}}}
+ }{
+       \putxy{{\noexpand\pgfpointshapeborder{\sseq@currentname}{\noexpand \pgfpointanchor{\sseq@previousname}{center}}}}
+     } \edef\sseq@connbuffer{\noexpand\sseqwritecolor{\ssconncolor}\noexpand\putxyq{\noexpand\pgfusepath{stroke}\noexpand\pgftransformreset}}
+   \fi
+ \fi
+}
+\def\sseq@diffhelper#1#2#3#4{
+  \count0=#1
+  \multiply\count0 by -1
+  \advance\count0 by #3
+  \count1=#2
+  \multiply\count1 by -1
+  \advance\count1 by #4
+}
+\define@key{sseqstroke}{color}{\def\ssconncolor{#1}}
+\define@key{sseqstroke}{curve}{\def\sseq@curve{#1}}
+\define@key{sseqstroke}{dashed}[{{2pt}{2pt}}]{\def\sseq@dashing{#1}}
+\define@key{sseqstroke}{dotted}[{{.5pt}{2pt}}]{\def\sseq@dashing{#1}}
+\define@key{sseqstroke}{arrowfrom}[\sseq@defaultarrowstyle]{\edef\sseq@arrowfrom{#1}}
+\define@key{sseqstroke}{arrowto}[\sseq@defaultarrowstyle]{\edef\sseq@arrowto{#1}}
+\define@key{sseqstroke}{void}[true]{\newif\ifKV@sseqstroke@void\csname KV@sseqstroke@void#1\endcsname}
+\def\ssstroke{\@ifnextchar[\sseq@stroke{\sseq@stroke[]}}
+\def\sseq@stroke[#1]{
+ \edef\sseq@savecolor{\ssconncolor}
+ \def\sseq@dashing{}
+ \def\sseq@curve{}
+ \edef\sseq@arrowfrom{\sseq@currarrowstart}
+ \edef\sseq@arrowto{\sseq@currarrowend}
+ \presetkeys{sseqstroke}{void=false}{}
+ \setkeys{sseqstroke}{#1}
+ \ifKV@sseqstroke@void % ^^A a void line
+   \@eval\sseq@connection{{\sseq@dashing}{\sseq@curve}{true}}
+ \else
+   \@eval\sseq@connection{{\sseq@dashing}{\sseq@curve}{false}}
+ \fi
+ \edef\sseq@currarrowstart{\sseq@arrowfrom}
+ \edef\sseq@currarrowend{\sseq@arrowto}
+ \edef\ssconncolor{\sseq@savecolor}
+}
+\newcommand{\sscurve}[1]{\sseq@stroke[curve=#1]}
+\newcommand{\ssdashedstroke}{\sseq@stroke[dashed]}
+\newcommand{\ssdashedcurve}[1]{\sseq@stroke[dashed,curve=#1]}
+\newcommand{\ssdottedstroke}{\sseq@stroke[dotted]}
+\newcommand{\ssdottedcurve}[1]{\sseq@stroke[dotted,curve=#1}
+\newcommand{\ssarrowhead}[1][\sseq@defaultarrowstyle]{\edef\sseq@currarrowend{#1}}
+\newcommand{\ssinversearrowhead}[1][\sseq@defaultarrowstyle]{\edef\sseq@currarrowstart{#1}}
+\def\ssline{\@ifnextchar[\sseq@line{\sseq@line[]}}
+\def\sseq@line[#1]#2#3{
+ \ssprepareline{#2}{#3}
+ \edef\sseqconncommand{\noexpand\ssstroke[color=\ssconncolor,#1]}
+}
+\newcommand{\sscurvedline}[3]{\ssline[curve=#3]{#1}{#2}}
+\newcommand{\ssdashedline}[2]{\ssline[dashed]{#1}{#2}}
+\newcommand{\sscurveddashedline}[3]{\ssline[curve=#3,dashed]{#1}{#2}}
+\newcommand{\ssarrow}[3][]{
+  \ssline[arrowto,#1]{#2}{#3}
+}
+\newcommand{\sscurvedarrow}[3]{\ssline[arrowto,curve=#3]{#1}{#2}}
+\newcommand{\ssdashedarrow}[2]{\ssline[arrowto,dashed]{#1}{#2}}
+\newcommand{\sscurveddashedarrow}[3]{\ssline[arrowto,dashed,curve=#3]{#1}{#2}}
+\def\ssvoidline#1#2{
+  \ssassertsource
+  \edef\sseq@resetcmd{\noexpand\sseqposx=\number\sseqposx%
+  \noexpand\sseqposy=\number\sseqposy%
+  \noexpand\def\noexpand\sseq@currentname{\sseq@currentname}
+  \noexpand\sseq@updatecurrentdata}
+  \ssmove{#1}{#2}
+  \ssstroke[void]
+  \sseq@resetcmd
+}
+\newcommand{\ssvoidarrow}[2]{\ssvoidline{#1}{#2}\ssarrowhead}
+\newcommand{\ssinversevoidarrow}[2]{\ssvoidline{#1}{#2}\ssinversearrowhead}
+
+\def\sseq@pointintersectionoflinewithrectangle#1#2#3#4{
+  \pgf@process{#1}
+  \pgf@xa=\pgf@x
+  \pgf@ya=\pgf@y
+  \pgf@process{#2}
+  \pgf@xb=\pgf@x
+  \pgf@yb=\pgf@y
+  \pgf@process{#3}
+  \pgf@xc=\pgf@x
+  \pgf@yc=\pgf@y
+  \pgf@process{#4}
+  \dimen0=100cm % ^^A infinity
+  \dimen1=100cm % ^^A infinity
+  \ifnum\pgf@x>0pt % ^^A line goes to the right
+    \dimen0=\pgf@xb
+    \advance\dimen0 by -\pgf@xc
+    \divide\dimen0 by \pgf@x
+  \fi
+  \ifnum\pgf@x<0pt % ^^A line goes to the left
+    \dimen0=\pgf@xa
+    \advance\dimen0 by -\pgf@xc
+    \divide\dimen0 by \pgf@x
+  \fi
+  \ifnum\pgf@y>0pt % ^^A line goes up
+    \dimen1=\pgf@yb
+    \advance\dimen1 by -\pgf@yc
+    \divide\dimen1 by \pgf@y
+  \fi
+  \ifnum\pgf@y<0pt % ^^A line goes down
+    \dimen1=\pgf@ya
+    \advance\dimen1 by -\pgf@xc
+    \divide\dimen1 by \pgf@y
+  \fi
+  \ifnum\dimen1<\dimen0
+    \dimen0=\dimen1
+  \fi
+  % ^^A now dimen0 contains the stretching factor for #4 to the right point.
+  \multiply\pgf@x by \dimen0
+  \multiply\pgf@y by \dimen0
+  \advance\pgf@x by \pgf@xc
+  \advance\pgf@y by \pgf@yc
+}
+
+
+\def\sseq@lineintooff#1#2#3#4#5#6#7{
+  \putxyq{\begin{pgfscope}}
+  \sseqj=0
+  \def\tempcmd{\range@loop{\sseq@findxrange{#2}{#3}}}
+  \expandafter\tempcmd\sseq@xrange
+  \putxyq{\pgfsetdash{#6}{0pt}}
+  \putxyq{\sseq@pointintersectionoflinewithrectangle}
+  \putxy{{\noexpand\pgfpoint{\number \sseqxx sp}{\number \sseqyy sp}}}
+  \putxy{{\noexpand\pgfpoint{\number \sseqx sp}{\number \sseqy sp}}}
+  \putxyq{{\pgfpointanchor{#1}{center}}{\pgfpoint{#4 sp}{#5 sp}}}
+  \putxyq{\sseqx=\pgf@x}
+  \putxyq{\sseqy=\pgf@y}
+  \putxyq{\pgfpathmoveto}
+  \putxy{{\noexpand\pgfpointshapeborder{#1}%
+                                       {\noexpand\pgfpoint{\noexpand\sseqx}{\noexpand\sseqy}}}}
+  \def\temp{#7}
+  \ifx\temp\empty
+    \putxyq{\pgfpathlineto}
+  \else
+    \dimen0=#7pc
+    \ifsseq@connreverse
+  \multiply\dimen0 by -1
+\fi
+    \putxy{\noexpand\pgfsnakesegmentamplitude=\number\dimen0 sp}
+    \putxyq{\advance\pgfsnakesegmentamplitude by \pgfsnakesegmentamplitude}
+    \putxyq{\pgfsnakesegmentaspect=.3}
+    \putxyq{\pgfpathsnaketo{bent}}
+  \fi
+  \putxyq{{\pgfpoint{\sseqx}{\sseqy}}}
+  \edef\sseq@connbuffer{\noexpand\sseqwritecolor{\ssconncolor}%
+                        \noexpand\putxyq{\noexpand\pgfusepath{stroke}\noexpand\end{pgfscope}}}
+}
+
+\def\sseq@findxrange#1#2#3#4{
+  \ifnum#1<#3\else
+    \ifnum#1>#4\else
+  % ^^A found the correct range
+  \sseqj=0
+  \def\tempcmd{\range@loop{\sseq@findyrange{#1}{#2}{#3}{#4}}}
+  \expandafter\tempcmd\sseq@yrange
+  \rangebreaktrue
+\fi
+  \fi
+}
+\def\sseq@findyrange#1#2#3#4#5#6{
+  \ifnum#2<#5\else
+    \ifnum#2>#6\else
+  % ^^A found the correct range -- do the drawing
+  \ss@getcoords{#3}{#5} % ^^A lower left corner in \sseqx,\sseqy
+  \advance\sseqx by -\sseq@xleak
+  \advance\sseqy by -\sseq@yleak
+  \sseqxx=\sseqx
+  \sseqyy=\sseqy
+  \ss@getcoords{#4}{#6} % ^^A upper right corner in \sseqx,\sseqy
+  \advance\sseqx by \sseq@xleak
+  \advance\sseqx by \sseqentrysize
+  \advance\sseqy by \sseq@yleak
+  \advance\sseqy by \sseqentrysize
+  \rangebreaktrue
+\fi
+  \fi
+}
+
+\newcommand{\ssbullstring}[3]{
+\ifnum#3>0
+ \ifnum#3=1
+  \ssdropbull
+ \else
+  \ssdropbull
+  \ssline{#1}{#2}
+  \count0=#3
+  \advance\count0 by -1
+  \edef\sseqbullcnt{\the\count0}
+  \ssbullstring{#1}{#2}{\sseqbullcnt}
+\fi\fi
+}
+\newcommand{\ssinfbullstring}[3]{
+\ssbullstring{#1}{#2}{#3}
+\ssvoidarrow{#1}{#2}
+}
+\def\ssgridcrossword#1#2{
+ \pgfsetlinewidth{\the\sseq@gridstrokethickness}
+ \pgfpathgrid[stepx=\the\sseqentrysize,stepy=\the\sseqentrysize]{\pgfpointorigin}{\pgfpoint{#1*\sseqentrysize}{#2*\sseqentrysize}}
+ \pgfusepath{stroke}
+}
+
+\def\ssgridgo#1#2{
+ \pgfsetlinewidth{\the\sseq@gridstrokethickness}
+ \pgftransformxshift{\the\sseqhalfentry}
+ \pgftransformyshift{\the\sseqhalfentry}
+ \pgfpathgrid[stepx=\the\sseqentrysize,stepy=\the\sseqentrysize]{\pgfpoint{-\the\sseqhalfentry}{-\the\sseqhalfentry}}{\pgfpoint{#1*\sseqentrysize-\sseqhalfentry}{#2*\sseqentrysize-\sseqhalfentry}}
+ \pgfusepath{stroke}
+}
+
+\def\ssgridnone#1#2{}
+
+\def\ssgriddots#1#2{
+ \pgfsetlinewidth{1pt}
+ \pgfsetdash{{1pt}{\the\sseqentrysize-1pt}}{\the\sseqhalfentry+.5pt}
+ \pgftransformxshift{\the\sseqhalfentry}
+ \pgftransformyshift{\the\sseqhalfentry}
+ \pgfpathgrid[stepx=\the\sseqentrysize,stepy=\the\sseqentrysize]{\pgfpoint{-\the\sseqhalfentry}{-\the\sseqhalfentry}}{\pgfpoint{#1*\sseqentrysize-\sseqhalfentry}{#2*\sseqentrysize-\sseqhalfentry}}
+ \pgfusepath{stroke}
+}
+
+\def\ssgridchess#1#2{
+ \pgfsetlinewidth{\the\sseqentrysize}
+ \pgfsetdash{{\the\sseqentrysize}{\the\sseqentrysize}}{\the\sseqentrysize}
+ \pgfsetcolor{sslightgr}
+ \pgftransformxshift{\the\sseqhalfentry}
+ \pgftransformyshift{\the\sseqhalfentry}
+ \pgfpathgrid[stepx=\the\sseqentrysize*2,stepy=\the\sseqentrysize*2]{\pgfpoint{-\the\sseqhalfentry}{-\the\sseqhalfentry}}{\pgfpoint{#1*\sseqentrysize-\sseqhalfentry}{#2*\sseqentrysize-\sseqhalfentry}}
+ \pgfusepath{stroke}
+}
+
+\def\sseq@drawgrid{
+ \expandafter\ifx\sseqgridstyle\ssequndefined
+  \PackageError{sseq}{Unknown grid option, reverting to \string\ssgridnone}{You apparently have redefined \string\sseqgridstyle. The only allowed values are: \string\ssgridnone,\string\ssgriddots,\string\ssgridgo,\string\ssgridcrossword,\string\ssgridchess.}
+  \gdef\sseqgridstyle{\ssgridnone}
+ \fi
+ \sseqj=0
+ \def\tempcmd{\range@loop{\sseq@innergridloop}}
+ \expandafter\tempcmd\sseq@xrange
+}
+\def\sseq@innergridloop#1#2{
+  \sseqj=0
+  \def\tempcmd{\range@loop{\sseq@gridwrapper{#1}{#2}}}
+  \expandafter\tempcmd\sseq@yrange
+}
+\def\sseq@gridwrapper#1#2#3#4{
+ \begin{pgfscope}
+ \ss@getcoords{#1}{#3}
+ \sseqxx=\sseqx
+ \sseqyy=\sseqy
+ \count0=#2\advance\count0 by 1
+ \count1=#4\advance\count1 by 1
+ \pgftransformshift{\pgfpoint{\the\sseqxx}{\the\sseqyy}}
+ \count2=#1
+ \multiply\count2 by -1
+ \advance\count0 by \count2
+ \count2=#3
+ \multiply\count2 by -1
+ \advance\count1 by \count2
+ \@eval\sseqgridstyle{{\number\count0}{\number\count1}}
+ \end{pgfscope}
+}
+\def\sseq@drawlabels{
+  \sseqj=0
+  \def\tempcmd{\range@loop{\sseqk=-\sseqxstep \sseq@drawhorizontallabels}}
+  \expandafter\tempcmd\sseq@xrange
+  \sseqj=0
+  \def\tempcmd{\range@loop{\sseqk=-\sseqystep \sseq@drawverticallabels}}
+  \expandafter\tempcmd\sseq@yrange
+}
+
+\def\sseq@drawhorizontallabels#1#2{
+ \advance\sseqk by \sseqxstep
+ \sseqi=#1
+ \ifnum\sseqi>#2\else
+   \ss@getcoords{\the\sseqi}{0}
+   \advance\sseqx by \sseqhalfentry
+   \sseqxlabel
+   \sbox\sseq@labelbox{\strut\ensuremath{\sseq@answer}}
+   \dimen0 = \ht\sseq@labelbox
+   \advance\dimen0 by \dp\sseq@labelbox
+   \pgf@protocolsizes{0pt}{-\dimen0} % ^^A fixes a bug with bounding boxes in pgf
+   \pgftext[top,at=\pgfpoint{\the\sseqx}{0pt}]{\usebox{\sseq@labelbox}}
+   \advance\sseqi by \sseqxstep
+   \edef\tempcmd{\noexpand\sseq@drawhorizontallabels{\number\sseqi}{#2}}
+   \expandafter\tempcmd
+ \fi
+}
+\def\sseq@drawverticallabels#1#2{
+ \advance\sseqk by \sseqystep
+ \sseqi=#1
+ \ifnum\sseqi>#2\else
+   \ss@getcoords{0}{\the\sseqi}
+   \advance\sseqy by \sseqhalfentry
+   \sseqylabel
+   \pgftext[right,at=\pgfpoint{-2pt}{\the\sseqy}]{\ensuremath{\sseq@answer}}
+   \advance\sseqi by \sseqystep
+   \edef\tempcmd{\noexpand\sseq@drawverticallabels{\number\sseqi}{#2}}
+   \expandafter\tempcmd
+ \fi
+}
+\def\sseq@labelfromlist#1#2#3,{
+ \def\temp{#3}
+ \def\tempcmd{}
+ \ifx\temp\range@endmarker
+   \def\sseq@answer{?}
+ \else
+   \count0=#1
+   \ifnum\count0=0
+     \def\sseq@lastlabel{}
+     \def\tempcmd{\sseq@innerlabelfromlist{#2}#3;END;}
+   \else
+     \advance\count0 by -1
+     \edef\tempcmd{\noexpand\sseq@labelfromlist{\number\count0}{#2}}
+   \fi
+ \fi
+ \tempcmd
+}
+
+\def\sseq@innerlabelfromlist#1#2;{
+ \def\temp{#2}
+ \def\tempcmd{}
+ \ifx\temp\range@endmarker
+   \ifx\sseq@lastlabel\empty
+     \def\sseq@answer{?}
+   \else
+     \count0=#1
+     \ifnum\count0=0
+       \def\sseq@answer{\ensuremath{\sseq@lastlabel}}
+       \def\tempcmd{\range@gobbletoend}
+     \else
+       \advance\count0 by -1
+       \edef\tempcmd{\noexpand\sseq@innerlabelfromlist{\number\count0}END;}
+     \fi
+   \fi
+ \else
+   \def\sseq@lastlabel{#2}
+   \count0=#1
+   \ifnum\count0=0
+     \def\sseq@answer{\ensuremath{#2}}
+     \def\tempcmd{\range@gobbletoend}
+   \else
+     \advance\count0 by -1
+     \edef\tempcmd{\noexpand\sseq@innerlabelfromlist{\number\count0}}
+   \fi
+ \fi
+ \tempcmd
+}
+\define@key{sseq}{grid}{
+\expandafter\def\expandafter\sseqgridstyle\expandafter{\csname ssgrid#1\endcsname}
+}
+\define@key{sseq}{entrysize}{
+\sseqentrysize=#1
+}
+\define@key{sseq}{labels}{
+  \setkeys{sseq}{xlabels=#1,ylabels=#1}
+}
+\define@key{sseq}{xlabels}{
+  \def\temp{#1}
+  \def\temptwo{none}
+  \ifx\temp\temptwo
+    \def\sseqxlabel{\def\sseq@answer{}}
+  \else
+    \def\temptwo{numbers}
+    \ifx\temp\temptwo
+      \def\sseqxlabel{\def\sseq@answer{\the\sseqi}}
+\else
+  \def\sseqxlabel{%
+    \@eval\sseq@labelfromlist{{\number\sseqj}{\number\sseqk}}#1,END,%
+  }
+    \fi
+  \fi
+}
+\define@key{sseq}{ylabels}{
+  \def\temp{#1}
+  \def\temptwo{none}
+  \ifx\temp\temptwo
+    \def\sseqylabel{\def\sseq@answer{}}
+  \else
+    \def\temptwo{numbers}
+    \ifx\temp\temptwo
+      \def\sseqylabel{\def\sseq@answer{\the\sseqi}}
+\else
+  \def\sseqylabel{%
+    \@eval\sseq@labelfromlist{{\number\sseqj}{\number\sseqk}}#1,END,%
+  }
+\fi
+  \fi
+}
+\define@key{sseq}{xlabelstep}{\sseqxstep=#1}
+\define@key{sseq}{ylabelstep}{\sseqystep=#1}
+\define@key{sseq}{labelstep}{\setkeys{sseq}{xlabelstep=#1}\setkeys{sseq}{ylabelstep=#1}}
+
+\define@key{sseq}{gapsize}{\setkeys{sseq}{xgapsize=#1}\setkeys{sseq}{ygapsize=#1}}
+\define@key{sseq}{xgapsize}{\sseq@xgap=#1}
+\define@key{sseq}{ygapsize}{\sseq@ygap=#1}
+\define@key{sseq}{leak}{\setkeys{sseq}{xleak=#1}\setkeys{sseq}{yleak=#1}}
+\define@key{sseq}{xleak}{\sseq@xleak=#1}
+\define@key{sseq}{yleak}{\sseq@yleak=#1}
+\define@key{sseq}{gridstroke}{\sseq@gridstrokethickness=#1}
+\define@key{sseq}{arrows}{\def\sseq@defaultarrowstyle{#1}}
+\sseqentrysize=0.4cm
+\sseq@xgap=0.3cm
+\sseq@ygap=0.3cm
+\global\sseq@xleak=-100mm
+\global\sseq@yleak=-100mm
+\sseqxstep=2
+\sseqystep=2
+\def\sseqgridstyle{\ssgridcrossword}
+\def\sseq@defaultarrowstyle{to}
+
+\newenvironment{sseq}[3][]{%
+\begingroup
+\begin{pgfpicture}
+\countdef\sseqi=152%
+\countdef\sseqj=153%
+\countdef\sseqxdir=154%
+\countdef\sseqposx=155%
+\countdef\sseqposy=156%
+\countdef\sseqydir=157%
+\countdef\sseqk=158%
+\dimendef\sseqhalfentry=205%
+\dimendef\sseqx=206%
+\dimendef\sseqy=207%
+\dimendef\sseqxx=208%
+\dimendef\sseqyy=209%
+\dimendef\sseqabsposx=210%
+\dimendef\sseqabsposy=211%
+\sseq@gridstrokethickness=.1pt%
+\edef\sseqsavecnto{\number\count0}%
+\edef\sseqsavecnti{\number\count1}%
+\edef\sseqsavecntii{\number\count2}%
+\edef\sseqsavecntiii{\number\count3}%
+\edef\sseqsavecntiv{\number\count4}%
+\edef\sseqsavecntv{\number\count5}%
+\edef\sseqsavecntvi{\number\count6}%
+\edef\sseqsavecntvii{\number\count7}%
+\edef\sseqsavecntviii{\number\count8}%
+\edef\sseqsavecntix{\number\count9}%
+\setkeys{sseq}{#1}
+\ifnum\sseqxstep=0 % ^^A old-fashioned way of disabling labels
+  \setkeys{sseq}{xlabels=none}
+  \sseqxstep=1
+\else
+  \@ifundefined{sseqxlabel}{\setkeys{sseq}{xlabels=numbers}}{}
+\fi
+\ifnum\sseqystep=0 % ^^A old-fashioned way of disabling labels
+  \setkeys{sseq}{ylabels=none}%
+  \sseqystep=1
+\else
+  \@ifundefined{sseqylabel}{\setkeys{sseq}{ylabels=numbers}}{}
+\fi
+\ifdim\sseq@xleak=-100mm
+  \sseq@xleak=0.3\sseq@xgap
+\fi
+\ifdim\sseq@yleak=-100mm
+  \sseq@yleak=0.3\sseq@ygap
+\fi
+\range@parseandnormalize{\sseq@xrange}{\sseqxstart}{#2}
+\range@parseandnormalize{\sseq@yrange}{\sseqystart}{#3}
+\pgfsetshapeminwidth{1.1mm}
+\pgfsetshapeinnerxsep{1pt}
+\pgfsetshapeinnerysep{1pt}
+\sseqhalfentry=\sseqentrysize
+\divide\sseqhalfentry by 2
+\sseq@drawgrid
+\sseq@drawlabels
+\sseqposx=0
+\sseqposy=0
+}
+{
+\relax
+\ssmoveto 0 0 \ssmoveto 0 0
+\edef\lst{\the\sseqcmdlist}
+\ifthenelse{\boolean{debug}}{\show\lst}{}
+\the\sseqcmdlist
+\count0=\sseqsavecnto
+\count1=\sseqsavecnti
+\count2=\sseqsavecntii
+\count3=\sseqsavecntiii
+\count4=\sseqsavecntiv
+\count5=\sseqsavecntv
+\count6=\sseqsavecntvi
+\count7=\sseqsavecntvii
+\count8=\sseqsavecntviii
+\count9=\sseqsavecntix
+\end{pgfpicture}
+\endgroup
+}
+\endinput
+%%
+%% End of file `sseq.sty'.

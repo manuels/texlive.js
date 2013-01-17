@@ -1,0 +1,679 @@
+% !TeX root = bodegraph.tex
+
+\NeedsTeXFormat{LaTeX2e}[1999/01/01]
+\ProvidesPackage{bodegraph}[2009/04/06]
+
+\RequirePackage{tikz}
+\RequirePackage{ifthen}
+\RequirePackage{ifsym}
+
+
+\usetikzlibrary{shapes,arrows,backgrounds,decorations.markings}
+
+%macros commande schéma-blocs
+
+\def\valpi{3.1415957}
+\def\valpas{10}
+\def\Unitx{}
+\def\Unity{}
+
+
+\newcounter{idGnuplot}
+
+\newcommand{\OrdBode}[1]{\def\valpas{#1}}
+
+\newcommand{\UnitedB}{
+\def\Unitx{rad/s}
+\def\Unity{dB}
+}
+
+\newcommand{\UniteDegre}{
+\def\Unitx{rad/s}
+\def\Unity{$~^\circ$}
+}
+
+\tikzset{
+    ref points/.style={circle,draw, black, opacity=0.7, 
+    fill, minimum size= 2pt, inner sep=0},
+    gnuplot def/.style={samples=50,id=\arabic{idGnuplot},prefix=gnuplot/\jobname/},
+    Bode lines/.style={very thick, blue},
+    Bode lines 2/.style={Bode lines, red},
+    asymp lines/.style={Bode lines,thin},
+    asymp lines 2/.style={bode line 2,thin},
+    semilog lines/.style={line width=0.35mm, red},
+    semilog lines 2/.style={semilog lines, brown!50 },
+    semilog half lines/.style={semilog lines 2, dashed },
+    semilog label x/.style={semilog lines,below,font=\tiny},
+    semilog label y/.style={semilog lines,right,font=\tiny},
+    Black lines/.style={very thick, blue},
+    Black grid/.style={ultra thin,brown},
+    Black abaque mag/.style={gray,ultra thin,dashed,smooth},
+    Black abaque phase/.style={gray,ultra thin,smooth},
+    Black label points/.style={font=\tiny},
+    Black label axes/.style={Black grid, font=\tiny},
+    Nyquist lines/.style={very thick, blue},
+    Nyquist grid/.style={ultra thin,brown},
+    Nyquist label axes/.style={Nyquist grid,font=\tiny},
+    Nyquist label points/.style={font=\tiny},
+    Temp lines/.style={very thick, blue},
+    Temp grid/.style={ultra thin,brown},
+    Temp label axes/.style={Temp grid, font=\tiny},
+    Temp label points/.style={font=\tiny},
+    Abaque grid/.style={ultra thin,brown!80},
+    Abaque lines/.style={thick, blue,smooth},
+}
+
+
+\newcommand{\semilog}{\@ifstar\semilogS\semilogNS}
+\newcommand{\semilogNS}[5][]{
+\pgfmathparse{int(#3-1)}\let\Xmax\pgfmathresult
+\foreach \ee in{#2,...,\Xmax}{
+    \foreach \x in {1,2,3,4,5,6,7,8,9}{
+\draw[semilog lines 2] ({log10(\x)+\ee},#4) -- ({log10(\x)+\ee},#5);}
+\draw[semilog lines] (\ee,#4)node[semilog label x]{$10^{\ee}$} -- ({\ee},#5);
+};
+\draw[semilog lines] ({#3},#4)node[semilog label x]{$10^{#3}$} -- ({#3},#5);
+\pgfmathparse{int(#4+\valpas)}
+\let\Valsuivante\pgfmathresult 
+\foreach \yy in  {#4,\Valsuivante,...,#5}{
+\draw[semilog lines] (#2,\yy) node[semilog label y,left]{$\yy$} -- ({#3},\yy);};
+\node[semilog label y, node distance=0.3em]at (#2,#5) { \Unity};
+\node[semilog label x, right,node distance=0.8em]at (#3,#4){ \Unitx};
+\def\Unitx{}
+\def\Unity{}
+}
+\newcommand{\semilogS}[5][]{
+\semilog[#1]{#2}{#3}{#4}{#5}
+\pgfmathparse{int(#3-1)}\let\Xmax\pgfmathresult
+\foreach \ee in{#2,...,\Xmax}{
+    \foreach \x in {1.5,2.5,3.5,4.5,5.5,6.5,7.5,8.5,9.5}{
+\draw[semilog half lines] ({log10(\x)+\ee},#4) -- ({log10(\x)+\ee},#5);}
+};
+}
+
+
+\newcommand{\semilogNG}[2]{
+\pgfmathparse{int(#1-1)}\let\Xmax\pgfmathresult
+\foreach \ee in{0,...,\Xmax}{
+    \foreach \x in {1,2,3,4,5,6,7,8,9}{
+\draw[semilog lines 2] ({log10(\x)+\ee},0) -- ({log10(\x)+\ee},#2);}
+};
+\draw[semilog lines] ({#1},0) -- ({#1},#2);
+\pgfmathparse{int(0+\valpas)}
+\let\Valsuivante\pgfmathresult 
+\foreach \yy in  {0,\Valsuivante,...,#2}{
+\draw[semilog lines] (0,\yy) -- ({#1},\yy);};
+\node[semilog label y, node distance=0.3em]at (0,#2) {\tiny \Unity};
+\node[semilog label x, right,node distance=0.8em]at (#1,0){\tiny \Unitx};
+\def\Unitx{}
+\def\Unity{}
+\pgfmathparse{int(#1-1)}\let\Xmax\pgfmathresult
+\foreach \ee in{0,...,\Xmax}{
+    \foreach \x in {1.5,2.5,3.5,4.5,5.5,6.5,7.5,8.5,9.5}{
+\draw[semilog half lines] ({log10(\x)+\ee},0) -- ({log10(\x)+\ee},#2);}
+};
+}
+
+
+\newcommand{\KAmp}[1]{20*log10(abs(#1))}
+\newcommand{\KArg}[1]{0}
+
+\newcommand{\POAmp}[2]{20*log10(abs(#1/sqrt(1+(#2*10**t)**2)))}
+
+\newcommand{\POAmpng}[2]{20*log10(abs(#1/sqrt(1+(#2*10^(\t))^2)))}
+
+\newcommand{\POAmpAsymp}[2]{(t<log10(1/(#2))?20*log10(#1):+20*log10(#1/(#2))-20*log10(10**t))}
+\newcommand{\POArg}[2]{-180/\valpi*atan(#2*10**t)}
+\newcommand{\POArgAsymp}[2]{(t<log10(1/(#2))? 0:-90)}
+\newcommand{\POAmpReel}[2]{20*log10(abs(#1/sqrt(1+(#2*t)**2)))}
+\newcommand{\POArgReel}[2]{-180/\valpi*atan(#2*t)}
+
+\newcommand{\SOAmp}[3]{20*log10(abs(#1/sqrt((1-(10**t/#3)**2)**2+(2*#2*(10**t/#3))**2)))}
+\newcommand{\SOAmpAsymp}[3]{(t<log10(#3)?20*log10(#1):+20*log10(#1)+40*log10(#3)-40*log10(10**t))}
+\newcommand{\SOArg}[3]{180/\valpi*(atan((#3**2-(10**t)**2)/(2*#2*#3*10**t))-\valpi/2)}
+\newcommand{\SOArgAsymp}[3]{(t<log10(#3)? 0:-180)}
+\newcommand{\SOAmpReel}[3]{20*log10(abs(#1/sqrt((1-(t/#3)**2)**2+(2*#2*(t/#3))**2)))}
+\newcommand{\SOArgReel}[3]{180/\valpi*(atan((#3**2-(t)**2)/(2*#2*#3*t))-\valpi/2)}
+
+\newcommand{\IntAmp}[1]{20*log10(abs(#1/(10**t)))}
+\newcommand{\IntArg}[1]{-90}
+
+%Retard R(p)=exp(-T*p)
+\newcommand{\RetAmp}[1]{0}
+\newcommand{\RetArg}[1]{-#1*10**t}
+
+%Correcteur PI \PIAmp K*(1+Ti*p)/(Ti*p)
+\newcommand{\PIAmp}[2]{\IntAmp{1}+20*log10(#1/#2)-\POAmp{1}{#2}}
+\newcommand{\PIArg}[2]{\IntArg{1}+(\POArg{#1}{#2})*(-1)}
+\newcommand{\PIAmpAsymp}[2]{\IntAmp{1}+20*log10(#1/#2)-\POAmpAsymp{1}{#2}}
+\newcommand{\PIArgAsymp}[2]{\IntArg{1}+(\POArgAsymp{#1}{#2})*(-1)}
+
+%Correcteur PID série \PIDAmp K*(1+Ti*p)/(Ti*p)(1+Td*p)
+\newcommand{\PIDAmp}[3]{\IntAmp{1}+20*log10(#1/#2)-\POAmp{1}{#2}-\POAmp{1}{#3}}
+\newcommand{\PIDArg}[3]{\IntArg{1}-\POArg{#1}{#2}-\POArg{1}{#3} }
+\newcommand{\PIDAmpAsymp}[3]{\IntAmp{1}+20*log10(#1/#2)-\POAmpAsymp{1}{#2}-\POAmpAsymp{1}{#3}}
+\newcommand{\PIDArgAsymp}[3]{\IntArg{1}-\POArgAsymp{#1}{#2}-\POArgAsymp{1}{#3} }
+
+%Correcteur PD \PDAmp  K*(1+Td*p)
+\newcommand{\PDAmp}[2]{20*log10(abs(#1*sqrt(1+(#2*10**t)**2)))}
+\newcommand{\PDArg}[2]{-\POArg{(1)}{#2}}
+\newcommand{\PDAmpAsymp}[2]{(t<log10(1/#2)?20*log10(#1):+20*log10(#1*#2)+20*log10(10**t))}
+\newcommand{\PDArgAsymp}[2]{-\POArgAsymp{(1)}{#2}}
+
+%Correcteur Avance de phase (Retard) C(p)=K(1+a*T1*p)/(1+T1*p)
+\newcommand{\APAmp}[3]{\POAmp{#1}{#2}+\PDAmp{1}{(#3*#2)}}
+\newcommand{\APArg}[3]{\POArg{#1}{#2}+\PDArg{1}{(#3*#2)}}
+\newcommand{\APAmpAsymp}[3]{\POAmpAsymp{#1}{#2}+\PDAmpAsymp{1}{(#3*#2)}}
+\newcommand{\APArgAsymp}[3]{\POArgAsymp{#1}{#2}+\PDArgAsymp{1}{(#3*#2)}}
+
+%Correcteur Retard de phase (Retard) C(p)=K(1+T1*p)/(1+b*T1*p)
+\newcommand{\RPAmp}[3]{\PDAmp{#1}{#2}+\POAmp{1}{(#3*#2)}}
+\newcommand{\RPArg}[3]{\PDArg{#1}{#2}+\POArg{1}{(#3*#2)}}
+\newcommand{\RPAmpAsymp}[3]{\PDAmpAsymp{#1}{#2}+\POAmpAsymp{1}{(#3*#2)}}
+\newcommand{\RPArgAsymp}[3]{\PDArgAsymp{#1}{#2}+\POArgAsymp{1}{(#3*#2)}}
+
+%Premier ordre généralisé C(p)=K(a1+a2*p)/(b1+b2*p)
+\newcommand{\POgAmp}[5]{\POAmp{(#1*#2/#4)}{(#5/#4)}-\POAmp{1}{(#3/#2)}}
+\newcommand{\POgArg}[5]{\POArg{(#1*#2/#4)}{(#5/#4)}-\POArg{1}{(#3/#2)}}
+\newcommand{\POgAmpAsymp}[5]{\POAmpAsymp{(#1*#2/#4)}{(#5/#4)}-\POAmpAsymp{1}{(#3/#2)}}
+\newcommand{\POgArgAsymp}[5]{\POArgAsymp{(#1*#2/#4)}{(#5/#4)}-\POArgAsymp{1}{(#3/#2)}}
+
+
+
+\newcommand{\SOncArg}[4]{
+\pgfmathparse{#1/#2}\let\ValK\pgfmathresult
+\pgfmathparse{sqrt(#2/#4)}\let\ValW\pgfmathresult
+\pgfmathparse{#3/#1*\ValW/2}\let\ValZ\pgfmathresult
+\SOArg{\ValK}{\ValZ}{\ValW}}
+
+\newcommand{\SOBlack}[3]{
+\SOArg{#1}{#2}{3},\SOAmp{#1}{#2}{3}
+}
+
+\newcommand{\POBlack}[2]{
+\POArg{#1}{#2},\POAmp{#1}{#2}
+}
+
+
+
+
+\def\CorpsPol{\tiny}
+\def\puce{\tiny $\circ$}
+
+
+
+
+\newcommand{\BodeGraph}{\@ifstar\BodeGraphText\BodeGraphNoText}
+%vielles définitions
+\newcommand{\BodeAmp}{\@ifstar\BodeGraphText\BodeGraphNoText}
+\newcommand{\BodeArg}{\@ifstar\BodeGraphText\BodeGraphNoText}
+
+\newcommand{\BodeGraphNoText}[3][]{
+\stepcounter{idGnuplot}
+\draw [Bode lines, gnuplot def,domain=#2,#1] plot[parametric,] 
+function{log10(10**t),#3};}
+
+\newcommand{\BodeGraphText}[4][]{
+\stepcounter{idGnuplot}
+\draw [Bode lines, gnuplot def,domain=#2,#1] plot[parametric,] 
+function{log10(10**t),#3}node #4;}
+
+
+
+
+
+\newcommand{\BodeAmpPointA}{\BodePoint}
+
+\newcommand{\BodePoint}[3][gnuplot def]{
+\stepcounter{idGnuplot}
+\foreach \W in {#2}{
+\pgfmathparse{log10(\W)}
+\let\LW\pgfmathresult 
+\BodeGraph*[gnuplot def,#1,samples=2,,only marks,mark=.]{\LW:\LW}{#3}{[name=NBode,ref points]{}}
+};
+}
+
+\newcommand{\BlackGraph}{\@ifstar\BlackGraphText\BlackGraphNoText}
+\newcommand{\BlackGraphNoText}[3][Black lines,gnuplot def]{
+\stepcounter{idGnuplot}
+\draw [Black lines,gnuplot def,domain=#2,#1] plot[parametric,] 
+function{#3};}
+\newcommand{\BlackGraphText}[4][Black lines,gnuplot def]{
+\stepcounter{idGnuplot}
+\draw [Black lines,gnuplot def,domain=#2,#1] plot[parametric,] 
+function{#3}node#4;}
+
+
+\newcommand{\BlackPoint}{\@ifstar\BlackPointPos\BlackPointNoPos}
+\newcommand{\BlackPointNoPos}[3][gnuplot def]{
+\stepcounter{idGnuplot}
+\foreach \W in {#2}{
+\pgfmathparse{log10(\W)}
+\let\LW\pgfmathresult 
+\BlackGraph*[Black lines,gnuplot def,#1,samples=2,only marks,mark=.]
+{\LW:\LW}{#3}{[right,Black label points]{ \W} node[name=NBlack,ref points]{}}
+};
+}
+\newcommand{\BlackPointPos}[3][gnuplot def]{
+\stepcounter{idGnuplot}
+\foreach \W/\Pos in {#2}{
+\pgfmathparse{log10(\W)}
+\let\LW\pgfmathresult 
+\BlackGraph*[Black lines,gnuplot def,#1,samples=2,only marks,mark=.]
+{\LW:\LW}{#3}{[\Pos,Black label points]{ \W} node[name=NBlack,ref points]{}}
+};
+}
+
+\newcommand{\BlackText}{\@ifstar\BlackTextNoPoint\BlackTextPoint}
+\newcommand{\BlackTextPoint}[3][gnuplot def]{
+\stepcounter{idGnuplot}
+\foreach \W/\Pos/\Ttext in {#2}{
+\pgfmathparse{log10(\W)}
+\let\LW\pgfmathresult 
+\BlackGraph*[Black lines,gnuplot def,#1,samples=2,only marks,mark=.]
+{\LW:\LW}{#3}{[\Pos]{\CorpsPol \Ttext }node[name=NBlack,ref points]{}}
+};
+}
+\newcommand{\BlackTextNoPoint}[3][gnuplot def]{
+\stepcounter{idGnuplot}
+\foreach \W/\Pos/\Ttext in {#2}{
+\pgfmathparse{log10(\W)}
+\let\LW\pgfmathresult 
+\BlackGraph*[Black lines,gnuplot def,#1,samples=2,only marks,mark=.]
+{\LW:\LW}{#3}{[\Pos]{\CorpsPol \Ttext }node[name=NBlack]{}}
+};
+}
+
+
+\newcommand{\NyquistGraph}{\@ifstar\NyquistGraphText\NyquistGraphNoText}
+\newcommand{\NyquistGraphNoText}[4][Nyquist lines,gnuplot def]{
+\stepcounter{idGnuplot}
+\draw [Nyquist lines,gnuplot def,domain=#2,#1] plot[parametric,] 
+function{10**((#3)/20)*cos(\valpi/180*(#4)),10**((#3)/20)*sin(\valpi/180*(#4))};}
+\newcommand{\NyquistGraphText}[5][Nyquist lines,gnuplot def]{
+\stepcounter{idGnuplot}
+\draw [Nyquist lines,gnuplot def,domain=#2,#1] plot[parametric,] 
+function{10**((#3)/20)*cos(\valpi/180*(#4)),10**((#3)/20)*sin(\valpi/180*(#4))}node#5;}
+
+\newcommand{\NyquistPoint}{\@ifstar\NyquistPointPos\NyquistPointNoPos}
+\newcommand{\NyquistPointNoPos}[4][Nyquist lines,gnuplot def]{
+\stepcounter{idGnuplot}
+\foreach \W in {#2}{
+\pgfmathparse{log10(\W)}
+\let\LW\pgfmathresult 
+\NyquistGraph*[Nyquist lines,gnuplot def,#1,samples=2,only marks,mark=.]
+{\LW:\LW}{#3}{#4}{[right,Nyquist label points]{\W} node[ref points]{}}
+};
+}
+\newcommand{\NyquistPointPos}[4][Nyquist lines,gnuplot def]{
+\stepcounter{idGnuplot}
+\foreach \W/\Pos in {#2}{
+\pgfmathparse{log10(\W)}
+\let\LW\pgfmathresult 
+\NyquistGraph*[Nyquist lines,gnuplot def,#1,samples=2,only marks,mark=.]
+{\LW:\LW}{#3}{#4}{[\Pos,Nyquist label points]{\W}node[ref points]{}}
+};
+}
+
+\newcommand{\NyquistText}{\@ifstar\NyquistTextNoPoint\NyquistTextPoint}
+\newcommand{\NyquistTextPoint}[4][Nyquist lines,gnuplot def]{
+\stepcounter{idGnuplot}
+\foreach \W/\Pos/\Ttext in {#2}{
+\pgfmathparse{log10(\W)}
+\let\LW\pgfmathresult 
+\NyquistGraph*[Nyquist lines,gnuplot def,#1,samples=2,only marks,mark=.]
+{\LW:\LW}{#3}{#4}{[\Pos,Nyquist label points]{\Ttext}node[name=NNyquist,ref points]{}}
+};
+}
+\newcommand{\NyquistTextNoPoint}[4][Nyquist lines,gnuplot def]{
+\stepcounter{idGnuplot}
+\foreach \W/\Pos/\Ttext in {#2}{
+\pgfmathparse{log10(\W)}
+\let\LW\pgfmathresult 
+\NyquistGraph*[Nyquist lines,gnuplot def,#1,samples=2,only marks,mark=.]
+{\LW:\LW}{#3}{#4}{[\Pos,Nyquist label points]{ \Ttext} node[name=NNyquist]{}}
+};
+}
+
+
+
+
+
+\def\valgridNx{1cm}
+\def\valgridNy{1cm}
+
+
+
+\newcommand{\NyquistGrid}{\@ifstar\NyquistGridStar\NyquistGridNoStar}
+
+\newcommand{\NyquistGridStar}[1][]{
+\begin{pgfonlayer}{background}
+\draw[xstep=\valgridNx ,ystep=\valgridNy,Nyquist grid,#1] (current bounding box.south west) grid (current bounding box.north east);
+\draw[-latex,Nyquist label axes](current bounding box.west|-0,0) --(current bounding box.east|-0,0)--++(0.2,0)node[above,Nyquist label axes]{ $\mathcal{R}_e$};
+\draw[-latex,,Nyquist label axes](current bounding box.south-|0,0) --(current bounding box.north-|0,0)--++(0,0.2)node[right,Nyquist label axes]{$\mathcal{I}_m$};
+\end{pgfonlayer}
+}
+\newcommand{\NyquistGridNoStar}[1][]{
+\begin{pgfonlayer}{background}
+\node(PointCritique) at (-1,0){};
+\draw[dotted,,Nyquist label axes,dotted] (0,0) circle (1);
+\draw[xstep=\valgridNx ,ystep=\valgridNy,Nyquist grid,#1] (current bounding box.south west) grid (current
+bounding box.north east);
+\draw[-latex,,Nyquist label axes](current bounding box.west|-0,0) --(current bounding box.east|-0,0)--++(0.2,0)node[above,,Nyquist label axes]{$\mathcal{R}_e$};
+\draw[-latex,,Nyquist label axes](current bounding box.south-|0,0) --(current bounding box.north-|0,0)--++(0,0.5)node[right,,Nyquist label axes]{$\mathcal{I}_m$};
+\node[ref points](PointCritique) at (-1,0){};
+\foreach \xx in {-1,1}
+{\node[above,black] at (\xx,0){\tiny \xx};};
+\foreach \xx in {-1,0,1}
+{\node[above right,black] at (0,\xx){\tiny \xx};};
+\end{pgfonlayer}
+}
+
+
+
+\def\valgridBx{45}
+\def\valgridBy{10}
+\def\valmaxBf{-180}
+
+\newcommand{\BlackGrid}{\@ifstar\BlackGridStar\BlackGridNoStar}
+\newcommand{\BlackGridStar}{
+\begin{pgfonlayer}{background}
+\coordinate (OO) at (0,0); \coordinate[right of= OO,node distance=1em] (OOt);
+\draw[-latex,Black label axes](current bounding box.west|-0,0) --(OOt)node[above]{\tiny $~^\circ$};
+\draw[-latex,Black label axes](current bounding box.south-|0,0) --(current bounding box.north-|0,0)coordinate[name=finaxe,pos=1.01]--(finaxe)node[right]{\tiny dB};
+\draw[xstep=\valgridBx ,ystep=\valgridBy,Black grid] (current bounding box.south west) grid (current
+bounding box.north east);
+\end{pgfonlayer}
+}
+\newcommand{\BlackGridNoStar}{
+\begin{pgfonlayer}{background}
+\node(PointCritique) at (-180,0){};
+\node(Pointzero) at (-0,0){};
+\node(Pointmax) at (\valmaxBf,0){};
+\coordinate (OO) at (0,0); \coordinate[right of= OO,node distance=1em] (OOt);
+\draw[xstep=\valgridBx ,ystep=\valgridBy,Black grid] (current bounding box.south west) grid (current
+bounding box.north east);
+\draw[-latex,Black label axes](current bounding box.west|-0,0) --(OOt)node[above]{\tiny $~^\circ$};
+\draw[-latex,Black label axes](current bounding box.south-|0,0) --(current bounding box.north-|0,0)node[right]{\tiny dB};
+
+\node[ref points](PointCritique) at (-180,0){};
+
+\foreach \xx in {0,-\valgridBx,...,\valmaxBf}{\node[below,Black label axes] at (\xx,0){\tiny \xx};};
+\foreach \xx in {-\valgridBy,+\valgridBy}{\node[right,Black label axes] at (0,\xx){\tiny \xx};};
+\end{pgfonlayer}
+}
+
+\newcommand{\RepTemp}{\@ifstar\RepTempText\RepTempNoText}
+
+\newcommand{\RepTempNoText}[3][Temp lines,gnuplot def]{
+\stepcounter{idGnuplot}
+\draw [Temp lines,gnuplot def,domain=#2,#1] plot function{#3};
+}
+\newcommand{\RepTempText}[4][Temp lines,gnuplot def]{
+\stepcounter{idGnuplot}
+\draw [Temp lines, gnuplot def,domain=#2,#1] plot function{#3}node #4;
+}
+
+\def\valgridx{1}
+\def\valmaxx{1}
+\def\valgridy{1}
+\def\valmaxy{1}
+\def\UnitS{s}
+
+
+\newcommand{\TempGrid}{\@ifstar\TempGridStar\TempGridNoStar}
+\newcommand{\TempGridNoStar}[1][]{
+\begin{pgfonlayer}{background}
+\node(Pointzero) at (-0,0){};
+\draw[xstep=\valgridx ,ystep=\valgridy,Temp grid,#1] (current bounding box.south west) grid (current
+bounding box.north east);
+\draw[-latex,Temp label axes](current bounding box.west|-0,0) --(current bounding box.east|-0,0)coordinate[name=finaxe,pos=1.01]--(finaxe)node[above]{\tiny $t$};
+\draw[-latex,Temp label axes](current bounding box.south-|0,0) --(current bounding box.north-|0,0)node[right]{\tiny \UnitS};
+\foreach \xx in {0,\valgridx,...,\valmaxx}
+{\node[below,Temp label axes] at (\xx,0){\tiny \xx};};
+\foreach \xx in {0,\valgridy,...,\valmaxy}
+{\node[left,Temp label axes] at (0,\xx){\tiny \xx};};
+\end{pgfonlayer}
+}
+\newcommand{\TempGridStar}[1][]{
+\begin{pgfonlayer}{background}
+\node(Pointzero) at (-0,0){};
+\draw[-latex,Temp label axes](current bounding box.west|-0,0) --(current bounding box.east|-0,0)coordinate[name=finaxe,pos=1.01]--(finaxe);
+\draw[-latex,Temp label axes](current bounding box.south-|0,0) --(current bounding box.north-|0,0);
+\end{pgfonlayer}
+}
+
+
+
+\newcommand{\AbaqueBlack}{\@ifstar\AbaqueBlackStar\AbaqueBlackNoStar}
+\newcommand{\AbaqueBlackNoStar}{
+\begin{pgfonlayer}{background}
+\IsoModule
+\IsoArgument
+\end{pgfonlayer}
+}
+\newcommand{\AbaqueBlackStar}{
+\IsoModule
+\IsoArgument
+}
+
+\tikzstyle{styleIsoM}=[Black abaque mag]
+\newcommand{\StyleIsoM}[1][Black abaque mag]{
+\tikzstyle{styleIsoM}=[#1]
+}
+
+\tikzstyle{styleIsoA}=[Black abaque phase]
+\newcommand{\StyleIsoA}[1][Black abaque phase]{
+\tikzstyle{styleIsoA}=[#1]
+}
+
+\newcommand{\IsoModule}[1][-30,-25,-20,-15,-12,-10,-8,-6,-5,-4,-3,-2,-1,-0.5,-0.2,0,0.2,0.5,1,2,2.3,3,4,5,6,8,10]{
+\foreach \dbi in {#1}{
+\draw[Black abaque mag,styleIsoM] plot coordinates {\csname ISOM\dbi \endcsname } node{\tiny $\dbi\mathrm{dB}$};
+};
+}
+
+\newcommand{\IsoArgument}[1][359,357,354,350,345,340,330,315,300,285,270,255,240,225,210,195,%
+190,170,165,150,135,120,105,90,75,60,45,30,20,15,10,6,3,1]{
+\foreach \di in {#1}{
+\draw[Black abaque phase,styleIsoA] plot coordinates {\csname ISOA-\di \endcsname } node{\tiny $-\di^\circ$};
+};
+}
+
+
+
+
+
+
+
+%============Abaque temps de réponse 2nd ordre==========
+
+\newcommand{\AbaqueTRsecond}{
+\begin{scope}[Abaque grid]
+\foreach \x/\xtext in {0.01/0.01,0.05/0.05,0.1/0.1,0.5/0.5,0.7/0.7,1/1,5/5,10/10,50/50}
+{\draw ({log10(\x)},2.5) -- ({log10(\x)},0) node[below,rotate=45,left]{\tiny \xtext};};
+
+\foreach \y/\ytext in{3/3,5/5,10/10,30/30,50/50,100/100,300/300}{
+\draw (-2.2,{log10(\y)})node[left]{\tiny \ytext} -- (1.7,{log10(\y)});
+};
+\draw[-latex] (-2.2,0) -- (1.8,0)node[above]{\small$z$};
+\draw[-latex] (-2.2,0) -- (-2.2,2.6)node[right]{\small $T_r\cdot\omega_n$};
+\end{scope}
+
+\draw[Abaque lines] plot coordinates {(-2.145, 2.459) (-2.135, 2.454) (-2.125, 2.450) (-2.115, 2.445) (-2.105, 2.440) (-2.095, 2.435) (-2.085, 2.430) (-2.075, 2.425) (-2.065, 2.420) (-2.055, 2.414) (-2.045, 2.409) (-2.035, 2.404) (-2.025, 2.398) (-2.015, 2.393) (-2.005, 2.388) (-1.995, 2.382) (-1.985, 2.376) (-1.975, 2.371) (-1.965, 2.365) (-1.955, 2.359) (-1.945, 2.353) (-1.935, 2.347) (-1.925, 2.341) (-1.915, 2.334) (-1.905, 2.328) (-1.895, 2.322) (-1.885, 2.315) (-1.875, 2.309) (-1.865, 2.302) (-1.855, 2.295) (-1.845, 2.288) (-1.835, 2.281) (-1.825, 2.274) (-1.815, 2.267) (-1.805, 2.259) (-1.795, 2.252) (-1.785, 2.244) (-1.775, 2.237) (-1.765, 2.229) (-1.755, 2.221) (-1.745, 2.212) (-1.735, 2.204) (-1.725, 2.195) (-1.715, 2.187) (-1.705, 2.178) (-1.695, 2.169) (-1.685, 2.160) (-1.675, 2.150) (-1.665, 2.140) (-1.655, 2.130) (-1.645, 2.120) (-1.635, 2.111) (-1.625, 2.100) (-1.615, 2.089) (-1.605, 2.078) (-1.595, 2.067) (-1.585, 2.055) (-1.575, 2.043) (-1.565, 2.041) (-1.555, 2.029) (-1.545, 2.017) (-1.535, 2.004) (-1.525, 1.991) (-1.515, 1.990) (-1.505, 1.976) (-1.495, 1.962) (-1.485, 1.961) (-1.475, 1.946) (-1.465, 1.931) (-1.455, 1.930) (-1.445, 1.914) (-1.435, 1.898) (-1.425, 1.897) (-1.415, 1.880) (-1.405, 1.879) (-1.395, 1.862) (-1.385, 1.860) (-1.375, 1.842) (-1.365, 1.841) (-1.355, 1.822) (-1.345, 1.821) (-1.335, 1.801) (-1.325, 1.800) (-1.315, 1.780) (-1.305, 1.778) (-1.295, 1.757) (-1.285, 1.756) (-1.275, 1.733) (-1.265, 1.732) (-1.255, 1.730) (-1.245, 1.706) (-1.235, 1.705) (-1.225, 1.679) (-1.215, 1.678) (-1.205, 1.677) (-1.195, 1.650) (-1.185, 1.649) (-1.175, 1.647) (-1.165, 1.619) (-1.155, 1.618) (-1.145, 1.616) (-1.135, 1.585) (-1.125, 1.584) (-1.115, 1.583) (-1.105, 1.580) (-1.095, 1.548) (-1.085, 1.547) (-1.075, 1.545) (-1.065, 1.542) (-1.055, 1.508) (-1.045, 1.506) (-1.035, 1.505) (-1.025, 1.502) (-1.015, 1.464) (-1.005, 1.463) (-.9948, 1.461) (-.9851, 1.459) (-.9747, 1.416) (-.9650, 1.415) (-.9547, 1.413) (-.9450, 1.411) (-.9348, 1.409) (-.9248, 1.361) (-.9147, 1.360) (-.9048, 1.359) (-.8948, 1.357) (-.8851, 1.355) (-.8748, 1.351) (-.8649, 1.299) (-.8551, 1.298) (-.8450, 1.296) (-.8351, 1.294) (-.8248, 1.292) (-.8147, 1.289) (-.8049, 1.279) (-.7948, 1.226) (-.7849, 1.225) (-.7749, 1.223) (-.7650, 1.222) (-.7550, 1.220) (-.7450, 1.217) (-.7349, 1.212) (-.7249, 1.141) (-.7149, 1.140) (-.7049, 1.139) (-.6949, 1.137) (-.6849, 1.136) (-.6749, 1.134) (-.6649, 1.131) (-.6550, 1.128) (-.6449, 1.124) (-.6349, 1.110) (-.6249, 1.035) (-.6149, 1.035) (-.6048, 1.033) (-.5948, 1.032) (-.5850, 1.030) (-.5750, 1.029) (-.5650, 1.026) (-.5549, 1.023) (-.5448, 1.020) (-.5349, 1.015) (-.5249, .9814) (-.5148, .9015) (-.5049, .9010) (-.4948, .9004) (-.4849, .8997) (-.4750, .8987) (-.4648, .8976) (-.4549, .8964) (-.4449, .8948) (-.4349, .8929) (-.4249, .8906) (-.4150, .8878) (-.4049, .8843) (-.3949, .8798) (-.3849, .8739) (-.3749, .8177) (-.3649, .7182) (-.3549, .7192) (-.3449, .7201) (-.3349, .7210) (-.3249, .7218) (-.3149, .7226) (-.3050, .7232) (-.2949, .7236) (-.2849, .7239) (-.2749, .7240) (-.2650, .7239) (-.2549, .7234) (-.2449, .7226) (-.2349, .7211) (-.2249, .7192) (-.2149, .7164) (-.2049, .7126) (-.1949, .7072) (-.1849, .6998) (-.1749, .6883) (-.1649, .6670) (-.1549, .4624) (-.9691e-1, .5296) (.7918e-1, .7934) (.2041, .9498) (.3010, 1.059) (.3802, 1.145) (.4472, 1.215) (.5051, 1.275) (.5563, 1.328) (.6021, 1.375) (.6434, 1.417) (.6812, 1.456) (.7160, 1.491) (.7482, 1.523) (.7782, 1.554) (.8062, 1.582) (.8325, 1.608) (.8573, 1.633) (.8808, 1.657) (.9031, 1.680) (.9243, 1.701) (.9445, 1.721) (.9638, 1.740) (.9823, 1.759) (1.000, 1.777) (1.017, 1.794) (1.033, 1.810) (1.049, 1.826) (1.064, 1.841) (1.079, 1.856) (1.093, 1.870) (1.107, 1.884) (1.121, 1.898) (1.134, 1.911) (1.146, 1.923) (1.158, 1.936) (1.170, 1.947) (1.182, 1.959) (1.193, 1.970) (1.204, 1.981) (1.215, 1.992) (1.225, 2.003) (1.236, 2.013) (1.246, 2.023) (1.255, 2.033) (1.265, 2.042) (1.274, 2.052) (1.283, 2.061) (1.292, 2.070) (1.301, 2.078) (1.310, 2.087) (1.318, 2.096) (1.326, 2.104) (1.334, 2.112) (1.342, 2.120) (1.350, 2.128) (1.358, 2.135) (1.365, 2.143) (1.373, 2.150) (1.380, 2.158) (1.387, 2.165) (1.394, 2.172) (1.401, 2.179) (1.408, 2.186) (1.415, 2.192) (1.422, 2.199) (1.428, 2.205) (1.435, 2.212) (1.441, 2.218) (1.447, 2.225) (1.453, 2.231) (1.459, 2.237) (1.465, 2.243) (1.471, 2.249) (1.477, 2.255) (1.483, 2.260) (1.489, 2.266) (1.494, 2.272) (1.500, 2.277) (1.505, 2.283) (1.511, 2.288) (1.516, 2.293) (1.521, 2.299) (1.526, 2.304) (1.531, 2.309) (1.537, 2.314) (1.542, 2.319) (1.547, 2.324) (1.551, 2.329) (1.556, 2.334) (1.561, 2.339) (1.566, 2.343) (1.571, 2.348) (1.575, 2.353) (1.580, 2.357) (1.584, 2.362) (1.589, 2.366) (1.593, 2.371) (1.598, 2.375) (1.602, 2.379) (1.606, 2.384) (1.611, 2.388) (1.615, 2.392) (1.619, 2.397) (1.623, 2.401) (1.627, 2.405) (1.631, 2.409) (1.635, 2.413) (1.639, 2.417) (1.643, 2.421) (1.647, 2.425) (1.651, 2.429) (1.655, 2.433) (1.659, 2.436) (1.663, 2.440) (1.667, 2.444) (1.670, 2.448) (1.674, 2.451) (1.678, 2.455) (1.681, 2.459) (1.685, 2.462) (1.688, 2.466) (1.692, 2.470) (1.695, 2.473) (1.699, 2.477)};
+}
+
+
+\newcommand{\AbaqueDepassement}{
+
+\begin{scope}[Abaque grid]
+\foreach \x in{0.01,0.05,0.1,0.3,0.5,0.7,1}{
+\draw ({log10(\x)},0) -- ({log10(\x)},-2)node[below,rotate=45,left]{\tiny \x};};
+\foreach \x in{0.01,0.05,0.1,0.3,0.5,0.7,1}{
+\draw (0,{log10(\x)}) -- (-2,{log10(\x)})node[left]{\tiny \x};};
+\coordinate (coinbas) at (0,{log10(0.01)});
+\coordinate (coinhaut) at ({log10(0.01)},0);
+\coordinate[right of=coinbas, node distance=1em] (coinbt);
+\coordinate[above of=coinhaut, node distance=1em] (coinht);
+\draw[-latex] ({log10(0.01)},{log10(0.01)}) -- (coinbt) node[above]{z};
+\draw[-latex] ({log10(0.01)},{log10(0.01)}) -- (coinht) node[right]{D};
+\end{scope}
+\begin{scope}
+\clip (0,0) rectangle (-2,-2);
+\foreach \NN in {1,2,3,4,5,6,7,8}{
+\draw[Abaque lines,domain=0.01:0.99] plot ({log10(\x)},{log10(exp(-\NN*\valpi*\x/(sqrt(1-(\x)^2))))});
+\node at({log10(0.08)},{log10(exp(-\NN*\valpi*0.08/(sqrt(1-(0.08)^2))))}){\tiny$D_\NN$};
+};
+\end{scope}
+
+\begin{scope}[shift={(-1.95,-1.95)}]
+\node[above right,fill=white]{
+\begin{tikzpicture}[xscale=1/8,yscale=1.8]
+\draw[,color=red,domain=0:20,samples=200,smooth] plot
+(\x,{1-1.02*exp(-0.2*\x)*sin((0.979*\x+1.369) r)});
+\draw[-latex] (0,0) -- (20,0);
+\draw[-latex] (0,0) -- (0,1.55);
+\draw (0,1)node[left]{\tiny 1} -- (20,1);
+\foreach \NN in {1,2,3,4}{
+\pgfmathsetmacro{\tmm}{\NN*\valpi/(sqrt(1-0.2^2))}
+\draw (\tmm,1) -- node[right]{\tiny$ D_\NN$}(\tmm,{1-1.02*exp(-0.2*\tmm)*sin((0.979*\tmm+1.369) r)});
+};
+\end{tikzpicture}
+
+};
+\end{scope}
+}
+
+
+
+%========================= Courbes de Black================
+%les lignes ci dessous contiennent les commandes \ISOMxx et \ISOAxx appelées dans le tracé des courbes isomodules et isoargument 
+
+%====Iso Module==============
+%\input{isom.txt}
+
+\expandafter\def\csname ISOM-30\endcsname {(-350., -29.7250) (-340., -29.7374) (-330., -29.7576) (-320., -29.7850) (-310., -29.8190) (-300., -29.8582) (-290., -29.9016) (-280., -29.9478) (-270., -29.9956) (-260., -30.0432) (-250., -30.0896) (-240., -30.1330) (-230., -30.1722) (-220., -30.2060) (-210., -30.2336) (-200., -30.2538) (-190., -30.2662) (-180., -30.2704) (-170., -30.2662) (-160., -30.2538) (-150., -30.2336) (-140., -30.2060) (-130., -30.1722) (-120., -30.1330) (-110., -30.0896) (-100., -30.0432) (-90., -29.9956) (-80., -29.9478) (-70., -29.9016) (-60., -29.8582) (-50., -29.8190) (-40., -29.7850) (-30., -29.7576) (-20., -29.7374) (-10., -29.7250)}
+
+ \expandafter\def\csname ISOM-25\endcsname {(-350., -24.5046) (-340., -24.5268) (-330., -24.5626) (-320., -24.6116) (-310., -24.6718) (-300., -24.7416) (-290., -24.8190) (-280., -24.9012) (-270., -24.9862) (-260., -25.0712) (-250., -25.1536) (-240., -25.2308) (-230., -25.3006) (-220., -25.3608) (-210., -25.4098) (-200., -25.4456) (-190., -25.4678) (-180., -25.4752) (-170., -25.4678) (-160., -25.4456) (-150., -25.4098) (-140., -25.3608) (-130., -25.3006) (-120., -25.2308) (-110., -25.1536) (-100., -25.0712) (-90., -24.9862) (-80., -24.9012) (-70., -24.8190) (-60., -24.7416) (-50., -24.6718) (-40., -24.6116) (-30., -24.5626) (-20., -24.5268) (-10., -24.5046)}
+
+ \expandafter\def\csname ISOM-20\endcsname {(-350., -19.0980) (-340., -19.1372) (-330., -19.2012) (-320., -19.2883) (-310., -19.3956) (-300., -19.5199) (-290., -19.6578) (-280., -19.8047) (-270., -19.9563) (-260., -20.1078) (-250., -20.2548) (-240., -20.3926) (-230., -20.5170) (-220., -20.6244) (-210., -20.7114) (-200., -20.7754) (-190., -20.8146) (-180., -20.8278) (-170., -20.8146) (-160., -20.7754) (-150., -20.7114) (-140., -20.6244) (-130., -20.5170) (-120., -20.3926) (-110., -20.2548) (-100., -20.1078) (-90., -19.9563) (-80., -19.8047) (-70., -19.6578) (-60., -19.5199) (-50., -19.3956) (-40., -19.2883) (-30., -19.2012) (-20., -19.1372) (-10., -19.0980)}
+
+ \expandafter\def\csname ISOM-15\endcsname {(-350., -13.3227) (-340., -13.3925) (-330., -13.5066) (-320., -13.6617) (-310., -13.8537) (-300., -14.0767) (-290., -14.3239) (-280., -14.5879) (-270., -14.8604) (-260., -15.1330) (-250., -15.3969) (-240., -15.6440) (-230., -15.8671) (-220., -16.0590) (-210., -16.2142) (-200., -16.3284) (-190., -16.3981) (-180., -16.4216) (-170., -16.3981) (-160., -16.3284) (-150., -16.2142) (-140., -16.0590) (-130., -15.8671) (-120., -15.6440) (-110., -15.3969) (-100., -15.1330) (-90., -14.8604) (-80., -14.5879) (-70., -14.3239) (-60., -14.0767) (-50., -13.8537) (-40., -13.6617) (-30., -13.5066) (-20., -13.3925) (-10., -13.3227)}
+
+ \expandafter\def\csname ISOM-12\endcsname {(-350., -9.52058) (-340., -9.61916) (-330., -9.78090) (-320., -10.0013) (-310., -10.2747) (-300., -10.5930) (-290., -10.9470) (-280., -11.3256) (-270., -11.7169) (-260., -12.1082) (-250., -12.4868) (-240., -12.8408) (-230., -13.1592) (-220., -13.4324) (-210., -13.6529) (-200., -13.8145) (-190., -13.9132) (-180., -13.9465) (-170., -13.9132) (-160., -13.8145) (-150., -13.6529) (-140., -13.4324) (-130., -13.1592) (-120., -12.8408) (-110., -12.4868) (-100., -12.1082) (-90., -11.7169) (-80., -11.3256) (-70., -10.9470) (-60., -10.5930) (-50., -10.2747) (-40., -10.0013) (-30., -9.78090) (-20., -9.61916) (-10., -9.52058)}
+
+ \expandafter\def\csname ISOM-10\endcsname {(-350., -6.73998) (-340., -6.86436) (-330., -7.06858) (-320., -7.34790) (-310., -7.69530) (-300., -8.10138) (-290., -8.55428) (-280., -9.03990) (-270., -9.54238) (-260., -10.0449) (-250., -10.5305) (-240., -10.9835) (-230., -11.3895) (-220., -11.7369) (-210., -12.0162) (-200., -12.2204) (-190., -12.3448) (-180., -12.3866) (-170., -12.3448) (-160., -12.2204) (-150., -12.0162) (-140., -11.7369) (-130., -11.3895) (-120., -10.9835) (-110., -10.5305) (-100., -10.0449) (-90., -9.54238) (-80., -9.03990) (-70., -8.55428) (-60., -8.10138) (-50., -7.69530) (-40., -7.34790) (-30., -7.06858) (-20., -6.86436) (-10., -6.73998)}
+
+ \expandafter\def\csname ISOM-8\endcsname {(-350., -3.64298) (-340., -3.79992) (-330., -4.05844) (-320., -4.41368) (-310., -4.85798) (-300., -5.38034) (-290., -5.96602) (-280., -6.59660) (-270., -7.25060) (-260., -7.90454) (-250., -8.53518) (-240., -9.12086) (-230., -9.64322) (-220., -10.0875) (-210., -10.4428) (-200., -10.7013) (-190., -10.8581) (-180., -10.9108) (-170., -10.8581) (-160., -10.7013) (-150., -10.4428) (-140., -10.0875) (-130., -9.64322) (-120., -9.12086) (-110., -8.53518) (-100., -7.90454) (-90., -7.25060) (-80., -6.59660) (-70., -5.96602) (-60., -5.38034) (-50., -4.85798) (-40., -4.41368) (-30., -4.05844) (-20., -3.79992) (-10., -3.64298)}
+
+ \expandafter\def\csname ISOM-6\endcsname {(-350., -.249992e-1) (-340., -.223240) (-330., -.551664) (-320., -1.00638) (-310., -1.58045) (-300., -2.26226) (-290., -3.03418) (-280., -3.87164) (-270., -4.74370) (-260., -5.61586) (-250., -6.45328) (-240., -7.22516) (-230., -7.90702) (-220., -8.48108) (-210., -8.93576) (-200., -9.26418) (-190., -9.46238) (-180., -9.52866) (-170., -9.46238) (-160., -9.26418) (-150., -8.93576) (-140., -8.48108) (-130., -7.90702) (-120., -7.22516) (-110., -6.45328) (-100., -5.61586) (-90., -4.74370) (-80., -3.87164) (-70., -3.03418) (-60., -2.26226) (-50., -1.58045) (-40., -1.00638) (-30., -.551664) (-20., -.223240) (-10., -.249992e-1)}
+
+ \expandafter\def\csname ISOM-5\endcsname {(-350., 2.10292) (-340., 1.87991) (-330., 1.50911) (-320., .992734) (-310., .336154) (-300., -.449816) (-290., -1.34661) (-280., -2.32572) (-270., -3.34910) (-260., -4.37246) (-250., -5.35162) (-240., -6.24840) (-230., -7.03436) (-220., -7.69098) (-210., -8.20734) (-200., -8.57810) (-190., -8.80114) (-180., -8.87548) (-170., -8.80114) (-160., -8.57810) (-150., -8.20734) (-140., -7.69098) (-130., -7.03436) (-120., -6.24840) (-110., -5.35162) (-100., -4.37246) (-90., -3.34910) (-80., -2.32572) (-70., -1.34661) (-60., -.449816) (-50., .336154) (-40., .992734) (-30., 1.50911) (-20., 1.87991) (-10., 2.10292)}
+
+ \expandafter\def\csname ISOM-4\endcsname {(-350., 4.57498) (-340., 4.32394) (-330., 3.90448) (-320., 3.31604) (-310., 2.56062) (-300., 1.64608) (-290., .590758) (-280., -.572580) (-270., -1.79519) (-260., -3.01788) (-250., -4.18114) (-240., -5.23648) (-230., -6.15096) (-220., -6.90644) (-210., -7.49486) (-200., -7.91432) (-190., -8.16538) (-180., -8.24884) (-170., -8.16538) (-160., -7.91432) (-150., -7.49486) (-140., -6.90644) (-130., -6.15096) (-120., -5.23648) (-110., -4.18114) (-100., -3.01788) (-90., -1.79519) (-80., -.572580) (-70., .590758) (-60., 1.64608) (-50., 2.56062) (-40., 3.31604) (-30., 3.90448) (-20., 4.32394) (-10., 4.57498)}
+
+ \expandafter\def\csname ISOM-3\endcsname {(-350., 7.59694) (-340., 7.31420) (-330., 6.83864) (-320., 6.16484) (-310., 5.28818) (-300., 4.20962) (-290., 2.94300) (-280., 1.52493) (-270., .206478e-1) (-260., -1.48378) (-250., -2.90170) (-240., -4.16834) (-230., -5.24688) (-220., -6.12356) (-210., -6.79734) (-200., -7.27296) (-190., -7.55560) (-180., -7.64944) (-170., -7.55560) (-160., -7.27296) (-150., -6.79734) (-140., -6.12356) (-130., -5.24688) (-120., -4.16834) (-110., -2.90170) (-100., -1.48378) (-90., .206478e-1) (-80., 1.52493) (-70., 2.94300) (-60., 4.20962) (-50., 5.28818) (-40., 6.16484) (-30., 6.83864) (-20., 7.31420) (-10., 7.59694)}
+
+ \expandafter\def\csname ISOM-2\endcsname {(-350., 11.6312) (-340., 11.3123) (-330., 10.7715) (-320., 9.99484) (-310., 8.96494) (-300., 7.66574) (-290., 6.09462) (-280., 4.28488) (-270., 2.32922) (-260., .373594) (-250., -1.43615) (-240., -3.00730) (-230., -4.30646) (-220., -5.33644) (-210., -6.11302) (-200., -6.65386) (-190., -6.97276) (-180., -7.07802) (-170., -6.97276) (-160., -6.65386) (-150., -6.11302) (-140., -5.33644) (-130., -4.30646) (-120., -3.00730) (-110., -1.43615) (-100., .373594) (-90., 2.32922) (-80., 4.28488) (-70., 6.09462) (-60., 7.66574) (-50., 8.96494) (-40., 9.99484) (-30., 10.7715) (-20., 11.3123) (-10., 11.6312)}
+
+ \expandafter\def\csname ISOM-1\endcsname {(-350., 18.1531) (-340., 17.7931) (-330., 17.1755) (-320., 16.2720) (-310., 15.0390) (-300., 13.4165) (-290., 11.3378) (-280., 8.77768) (-270., 5.86826) (-260., 2.95872) (-250., .398766) (-240., -1.68001) (-230., -3.30242) (-220., -4.53566) (-210., -5.43912) (-200., -6.05656) (-190., -6.41658) (-180., -6.53496) (-170., -6.41658) (-160., -6.05656) (-150., -5.43912) (-140., -4.53566) (-130., -3.30242) (-120., -1.68001) (-110., .398766) (-100., 2.95872) (-90., 5.86826) (-80., 8.77768) (-70., 11.3378) (-60., 13.4165) (-50., 15.0390) (-40., 16.2720) (-30., 17.1755) (-20., 17.7931) (-10., 18.1531)}
+
+ \expandafter\def\csname ISOM-0.5\endcsname {(-350., 24.4202) (-340., 24.0374) (-330., 23.3762) (-320., 22.3970) (-310., 21.0334) (-300., 19.1774) (-290., 16.6624) (-280., 13.2931) (-270., 9.13572) (-260., 4.97832) (-250., 1.60907) (-240., -.906111) (-230., -2.76190) (-220., -4.12558) (-210., -5.10474) (-200., -5.76586) (-190., -6.14886) (-180., -6.27433) (-170., -6.14886) (-160., -5.76586) (-150., -5.10474) (-140., -4.12558) (-130., -2.76190) (-120., -.906111) (-110., 1.60907) (-100., 4.97832) (-90., 9.13572) (-80., 13.2931) (-70., 16.6624) (-60., 19.1774) (-50., 21.0334) (-40., 22.3970) (-30., 23.3762) (-20., 24.0374) (-10., 24.4202)}
+
+ \expandafter\def\csname ISOM-0.2\endcsname {(-350., 32.5256) (-340., 32.1284) (-330., 31.4388) (-320., 30.4094) (-310., 28.9540) (-300., 26.9175) (-290., 24.0022) (-280., 19.6304) (-270., 13.2672) (-260., 6.90386) (-250., 2.53198) (-240., -.382914) (-230., -2.42038) (-220., -3.87640) (-210., -4.90538) (-200., -5.59516) (-190., -5.99110) (-180., -6.12211) (-170., -5.99110) (-160., -5.59516) (-150., -4.90538) (-140., -3.87640) (-130., -2.42038) (-120., -.382914) (-110., 2.53198) (-100., 6.90386) (-90., 13.2672) (-80., 19.6304) (-70., 24.0022) (-60., 26.9175) (-50., 28.9540) (-40., 30.4094) (-30., 31.4388) (-20., 32.1284) (-10., 32.5256)}
+
+ \expandafter\def\csname ISOM0\endcsname {(-269.6, 37.1036) (-264.884, 14.9750) (-260.168, 9.33176) (-255.453, 5.97938) (-250.737, 3.61126) (-246.021, 1.79997) (-241.305, .351648) (-236.589, -.838186) (-231.874, -1.83190) (-227.158, -2.67046) (-222.442, -3.38122) (-217.726, -3.98352) (-213.011, -4.49142) (-208.295, -4.91540) (-203.579, -5.26338) (-198.863, -5.54114) (-194.147, -5.75314) (-189.432, -5.90240) (-184.716, -5.99110) (-180.000, -6.02058) (-175.284, -5.99110) (-170.568, -5.90232) (-165.853, -5.75306) (-161.137, -5.54114) (-156.421, -5.26330) (-151.705, -4.91532) (-146.989, -4.49136) (-142.274, -3.98352) (-137.558, -3.38122) (-132.842, -2.67052) (-128.126, -1.83180) (-123.411, -.837996) (-118.695, .351890) (-113.979, 1.80025) (-109.263, 3.61162) (-104.547, 5.97990) (-99.8316, 9.33202) (-95.1158, 14.9755) (-90.4000, 37.0978)}
+
+ \expandafter\def\csname ISOM0.2\endcsname {(-180., 32.8552) (-170.973, 32.7444) (-161.183, 32.3662) (-151.392, 31.6940) (-141.602, 30.6740) (-131.811, 29.2040) (-122.020, 27.0730) (-112.230, 23.7306) (-107.439, 21.1084) (-106.439, 20.3812) (-105.439, 19.5432) (-104.439, 18.5378) (-103.439, 17.2330) (-102.439, 11.9488) (-103.439, 9.70090) (-104.439, 8.39616) (-105.439, 7.39080) (-106.439, 6.55292) (-107.439, 5.82554) (-112.230, 3.20342) (-122.020, -.138333) (-131.811, -2.27018) (-141.602, -3.73906) (-151.392, -4.75842) (-161.183, -5.43130) (-170.973, -5.80950) (-180., -5.91982) (-189.027, -5.80950) (-198.817, -5.43292) (-208.608, -4.75992) (-218.398, -3.73906) (-228.189, -2.26906) (-237.980, -.138333) (-247.770, 3.20330) (-252.561, 5.82572) (-253.561, 6.55224) (-254.561, 7.39112) (-255.561, 8.39520) (-256.561, 9.70046) (-257.561, 11.9452) (-256.561, 17.2336) (-255.561, 18.5389) (-254.561, 19.5429) (-253.561, 20.3818) (-252.561, 21.1084) (-247.770, 23.7308) (-237.980, 27.0730) (-228.189, 29.2040) (-218.398, 30.6742) (-208.608, 31.6940) (-198.817, 32.3662) (-189.027, 32.7444) (-180., 32.8552)}
+
+ \expandafter\def\csname ISOM0.5\endcsname {(-180., 25.0456) (-171.849, 24.9520) (-162.934, 24.6300) (-154.020, 24.0584) (-145.105, 23.1958) (-136.190, 21.9644) (-127.275, 20.2060) (-118.361, 17.5151) (-114.446, 15.7128) (-113.446, 15.1264) (-112.446, 14.4532) (-111.446, 13.6501) (-110.446, 12.6123) (-109.446, 8.43768) (-110.446, 6.65904) (-111.446, 5.62124) (-112.446, 4.81816) (-113.446, 4.14486) (-114.446, 3.55862) (-118.361, 1.75627) (-127.275, -.934564) (-136.190, -2.69294) (-145.105, -3.92416) (-154.020, -4.78656) (-162.934, -5.35808) (-171.849, -5.68058) (-180., -5.77355) (-188.151, -5.68026) (-197.066, -5.35822) (-205.980, -4.78656) (-214.895, -3.92416) (-223.810, -2.69306) (-232.725, -.934564) (-241.639, 1.75647) (-245.554, 3.55868) (-246.554, 4.14438) (-247.554, 4.81792) (-248.554, 5.62212) (-249.554, 6.65856) (-250.554, 8.43844) (-249.554, 12.6128) (-248.554, 13.6492) (-247.554, 14.4535) (-246.554, 15.1270) (-245.554, 15.7127) (-241.639, 17.5150) (-232.725, 20.2062) (-223.810, 21.9646) (-214.895, 23.1960) (-205.980, 24.0584) (-197.066, 24.6300) (-188.151, 24.9520) (-180., 25.0456)}
+
+ \expandafter\def\csname ISOM1\endcsname {(-180., 19.2713) (-172.813, 19.1944) (-164.863, 18.9256) (-156.913, 18.4482) (-148.962, 17.7304) (-141.012, 16.7117) (-133.061, 15.2705) (-125.111, 13.0958) (-122.160, 11.9161) (-121.160, 11.4271) (-120.160, 10.8664) (-119.160, 10.1978) (-118.160, 9.33540) (-117.160, 5.87496) (-118.160, 4.40094) (-119.160, 3.53860) (-120.160, 2.87010) (-121.160, 2.30908) (-122.160, 1.82045) (-125.111, .640522) (-133.061, -1.53405) (-141.012, -2.97526) (-148.962, -3.99382) (-156.913, -4.71176) (-164.863, -5.18916) (-172.813, -5.45788) (-180., -5.53494) (-187.187, -5.45788) (-195.137, -5.18916) (-203.087, -4.71176) (-211.038, -3.99366) (-218.988, -2.97542) (-226.939, -1.53425) (-234.889, .640844) (-237.840, 1.81996) (-238.840, 2.30920) (-239.840, 2.86942) (-240.840, 3.53808) (-241.840, 4.40084) (-242.840, 5.87506) (-241.840, 9.33540) (-240.840, 10.1982) (-239.840, 10.8671) (-238.840, 11.4272) (-237.840, 11.9165) (-234.889, 13.0958) (-226.939, 15.2706) (-218.988, 16.7117) (-211.038, 17.7305) (-203.087, 18.4483) (-195.137, 18.9256) (-187.187, 19.1944) (-180., 19.2713)}
+
+ \expandafter\def\csname ISOM2\endcsname {(-180., 13.7365) (-174.118, 13.6788) (-167.473, 13.4712) (-160.827, 13.1012) (-154.182, 12.5459) (-147.536, 11.7607) (-140.890, 10.6567) (-134.245, 9.00698) (-132.599, 8.44186) (-131.599, 8.04452) (-130.599, 7.58846) (-129.599, 7.04448) (-128.599, 6.34132) (-127.599, 3.51932) (-128.599, 2.31720) (-129.599, 1.61411) (-130.599, 1.07002) (-131.599, .613936) (-132.599, .216510) (-134.245, -.348460) (-140.890, -1.99827) (-147.536, -3.10224) (-154.182, -3.88730) (-160.827, -4.44276) (-167.473, -4.81288) (-174.118, -5.02028) (-180., -5.07820) (-185.882, -5.02056) (-192.527, -4.81262) (-199.173, -4.44300) (-205.818, -3.88752) (-212.464, -3.10206) (-219.110, -1.99845) (-225.755, -.348750) (-227.401, .216764) (-228.401, .613450) (-229.401, 1.06986) (-230.401, 1.61448) (-231.401, 2.31626) (-232.401, 3.52014) (-231.401, 6.34214) (-230.401, 7.04394) (-229.401, 7.58862) (-228.401, 8.04500) (-227.401, 8.44172) (-225.755, 9.00716) (-219.110, 10.6568) (-212.464, 11.7606) (-205.818, 12.5460) (-199.173, 13.1012) (-192.527, 13.4712) (-185.882, 13.6787) (-180., 13.7365)}
+
+ \expandafter\def\csname ISOM2.3\endcsname {(-180., 12.6664) (-174.428, 12.6127) (-168.091, 12.4182) (-161.755, 12.0712) (-155.419, 11.5500) (-149.082, 10.8136) (-142.746, 9.77908) (-136.410, 8.23500) (-135.073, 7.79088) (-134.073, 7.41162) (-133.073, 6.97628) (-132.073, 6.45644) (-131.073, 5.78432) (-130.073, 3.08604) (-131.073, 1.93549) (-132.073, 1.26336) (-133.073, .743586) (-134.073, .308284) (-135.073, -.709836e-1) (-136.410, -.515118) (-142.746, -2.05922) (-149.082, -3.09370) (-155.419, -3.83010) (-161.755, -4.35140) (-168.091, -4.69840) (-174.428, -4.89286) (-180., -4.94661) (-185.572, -4.89286) (-191.909, -4.69840) (-198.245, -4.35154) (-204.581, -3.83024) (-210.918, -3.09356) (-217.254, -2.05922) (-223.590, -.515016) (-224.927, -.713602e-1) (-225.927, .308116) (-226.927, .743666) (-227.927, 1.26321) (-228.927, 1.93570) (-229.927, 3.08416) (-228.927, 5.78410) (-227.927, 6.45660) (-226.927, 6.97616) (-225.927, 7.41168) (-224.927, 7.79118) (-223.590, 8.23490) (-217.254, 9.77916) (-210.918, 10.8135) (-204.581, 11.5500) (-198.245, 12.0713) (-191.909, 12.4182) (-185.572, 12.6127) (-180., 12.6664)}
+
+ \expandafter\def\csname ISOM3\endcsname {(-180., 10.6907) (-175.059, 10.6450) (-169.354, 10.4758) (-163.649, 10.1730) (-157.943, 9.71766) (-152.238, 9.07482) (-146.533, 8.17286) (-140.828, 6.82908) (-140.123, 6.60976) (-139.123, 6.26504) (-138.123, 5.86888) (-137.123, 5.39464) (-136.123, 4.78138) (-135.123, 2.31148) (-136.123, 1.25990) (-137.123, .646650) (-138.123, .172343) (-139.123, -.223792) (-140.123, -.568518) (-140.828, -.787814) (-146.533, -2.13162) (-152.238, -3.03358) (-157.943, -3.67658) (-163.649, -4.13178) (-169.354, -4.43472) (-175.059, -4.60388) (-180., -4.64952) (-184.941, -4.60372) (-190.646, -4.43472) (-196.351, -4.13178) (-202.057, -3.67658) (-207.762, -3.03372) (-213.467, -2.13162) (-219.172, -.788062) (-219.877, -.568452) (-220.877, -.224424) (-221.877, .172173) (-222.877, .646732) (-223.877, 1.25930) (-224.877, 2.31200) (-223.877, 4.78198) (-222.877, 5.39450) (-221.877, 5.86896) (-220.877, 6.26568) (-219.877, 6.60964) (-219.172, 6.82930) (-213.467, 8.17278) (-207.762, 9.07492) (-202.057, 9.71776) (-196.351, 10.1730) (-190.646, 10.4759) (-184.941, 10.6450) (-180., 10.6907)}
+
+ \expandafter\def\csname ISOM4\endcsname {(-180., 8.65844) (-175.802, 8.62136) (-170.841, 8.48004) (-165.879, 8.22554) (-160.917, 7.84228) (-155.955, 7.30094) (-150.994, 6.54206) (-146.070, 5.42412) (-146.032, 5.41320) (-145.070, 5.11764) (-144.070, 4.76382) (-143.070, 4.33966) (-142.070, 3.78924) (-141.070, 1.56681) (-142.070, .620408) (-143.070, .698998e-1) (-144.070, -.354186) (-145.070, -.708018) (-146.032, -1.00357) (-146.070, -1.01454) (-150.994, -2.13246) (-155.955, -2.89134) (-160.917, -3.43262) (-165.879, -3.81584) (-170.841, -4.07036) (-175.802, -4.21178) (-180., -4.24880) (-184.198, -4.21178) (-189.159, -4.07046) (-194.121, -3.81592) (-199.083, -3.43262) (-204.045, -2.89142) (-209.006, -2.13262) (-213.930, -1.01460) (-213.968, -1.00370) (-214.930, -.707698) (-215.930, -.354420) (-216.930, .701584e-1) (-217.930, .620004) (-218.930, 1.56645) (-217.930, 3.78952) (-216.930, 4.33946) (-215.930, 4.76408) (-214.930, 5.11736) (-213.968, 5.41328) (-213.930, 5.42422) (-209.006, 6.54222) (-204.045, 7.30106) (-199.083, 7.84228) (-194.121, 8.22554) (-189.159, 8.48006) (-184.198, 8.62136) (-180., 8.65844)}
+
+ \expandafter\def\csname ISOM5\endcsname {(-180., 7.17726) (-176.415, 7.14698) (-172.066, 7.02714) (-167.717, 6.80998) (-163.369, 6.48246) (-159.020, 6.01924) (-154.671, 5.36978) (-150.973, 4.58046) (-150.322, 4.40488) (-149.973, 4.30418) (-148.973, 3.98434) (-147.973, 3.59918) (-146.973, 3.09826) (-145.973, 1.06717) (-146.973, .203454) (-147.973, -.297392) (-148.973, -.682594) (-149.973, -1.00245) (-150.322, -1.10312) (-150.973, -1.27871) (-154.671, -2.06798) (-159.020, -2.71746) (-163.369, -3.18070) (-167.717, -3.50820) (-172.066, -3.72538) (-176.415, -3.84524) (-180., -3.87552) (-183.585, -3.84524) (-187.934, -3.72538) (-192.283, -3.50820) (-196.631, -3.18080) (-200.980, -2.71746) (-205.329, -2.06808) (-209.027, -1.27903) (-209.678, -1.10303) (-210.027, -1.00240) (-211.027, -.682630) (-212.027, -.297518) (-213.027, .203030) (-214.027, 1.06748) (-213.027, 3.09876) (-212.027, 3.59924) (-211.027, 3.98446) (-210.027, 4.30418) (-209.678, 4.40478) (-209.027, 4.58072) (-205.329, 5.36982) (-200.980, 6.01920) (-196.631, 6.48254) (-192.283, 6.80998) (-187.934, 7.02714) (-183.585, 7.14698) (-180., 7.17726)}
+
+ \expandafter\def\csname ISOM6\endcsname {(-180., 6.04124) (-176.933, 6.01632) (-173.101, 5.91388) (-169.270, 5.72696) (-165.438, 5.44402) (-161.607, 5.04366) (-157.775, 4.48204) (-155.112, 3.94500) (-154.112, 3.69416) (-153.944, 3.64846) (-153.112, 3.40258) (-152.112, 3.05016) (-151.112, 2.59030) (-150.112, .717874) (-151.112, -.777030e-1) (-152.112, -.537644) (-153.112, -.890006) (-153.944, -1.13591) (-154.112, -1.18166) (-155.112, -1.43242) (-157.775, -1.96952) (-161.607, -2.53108) (-165.438, -2.93142) (-169.270, -3.21444) (-173.101, -3.40132) (-176.933, -3.50378) (-180., -3.52868) (-183.067, -3.50382) (-186.899, -3.40132) (-190.730, -3.21444) (-194.562, -2.93148) (-198.393, -2.53116) (-202.225, -1.96963) (-204.888, -1.43238) (-205.888, -1.18183) (-206.056, -1.13568) (-206.888, -.889972) (-207.888, -.537988) (-208.888, -.779132e-1) (-209.888, .716674) (-208.888, 2.59044) (-207.888, 3.05054) (-206.888, 3.40252) (-206.056, 3.64824) (-205.888, 3.69438) (-204.888, 3.94494) (-202.225, 4.48220) (-198.393, 5.04374) (-194.562, 5.44402) (-190.730, 5.72696) (-186.899, 5.91388) (-183.067, 6.01638) (-180., 6.04124)}
+
+ \expandafter\def\csname ISOM8\endcsname {(-180., 4.40964) (-177.760, 4.39294) (-174.756, 4.31708) (-171.752, 4.17612) (-168.748, 3.96142) (-165.743, 3.65656) (-162.739, 3.22866) (-161.731, 3.04612) (-160.731, 2.83764) (-159.735, 2.59386) (-159.731, 2.59282) (-158.731, 2.29434) (-157.731, 1.90101) (-156.731, .283518) (-157.731, -.402188) (-158.731, -.795560) (-159.731, -1.09402) (-159.735, -1.09506) (-160.731, -1.33882) (-161.731, -1.54736) (-162.739, -1.72987) (-165.743, -2.15774) (-168.748, -2.46260) (-171.752, -2.67730) (-174.756, -2.81826) (-177.760, -2.89414) (-180., -2.91080) (-182.240, -2.89414) (-185.244, -2.81832) (-188.248, -2.67730) (-191.252, -2.46260) (-194.257, -2.15762) (-197.261, -1.73000) (-198.269, -1.54750) (-199.269, -1.33891) (-200.265, -1.09531) (-200.269, -1.09392) (-201.269, -.795636) (-202.269, -.402068) (-203.269, .282342) (-202.269, 1.90087) (-201.269, 2.29448) (-200.269, 2.59270) (-200.265, 2.59412) (-199.269, 2.83770) (-198.269, 3.04630) (-197.261, 3.22880) (-194.257, 3.65644) (-191.252, 3.96142) (-188.248, 4.17612) (-185.244, 4.31708) (-182.240, 4.39294) (-180., 4.40964)}
+
+ \expandafter\def\csname ISOM10\endcsname {(-180., 3.30174) (-178.388, 3.29086) (-176.012, 3.23442) (-173.636, 3.12692) (-171.260, 2.96186) (-168.884, 2.72660) (-166.756, 2.43612) (-166.508, 2.39586) (-165.756, 2.26322) (-164.756, 2.05704) (-164.132, 1.90540) (-163.756, 1.80247) (-162.756, 1.46344) (-161.756, .495416e-1) (-162.756, -.548288) (-163.756, -.887426) (-164.132, -.990224) (-164.756, -1.14197) (-165.756, -1.34813) (-166.508, -1.48066) (-166.756, -1.52097) (-168.884, -1.81155) (-171.260, -2.04670) (-173.636, -2.21186) (-176.012, -2.31928) (-178.388, -2.37572) (-180., -2.38662) (-181.612, -2.37572) (-183.988, -2.31928) (-186.364, -2.21178) (-188.740, -2.04662) (-191.116, -1.81150) (-193.244, -1.52091) (-193.492, -1.48071) (-194.244, -1.34825) (-195.244, -1.14193) (-195.868, -.990164) (-196.244, -.887584) (-197.244, -.548380) (-198.244, .498008e-1) (-197.244, 1.46351) (-196.244, 1.80276) (-195.868, 1.90533) (-195.244, 2.05710) (-194.244, 2.26348) (-193.492, 2.39572) (-193.244, 2.43612) (-191.116, 2.72654) (-188.740, 2.96180) (-186.364, 3.12686) (-183.988, 3.23442) (-181.612, 3.29086) (-180., 3.30174)}
+
+
+%==== ISo Argument============
+
+%\input{isoa.txt}
+\expandafter\def\csname ISOA-359\endcsname {(-183.6, 13.2458) (-187.2, 18.2467) (-187.2, 18.2467) (-190.7, 21.3032) (-194.3, 23.5904) (-194.3, 23.5904) (-197.9, 25.3712) (-201.5, 26.8192) (-208.6, 29.0364) (-215.8, 30.7116) (-223.0, 31.9982) (-230.1, 32.9850) (-237.3, 33.7594) (-244.4, 34.3364) (-251.6, 34.7560) (-258.8, 35.0244) (-265.9, 35.1500) (-273.1, 35.1406) (-280.2, 34.9958) (-287.4, 34.7070) (-294.6, 34.2654) (-301.7, 33.6640) (-308.9, 32.8608) (-316.0, 31.8384) (-323.2, 30.5054) (-330.4, 28.7638) (-337.5, 26.4444) (-344.6, 23.0764) (-344.7, 23.0172) (-348.2, 20.6182) (-351.7, 17.2435) (-351.8, 17.1254) (-355.3, 11.3590) (-358.9, -20)}
+
+ \expandafter\def\csname ISOA-357\endcsname {(-183.5, 6.69968) (-187.1, 10.5019) (-187.1, 10.5019) (-190.6, 13.0507) (-194.2, 15.0412) (-194.2, 15.0412) (-197.7, 16.5908) (-201.2, 17.8781) (-208.3, 19.9358) (-215.4, 21.4880) (-222.5, 22.6888) (-229.6, 23.6250) (-236.6, 24.3392) (-243.7, 24.8850) (-250.8, 25.2720) (-257.9, 25.5138) (-265.0, 25.6186) (-272.0, 25.5908) (-279.1, 25.4288) (-286.2, 25.1268) (-293.3, 24.6750) (-300.4, 24.0562) (-307.4, 23.2578) (-314.5, 22.2178) (-321.6, 20.8818) (-328.7, 19.1412) (-335.8, 16.7890) (-342.7, 13.4780) (-342.8, 13.4188) (-346.3, 10.9989) (-349.8, 7.58606) (-349.9, 7.46426) (-353.4, 1.58384) (-356.9, -23)}
+
+ \expandafter\def\csname ISOA-354\endcsname {(-183.5, 3.96648) (-187.0, 6.65720) (-187.0, 6.65720) (-190.4, 8.63086) (-193.9, 10.2542) (-193.9, 10.2542) (-197.4, 11.5945) (-200.9, 12.7263) (-207.8, 14.5211) (-214.8, 15.9189) (-221.8, 17.0092) (-228.7, 17.8506) (-235.7, 18.5095) (-242.6, 18.9948) (-249.6, 19.3380) (-256.6, 19.5426) (-263.5, 19.6149) (-270.5, 19.5592) (-277.4, 19.3755) (-284.4, 19.0526) (-291.4, 18.5817) (-298.3, 17.9560) (-305.3, 17.1311) (-312.2, 16.0918) (-319.2, 14.7437) (-326.2, 12.9904) (-333.1, 10.6621) (-340.0, 7.28872) (-340.1, 7.22820) (-343.5, 4.82864) (-346.9, 1.45609) (-347.0, 1.33330) (-350.4, -4.42776) (-353.9, -24)}
+
+ \expandafter\def\csname ISOA-350\endcsname {(-183.4, 2.50676) (-186.8, 4.42562) (-186.8, 4.42562) (-190.2, 5.97054) (-193.6, 7.25562) (-193.6, 7.25562) (-197., 8.34720) (-200.4, 9.29006) (-207.2, 10.8359) (-214., 12.0419) (-220.8, 12.9920) (-227.6, 13.7367) (-234.4, 14.3090) (-241.2, 14.7304) (-248., 15.0147) (-254.8, 15.1707) (-261.6, 15.2032) (-268.4, 15.1129) (-275.2, 14.8972) (-282., 14.5499) (-288.8, 14.0598) (-295.6, 13.4095) (-302.4, 12.5731) (-309.2, 11.5104) (-316., 10.1577) (-322.8, 8.40698) (-329.6, 6.05258) (-336.3, 2.69610) (-336.4, 2.63314) (-339.7, .254720) (-343.1, -3.19942) (-343.2, -3.32680) (-346.5, -9.07908) (-349.9, -25)}
+
+ \expandafter\def\csname ISOA-345\endcsname {(-183.3, 1.67821) (-186.6, 3.06012) (-186.6, 3.06012) (-189.9, 4.22646) (-193.2, 5.22876) (-193.2, 5.22876) (-196.5, 6.10186) (-199.8, 6.86832) (-206.4, 8.14828) (-213., 9.16142) (-219.6, 9.96460) (-226.2, 10.5932) (-232.8, 11.0710) (-239.4, 11.4140) (-246., 11.6325) (-252.6, 11.7324) (-259.2, 11.7167) (-265.8, 11.5848) (-272.4, 11.3332) (-279., 10.9547) (-285.6, 10.4375) (-292.2, 9.76414) (-298.8, 8.90796) (-305.4, 7.82856) (-312., 6.46248) (-318.6, 4.70030) (-325.2, 2.33712) (-331.7, -1.02359) (-331.8, -1.08741) (-335.0, -3.46586) (-338.3, -6.91922) (-338.4, -7.05040) (-341.6, -12.7986) (-344.9, -26)}
+
+ \expandafter\def\csname ISOA-340\endcsname {(-183.2, 1.22769) (-186.4, 2.27912) (-186.4, 2.27912) (-189.6, 3.19230) (-192.8, 3.99422) (-192.8, 3.99422) (-196., 4.70338) (-199.2, 5.33376) (-205.6, 6.39862) (-212., 7.24964) (-218.4, 7.92494) (-224.8, 8.45030) (-231.2, 8.84274) (-237.6, 9.11400) (-244., 9.27130) (-250.4, 9.31872) (-256.8, 9.25766) (-263.2, 9.08638) (-269.6, 8.80052) (-276., 8.39226) (-282.4, 7.84920) (-288.8, 7.15364) (-295.2, 6.27830) (-301.6, 5.18284) (-308., 3.80326) (-314.4, 2.03034) (-320.8, -.340174) (-327.1, -3.70466) (-327.2, -3.77168) (-330.3, -6.14936) (-333.5, -9.60422) (-333.6, -9.73642) (-336.7, -15.4787) (-339.9, -27)}
+
+ \expandafter\def\csname ISOA-330\endcsname {(-183., .742868) (-186., 1.40482) (-186., 1.40482) (-189., 1.99803) (-192., 2.53088) (-192., 2.53088) (-195., 3.01022) (-198., 3.44206) (-204., 4.17966) (-210., 4.77124) (-216., 5.23520) (-222., 5.58466) (-228., 5.82866) (-234., 5.97290) (-240., 6.02058) (-246., 5.97286) (-252., 5.82870) (-258., 5.58474) (-264., 5.23514) (-270., 4.77119) (-276., 4.17988) (-282., 3.44206) (-288., 2.53088) (-294., 1.40519) (-300., -.173717e-4) (-306., -1.79305) (-312., -4.17936) (-317.9, -7.55028) (-318., -7.62202) (-320.9, -9.99762) (-323.9, -13.4498) (-324., -13.5943) (-326.9, -19.3171) (-329.9, -28)}
+
+ \expandafter\def\csname ISOA-315\endcsname {(-182.7, .390550) (-185.4, .745818) (-185.4, .745818) (-188.1, 1.06856) (-190.8, 1.36119) (-190.8, 1.36119) (-193.5, 1.62558) (-196.2, 1.86339) (-201.6, 2.26476) (-207., 2.57438) (-212.4, 2.79852) (-217.8, 2.94146) (-223.2, 3.00598) (-228.6, 2.99306) (-234., 2.90268) (-239.4, 2.73300) (-244.8, 2.48094) (-250.2, 2.14154) (-255.6, 1.70774) (-261., 1.16943) (-266.4, .512832) (-271.8, -.281640) (-277.2, -1.24181) (-282.6, -2.40926) (-288., -3.84864) (-293.4, -5.66970) (-298.8, -8.07788) (-304.1, -11.4555) (-304.2, -11.5351) (-306.8, -13.9043) (-309.5, -17.3570) (-309.6, -17.5161) (-312.2, -23.2094) (-314.9, -29)}
+
+ \expandafter\def\csname ISOA-300\endcsname {(-182.4, .199974) (-184.8, .380746) (-184.8, .380746) (-187.2, .542668) (-189.6, .686712) (-189.6, .686712) (-192., .813548) (-194.4, .923342) (-199.2, 1.09418) (-204., 1.20164) (-208.8, 1.24750) (-213.6, 1.23221) (-218.4, 1.15568) (-223.2, 1.01679) (-228., .813548) (-232.8, .542748) (-237.6, .200060) (-242.4, -.220496) (-247.2, -.726508) (-252., -1.32916) (-256.8, -2.04262) (-261.6, -2.88662) (-266.4, -3.88986) (-271.2, -5.09422) (-276., -6.56396) (-280.8, -8.41006) (-285.6, -10.8377) (-290.3, -14.2191) (-290.4, -14.3075) (-292.7, -16.6696) (-295.1, -20.1180) (-295.2, -20.2980) (-297.5, -25.9580) (-299.9, -30)}
+
+ \expandafter\def\csname ISOA-285\endcsname {(-182.1, .791144e-1) (-184.2, .145906) (-184.2, .145906) (-186.3, .200568) (-188.4, .243410) (-188.4, .243410) (-190.5, .274266) (-192.6, .293518) (-196.8, .296876) (-201., .253370) (-205.2, .162716) (-209.4, .238534e-1) (-213.6, -.164867) (-217.8, -.405536) (-222., -.701236) (-226.2, -1.05591) (-230.4, -1.47440) (-234.6, -1.96322) (-238.8, -2.53108) (-243., -3.18868) (-247.2, -3.95086) (-251.4, -4.83830) (-255.6, -5.87898) (-259.8, -7.11494) (-264., -8.61260) (-268.2, -10.4799) (-272.4, -12.9235) (-276.5, -16.3047) (-276.6, -16.4075) (-278.6, -18.7562) (-280.7, -22.1982) (-280.8, -22.4040) (-282.8, -28.0134) (-284.9, -31)}
+
+ \expandafter\def\csname ISOA-270\endcsname {(-181.8, -.428320e-2) (-183.6, -.171542e-1) (-183.6, -.171542e-1) (-185.4, -.386338e-1) (-187.2, -.687596e-1) (-187.2, -.687596e-1) (-189., -.107595) (-190.8, -.155232) (-194.4, -.277262) (-198., -.435868) (-201.6, -.632414) (-205.2, -.868666) (-208.8, -1.14684) (-212.4, -1.46977) (-216., -1.84083) (-219.6, -2.26438) (-223.2, -2.74578) (-226.8, -3.29186) (-230.4, -3.91144) (-234., -4.61560) (-237.6, -5.41946) (-241.2, -6.34342) (-244.8, -7.41618) (-248.4, -8.67992) (-252., -10.2003) (-255.6, -12.0867) (-259.2, -14.5453) (-262.7, -17.9182) (-262.8, -18.0383) (-264.5, -20.3670) (-266.3, -23.8014) (-266.4, -24.0412) (-268.1, -29.5842) (-269.9, -32)}
+
+ \expandafter\def\csname ISOA-255\endcsname {(-181.5, -.641032e-1) (-183., -.134767) (-183., -.134767) (-184.5, -.211930) (-186., -.295792) (-186., -.295792) (-187.5, -.386582) (-189., -.484260) (-192., -.701284) (-195., -.948184) (-198., -1.22702) (-201., -1.53976) (-204., -1.88872) (-207., -2.27738) (-210., -2.70922) (-213., -3.18852) (-216., -3.72140) (-219., -4.31456) (-222., -4.97648) (-225., -5.71940) (-228., -6.55804) (-231., -7.51232) (-234., -8.61222) (-237., -9.89938) (-240., -11.4385) (-243., -13.3412) (-246., -15.8125) (-248.9, -19.1713) (-249., -19.3131) (-250.4, -21.6146) (-251.9, -25.0354) (-252., -25.3224) (-253.4, -30.7808) (-254.9, -33)}
+
+ \expandafter\def\csname ISOA-240\endcsname {(-181.2, -.107613) (-182.4, -.220318) (-182.4, -.220318) (-183.6, -.338538) (-184.8, -.462238) (-184.8, -.462238) (-186., -.591388) (-187.2, -.726564) (-189.6, -1.01493) (-192., -1.32916) (-194.4, -1.67092) (-196.8, -2.04240) (-199.2, -2.44680) (-201.6, -2.88670) (-204., -3.36608) (-206.4, -3.89008) (-208.8, -4.46348) (-211.2, -5.09384) (-213.6, -5.79058) (-216., -6.56430) (-218.4, -7.43046) (-220.8, -8.41030) (-223.2, -9.53152) (-225.6, -10.8370) (-228., -12.3933) (-230.4, -14.3083) (-232.8, -16.7881) (-235.1, -20.1190) (-235.2, -20.2990) (-236.3, -22.5560) (-237.5, -25.9534) (-237.6, -26.3108) (-238.7, -31.6308) (-239.9, -34)}
+
+ \expandafter\def\csname ISOA-225\endcsname {(-180.9, -.138606) (-181.8, -.281702) (-181.8, -.281702) (-182.7, -.429222) (-183.6, -.581566) (-183.6, -.581566) (-184.5, -.738832) (-185.4, -.901194) (-187.2, -1.24179) (-189., -1.60533) (-190.8, -1.99375) (-192.6, -2.40920) (-194.4, -2.85468) (-196.2, -3.33314) (-198., -3.84880) (-199.8, -4.40586) (-201.6, -5.01060) (-203.4, -5.66982) (-205.2, -6.39230) (-207., -7.19006) (-208.8, -8.07766) (-210.6, -9.07648) (-212.4, -10.2148) (-214.2, -11.5349) (-216., -13.1030) (-217.8, -15.0279) (-219.6, -17.5169) (-221.3, -20.7922) (-221.4, -21.0324) (-222.2, -23.2090) (-223.1, -26.5738) (-223.2, -27.0466) (-224.0, -32.1452) (-224.9, -35)}
+
+ \expandafter\def\csname ISOA-210\endcsname {(-180.6, -.159247) (-181.2, -.322946) (-181.2, -.322946) (-181.8, -.490444) (-182.4, -.662050) (-182.4, -.662050) (-183., -.838586) (-183.6, -1.01923) (-184.8, -1.39592) (-186., -1.79289) (-187.2, -2.21350) (-188.4, -2.65970) (-189.6, -3.13322) (-190.8, -3.63904) (-192., -4.17994) (-193.2, -4.76000) (-194.4, -5.38694) (-195.6, -6.06642) (-196.8, -6.80666) (-198., -7.62172) (-199.2, -8.52506) (-200.4, -9.53656) (-201.6, -10.6872) (-202.8, -12.0189) (-204., -13.5937) (-205.2, -15.5266) (-206.4, -18.0229) (-207.5, -21.1860) (-207.6, -21.5372) (-208.1, -23.5656) (-208.7, -26.8590) (-208.8, -27.5556) (-209.3, -32.2442) (-209.9, -36)}
+
+ \expandafter\def\csname ISOA-195\endcsname {(-180.3, -.171942) (-180.6, -.346264) (-180.6, -.346264) (-180.9, -.525808) (-181.2, -.709064) (-181.2, -.709064) (-181.5, -.895782) (-181.8, -1.08794) (-182.4, -1.48469) (-183., -1.90266) (-183.6, -2.34150) (-184.2, -2.80466) (-184.8, -3.29686) (-185.4, -3.81760) (-186., -4.37262) (-186.6, -4.96822) (-187.2, -5.60696) (-187.8, -6.29798) (-188.4, -7.05146) (-189., -7.87500) (-189.6, -8.78610) (-190.2, -9.80808) (-190.8, -10.9653) (-191.4, -12.3006) (-192., -13.8851) (-192.6, -15.8198) (-193.2, -18.3138) (-193.7, -21.1428) (-193.8, -21.8446) (-194.0, -23.4234) (-194.3, -26.5098) (-194.4, -27.8592) (-194.6, -31.3678) (-194.9, -37)}
+
+ \expandafter\def\csname ISOA-190\endcsname {(-180.2, -.173538) (-180.4, -.350360) (-180.4, -.350360) (-180.6, -.531538) (-180.8, -.716646) (-180.8, -.716646) (-181., -.907544) (-181.2, -1.10059) (-181.6, -1.50158) (-182., -1.92173) (-182.4, -2.36436) (-182.8, -2.83262) (-183.2, -3.32658) (-183.6, -3.85000) (-184., -4.40824) (-184.4, -5.00444) (-184.8, -5.64880) (-185.2, -6.34124) (-185.6, -7.09416) (-186., -7.92014) (-186.4, -8.83622) (-186.8, -9.85820) (-187.2, -11.0150) (-187.6, -12.3526) (-188., -13.9321) (-188.4, -15.8779) (-188.8, -18.3722) (-189.1, -20.8782) (-189.2, -21.8926) (-189.3, -23.0626) (-189.5, -25.9790) (-189.6, -27.8976) (-189.7, -30.4150) (-189.9, -36)}
+
+ \expandafter\def\csname ISOA-170\endcsname {(-179.8, -.173848) (-179.6, -.351192) (-179.6, -.351192) (-179.4, -.532342) (-179.2, -.717456) (-179.2, -.717456) (-179., -.906718) (-178.8, -1.10030) (-178.4, -1.50187) (-178., -1.92266) (-177.6, -2.36534) (-177.2, -2.83230) (-176.8, -3.32620) (-176.4, -3.85038) (-176., -4.40866) (-175.6, -5.00578) (-175.2, -5.64836) (-174.8, -6.34178) (-174.4, -7.09584) (-174., -7.92200) (-173.6, -8.83588) (-173.2, -9.85742) (-172.8, -11.0159) (-172.4, -12.3537) (-172., -13.9361) (-171.6, -15.8763) (-171.2, -18.3743) (-170.9, -20.8758) (-170.8, -21.8962) (-170.7, -23.0598) (-170.5, -25.9830) (-170.4, -27.9162) (-170.3, -30.4234) (-170.1, -36)}
+
+ \expandafter\def\csname ISOA-165\endcsname {(-179.7, -.171765) (-179.4, -.346788) (-179.4, -.346788) (-179.1, -.526018) (-178.8, -.708914) (-178.8, -.708914) (-178.5, -.896338) (-178.2, -1.08812) (-177.6, -1.48525) (-177., -1.90245) (-176.4, -2.34172) (-175.8, -2.80536) (-175.2, -3.29662) (-174.6, -3.81786) (-174., -4.37340) (-173.4, -4.96798) (-172.8, -5.60724) (-172.2, -6.29848) (-171.6, -7.05110) (-171., -7.87550) (-170.4, -8.78750) (-169.8, -9.80756) (-169.2, -10.9660) (-168.6, -12.3026) (-168., -13.8845) (-167.4, -15.8208) (-166.8, -18.3180) (-166.3, -21.1454) (-166.2, -21.8420) (-166.0, -23.4260) (-165.7, -26.5212) (-165.6, -27.8642) (-165.4, -31.3876) (-165.1, -37)}
+
+ \expandafter\def\csname ISOA-150\endcsname {(-179.4, -.159486) (-178.8, -.322874) (-178.8, -.322874) (-178.2, -.490544) (-177.6, -.662302) (-177.6, -.662302) (-177., -.838510) (-176.4, -1.01934) (-175.2, -1.39584) (-174., -1.79317) (-172.8, -2.21358) (-171.6, -2.65960) (-170.4, -3.13356) (-169.2, -3.63916) (-168., -4.17984) (-166.8, -4.76046) (-165.6, -5.38710) (-164.4, -6.06628) (-163.2, -6.80724) (-162., -7.62194) (-160.8, -8.52480) (-159.6, -9.53734) (-158.4, -10.6874) (-157.2, -12.0186) (-156., -13.5950) (-154.8, -15.5271) (-153.6, -18.0222) (-152.5, -21.1870) (-152.4, -21.5404) (-151.9, -23.5696) (-151.3, -26.8646) (-151.2, -27.5580) (-150.7, -32.2404) (-150.1, -36)}
+
+ \expandafter\def\csname ISOA-135\endcsname {(-179.1, -.138659) (-178.2, -.281748) (-178.2, -.281748) (-177.3, -.429268) (-176.4, -.581620) (-176.4, -.581620) (-175.5, -.738888) (-174.6, -.901254) (-172.8, -1.24183) (-171., -1.60539) (-169.2, -1.99380) (-167.4, -2.40926) (-165.6, -2.85474) (-163.8, -3.33318) (-162., -3.84888) (-160.2, -4.40604) (-158.4, -5.01070) (-156.6, -5.67002) (-154.8, -6.39238) (-153., -7.19018) (-151.2, -8.07790) (-149.4, -9.07664) (-147.6, -10.2152) (-145.8, -11.5351) (-144., -13.1032) (-142.2, -15.0282) (-140.4, -17.5171) (-138.7, -20.7948) (-138.6, -21.0326) (-137.8, -23.2130) (-136.9, -26.5772) (-136.8, -27.0486) (-136.0, -32.1518) (-135.1, -35)}
+
+ \expandafter\def\csname ISOA-120\endcsname {(-178.8, -.107613) (-177.6, -.220442) (-177.6, -.220442) (-176.4, -.338538) (-175.2, -.462238) (-175.2, -.462238) (-174., -.591508) (-172.8, -.726564) (-170.4, -1.01506) (-168., -1.32916) (-165.6, -1.67098) (-163.2, -2.04246) (-160.8, -2.44674) (-158.4, -2.88670) (-156., -3.36634) (-153.6, -3.89006) (-151.2, -4.46354) (-148.8, -5.09416) (-146.4, -5.79054) (-144., -6.56446) (-141.6, -7.43062) (-139.2, -8.41024) (-136.8, -9.53170) (-134.4, -10.8375) (-132., -12.3933) (-129.6, -14.3087) (-127.2, -16.7891) (-124.9, -20.1204) (-124.8, -20.2984) (-123.7, -22.5554) (-122.5, -25.9568) (-122.4, -26.3122) (-121.3, -31.6366) (-120.1, -34)}
+
+ \expandafter\def\csname ISOA-105\endcsname {(-178.5, -.641468e-1) (-177., -.134759) (-177., -.134759) (-175.5, -.211946) (-174., -.295836) (-174., -.295836) (-172.5, -.386572) (-171., -.484270) (-168., -.701264) (-165., -.948262) (-162., -1.22705) (-159., -1.53973) (-156., -1.88883) (-153., -2.27742) (-150., -2.70920) (-147., -3.18866) (-144., -3.72146) (-141., -4.31452) (-138., -4.97672) (-135., -5.71948) (-132., -6.55798) (-129., -7.51262) (-126., -8.61232) (-123., -9.89920) (-120., -11.4389) (-117., -13.3413) (-114., -15.8124) (-111.1, -19.1708) (-111., -19.3143) (-109.6, -21.6152) (-108.1, -25.0380) (-108., -25.3232) (-106.6, -30.7792) (-105.1, -33)}
+
+ \expandafter\def\csname ISOA-90\endcsname {(-178.2, -.429188e-2) (-176.4, -.171542e-1) (-176.4, -.171542e-1) (-174.6, -.386338e-1) (-172.8, -.687596e-1) (-172.8, -.687596e-1) (-171., -.107604) (-169.2, -.155241) (-165.6, -.277272) (-162., -.435886) (-158.4, -.632432) (-154.8, -.868692) (-151.2, -1.14687) (-147.6, -1.46981) (-144., -1.84087) (-140.4, -2.26440) (-136.8, -2.74582) (-133.2, -3.29192) (-129.6, -3.91150) (-126., -4.61568) (-122.4, -5.41954) (-118.8, -6.34350) (-115.2, -7.41628) (-111.6, -8.68002) (-108., -10.2005) (-104.4, -12.0869) (-100.8, -14.5455) (-97.30, -17.9192) (-97.20, -18.0386) (-95.50, -20.3684) (-93.70, -23.8048) (-93.60, -24.0418) (-91.90, -29.5882) (-90.1, -32)}
+
+ \expandafter\def\csname ISOA-75\endcsname {(-177.9, .791144e-1) (-175.8, .145906) (-175.8, .145906) (-173.7, .200654) (-171.6, .243410) (-171.6, .243410) (-169.5, .274266) (-167.4, .293518) (-163.2, .296792) (-159., .253370) (-154.8, .162716) (-150.6, .238534e-1) (-146.4, -.164858) (-142.2, -.405554) (-138., -.701292) (-133.8, -1.05587) (-129.6, -1.47444) (-125.4, -1.96332) (-121.2, -2.53104) (-117., -3.18874) (-112.8, -3.95104) (-108.6, -4.83838) (-104.4, -5.87906) (-100.2, -7.11524) (-96., -8.61250) (-91.80, -10.4801) (-87.60, -12.9241) (-83.50, -16.3050) (-83.40, -16.4073) (-81.40, -18.7558) (-79.30, -22.2000) (-79.20, -22.4044) (-77.20, -28.0168) (-75.1, -31)}
+
+ \expandafter\def\csname ISOA-60\endcsname {(-177.6, .200060) (-175.2, .380746) (-175.2, .380746) (-172.8, .542668) (-170.4, .686790) (-170.4, .686790) (-168., .813548) (-165.6, .923420) (-160.8, 1.09418) (-156., 1.20164) (-151.2, 1.24750) (-146.4, 1.23221) (-141.6, 1.15568) (-136.8, 1.01679) (-132., .813470) (-127.2, .542668) (-122.4, .200060) (-117.6, -.220442) (-112.8, -.726564) (-108., -1.32916) (-103.2, -2.04254) (-98.40, -2.88678) (-93.60, -3.88992) (-88.80, -5.09416) (-84., -6.56426) (-79.20, -8.41020) (-74.40, -10.8376) (-69.70, -14.2193) (-69.60, -14.3082) (-67.30, -16.6699) (-64.90, -20.1196) (-64.80, -20.2988) (-62.50, -25.9570) (-60.1, -30)}
+
+ \expandafter\def\csname ISOA-45\endcsname {(-177.3, .390550) (-174.6, .745898) (-174.6, .745898) (-171.9, 1.06863) (-169.2, 1.36127) (-169.2, 1.36127) (-166.5, 1.62558) (-163.8, 1.86339) (-158.4, 2.26482) (-153., 2.57438) (-147.6, 2.79852) (-142.2, 2.94152) (-136.8, 3.00592) (-131.4, 2.99312) (-126., 2.90262) (-120.6, 2.73300) (-115.2, 2.48094) (-109.8, 2.14154) (-104.4, 1.70766) (-99., 1.16935) (-93.60, .512752) (-88.20, -.281694) (-82.80, -1.24187) (-77.40, -2.40934) (-72., -3.84880) (-66.60, -5.66978) (-61.20, -8.07798) (-55.90, -11.4561) (-55.80, -11.5354) (-53.20, -13.9056) (-50.50, -17.3582) (-50.40, -17.5171) (-47.80, -23.2126) (-45.1, -29)}
+
+ \expandafter\def\csname ISOA-30\endcsname {(-177., .742788) (-174., 1.40504) (-174., 1.40504) (-171., 1.99803) (-168., 2.53088) (-168., 2.53088) (-165., 3.01034) (-162., 3.44206) (-156., 4.17978) (-150., 4.77120) (-144., 5.23524) (-138., 5.58470) (-132., 5.82870) (-126., 5.97286) (-120., 6.02058) (-114., 5.97286) (-108., 5.82866) (-102., 5.58474) (-96., 5.23514) (-90., 4.77119) (-84., 4.17978) (-78., 3.44200) (-72., 2.53088) (-66., 1.40504) (-60., 0.) (-54., -1.79312) (-48., -4.17982) (-42.1, -7.55086) (-42., -7.62180) (-39.1, -9.99770) (-36.1, -13.4515) (-36., -13.5949) (-33.1, -19.3189) (-30.1, -28)}
+
+ \expandafter\def\csname ISOA-20\endcsname {(-176.8, 1.22769) (-173.6, 2.27912) (-173.6, 2.27912) (-170.4, 3.19248) (-167.2, 3.99428) (-167.2, 3.99428) (-164., 4.70334) (-160.8, 5.33370) (-154.4, 6.39868) (-148., 7.24968) (-141.6, 7.92498) (-135.2, 8.45030) (-128.8, 8.84274) (-122.4, 9.11400) (-116., 9.27130) (-109.6, 9.31872) (-103.2, 9.25766) (-96.80, 9.08638) (-90.40, 8.80052) (-84., 8.39220) (-77.60, 7.84916) (-71.20, 7.15346) (-64.80, 6.27826) (-58.40, 5.18288) (-52., 3.80320) (-45.60, 2.03034) (-39.20, -.340598) (-32.90, -3.70510) (-32.80, -3.77164) (-29.70, -6.14956) (-26.50, -9.60380) (-26.40, -9.73772) (-23.30, -15.4780) (-20.1, -27)}
+
+ \expandafter\def\csname ISOA-15\endcsname {(-176.7, 1.67836) (-173.4, 3.06000) (-173.4, 3.06000) (-170.1, 4.22658) (-166.8, 5.22900) (-166.8, 5.22900) (-163.5, 6.10180) (-160.2, 6.86840) (-153.6, 8.14824) (-147., 9.16150) (-140.4, 9.96460) (-133.8, 10.5932) (-127.2, 11.0711) (-120.6, 11.4140) (-114., 11.6325) (-107.4, 11.7324) (-100.8, 11.7167) (-94.20, 11.5849) (-87.60, 11.3332) (-81., 10.9547) (-74.40, 10.4375) (-67.80, 9.76404) (-61.20, 8.90788) (-54.60, 7.82860) (-48., 6.46222) (-41.40, 4.70016) (-34.80, 2.33732) (-28.30, -1.02352) (-28.20, -1.08786) (-25.00, -3.46652) (-21.70, -6.92058) (-21.60, -7.05070) (-18.40, -12.7979) (-15.1, -26)}
+
+ \expandafter\def\csname ISOA-10\endcsname {(-176.6, 2.50696) (-173.2, 4.42546) (-173.2, 4.42546) (-169.8, 5.97046) (-166.4, 7.25556) (-166.4, 7.25556) (-163., 8.34748) (-159.6, 9.29024) (-152.8, 10.8360) (-146., 12.0420) (-139.2, 12.9920) (-132.4, 13.7368) (-125.6, 14.3091) (-118.8, 14.7304) (-112., 15.0147) (-105.2, 15.1707) (-98.40, 15.2031) (-91.60, 15.1129) (-84.80, 14.8973) (-78., 14.5499) (-71.20, 14.0597) (-64.40, 13.4094) (-57.60, 12.5731) (-50.80, 11.5104) (-44., 10.1578) (-37.20, 8.40678) (-30.40, 6.05244) (-23.70, 2.69572) (-23.60, 2.63314) (-20.30, .254046) (-16.90, -3.19986) (-16.80, -3.32614) (-13.50, -9.07978) (-10.1, -25)}
+
+ \expandafter\def\csname ISOA-6\endcsname {(-176.5, 3.96780) (-173.0, 6.65700) (-173.0, 6.65700) (-169.6, 8.63074) (-166.1, 10.2545) (-166.1, 10.2545) (-162.6, 11.5944) (-159.1, 12.7264) (-152.2, 14.5214) (-145.2, 15.9191) (-138.2, 17.0094) (-131.3, 17.8505) (-124.3, 18.5096) (-117.4, 18.9948) (-110.4, 19.3380) (-103.4, 19.5426) (-96.48, 19.6150) (-89.52, 19.5595) (-82.56, 19.3740) (-75.60, 19.0526) (-68.64, 18.5848) (-61.68, 17.9538) (-54.72, 17.1337) (-47.76, 16.0848) (-40.80, 14.7436) (-33.84, 13.0016) (-26.88, 10.6543) (-20.02, 7.30084) (-19.92, 7.23998) (-16.54, 4.86050) (-13.06, 1.40689) (-12.96, 1.28354) (-9.580, -4.47532) (-6.1, -24)}
+
+ \expandafter\def\csname ISOA-3\endcsname {(-176.5, 6.70160) (-172.9, 10.5032) (-172.9, 10.5032) (-169.4, 13.0509) (-165.8, 15.0414) (-165.8, 15.0414) (-162.3, 16.5911) (-158.8, 17.8780) (-151.7, 19.9361) (-144.6, 21.4878) (-137.5, 22.6888) (-130.4, 23.6248) (-123.4, 24.3392) (-116.3, 24.8850) (-109.2, 25.2720) (-102.1, 25.5138) (-95.04, 25.6184) (-87.96, 25.5904) (-80.88, 25.4282) (-73.80, 25.1268) (-66.72, 24.6762) (-59.64, 24.0600) (-52.56, 23.2526) (-45.48, 22.2142) (-38.40, 20.8818) (-31.32, 19.1468) (-24.24, 16.8047) (-17.26, 13.4541) (-17.16, 13.3942) (-13.72, 11.0146) (-10.18, 7.56132) (-10.08, 7.44006) (-6.640, 1.67786) (-3.1, -23)}
+
+ \expandafter\def\csname ISOA-1\endcsname {(-176.4, 13.2463) (-172.8, 18.2469) (-172.8, 18.2469) (-169.3, 21.3038) (-165.7, 23.5908) (-165.7, 23.5908) (-162.1, 25.3716) (-158.5, 26.8196) (-151.4, 29.0364) (-144.2, 30.7118) (-137.0, 31.9982) (-129.9, 32.9852) (-122.7, 33.7594) (-115.6, 34.3364) (-108.4, 34.7560) (-101.2, 35.0244) (-94.08, 35.1502) (-86.92, 35.1408) (-79.76, 34.9946) (-72.60, 34.7070) (-65.44, 34.2682) (-58.28, 33.6620) (-51.12, 32.8632) (-43.96, 31.8320) (-36.80, 30.5054) (-29.64, 28.7750) (-22.48, 26.4366) (-15.42, 23.0878) (-15.32, 23.0286) (-11.84, 20.6490) (-8.260, 17.1959) (-8.160, 17.0760) (-4.680, 11.3113) (-1.1, -20)}

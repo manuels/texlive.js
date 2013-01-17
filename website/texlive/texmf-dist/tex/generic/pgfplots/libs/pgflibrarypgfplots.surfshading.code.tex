@@ -1,0 +1,392 @@
+%--------------------------------------------
+% $Header: /cvsroot/pgfplots/pgfplots/generic/pgfplots/libs/pgflibrarysurfshading.code.tex,v 1.18 2009/06/26 17:56:58 ludewich Exp $
+%
+% Package pgfplots
+%
+% Provides a user-friendly interface to create function plots (normal
+% plots, semi-logplots and double-logplots).
+% 
+% It is based on Till Tantau's PGF package.
+%
+% Copyright 2007/2008 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%--------------------------------------------
+
+%--------------------------------------------------
+% \pgfqkeys{/pgfplots/surf shading}{
+% 	cols=3,
+% %	test colormap 1,
+% }
+% \pgfplotslibrarysurfstreamstart
+% \pgfplotslibrarysurfstreamcoord{\pgfqpoint{0pt}{10pt}}{0}
+% \pgfplotslibrarysurfstreamcoord{\pgfqpoint{100pt}{10pt}}{100}
+% \pgfplotslibrarysurfstreamcoord{\pgfqpoint{180pt}{10pt}}{30}
+% %
+% \pgfplotslibrarysurfstreamcoord{\pgfqpoint{0pt}{100pt}}{300}
+% \pgfplotslibrarysurfstreamcoord{\pgfqpoint{110pt}{90pt}}{1000}
+% \pgfplotslibrarysurfstreamcoord{\pgfqpoint{190pt}{110pt}}{600}
+% %
+% \pgfplotslibrarysurfstreamcoord{\pgfqpoint{0pt}{200pt}}{0}
+% \pgfplotslibrarysurfstreamcoord{\pgfqpoint{110pt}{200pt}}{100}
+% \pgfplotslibrarysurfstreamcoord{\pgfqpoint{190pt}{200pt}}{60}
+% \pgfplotslibrarysurfstreamend
+% \fbox{%
+% 	\pgfplotslibrarysurfdraw
+% }%
+%-------------------------------------------------- 
+
+
+\pgfkeys{%
+	% the extends need to provided as \pgfpoint... The boundary box
+	% won't be computed manually!
+	/pgfplots/surf shading/south west corner/.initial={\pgfpointorigin},%
+	/pgfplots/surf shading/north east corner/.initial={\pgfqpoint{6cm}{6cm}},%
+	/pgfplots/surf shading/anchor/.initial=\pgfpointorigin,%
+	/pgfplots/surf shading/shading type/.initial=5,% triangles in form of lattice
+	/pgfplots/surf shading/precision/.is choice,
+	/pgfplots/surf shading/precision/pdf/.code={%
+		% Lossless coordinate output.
+		\def\pgfplotslibrarysurf@bitspercoordinate{32}%
+		\def\pgfplotslibrarysurf@bytespercoordinate{4}%
+		\def\pgfplotslibrarysurf@filter@encode{}% raw binary.
+		\def\pgfplotslibrarysurf@filter@decode{}%
+	},%
+	/pgfplots/surf shading/precision/ps/.code={%
+		% quantized coordinate output (introduces quantization error).
+		\def\pgfplotslibrarysurf@bitspercoordinate{24}%
+		\def\pgfplotslibrarysurf@bytespercoordinate{3}%
+		% doesn't improve behavior of pdf2ps:
+		%\def\pgfplotslibrarysurf@filter@encode{ASCIIHexEncode}%
+		%\def\pgfplotslibrarysurf@filter@decode{ASCIIHexDecode}%
+		\def\pgfplotslibrarysurf@filter@encode{}% raw binary.
+		\def\pgfplotslibrarysurf@filter@decode{}%
+	},%
+	/pgfplots/surf shading/precision/postscript/.style={%
+		/pgfplots/surf shading/precision/ps},%
+	/pgfplots/surf shading/precision/ps,% 
+	/pgfplots/surf shading/cols/.initial=,%
+	/pgfplots/surf shading/colorspace/.initial=rgb,% rgb or cmyk
+	/pgfplots/surf shading/colormap/.initial={%
+		<<
+			/FunctionType 2 
+			/Domain [0 1] 
+			/C0 [0 0 1] /C1 [1 0 0] /N 1 
+		>>
+	},%
+	/pgfplots/surf shading/test colormap 1/.style={%
+		/pgfplots/surf shading/colormap={
+			<< 
+				/FunctionType 3 
+				/Domain [0 1] 
+				/Functions [ 
+					<< 
+						/FunctionType 2 
+						/Domain [0 1] 
+						/C0 [0 0 1] /C1 [1 1 0] /N 1 
+					>>  
+					<< 
+						/FunctionType 2 
+						/Domain [0 1] 
+						/C0 [1 1 0] /C1 [1 0.5 0] /N 1 
+					>>  
+					<< 
+						/FunctionType 2 
+						/Domain [0 1] 
+						/C0 [1 0.5 0] /C1 [1 0 0] /N 1 
+					>>
+				]
+				/Bounds [ 0.3 0.6 ] 
+				/Encode [0 1  0 1 0 1] 
+				%/Range [0 1 0 1 0 1] INCOMPATIBLE WITH ACROBAT 6.0
+			>> 
+		}%
+	},%
+}%
+
+\def\pgfplotslibrarysurf@corner@sw{\pgfkeysvalueof{/pgfplots/surf shading/south west corner}}
+\def\pgfplotslibrarysurf@corner@ne{\pgfkeysvalueof{/pgfplots/surf shading/north east corner}}%
+
+
+\def\pgfplotslibrarysurf@decode{%
+	-16383.999992 16384 % see the docs of \pgfplotsbinaryencodedimenmaplinearly
+	-16383.999992 16384 %
+	0 \pgfplotscolormappdfmax % map [0,2^BitsPerComponent-1] linearly to [0 1] for parametric color data
+}%
+\def\pgfplotslibrarysurf@count{0}%
+\newcount\c@pgfplotslibrarysurf@no
+
+% driver specific:
+\def\pgfplotslibrarysurf@initstream{}
+\def\pgfplotslibrarysurf@advancestreamlen#1{}%
+
+\def\pgfplotslibrarysurfstreamstart{%
+	\pgfplotslibrarysurf@translate@colorspace
+	\let\pgfplotslibrarysurf@colorspace=\pgfplotsretval
+	\pgfkeysgetvalue{/pgfplots/surf shading/shading type}\pgfplotslibrarysurf@type
+	\pgfplotsapplistXglobalnewempty\pgfplotslibrarysurf@binarystream@accum
+	\pgfplotslibrarysurf@initstream
+	\ifx\pgfplotslibrarysurf@filter@encode\pgfutil@empty
+	\else
+		\pgfkeysalso{/pgfplots/bin/\pgfplotslibrarysurf@filter@encode}%
+	\fi
+	\ifcase\pgfplotslibrarysurf@type\relax
+		% 0
+		\pgfplotslibrarysurf@initstream@wrongtype
+	\or% 1
+		\pgfplotslibrarysurf@initstream@wrongtype
+	\or% 2
+		\pgfplotslibrarysurf@initstream@wrongtype
+	\or% 3
+	\or% 4
+		% ok, triangle meshes.
+		\def\pgfplotslibrarysurf@edgeflag{\pgfplotscharno{0}}%
+	\or% 5 triangles in lattice form. disable edge flag:
+		\let\pgfplotslibrarysurf@edgeflag=\pgfutil@empty
+	\or% 6 coons patches:
+		\global\let\pgfplotslibrarysurf@cubicpatch@cdata=\pgfutil@empty
+		\global\c@pgfplotslibrarysurf@no=0
+		\def\pgfplotslibrarysurf@cubicpatch@numverts{12}%
+		\let\pgfplotslibrarysurfstreamcoord=\pgfplotslibrarysurfstreamcoord@cubicpatch
+		\def\pgfplotslibrarysurf@edgeflag{\pgfplotscharno{0}}%
+	\or% 7 full tensor product cubic bezier patches:
+		\global\let\pgfplotslibrarysurf@cubicpatch@cdata=\pgfutil@empty
+		\global\c@pgfplotslibrarysurf@no=0
+		\def\pgfplotslibrarysurf@cubicpatch@numverts{16}%
+		\let\pgfplotslibrarysurfstreamcoord=\pgfplotslibrarysurfstreamcoord@cubicpatch
+		\def\pgfplotslibrarysurf@edgeflag{\pgfplotscharno{0}}%
+	\else
+		\pgfplotslibrarysurf@initstream@wrongtype
+	\fi
+}%
+\def\pgfplotslibrarysurf@initstream@wrongtype{%
+	\pgfplots@error{CRITICAL: shader=interp: got unsupported pdf shading type '\pgfplotslibrarysurf@type'. This may correct your pdf!}%
+}%
+\def\pgfplotslibrarysurfstreamend{%
+	\pgfplotsapplistXgloballet\pgfplotslibrarysurf@binarystream=\pgfplotslibrarysurf@binarystream@accum
+	\pgfplotsapplistXglobalnewempty\pgfplotslibrarysurf@binarystream@accum
+}%
+
+% #1: a pgf point.
+% #2: a color coordinate in the range [0,1000]
+\def\pgfplotslibrarysurfstreamcoord#1#2{%
+	\pgfplotsbinarysetbytes\pgfplotslibrarysurf@bytespercoordinate%
+	%\pgf@process{#1}% this here causes `{retaining \pgf@x}' messages and pollutes the save stack! Avoid it. See \tracingrestores=2
+	#1%
+	% The idea is to map 
+	% the low-level point coordinates LINEARLY into [0,2^{8*<bytes>}].
+	%
+	% This is what the pdf standard expects for surface shadings.
+	%
+	% To do that, we simply map
+	% [-16384,16384] linearly into [0,2^{32}]
+	% and write the resulting integer in big endian binary format to
+	% the pdf low level stream.
+	%
+	% The decode procedure tells the pdf viewer how to invert that
+	% stuff.
+	%
+	\pgf@xa=\pgf@x
+	\pgf@sys@bp@correct\pgf@xa%
+	\pgfplotsbinaryencodedimenmaplinearly\pgf@xa
+%\message{POINT \the\c@pgfplots@scanlineindex: ENCODING(x=\the\pgf@x)=\pgfplotsbinaryresult.}\advance\c@pgfplots@scanlineindex by1
+	\t@pgfplots@toka=\expandafter{\pgfplotsbinaryresult}%
+	\pgf@ya=\pgf@y
+	\pgf@sys@bp@correct\pgf@ya%
+	\pgfplotsbinaryencodedimenmaplinearly\pgf@ya
+%\message{ENCODING(y=\the\pgf@y)=\pgfplotsbinaryresult.}%
+	\t@pgfplots@tokb=\expandafter{\pgfplotsbinaryresult}%
+	{%
+		% read fixed point input (in the range [0,1000]).
+		\pgf@xa=#2pt
+		% convert to integer (= *65536):
+		\c@pgf@counta=\pgf@xa
+		% provide map [0,1000] -> [0,2^16-1]
+		\divide\c@pgf@counta by1000
+		% now, we have \c@pgf@counta in [0,2^16]. Simply strip it into
+		% the required range, that's ok.
+		\ifnum\c@pgf@counta<0
+			\c@pgf@counta=0
+		\else
+			\ifnum\c@pgf@counta>65535
+				\c@pgf@counta=65535
+			\fi
+		\fi
+		% Now, we have CDATA in the range [0,65535] 
+		\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+%\message{ENCODING(C=\pgfplots@glob@TMPa\space for \the\pgf@xa)=}%
+	}%
+	\pgfplotsbinarysetbytes2%
+	\pgfplotsbinaryencodeunsigned\pgfplots@glob@TMPa
+%\message{\pgfplotsbinaryresult.}%
+	\t@pgfplots@tokc=\expandafter{\pgfplotsbinaryresult}%
+	\edef\pgfplots@loc@TMPa{\pgfplotslibrarysurf@edgeflag\the\t@pgfplots@toka\the\t@pgfplots@tokb\the\t@pgfplots@tokc}%
+	\expandafter\pgfplotsapplistXglobalpushback\pgfplots@loc@TMPa\to\pgfplotslibrarysurf@binarystream@accum
+	\pgfplotslibrarysurf@advancestreamlen{10}%
+}
+
+\def\pgfplotslibrarysurf@translate@colorspace{%
+	\pgfkeysgetvalue{/pgfplots/surf shading/colorspace}\pgfplots@loc@TMPd
+	\edef\pgfplots@loc@TMPd{\pgfplots@loc@TMPd}%
+	\def\pgfplots@loc@TMPa{rgb}%
+	\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPd
+		\def\pgfplotsretval{RGB}%
+	\else
+		\def\pgfplots@loc@TMPa{cmyk}%
+		\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPd
+			\def\pgfplotsretval{CMYK}%
+		\else
+			\def\pgfplots@loc@TMPa{cmy}%
+			\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPd
+				\def\pgfplotsretval{CMY}%
+			\else
+				\pgfplots@error{Sorry, the 'surfshading' lib failed to recognise the '/pgfplots/surf shading=\pgfplots@loc@TMPd\space choice... maybe you misspelled it?}%
+				\def\pgfplotsretval{RGB}%
+			\fi
+		\fi
+	\fi
+}%
+
+% special routine for coons type patches and cubic tensor product type
+% patches. It has FIRST all vertices,
+% THEN the cdata. Furthermore, it only has 4 CDATA points, but a total
+% of 12 vertices.
+%
+% #1: a pgf point.
+% #2: a color coordinate in the range [0,1000]
+\def\pgfplotslibrarysurfstreamcoord@cubicpatch#1#2{%
+	\pgfplotsbinarysetbytes\pgfplotslibrarysurf@bytespercoordinate%
+	%\pgf@process{#1}% this here causes `{retaining \pgf@x}' messages and pollutes the save stack! Avoid it. See \tracingrestores=2
+	#1%
+	% The idea is to map 
+	% the low-level point coordinates LINEARLY into [0,2^{8*<bytes>}].
+	%
+	% This is what the pdf standard expects for surface shadings.
+	%
+	% To do that, we simply map
+	% [-16384,16384] linearly into [0,2^{32}]
+	% and write the resulting integer in big endian binary format to
+	% the pdf low level stream.
+	%
+	% The decode procedure tells the pdf viewer how to invert that
+	% stuff.
+	%
+	\pgf@xa=\pgf@x
+	\pgf@sys@bp@correct\pgf@xa%
+	\pgfplotsbinaryencodedimenmaplinearly\pgf@xa
+%\message{POINT \the\c@pgfplots@scanlineindex: ENCODING(x=\the\pgf@x)=\pgfplotsbinaryresult.}\advance\c@pgfplots@scanlineindex by1
+	\t@pgfplots@toka=\expandafter{\pgfplotsbinaryresult}%
+	\pgf@ya=\pgf@y
+	\pgf@sys@bp@correct\pgf@ya%
+	\pgfplotsbinaryencodedimenmaplinearly\pgf@ya
+%\message{ENCODING(y=\the\pgf@y)=\pgfplotsbinaryresult.}%
+	\t@pgfplots@tokb=\expandafter{\pgfplotsbinaryresult}%
+	\def\pgfplotslibrarysurf@cubicpatch@hascdata{0}%
+	\ifnum\c@pgfplotslibrarysurf@no=0
+		\def\pgfplotslibrarysurf@cubicpatch@hascdata{1}%
+		% prepend edge flag. it is a new patch.
+		\t@pgfplots@toka=\expandafter{\expandafter\pgfplotslibrarysurf@edgeflag\the\t@pgfplots@toka}%
+	\else
+		\ifnum\c@pgfplotslibrarysurf@no=3
+			\def\pgfplotslibrarysurf@cubicpatch@hascdata{1}%
+		\else
+			\ifnum\c@pgfplotslibrarysurf@no=6
+				\def\pgfplotslibrarysurf@cubicpatch@hascdata{1}%
+			\else
+				\ifnum\c@pgfplotslibrarysurf@no=9
+					\def\pgfplotslibrarysurf@cubicpatch@hascdata{1}%
+				\fi
+			\fi
+		\fi
+	\fi
+	\if1\pgfplotslibrarysurf@cubicpatch@hascdata
+		{%
+			% read fixed point input (in the range [0,1000]).
+			\pgf@xa=#2pt
+			% convert to integer (= *65536):
+			\c@pgf@counta=\pgf@xa
+			% provide map [0,1000] -> [0,2^16-1]
+			\divide\c@pgf@counta by1000
+			% now, we have \c@pgf@counta in [0,2^16]. Simply strip it into
+			% the required range, that's ok.
+			\ifnum\c@pgf@counta<0
+				\c@pgf@counta=0
+			\else
+				\ifnum\c@pgf@counta>65535
+					\c@pgf@counta=65535
+				\fi
+			\fi
+			% Now, we have CDATA in the range [0,65535] 
+			\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+	%\message{ENCODING(C=\pgfplots@glob@TMPa\space for \the\pgf@xa)=}%
+		}%
+		\pgfplotsbinarysetbytes2%
+		\pgfplotsbinaryencodeunsigned\pgfplots@glob@TMPa
+	%\message{\pgfplotsbinaryresult.}%
+		\t@pgfplots@tokc=\expandafter{\pgfplotslibrarysurf@cubicpatch@cdata}%
+		\xdef\pgfplotslibrarysurf@cubicpatch@cdata{%
+			\the\t@pgfplots@tokc
+			\pgfplotsbinaryresult
+		}%
+	\fi
+	\global\advance\c@pgfplotslibrarysurf@no by1
+	%
+	\ifnum\pgfplotslibrarysurf@cubicpatch@numverts=\c@pgfplotslibrarysurf@no %finalize patch.
+		\t@pgfplots@tokc=\expandafter{\pgfplotslibrarysurf@cubicpatch@cdata}%
+		\global\let\pgfplotslibrarysurf@cubicpatch@cdata=\pgfutil@empty
+		\global\c@pgfplotslibrarysurf@no=0
+	\else
+		\t@pgfplots@tokc={}%
+	\fi
+	% edge flag is already in \t@pgfplots@toka (if this is the first
+	% vertex)
+	\edef\pgfplots@loc@TMPa{\the\t@pgfplots@toka\the\t@pgfplots@tokb\the\t@pgfplots@tokc}%
+	\expandafter\pgfplotsapplistXglobalpushback\pgfplots@loc@TMPa\to\pgfplotslibrarysurf@binarystream@accum
+	%\pgfplotslibrarysurf@advancestreamlen{10}%
+}
+
+\def\pgfplotslibrarysurfactivateshadefill{%
+	\pgfplotssys@do@surfshading@fillpaths\pgfplots@loc@TMPa%
+	\expandafter\pgfutil@addpdfresource@patterns\expandafter{\pgfplots@loc@TMPa}%%
+}
+
+%--------------------------------------------------
+% \def\pgfplotslibrarysurfdraw{%
+% %	\pgftext[at=\pgfqpoint{0pt}{0pt}]%
+% 		{\pgfplotssys@do@surfshading}%
+% }%
+%-------------------------------------------------- 
+
+\def\pgfplotslibrarysurfdrawinpicture{%
+	\begingroup
+	\pgftransformshift{\pgfplotslibrarysurf@corner@sw}%
+	\pgftext[at=\pgfqpoint{0pt}{0pt},left,bottom] {%
+		\pgfplotslibrarysurfdraw
+% this does NOT work because I can't undo the box' shift:
+%\pgfplotssys@do@surfshading
+	}%
+	\endgroup
+}
+
+\pgfplotsiffileexists{pgflibrarypgfplots.surfshading.\pgfsysdriver}{%
+	\input pgflibrarypgfplots.surfshading.\pgfsysdriver\relax
+	\def\pgflibrarysurfshadingifactive#1#2{#1}%
+}{%
+	\def\pgfplotslibrarysurfdraw{%
+		\pgfplots@error{Sorry, surfshading (shader=interp) is NOT available for the selected driver `\pgfsysdriver'.}%
+	}%
+	\def\pgflibrarysurfshadingifactive#1#2{#2}%
+}
+\endinput

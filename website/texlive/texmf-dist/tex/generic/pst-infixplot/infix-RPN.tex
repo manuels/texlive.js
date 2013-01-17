@@ -1,0 +1,518 @@
+%%
+%% This is file `infix-RPN.tex',
+%%
+%% IMPORTANT NOTICE:
+%%
+%% Package `infix-RPN.tex'
+%%
+%% Main code:
+%%   Jean-Côme Charpentier <jean-come.charpentier@wanadoo.fr>
+%%
+%% Contributions by
+%%   Christophe Jorssen <christophe.jorssen@libre.fr.invalid>
+%%   `libre' is the french word for `free' :-)
+%%
+%% This program can be redistributed and/or modified under the terms
+%% of the LaTeX Project Public License Distributed from CTAN archives
+%% in directory CTAN:/macros/latex/base/lppl.txt.
+%%
+%% DESCRIPTION:
+%%   `infix-RPN' is a package to convert infix expressions to
+%%    Reverse Polish Notation
+%%
+%%
+\def\RCS$#1: #2 ${\expandafter\def\csname RCS#1\endcsname{#2}}
+\RCS$Revision: 1.7 $
+\RCS$Date: 2004-07-06 23:41:52+02 $
+
+\def\fileversion{0.11}
+\csname infixRPNLoaded\endcsname
+\let\infixRPNLoaded\endinput
+\message{`infix-RPN' v\fileversion\space (Rev \RCSRevision, \RCSDate), J.-C.Charpentier/C.Jorssen}
+
+\edef\opAtCode{\the\catcode`\@}
+\edef\opHatCode{\the\catcode`\^}
+\edef\opUnderscoreCode{\the\catcode`\_}
+\catcode`\@=11\relax
+\catcode`\^=12\relax
+\catcode`\_=11\relax
+
+\def\s@pow{exp}
+\def\s@lpar{(}
+\def\s@rpar{)}
+\def\s@comma{,}
+
+\def\DeclareNewPSOperator{%
+  \bgroup
+    \catcode`\_=11\relax
+    \DeclareNewPSOperator@i
+}
+
+\def\DeclareNewPSOperator@i#1{%
+    \expandafter\ifx\csname PS@operator@list\endcsname\relax
+      \gdef\PS@operator@list{#1}%
+    \else
+      \xdef\PS@operator@list{#1,\PS@operator@list}%
+    \fi
+    \expandafter\gdef\csname s@#1\endcsname{#1}%
+  \egroup
+}
+
+\DeclareNewPSOperator{add}
+\DeclareNewPSOperator{sub}
+\DeclareNewPSOperator{mul}
+\DeclareNewPSOperator{div}
+\DeclareNewPSOperator{exp}
+\DeclareNewPSOperator{abs}
+\DeclareNewPSOperator{sin}
+\DeclareNewPSOperator{cos}
+\DeclareNewPSOperator{atan}
+\DeclareNewPSOperator{neg}
+\DeclareNewPSOperator{ceiling}
+\DeclareNewPSOperator{floor}
+\DeclareNewPSOperator{truncate}
+\DeclareNewPSOperator{sqrt}
+\DeclareNewPSOperator{ln}
+\DeclareNewPSOperator{log}
+
+
+\newcount\@parenthesis
+\newcount\token@cpt
+\newif\if@begin@token
+\newif\if@in@number
+\newif\if@in@decimal
+\newif\if@in@name
+\newif\if@sign
+\def\@tokencreate#1{%
+  \expandafter\xdef\csname op@token\the\token@cpt\endcsname{#1}%
+  \global\advance\token@cpt\@ne
+  \expandafter\global
+  \expandafter\let\csname op@token\the\token@cpt\endcsname\relax
+  \global\advance\token@cpt\m@ne
+}
+\def\@tokenappend#1{%
+  \expandafter\xdef\csname op@token\the\token@cpt\endcsname
+    {\csname op@token\the\token@cpt\endcsname#1}%
+}
+\def\@tokensingle#1{%
+  \edef\@arg{#1}%
+  \if@in@name
+    \global\advance\token@cpt\@ne
+    \@in@namefalse
+  \fi
+  \if@in@number
+    \global\advance\token@cpt\@ne
+    \@in@numberfalse
+    \@in@decimalfalse
+  \fi
+  \ifx\@arg\s@add
+    \if@sign
+      % ignore + sign
+      \global\advance\token@cpt\m@ne
+    \else
+      \@tokencreate{#1}%
+    \fi
+  \else\ifx\@arg\s@sub
+    \if@sign
+      \@tokencreate{\s@neg}%
+    \else
+      \@tokencreate{#1}%
+    \fi
+  \else
+    \@tokencreate{#1}%
+  \fi\fi
+  \global\advance\token@cpt\@ne
+}
+\def\@tokenuse#1{%
+  \expandafter\ifx\csname op@token#1\endcsname\s@comma%
+  \else
+    \xdef\RPN{\RPN\space\csname op@token#1\endcsname}%
+  \fi
+}
+
+\let\endscanline\relax
+\def\scan@line{%
+  \begingroup
+  \catcode`\ =12
+  \@parenthesis=\z@
+  \@in@numberfalse
+  \@in@decimalfalse
+  \@in@namefalse
+  \global\token@cpt=\@ne
+  \global\@signtrue
+  \scan@@line
+}
+\def\scan@@line#1{\scan@@@line#1\endscanline\endgroup}
+\def\scan@@@line#1#2\endscanline{%
+  \op@testchar{#1}%
+  \ifop@isdigit
+    \global\@signfalse
+    \if@in@number
+      \@tokenappend{#1}%
+    \else \if@in@name
+      \@in@namefalse
+      \@in@numbertrue
+      \@tokenappend{#1}%
+    \else
+      \@in@numbertrue
+      \@tokencreate{#1}%
+    \fi\fi
+  \fi
+  \ifop@isplus
+    \@tokensingle{\s@add}%
+    \global\@signtrue
+  \fi
+  \ifop@isminus
+    \@tokensingle{\s@sub}%
+    \global\@signtrue
+  \fi
+  \ifop@ismultiply
+    \@tokensingle{\s@mul}%
+    \global\@signtrue
+  \fi
+  \ifop@isdivide
+    \@tokensingle{\s@div}%
+    \global\@signtrue
+  \fi
+  \ifop@ispower
+    \@tokensingle{\s@pow}%
+    \global\@signtrue
+  \fi
+  \ifop@isdecimalsep
+    \global\@signfalse
+    \if@in@decimal
+      \errmessage{Syntax error: number with multiple separators!}%
+    \else \if@in@number
+      \@in@decimaltrue
+      \@tokenappend{.}%
+    \else
+      \@tokencreate{.}%
+      \@in@numbertrue
+      \@in@decimaltrue
+    \fi\fi
+  \fi
+  \ifop@iscomma
+    \@tokensingle{,}%
+    \global\@signtrue
+  \fi
+  \ifop@islparenthesis
+    \@tokensingle{(}%
+    \global\@signtrue
+  \fi
+  \ifop@isrparenthesis
+    \global\@signfalse
+    \@tokensingle{)}%
+  \fi
+  \ifop@isspace
+    \if@in@number
+      \@in@numberfalse
+      \@in@decimalfalse
+      \global\advance\token@cpt\@ne
+    \else \if@in@name
+      \@in@namefalse
+      \global\advance\token@cpt\@ne
+    \fi\fi
+  \fi
+  \ifop@isother
+    \global\@signfalse
+    \if@in@name
+      \@tokenappend{#1}%
+    \else \if@in@number
+      \@in@numberfalse
+      \@in@decimalfalse
+      \@in@nametrue
+      \@tokenappend{#1}%
+    \else
+      \@in@nametrue
+      \@tokencreate{#1}%
+    \fi\fi
+  \fi
+  \def\arg{#2}%
+  \ifx\empty\arg
+    \let\next\relax
+  \else
+    \let\next\scan@@@line
+  \fi
+  \expandafter\next\arg\endscanline
+}
+\count255=`\0 \edef\op@numbegin{\the\count255}
+\count255=`\9 \edef\op@numend{\the\count255}
+\count255=`\+ \edef\op@plus{\the\count255}
+\count255=`\- \edef\op@minus{\the\count255}
+\count255=`\* \edef\op@multiply{\the\count255}
+\count255=`\/ \edef\op@divide{\the\count255}
+\count255=`\^ \edef\op@power{\the\count255}
+\count255=`\. \edef\op@dot{\the\count255}
+\count255=`\, \edef\op@comma{\the\count255}
+\count255=`\( \edef\op@lparenthesis{\the\count255}
+\count255=`\) \edef\op@rparenthesis{\the\count255}
+\edef\op@space{32}
+\newif\ifop@isdigit
+\newif\ifop@isplus
+\newif\ifop@isminus
+\newif\ifop@ismultiply
+\newif\ifop@isdivide
+\newif\ifop@ispower
+\newif\ifop@isdecimalsep
+\newif\ifop@iscomma
+\newif\ifop@islparenthesis
+\newif\ifop@isrparenthesis
+\newif\ifop@isspace
+\newif\ifop@isother
+\def\op@testchar#1{%
+  \op@isdigitfalse
+  \op@isplusfalse
+  \op@isminusfalse
+  \op@ismultiplyfalse
+  \op@isdividefalse
+  \op@ispowerfalse
+  \op@isdecimalsepfalse
+  \op@iscommafalse
+  \op@islparenthesisfalse
+  \op@isrparenthesisfalse
+  \op@isspacefalse
+  \op@isotherfalse
+  \count255=`#1\relax
+  \ifnum\count255=\op@plus \relax
+    \op@isplustrue
+  \else \ifnum\count255=\op@minus \relax
+    \op@isminustrue
+  \else \ifnum\count255=\op@multiply \relax
+    \op@ismultiplytrue
+  \else \ifnum\count255=\op@divide \relax
+    \op@isdividetrue
+  \else \ifnum\count255=\op@power \relax
+    \op@ispowertrue
+  \else \ifnum\count255=\op@dot \relax
+    \op@isdecimalseptrue
+  \else \ifnum\count255=\op@comma \relax
+    \op@iscommatrue
+  \else \ifnum\count255=\op@lparenthesis \relax
+    \op@islparenthesistrue
+  \else \ifnum\count255=\op@rparenthesis \relax
+    \op@isrparenthesistrue
+  \else \ifnum\count255=\op@space \relax
+    \op@isspacetrue
+  \else \ifnum\count255<\op@numbegin \relax
+    \op@isothertrue
+  \else \ifnum\count255>\op@numend \relax
+    \op@isothertrue
+  \else \op@isdigittrue
+  \fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi
+}
+
+\def\search@term#1#2{%
+  \begingroup
+  \count1=#1\relax
+  \count255=#2\relax
+  \ifnum\count1=\count255
+    \@tokenuse{#1}%
+  \else
+    \count5=\count255
+    \count7=\count1
+    \advance\count7\m@ne
+    \count3=\z@
+    \loop
+    \ifnum\count5>\count7
+      \expandafter\ifx\csname op@token\the\count5\endcsname\s@rpar\relax
+        \advance\@parenthesis\@ne
+      \fi
+      \expandafter\ifx\csname op@token\the\count5\endcsname\s@lpar\relax
+        \advance\@parenthesis\m@ne
+      \fi
+      \expandafter\ifx\csname op@token\the\count5\endcsname\s@add\relax
+        \ifnum\@parenthesis=\z@
+          \count3=\count5
+          \count5=\z@
+        \fi
+      \fi
+      \expandafter\ifx\csname op@token\the\count5\endcsname\s@sub\relax
+        \ifnum\@parenthesis=\z@
+          \count3=\count5
+          \count5=\z@
+        \fi
+      \fi
+      \expandafter\ifx\csname op@token\the\count5\endcsname\s@comma\relax
+        \ifnum\@parenthesis=\z@
+          \count3=\count5
+          \count5=\z@
+        \fi
+      \fi
+      \advance\count5\m@ne
+    \repeat
+    \ifnum\count3=\z@
+      \ifnum\@parenthesis=\z@
+        \search@factor{\the\count1}{\the\count255}%
+      \else
+        \errmessage{Syntax error: unbalanced parenthesis!}%
+      \fi
+    \else
+      \advance\count3\m@ne
+      \search@term{\the\count1}{\the\count3}%
+      \advance\count3\tw@
+      \search@term{\the\count3}{\the\count255}%
+      \advance\count3\m@ne
+      \@tokenuse{\the\count3}%
+    \fi
+  \fi
+  \endgroup
+}
+\def\search@factor#1#2{%
+  \begingroup
+  \count1=#1\relax
+  \count255=#2\relax
+  \ifnum\count1=\count255
+    \@tokenuse{\the\count1}%
+  \else
+    \count5=\count255
+    \count7=\count1
+    \advance\count7\m@ne
+    \count3=\z@
+    \loop
+    \ifnum\count5>\count7
+      \expandafter\ifx\csname op@token\the\count5\endcsname\s@rpar\relax
+        \advance\@parenthesis\@ne
+      \fi
+      \expandafter\ifx\csname op@token\the\count5\endcsname\s@lpar\relax
+        \advance\@parenthesis\m@ne
+      \fi
+      \expandafter\ifx\csname op@token\the\count5\endcsname\s@mul\relax
+        \ifnum\@parenthesis=\z@
+          \count3=\count5
+          \count5=\z@
+        \fi
+      \fi
+      \expandafter\ifx\csname op@token\the\count5\endcsname\s@div\relax
+        \ifnum\@parenthesis=\z@
+          \count3=\count5
+          \count5=\z@
+        \fi
+      \fi
+      \advance\count5\m@ne
+    \repeat
+    \ifnum\count3=\z@
+      \ifnum\@parenthesis=\z@
+        \search@power{\the\count1}{\the\count255}%
+      \else
+        \errmessage{! Syntax error: unbalanced parenthesis}%
+      \fi
+    \else
+      \advance\count3\m@ne
+      \search@factor{\the\count1}{\the\count3}%
+      \advance\count3\tw@
+      \search@factor{\the\count3}{\the\count255}%
+      \advance\count3\m@ne
+      \@tokenuse{\the\count3}%
+    \fi
+  \fi
+  \endgroup
+}
+\def\search@power#1#2{%
+  \begingroup
+  \count1=#1\relax
+  \count255=#2\relax
+  \ifnum\count1=\count255
+    \@tokenuse{#1}%
+  \else
+    \count5=\count255
+    \count7=\count1
+    \advance\count7\m@ne
+    \count3=\z@
+    \loop
+    \ifnum\count5>\count7
+      \expandafter\ifx\csname op@token\the\count5\endcsname\s@rpar\relax
+        \advance\@parenthesis\@ne
+      \fi
+      \expandafter\ifx\csname op@token\the\count5\endcsname\s@lpar\relax
+        \advance\@parenthesis\m@ne
+      \fi
+      \expandafter\ifx\csname op@token\the\count5\endcsname\s@pow\relax
+        \ifnum\@parenthesis=\z@
+          \count3=\count5
+          \count5=\z@
+        \fi
+      \fi
+      \advance\count5\m@ne
+    \repeat
+    \ifnum\count3=\z@
+      \ifnum\@parenthesis=\z@
+        \search@primary{\the\count1}{\the\count255}%
+      \else
+        \errmessage{Syntax error: unbalanced parenthesis}%
+      \fi
+    \else
+      \advance\count3\m@ne
+      \search@power{\the\count1}{\the\count3}%
+      \advance\count3\tw@
+      \search@power{\the\count3}{\the\count255}%
+      \advance\count3\m@ne
+      \@tokenuse{\the\count3}%
+    \fi
+  \fi
+  \endgroup
+}
+\def\search@primary#1#2{%
+  \begingroup
+  \count1=#1\relax
+  \count255=#2\relax
+  \ifnum\count1=\count255
+    \@tokenuse{#1}%
+  \else
+    \edef\current@cnt{#1}%
+    \expandafter\compare@PS@operator\PS@operator@list,\@nil
+    \expandafter\ifx\csname op@token#1\endcsname\s@lpar\relax
+      \expandafter\ifx\csname op@token#2\endcsname\s@rpar\relax
+        \advance\count1\@ne
+        \advance\count255\m@ne
+        \search@term{\the\count1}{\the\count255}%
+      \else
+        \errmessage{Syntax error: Garbage after parenthesis
+        (tokens '#1' to '#2')}%
+      \fi
+    \fi
+  \fi
+  \endgroup
+}
+
+\let\@nil\relax
+
+\def\compare@PS@operator#1,#2\@nil{%
+  \def\@tempa{#1}%
+  \def\@tempb{#2}%
+  \expandafter\ifx\csname op@token\current@cnt\endcsname\@tempa%
+    \advance\count1\@ne
+    \search@primary{\the\count1}{\the\count255}%
+    \advance\count1\m@ne
+    \@tokenuse{\the\count1}%
+  \fi
+  \ifx\@tempb\empty
+    \let\next\relax
+    \let\@tempb\relax
+  \else
+    \let\next\compare@PS@operator
+  \fi
+  \expandafter\next\@tempb\@nil
+}
+
+
+\def\infixtoRPN{%
+  \begingroup
+  \catcode`\ =12
+  \catcode`\^=12
+  \infixt@RPN
+}
+\def\infixt@RPN#1{%
+  \xdef\@expression{#1}%
+  \endgroup
+  \def\RPN{}%
+  \expandafter\scan@line\expandafter{\@expression}%
+  \expandafter\ifx\csname op@token\the\token@cpt\endcsname\relax
+    \advance\token@cpt\m@ne
+  \fi
+  \search@term{1}{\the\token@cpt}%
+}
+
+\catcode`\@=\opAtCode\relax
+\catcode`\^=\opHatCode\relax
+\catcode`\_=\opUnderscoreCode\relax
+\endinput

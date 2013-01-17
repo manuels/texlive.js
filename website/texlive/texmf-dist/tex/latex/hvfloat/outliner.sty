@@ -1,0 +1,230 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Outliner.sty version 0.94 July 2002
+% copyright Victor Eijkhout 2000/1/2
+% file name: outliner.sty
+%
+% Purpose:
+% provide an outline mode for LaTeX, where the user indicates
+% only numerical level values; the definition of the levels in
+% terms of section commands or itemize (or other) lists is done
+% separately.
+%
+% Author
+%   Victor Eijkhout
+%   Department of Computer Science
+%   University of Tennessee
+%   107 Ayres Hall
+%   Knoxville TN 37996
+%   USA
+%
+%   victor@eijkhout.net
+%
+% This program is free software; you can redistribute it and/or
+% modify it under the terms of the GNU General Public License
+% as published by the Free Software Foundation; either version 2
+% of the License, or (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+%
+% For a copy of the GNU General Public License, write to the 
+% Free Software Foundation, Inc.,
+% 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA,
+% or find it on the net, for instance at
+% http://www.gnu.org/copyleft/gpl.html
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Usage:
+% in between \begin{Outline} ... \end{Outline}
+% you can use the \Level command:
+%
+% \Level 0 {Top level heading}
+% \Level 1 {next level}
+% text on level one.
+% \Level 1 {more on this level}
+% \Level 2 {yet another level}
+% et cetera.
+%
+% The levels are defined (for instance in the preamble or in an
+% include file) by
+% \OutlineLevelStart0{\chapter*{#1}}
+% \OutlineLevelStart1{\section*{#1}}
+% et cetera. For the `chapter' and `section' commands you
+% can of course substitute any piece of LaTeX code. Be creative.
+% These pieces of code are substituted every time you give a
+% \Level{nn}{Title}
+% command.
+%
+% Levels can be more complicated:
+% \OutlineLevelStart3{\begin{description}\item[#1]}
+% \OutlineLevelCont3{\item[#1]}
+% \OutlineLevelEnd3{\end{description}}
+% The `Start' code is used if you come from a lower-numbered level;
+% the `Cont' code is used if two commands for the same level are given
+% in a row, or when you come from a higher-numbered level
+% (if you don't define any `Cont' code, the `Start' code is reused);
+% the `End' code is issued when you give a lower-numbered level;
+% it has no argument since this is only inserted automatically.
+%
+% The outline macros can generate their own page breaks. Use:
+% \OutlinePageBreaks{2}
+% to indicate the highest numbered level for which page breaks will
+% be issued; to be precise, a \pagebreak command is issued every time
+% a level `Cont' code is inserted. See above for when this happens.
+%
+% [Justification for issuing a pagebreak only on `Cont':
+% Usually you don't want a pagebreak when you come from a lower numbered
+% level; you will have to issue a pagebreak by hand if you want that.
+% For example: if you have 'section' 'subsection' 'subsection' in a row,
+% usually if you want a page break at the second subsection, you do not
+% want it at the first, since typically there is no or only a little text
+% in between the section and subsection heading. If you do want a break
+% with every subsection, define both the LevelStart and LevelCont for
+% that levels as {\pagebreak\subsection{#1}}.]
+%
+% The following command is handy if you want to include an outline,
+% which typically starts at level 0, and have it start at a higher level:
+% \SetBaseLevel{1}
+% The baselevel thus declared is added to every outline level until you
+% reset the base level to zero. This affects pagebreaks: the pagebreak
+% level applies to the level in the source code *plus* the baselevel.
+%
+% If you go up by more than one level (say from 1 to 3), the level counter
+% is increased but the action for the intermediate level (i.e., 2)
+% is not performed.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% change history.
+% 0.92 : added vfill before pagebreak. better handling of baselevel shifts.
+% 0.93 : pagebreak level initialized to -1. improved documentation.
+%        jumping up the levels is now implemented.
+%        error message if starting an undefined level (this used to work,
+%        but no longer with phantom code in place).
+% 0.95 : added Increase/DecreaseBaseLevel
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcounter{leveldepth}\newcounter{baselevel}\newcounter{tmplevel}
+
+\newenvironment{Outline}%
+ {\setcounter{leveldepth}{-1}\setcounter{baselevel}{0}}{\Level{-1}{}}
+
+\newcommand{\LevelDefiner}[3]
+ {\expandafter#1\expandafter{\csname Level#2#3\endcsname}[1]}
+\newcommand{\OutlineLevelStart}[1]%
+ {\expandafter\newif\csname ifPhantomLevel#1\endcsname
+  \LevelDefiner{\newcommand}{#1}{Start}}
+\newcommand{\OutlineLevelEnd}[1]%
+ {\expandafter\newcommand\expandafter{\csname Level#1End\endcsname}}
+\newcommand{\OutlineLevelCont}[1]%
+ {\LevelDefiner{\newcommand}{#1}{Cont}}
+\newcommand{\RenewOutlineLevelCont}[1]%
+ {\LevelDefiner{\renewcommand}{#1}{Cont}}
+
+\newcounter{pagebreaklevel}\setcounter{pagebreaklevel}{-1}
+\newcommand{\OutlinePageBreaks}[1]{\setcounter{pagebreaklevel}{#1}}
+
+\newif\ifOutlineTrace
+\def\OutlineMsg#1{\message{[Outline] at line \the\inputlineno: #1}}
+\newcommand{\StartLevel}[1]%
+ {\expandafter\ifx\csname Level#1Start\endcsname\relax
+    \errmessage{You did not define a start command on level #1}
+  \else \ifOutlineTrace\OutlineMsg{start level #1}\fi \fi
+  \csname PhantomLevel#1false\endcsname
+  \csname Level#1Start\endcsname}
+\newcommand{\PhantomStartLevel}[1]%
+ {\ifOutlineTrace\OutlineMsg{phantom start level #1}\fi
+  \csname PhantomLevel#1true\endcsname}
+\newcommand{\EndLevel}[1]%
+ {\ifOutlineTrace\OutlineMsg{end level #1}\fi
+  \csname Level#1End\endcsname}
+\newcommand{\PhantomEndLevel}[1]%
+ {\ifOutlineTrace\OutlineMsg{Phantom end level #1}\fi}
+\newcommand{\ContLevel}[1]%
+ {\ifOutlineTrace\OutlineMsg{continue level #1}\fi
+  \csname Level#1Cont\endcsname}
+\newcommand{\HasNoContFunction}[1]%
+ {00\fi \expandafter\ifx\csname Level#1Cont\endcsname\relax}
+
+\newcommand{\MaybePageBreak}[1]%
+ {\ifnum#1>\value{pagebreaklevel}\else
+    \ifOutlineTrace\OutlineMsg{breaking page}\fi
+    \vfill\pagebreak
+  \fi}
+\newcommand{\PhantomLevel}[1]{00\fi \csname ifPhantomLevel#1\endcsname}
+
+\newcommand{\Level}[1]{%
+  \setcounter{tmplevel}{#1}\addtocounter{tmplevel}{\value{baselevel}}
+  \ifnum\value{tmplevel}>\value{leveldepth}
+    \def\next{\HigherLevel{\arabic{tmplevel}}}
+  \else
+    \def\next{\SameOrLowerLevel{\arabic{tmplevel}}}
+  \fi\next}
+\newcommand{\SameOrLowerLevel}[1]{
+  \ifnum#1<\value{leveldepth}
+    \ifOutlineTrace\OutlineMsg{To prev level #1 from \arabic{leveldepth}}\fi
+    \PopLevels{#1}
+  \else
+    \setcounter{leveldepth}{#1} \fi
+  \ifnum#1<0\relax
+  \else
+    \MaybePageBreak{\arabic{leveldepth}}
+    \if\PhantomLevel{\arabic{leveldepth}}%
+      \ifOutlineTrace\OutlineMsg{encountering \arabic{leveldepth} after phantom}\fi
+      \def\next{\StartLevel{\arabic{leveldepth}}}
+    \else \if\HasNoContFunction{\arabic{leveldepth}}
+        \ifOutlineTrace\OutlineMsg{use start function for continuation}\fi
+        \def\next{\StartLevel{\arabic{leveldepth}}}
+      \else
+        \def\next{\ContLevel{\arabic{leveldepth}}}
+    \fi\fi \expandafter\next
+  \fi}
+\newcommand{\HigherLevel}[1]{
+    \addtocounter{leveldepth}{1}%
+    \ifnum\value{leveldepth}<#1\relax
+      \ifOutlineTrace\OutlineMsg{Phantom next level <\arabic{leveldepth}>}\fi
+      \PhantomStartLevel{\arabic{leveldepth}}%
+      \def\next{\HigherLevel{#1}}%
+    \else
+      \ifOutlineTrace\OutlineMsg{To next level <\arabic{leveldepth}>}\fi
+      \def\next{\StartLevel{\arabic{leveldepth}}}%
+    \fi\next}
+
+\newcommand{\PopLevels}[1]{%
+    \if\PhantomLevel{\arabic{leveldepth}}%
+        \PhantomEndLevel{\arabic{leveldepth}}\relax
+      \else \EndLevel{\arabic{leveldepth}}\relax \fi
+    \addtocounter{leveldepth}{-1}\relax
+    \ifnum\value{leveldepth}>#1\relax\PopLevels{#1}\fi}
+
+\newcommand{\SetBaseLevel}[1]{\setcounter{baselevel}{#1}}
+\newcommand{\IncreaseBaseLevel}[1]{\addtocounter{baselevel}{#1}}
+\newcommand{\DecreaseBaseLevel}[1]{\addtocounter{baselevel}{-#1}}
+\newcommand{\NextLevel}{%
+    \setcounter{tmplevel}{\value{leveldepth}}%
+    \addtocounter{tmplevel}{1}%
+    \aftergroup{\aftergroup\value\aftergroup{%
+    \aftergroup t\aftergroup m\aftergroup p%
+      \aftergroup l\aftergroup e\aftergroup v\aftergroup e\aftergroup l%
+    \aftergroup}\aftergroup}%
+    }
+\newcommand{\SameLevel}{%
+    \setcounter{tmplevel}{\value{leveldepth}}%
+    \aftergroup{\aftergroup\value\aftergroup{%
+    \aftergroup t\aftergroup m\aftergroup p%
+      \aftergroup l\aftergroup e\aftergroup v\aftergroup e\aftergroup l%
+    \aftergroup}\aftergroup}%
+    }
+\newcommand{\SaveLevel}[1]{%
+    \count11=\value{leveldepth}\relax
+    \edef#1{\the\count11}}
+\newcommand{\UseLevel}[1]{%
+    \gdef\next{#1}%
+    \aftergroup{\aftergroup\next\aftergroup}%
+    }
+
+\endinput

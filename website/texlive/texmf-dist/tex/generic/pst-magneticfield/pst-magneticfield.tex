@@ -1,0 +1,183 @@
+%% Package `pst-magneticfield.tex'
+%%
+%% Manuel Luque
+%% JÃ¼rgen Gilg
+%% Herbert VoÃŸ
+%%
+%% This program can be redistributed and/or modified under
+%% the terms of the LaTeX Project Public License Distributed
+%% from CTAN archives in directory macros/latex/base/lppl.txt.
+%%
+%% A PSTricks related package to draw magnetic field lines
+%% It uses the method from Heun
+%%
+\csname PSTMagneticFieldLoaded\endcsname
+\let\PSTMagneticFieldLoaded\endinput
+%
+% Requires some packages
+\ifx\PSTricksLoaded\endinput\else \input pstricks   \fi
+\ifx\PSTthreeDLoaded\endinput\else\input pst-3d     \fi
+\ifx\MultidoLoaded\endinput\else  \input multido.tex\fi
+\ifx\PSTXKeyLoaded\endinput\else  \input pst-xkey   \fi
+%
+\def\fileversion{1.13}
+\def\filedate{2010/06/11}
+\message{`pst-magneticfield' v\fileversion, \filedate\space (ml,jg,hv)}
+%
+\edef\PstAtCode{\the\catcode`\@} \catcode`\@=11\relax
+%
+\SpecialCoor
+\pst@addfams{pst-magneticfield}
+
+%% prologue for postcript
+\pstheader{pst-magneticfield.pro}%
+
+% the first three parameter cannot be read with \pst@getint, because \pstFP.. do not like
+% the values ... used in \psmagenticfieldThreeD
+\define@key[psset]{pst-magneticfield}{R}[1]{\def\psk@magneticfieldR{#1}}% rayon d'une spire
+\define@key[psset]{pst-magneticfield}{N}[6]{\def\psk@magneticfieldN{#1}}% nombre de spires
+\define@key[psset]{pst-magneticfield}{L}[4]{\def\psk@magneticfieldL{#1}}% Longueur de la bobine
+\define@key[psset]{pst-magneticfield}{nL}[8]{\pst@getint{#1}\psk@magneticfieldNL}% nombre de lignes de champ
+\define@key[psset]{pst-magneticfield}{numSpires}[]{\def\psk@magneticfieldChoixSpires{#1}}% choix individuel des spires
+\psset[pst-magneticfield]{numSpires=}% toutes les spires par défaut
+\define@key[psset]{pst-magneticfield}{pointsB}[500]{\pst@getint{#1}\psk@magneticfieldB}
+\define@key[psset]{pst-magneticfield}{pointsS}[1000]{\pst@getint{#1}\psk@magneticfieldS}% nombre de points autour de chaque spire
+\define@key[psset]{pst-magneticfield}{PasB}[0.02]{\pst@checknum{#1}\psk@magneticfieldPasB}% incrément du tracé autour de la bobine
+\define@key[psset]{pst-magneticfield}{PasS}[0.00275]{\pst@checknum{#1}\psk@magneticfieldPasS}% incrément du tracé autour de chaque spire
+\define@key[psset]{pst-magneticfield}{nS}[1]{\pst@getint{#1}\psk@magneticfieldNS}% nombre de lignes autour de chaque spire
+\define@key[psset]{pst-magneticfield}{styleSpire}[styleSpire]{\def\psk@styleSpire{#1}}
+\define@key[psset]{pst-magneticfield}{styleCourant}[sensCourant]{\def\psk@styleCourant{#1}}
+%
+\newpsstyle{styleSpire}{linecap=1,linecolor=red,linewidth=2\pslinewidth}
+\newpsstyle{sensCourant}{linecolor=red,linewidth=2\pslinewidth,arrowinset=0.1}
+%
+\define@boolkey[psset]{pst-magneticfield}[Pst@]{drawSelf}[true]{}
+\define@boolkey[psset]{pst-magneticfield}[Pst@]{AntiHelmholtz}[true]{}
+\define@boolkey[psset]{pst-magneticfield}[Pst@]{StreamDensityPlot}[true]{}
+\define@boolkey[psset]{pst-magneticfield}[Pst@]{setgray}[true]{}
+%
+\psset[pst-magneticfield]{R=1,L=4,N=6,pointsB=500,pointsS=1000,
+  PasB=0.02,PasS=0.00275,nS=1,nL=8,drawSelf,styleSpire=styleSpire,
+  styleCourant=sensCourant,AntiHelmholtz=false,StreamDensityPlot=false,setgray=false}
+%
+\def\tx@MFieldDict{ tx@MFieldDict begin }
+%
+\def\psmagneticfield{\pst@object{psmagneticfield}}
+\def\psmagneticfield@i{\@ifnextchar({\psmagneticfield@ii}{\psmagneticfield@iii(-6,-5)(6,5)}}
+\def\psmagneticfield@ii(#1,#2){\@ifnextchar({\psmagneticfield@iii(#1,#2)}{\psmagneticfield@iii(#1,#2)(6,5)}}
+\def\psmagneticfield@iii(#1,#2)(#3,#4){%
+  \pst@killglue%
+  \ifPst@AntiHelmholtz\addbefore@par{N=2}\fi%
+  \begin@SpecialObj%
+  \pst@Verb{%  make it global
+    /NombreSpires \psk@magneticfieldN\space def
+    /Radius \psk@magneticfieldR\space def
+    /nombreLignes \psk@magneticfieldNL\space def
+    /TableauSpires [\psk@magneticfieldChoixSpires] def
+    /StepLines Radius nombreLignes 1 add div def
+    NombreSpires 1 eq
+      { /Longueur 0 def
+        /inter 0 def }
+      { /Longueur \psk@magneticfieldL\space def
+        /inter Longueur NombreSpires 1 sub div def } ifelse % intervalle entre 2 spires
+    \ifPst@AntiHelmholtz
+      /AntiHelmholtz true def
+      TableauSpires length 0 eq {/TS [1 2] def}
+                                {/TS TableauSpires def } ifelse
+      /inter Radius def
+      /yA Radius 2 div def
+    \else
+      /AntiHelmholtz false def
+      TableauSpires length 0 eq {/TS [1 1 NombreSpires {} for] def}
+                                {/TS TableauSpires def } ifelse
+      /yA Longueur 2 div def
+    \fi
+    /NbrePointsB \psk@magneticfieldB\space def
+    /NbrePointsS \psk@magneticfieldS\space def
+    /PasB \psk@magneticfieldPasB\space def
+    /PasS \psk@magneticfieldPasS\space def
+    /nS \psk@magneticfieldNS\space def
+% pour la carte de densite
+    /xMin #1 def
+    /xMax #3 def
+ %      NombreSpires 1 eq {/yMax 2 Radius mul def}{/yMax Longueur 2 mul def} ifelse
+    /yMax #4 def
+    /yMin #2 def
+    /Unit \pst@number\psunit def
+    /xUnit \pst@number\psxunit def
+    /yUnit \pst@number\psyunit def
+    /StreamDensityPlot \ifPst@StreamDensityPlot true \else false \fi def
+    /Setgray \ifPst@setgray true \else false \fi def
+  }%
+  \addto@pscode{ \tx@MFieldDict MagneticField end }%
+  \ifPst@drawSelf
+    \ifPst@AntiHelmholtz
+      \psline[style=\psk@styleSpire](!Radius neg Radius 2 div)(!Radius Radius 2 div)
+      \psline[style=\psk@styleCourant]{<-}(!-0.2 Radius 2 div)(!0.2 Radius 2 div)
+      \psline[style=\psk@styleSpire](!Radius neg Radius 2 div neg)(!Radius Radius 2 div neg)
+      \psline[style=\psk@styleCourant]{->}(!-0.2 Radius 2 div neg)(!0.2 Radius 2 div neg)
+    \else
+    \multido{\i=1+1}{\psk@magneticfieldN}{% numero de la spire
+      \pst@Verb{ /Yspire yA \i\space 1 sub inter mul sub def } % position de la spire
+      \psline[style=\psk@styleSpire](! Radius neg Yspire)(! Radius Yspire)
+      \psline[style=\psk@styleCourant]{->}(! -0.2 Yspire)(! 0.2 Yspire)}
+    \fi%
+  \fi%
+  \end@SpecialObj%
+  \ignorespaces}
+%
+\newpsstyle{grille}{subgriddiv=0,gridcolor=lightgray,griddots=10}
+\newpsstyle{cadre}{linecolor=green!20}
+%
+\def\psmagneticfieldThreeD{\pst@object{psmagneticfieldThreeD}}
+\def\psmagneticfieldThreeD@i(#1,#2)(#3,#4){%
+  \ifPst@AntiHelmholtz\addto@par{N=2}\fi
+  \begingroup
+  \use@par
+  \ifPst@AntiHelmholtz
+    \pstFPdiv\yA{\psk@magneticfieldR}{2}
+    \ThreeDput{%
+      \begin{psclip}{\psframe(#1,#2)(#3,#4)}
+        \psframe*[style=cadre](#1,#2)(#3,#4)
+        \psgrid[style=grille](#1,#2)(#3,#4)
+        \psmagneticfield[drawSelf=false](#1,#2)(#3,#4)%
+      \end{psclip}}
+    \ThreeDput[normal=0 1 0](0,\yA,0){%
+      \psarc[linecolor=red,linewidth=3\pslinewidth](0,0){\psk@magneticfieldR}{0}{180}
+      \psarc[linecolor=red,linewidth=3\pslinewidth]{<-}(0,0){\psk@magneticfieldR}{80}{90}
+      \psarc[linecolor=red,linewidth=1\pslinewidth,linestyle=dashed](0,0){\psk@magneticfieldR}{180}{360}}
+    \ThreeDput[normal=0 1 0](0,-\yA,0){%
+      \psarc[linecolor=red,linewidth=3\pslinewidth](0,0){\psk@magneticfieldR}{0}{180}
+      \psarc[linecolor=red,linewidth=3\pslinewidth]{->}(0,0){\psk@magneticfieldR}{80}{90}
+      \psarc[linecolor=red,linewidth=1\pslinewidth,linestyle=dashed](0,0){\psk@magneticfieldR}{180}{360}}
+  \else
+    \ifnum\psk@magneticfieldN=1
+      \def\MF@inter{0}
+      \def\yA{0}
+    \else
+      \pstFPsub\CalcIntermediaire{\psk@magneticfieldN}{1}
+      \pstFPdiv\MF@inter{\psk@magneticfieldL}{\CalcIntermediaire}
+      \pstFPdiv\yA{\psk@magneticfieldL}{2}
+    \fi
+    \ThreeDput{%
+      \begin{psclip}{\psframe(#1,#2)(#3,#4)}
+        \psframe*[style=cadre](#1,#2)(#3,#4)
+        \psgrid[style=grille](#1,#2)(#3,#4)
+        \psmagneticfield[drawSelf=false](#1,#2)(#3,#4)%
+      \end{psclip}}
+    \multido{\iN=1+1,\iS=0+1}{\psk@magneticfieldN}{%
+      \pstFPmul\MF@calcA{\iS}{\MF@inter}
+      \pstFPsub\posSpire{\yA}{\MF@calcA}
+      \ThreeDput[normal=0 1 0](0,\posSpire,0){%
+        \psarc[style=\psk@styleSpire](0,0){\psk@magneticfieldR}{0}{180}
+        \psarc[style=\psk@styleCourant]{->}(0,0){\psk@magneticfieldR}{80}{90}
+        \psarc[style=\psk@styleSpire,linestyle=dashed](0,0){\psk@magneticfieldR}{180}{360}}%
+    }%
+  \fi
+  \endgroup}
+%
+\catcode`\@=\PstAtCode\relax
+%
+%% END
+\endinput
+

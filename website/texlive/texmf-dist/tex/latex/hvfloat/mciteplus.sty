@@ -1,0 +1,1349 @@
+%% mciteplus.sty
+%% enhanced mcite
+%% Version 1.1, 2008/09/30
+%%
+%% Copyright (c) 2008 Michael Shell
+%% Support site:
+%% http://www.michaelshell.org/tex/mciteplus/
+%%
+%%*************************************************************************
+%% Legal Notice:
+%% This code is offered as-is without any warranty either expressed or
+%% implied; without even the implied warranty of MERCHANTABILITY or
+%% FITNESS FOR A PARTICULAR PURPOSE! 
+%% User assumes all risk.
+%% In no event shall any contributor to this code be liable for any damages
+%% or losses, including, but not limited to, incidental, consequential, or
+%% any other damages, resulting from the use or misuse of any information
+%% contained here.
+%%
+%% All comments are the opinions of their respective authors.
+%%
+%% This work is distributed under the LaTeX Project Public License (LPPL)
+%% ( http://www.latex-project.org/ ) version 1.3, and may be freely used,
+%% distributed and modified. A copy of the LPPL, version 1.3, is included
+%% in the base LaTeX documentation of all distributions of LaTeX released
+%% 2003/12/01 or later.
+%% Retain all contribution notices and credits.
+%% ** Modified files should be clearly indicated as such, including  **
+%% ** renaming them and changing author support contact information. **
+%%**********************************************************************
+
+
+
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{mciteplus}[2008/09/30 v1.1 enhanced mcite]
+
+% package option conditionals
+\newif\if@OPTIONmcitenohooks\@OPTIONmcitenohooksfalse
+\newif\if@OPTIONmcitechapterbibrootbib\@OPTIONmcitechapterbibrootbibfalse
+\newif\if@OPTIONmcitedebug\@OPTIONmcitedebugfalse
+
+
+\DeclareOption{debug}{\global\@OPTIONmcitedebugtrue}
+\DeclareOption{nohooks}{\global\@OPTIONmcitenohookstrue}
+% use ds@ for chapterbibrootbib to keep option local
+\def\ds@chapterbibrootbib{\global\@OPTIONmcitechapterbibrootbibtrue}
+
+\ProcessOptions
+
+% first entry in citation or bibliography flag
+\newif\if@mcitefirstentry
+% first head entry in citation or bibliography flag
+\newif\if@mcitefirstheadentry
+% entry using star (is a tail) flag
+\newif\if@mcitestarentry
+% head declared more than once flag
+\newif\if@mciteheadredeclared
+% sublist block is open flag
+\newif\if@mcitesublistopen
+% bst indicates that end punctuation would normally be used
+\newif\ifmciteBstWouldAddEndPunct
+
+
+% flag to indicate that the label widths have changed
+% and that LaTeX has to be rerun
+\newif\if@mciteLaTeXrerun\@mciteLaTeXrerunfalse
+
+% flag to indicate the use of the first optional argument of a macro
+\newif\ifmciteMacroOptArgI\mciteMacroOptArgIfalse
+% flag to indicate the use of the first optional argument of a macro (local, non user, use)
+\newif\if@mciteLocalMacroOptArgI\@mciteLocalMacroOptArgIfalse
+% flag to indicate the use of the second optional argument of a macro
+\newif\ifmciteMacroOptArgII\mciteMacroOptArgIIfalse
+% flag to indicate the use of the star form of a macro
+\newif\ifmciteMacroStarForm\mciteMacroStarFormfalse
+% flag to indicate the use of the star form of the \cite forwarding macro
+\newif\ifmciteCiteStarFwdArg\mciteCiteStarFwdArgfalse
+% flag to indicate the use of the sec ID argument for the \cite forwarding macro
+\newif\if@mciteCiteSecIDArg\@mciteCiteSecIDArgfalse
+
+% flag to indicate the use of the first optional argument of a bibitem
+\newif\ifmciteBibitemOptArgI\mciteBibitemOptArgIfalse
+% flag to indicate the use of the first optional argument of the current head bibitem
+\newif\ifmciteCurheadBibitemOptArgI\mciteCurheadBibitemOptArgIfalse
+
+
+% temporary token list
+\newtoks\@mcitetmptoksA
+% macro to add (unexpanded) to token list
+\def\@mciteAppendToTmpToksA#1{\@mcitetmptoksA=\expandafter{\the\@mcitetmptoksA#1}}
+
+
+% temporary dimen registers
+\newdimen\@mcitetmpdima
+\newdimen\@mcitetmpdimb
+
+% temporary count registers
+\newcount\@mcitetmpcnta
+\newcount\@mcitetmpcntb
+
+% count of entries
+\newcounter{mcitebibitemcount}
+\setcounter{mcitebibitemcount}{0}
+% count of sub items
+\newcounter{mcitesubitemcount}
+
+
+% the default entry punctuation and separator
+\providecommand{\mcitedefaultmidpunct}{;\space}
+\providecommand{\mcitedefaultendpunct}{.}
+\providecommand{\mcitedefaultseppunct}{\relax}
+% the default sublist label, begin and end macros
+\providecommand{\mcitedefaultsublistlabel}{\alph{mcitesubitemcount})\space}
+\providecommand{\mcitedefaultsublistbegin}{\relax}
+\providecommand{\mcitedefaultsublistend}{\relax}
+% the default max width forms
+\providecommand{\mcitedefaultmaxwidthbibitemform}{\arabic{mcitebibitemcount}}
+\providecommand{\mcitedefaultmaxwidthbibitemforminit}{\mciteorgbibsamplelabel}
+\providecommand{\mcitedefaultmaxwidthsubitemform}{\alph{mcitesubitemcount})}
+\providecommand{\mcitedefaultmaxwidthsubitemforminit}{a)}
+
+% sample label which is forwarded to \thebibliography
+\def\mcitebibsamplelabel{\rule{\mcitemaxwidthbibitem sp}{0.2pt}}
+
+
+
+% Aux and track handles
+%
+% aux used by \mcite
+\def\mciteauxout{\@auxout}
+% aux used within \mcitethebibliography
+\def\mcitebibauxout{\@mainaux}
+% current auxout in use
+\def\@mcitecurauxout{\mciteauxout}
+
+% This is the unique ID string used to track multiple bibliographies.
+\def\mcitetrackID{main}
+% for \mcitethebibliography
+\def\mcitebibtrackID{main}
+% current Track ID in use
+\def\@mcitecurtrackID{\mcitetrackID}
+
+
+% macros for letter code and string tests
+\def\@mciteMacrod{d}
+\def\@mciteMacron{n}
+\def\@mciteMacros{s}
+\def\@mciteMacrob{b}
+\def\@mciteMacrof{f}
+\def\@mciteMacroh{h}
+\def\@mciteMacrobibitem{bibitem}
+\def\@mciteMacrosubitem{subitem}
+
+
+
+% sets the punctuation bst hooks
+\long\def\mciteSetBstMidEndSepPunct#1#2#3{\long\def\mcitebstmidpunct{#1}\relax
+                                     \long\def\mcitebstendpunct{#2}\long\def\mcitebstseppunct{#3}}
+% sets the actual punctuation used
+\long\def\mciteSetMidEndSepPunct#1#2#3{\long\def\mcitemidpunct{#1}\relax
+                                  \long\def\mciteendpunct{#2}\long\def\mciteseppunct{#3}}
+
+% sets the sublabel bst hooks
+\long\def\mciteSetBstSublistLabelBeginEnd#1#2#3{\long\def\mcitebstsublistlabel{#1}\relax
+\long\def\mcitebstsublistbegin{#2}\long\def\mcitebstsublistend{#3}}
+% sets the actual sublabel used
+\long\def\mciteSetSublistLabelBeginEnd#1#2#3{\long\def\mcitesublistlabel{#1}\relax
+\long\def\mcitesublistbegin{#2}\long\def\mcitesublistend{#3}}
+
+
+
+
+% sublist mode flags, b and first forms should be set to false unless \@mcitesublistmode is also true
+\newif\if@mcitesublistmode\@mcitesublistmodefalse
+\newif\if@mcitesublistmodeb\@mcitesublistmodebfalse
+\newif\if@mcitesublistmodef\@mcitesublistmodeffalse
+\newif\if@mcitesublistmodeh\@mcitesublistmodehfalse
+% reset entry counter flag
+\newif\ifmciteResetBibitemCount\mciteResetBibitemCounttrue
+% error on unknown entries
+\newif\ifmciteErrorOnUnknown\mciteErrorOnUnknowntrue
+
+
+% BST can request a sublist mode using \mciteSetBstSublistMode, but user requests can override it:
+% d = default, use current settings
+% n = no sublist
+% s = sublist
+% b = sublistb
+% f = sublistfirst
+% h = sublistfirst, including single heads
+% note that the changes here are local and will not be remembered outside of the \mcitethebibliography environment
+\def\mciteSetBstSublistMode#1{\edef\@mcitetemp{#1}\relax
+% only make changes if the user mode allows
+\ifx\@mcitesublistmode\@mciteMacrod\relax
+  \ifx\@mcitetemp\@mciteMacrod
+    \def\@mcitebstsublistmode{d}\else
+    \ifx\@mcitetemp\@mciteMacron
+      \def\@mcitebstsublistmode{n}\@mcitesublistmodefalse\@mcitesublistmodebfalse\@mcitesublistmodeffalse\@mcitesublistmodehfalse\else
+      \ifx\@mcitetemp\@mciteMacros
+        \def\@mcitebstsublistmode{s}\@mcitesublistmodetrue\@mcitesublistmodebfalse\@mcitesublistmodeffalse\@mcitesublistmodehfalse\else
+        \ifx\@mcitetemp\@mciteMacrob
+          \def\@mcitebstsublistmode{b}\@mcitesublistmodetrue\@mcitesublistmodebtrue\@mcitesublistmodeffalse\@mcitesublistmodehfalse\else
+          \ifx\@mcitetemp\@mciteMacrof
+            \def\@mcitebstsublistmode{f}\@mcitesublistmodetrue\@mcitesublistmodebfalse\@mcitesublistmodeftrue\@mcitesublistmodehfalse\else
+            \ifx\@mcitetemp\@mciteMacroh
+              \def\@mcitebstsublistmode{h}\@mcitesublistmodetrue\@mcitesublistmodebfalse\@mcitesublistmodeftrue\@mcitesublistmodehtrue\else
+              \PackageError{mciteplus}{Unknown mode `#1' in argument to \protect\mciteSetBstSublistMode}%
+              {Only `d', `n', `s', `b', `f' and `h' are valid.}\relax
+            \fi
+          \fi
+        \fi
+      \fi
+    \fi
+  \fi
+\fi}
+
+
+% User can specify a sublist mode:
+% d = default, use current settings, allow BST to choose
+% n = no sublist
+% s = sublist
+% b = sublistb
+% f = sublistfirst
+% h = sublistfirst, including single heads
+\def\mciteSetSublistMode#1{\edef\@mcitetemp{#1}\relax
+\ifx\@mcitetemp\@mciteMacrod
+  \def\@mcitesublistmode{d}\else
+  \ifx\@mcitetemp\@mciteMacron
+    \def\@mcitesublistmode{n}\@mcitesublistmodefalse\@mcitesublistmodebfalse\@mcitesublistmodeffalse\@mcitesublistmodehfalse\else
+    \ifx\@mcitetemp\@mciteMacros
+      \def\@mcitesublistmode{s}\@mcitesublistmodetrue\@mcitesublistmodebfalse\@mcitesublistmodeffalse\@mcitesublistmodehfalse\else
+      \ifx\@mcitetemp\@mciteMacrob
+        \def\@mcitesublistmode{b}\@mcitesublistmodetrue\@mcitesublistmodebtrue\@mcitesublistmodeffalse\@mcitesublistmodehfalse\else
+        \ifx\@mcitetemp\@mciteMacrof
+          \def\@mcitesublistmode{f}\@mcitesublistmodetrue\@mcitesublistmodebfalse\@mcitesublistmodeftrue\@mcitesublistmodehfalse\else
+          \ifx\@mcitetemp\@mciteMacroh
+            \def\@mcitesublistmode{h}\@mcitesublistmodetrue\@mcitesublistmodebfalse\@mcitesublistmodeftrue\@mcitesublistmodehtrue\else
+            \PackageError{mciteplus}{Unknown mode `#1' in argument to \protect\mciteSetSublistMode}%
+            {Only `d', `n', `s', `b', `f' and `h' are valid.}\relax
+          \fi
+        \fi
+      \fi
+    \fi
+  \fi
+\fi}
+
+
+
+
+% checks to see if valid type in \@mciteformtypeArg (bibitem or subitem), errors if not
+% #1 is name of calling macro
+\def\@mcitecheckformtypeerror#1{\relax
+\ifx\@mciteformtypeArg\@mciteMacrobibitem\relax
+\else
+  \ifx\@mciteformtypeArg\@mciteMacrosubitem\relax
+  \else
+    \PackageError{mciteplus}{Unknown form type  `\@mciteformtypeArg' in argument to \protect#1}%
+                            {Only `bibitem' and `subitem' are valid.}\relax
+  \fi
+\fi}
+
+
+% sets the bst max width forms
+% usage: \mciteSetBstMaxWidthForm[init]{type}{form}
+% where type is bibitem or subitem
+% if [init] not given, uses \mcitedefaultmaxwidth[TYPE]forminit
+\def\mciteSetBstMaxWidthForm{\@ifnextchar[{\@mciteLocalMacroOptArgItrue\@mciteSetBstMaxWidthForm}{\@mciteLocalMacroOptArgIfalse\@mciteSetBstMaxWidthForm[\relax]}}
+\def\@mciteSetBstMaxWidthForm[#1]#2#3{\edef\@mciteformtypeArg{#2}\relax
+\@mcitecheckformtypeerror{\mciteSetBstMaxWidthForm}\relax
+\expandafter\def\csname mcitebstmaxwidth\@mciteformtypeArg form\endcsname{#3}\relax
+\if@mciteLocalMacroOptArgI
+\expandafter\def\csname mcitebstmaxwidth\@mciteformtypeArg forminit\endcsname{#1}\relax
+\else
+\expandafter\expandafter\expandafter\def\expandafter\expandafter\csname mcitebstmaxwidth\@mciteformtypeArg forminit\endcsname\expandafter{\csname mcitedefaultmaxwidth\@mciteformtypeArg forminit\endcsname}\relax
+\fi}
+
+% sets the max width forms
+% usage: \mciteSetMaxWidthForm[init]{type}{form}
+% where type is bibitem or subitem
+% if [init] not given, uses \mcitebstmaxwidth[TYPE]forminit
+\def\mciteSetMaxWidthForm{\@ifnextchar[{\@mciteLocalMacroOptArgItrue\@mciteSetMaxWidthForm}{\@mciteLocalMacroOptArgIfalse\@mciteSetMaxWidthForm[\relax]}}
+\def\@mciteSetMaxWidthForm[#1]#2#3{\edef\@mciteformtypeArg{#2}\relax
+\@mcitecheckformtypeerror{\mciteSetMaxWidthForm}\relax
+\expandafter\def\csname mcitemaxwidth\@mciteformtypeArg form\endcsname{#3}\relax
+\if@mciteLocalMacroOptArgI
+\expandafter\def\csname mcitemaxwidth\@mciteformtypeArg forminit\endcsname{#1}\relax
+\else
+\expandafter\expandafter\expandafter\def\expandafter\expandafter\csname mcitemaxwidth\@mciteformtypeArg forminit\endcsname\expandafter{\csname mcitebstmaxwidth\@mciteformtypeArg forminit\endcsname}\relax
+\fi}
+
+
+
+
+% initialize punctuation, sublist and maxwidth hooks
+%
+% punctuation controls
+% default is to hook into the bst
+\mciteSetMidEndSepPunct{\mcitebstmidpunct}{\mcitebstendpunct}{\mcitebstseppunct}
+% the default bst setting is to use the package defaults
+\mciteSetBstMidEndSepPunct{\mcitedefaultmidpunct}{\mcitedefaultendpunct}{\mcitedefaultseppunct}
+%
+% sublist controls
+% default sublist mode is to use the defaults
+\mciteSetBstSublistMode{d}
+\mciteSetSublistMode{d}
+% the default sublabel bst setting is to use the package defaults
+\mciteSetBstSublistLabelBeginEnd{\mcitedefaultsublistlabel}{\mcitedefaultsublistbegin}{\mcitedefaultsublistend}
+% default sublabel setting is to hook into the bst settings
+\mciteSetSublistLabelBeginEnd{\mcitebstsublistlabel}{\mcitebstsublistbegin}{\mcitebstsublistend}
+%
+% max width form controls
+% the default max width form bst settings is to use the package defaults
+\mciteSetBstMaxWidthForm[\mcitedefaultmaxwidthbibitemforminit]{bibitem}{\mcitedefaultmaxwidthbibitemform}
+\mciteSetBstMaxWidthForm[\mcitedefaultmaxwidthsubitemforminit]{subitem}{\mcitedefaultmaxwidthsubitemform}
+% the default max width form settings is to hook into the bst settings
+\mciteSetMaxWidthForm[\mcitebstmaxwidthbibitemforminit]{bibitem}{\mcitebstmaxwidthbibitemform}
+\mciteSetMaxWidthForm[\mcitebstmaxwidthsubitemforminit]{subitem}{\mcitebstmaxwidthsubitemform}
+
+
+
+
+% Defines a macro to track the status of entries. An example showing the
+% format is \@mciteEntryStatus@1@Smith98
+% where the 1 is the tracking ID, and Smith98 is the cite key.
+% Possible values for this status macro are:
+% 0 = not yet determined
+% 1 = tail   (tail entry following a head entry)
+% 2 = head   (head entry followed by one or more tails)
+% 3 = single (head entry not followed by any tails)
+% usage: \@mciteSetEntryStatus{track ID}{cite key}{status}
+\def\@mciteSetEntryStatus#1#2#3{\expandafter\xdef\csname @mciteEntryStatus@#1@#2\endcsname{#3}\relax
+%\typeout{SetEntryStatus: Track:`#1' Key:`#2' Status:`#3'}\relax
+}
+% used to obtain status of a given cite key
+% usage: \@mciteGetEntryStatus*{track ID}{cite key}{status out}
+% star form: no error checking
+\def\@mciteGetEntryStatus{\@ifstar{\@mciteGetEntryStatusStar}{\@mciteGetEntryStatusNoStar}}
+
+\def\@mciteGetEntryStatusStar#1#2#3{\expandafter\let\expandafter#3\csname @mciteEntryStatus@#1@#2\endcsname}
+
+\def\@mciteGetEntryStatusNoStar#1#2#3{\expandafter\let\expandafter#3\csname @mciteEntryStatus@#1@#2\endcsname\relax
+\ifx#3\relax
+\ifmciteErrorOnUnknown
+\PackageError{mciteplus}{Entry Status for cite key `#2' under tracking ID `#1' is undefined, treating it as a head entry}{I don't have a
+record of the head/tail status of this citation. Possible reasons include the use
+of a cite command that is not mciteplus aware, the use of `\string\nocite{*}', or a problem with the
+tracking ID and/or aux file handles. `\string\mciteErrorOnUnknownfalse' can be used to disable this error message.}\relax
+\fi
+\expandafter\def#3{3}\relax
+\fi}
+
+
+% set head key for given tail
+% usage: \@mciteSetHeadofTail{track ID}{tail cite key}{head cite key}
+\def\@mciteSetHeadofTail#1#2#3{\expandafter\xdef\csname @mciteHeadofTail@#1@#2\endcsname{#3}}
+% get head key for given tail
+% usage: \@mciteGetHeadofTail{track ID}{tail cite key}{head key out}
+% star form: no error checking
+\def\@mciteGetHeadofTail{\@ifstar{\@mciteGetHeadofTailStar}{\@mciteGetHeadofTailNoStar}}
+
+\def\@mciteGetHeadofTailStar#1#2#3{\expandafter\let\expandafter#3\csname @mciteHeadofTail@#1@#2\endcsname}
+
+\def\@mciteGetHeadofTailNoStar#1#2#3{\expandafter\let\expandafter#3\csname @mciteHeadofTail@#1@#2\endcsname\relax
+\ifx#3\relax
+\PackageError{mciteplus}{Head for tail cite key `#2' under tracking ID `#1' is undefined}{I don't have a
+record of the head key of this citation.}\relax
+\fi}
+
+
+% for debug status messages
+% converts given status number to word description
+\def\@mciteStatusNumToWord#1{\expandafter\ifcase#1\relax
+Unknown\or Tail\or Head with tails\or Head without tails\else Invalid (#1)\fi}
+% form that makes no distinction between status 2 or 3. Used with \cite debug as 
+% head status is not finalized till after the entry group
+\def\@mciteStatusNumToWordH#1{\expandafter\ifcase#1\relax
+Unknown\or Tail\or Head\or Head\else Invalid (#1)\fi}
+
+
+
+
+% usage:\mciteSetMaxWidth{track ID}{type}{width}
+% Defines a macro to track the max width of a given label type.
+% An example showing the format is \@mciteMaxWidthStore@main@bibitem
+% which is set globally
+% we don't use @ in the macro name as this cmd appears in the aux
+\def\mciteSetMaxWidth#1#2#3{\edef\@mciteformtypeArg{#2}\relax
+\@mcitecheckformtypeerror{\mciteSetMaxWidth}\relax
+\expandafter\xdef\csname @mciteMaxWidthStore@#1@\@mciteformtypeArg\endcsname{#3}}
+%
+% usage:\mciteGetMaxWidth{track ID}{type}{out macro}
+% reads the stored max width of the given label type into the out macro
+% which is set globally
+\def\mciteGetMaxWidth#1#2#3{\edef\@mciteformtypeArg{#2}\relax
+\@mcitecheckformtypeerror{\mciteGetMaxWidth}\relax
+\expandafter\global\expandafter\let\expandafter#3\csname @mciteMaxWidthStore@#1@\@mciteformtypeArg\endcsname}
+
+% usage:\mciteSetMaxCount{track ID}{type}{count}
+% Defines a macro to track the max count of a given label type.
+% An example showing the format is \@mciteMaxCountStore@main@bibitem
+% which is set globally
+% we don't use @ in the macro name as this cmd appears in the aux
+\def\mciteSetMaxCount#1#2#3{\edef\@mciteformtypeArg{#2}\relax
+\@mcitecheckformtypeerror{\mciteSetMaxCount}\relax
+\expandafter\xdef\csname @mciteMaxCountStore@#1@\@mciteformtypeArg\endcsname{#3}}
+%
+% usage:\mciteGetMaxCount{track ID}{type}{out macro}
+% reads the stored max count of the given label type into the out macro
+% which is set globally
+\def\mciteGetMaxCount#1#2#3{\edef\@mciteformtypeArg{#2}\relax
+\@mcitecheckformtypeerror{\mciteGetMaxCount}\relax
+\expandafter\global\expandafter\let\expandafter#3\csname @mciteMaxCountStore@#1@\@mciteformtypeArg\endcsname}
+
+
+% sets \mcitemaxcountbibitem and \mcitemaxcountsubitem via \mciteGetMaxCount globally
+% sets them to zero if \mciteGetMaxCount returns \relax
+% clears \@mcitecorrectmaxcountbibitem and \@mcitecorrectmaxcountsubitem
+% uses \@mcitecurtrackID
+\def\@mciteMaxCountInitialize{\mciteGetMaxCount{\@mcitecurtrackID}{bibitem}{\mcitemaxcountbibitem}\relax
+\ifx\mcitemaxcountbibitem\relax\gdef\mcitemaxcountbibitem{0}\fi
+\mciteGetMaxCount{\@mcitecurtrackID}{subitem}{\mcitemaxcountsubitem}\relax
+\ifx\mcitemaxcountsubitem\relax\gdef\mcitemaxcountsubitem{0}\fi
+\global\let\mcitemaxcountbibitem\mcitemaxcountbibitem
+\global\let\mcitemaxcountsubitem\mcitemaxcountsubitem
+\xdef\@mcitecorrectmaxcountbibitem{0}\relax
+\xdef\@mcitecorrectmaxcountsubitem{0}\relax}
+%
+% usage: \@mciteMaxCountUpdate
+% updates \@mcitecorrectmaxcountsubitem
+% no need for \@mcitecorrectmaxcountbibitem as this is carried by the counter itself
+\def\@mciteMaxCountUpdate{\relax
+\ifnum\@mcitecorrectmaxcountsubitem<\arabic{mcitesubitemcount}\relax
+  \xdef\@mcitecorrectmaxcountsubitem{\arabic{mcitesubitemcount}}\relax
+\fi}
+%
+% usage: \@mciteMaxCountAuxWrite uses \@mcitecurauxout and \@mcitecurtrackID
+% writes \mciteSetMaxCount{track ID}{type}{count} to \@mcitecurauxout
+% and warns if correct values do not match \mcitemaxcountbibitem, \mcitemaxcountsubitem
+\def\@mciteMaxCountAuxWrite{\relax
+\if@filesw
+  \immediate\write\@mcitecurauxout{\string\mciteSetMaxCount{\@mcitecurtrackID}{bibitem}{\arabic{mcitebibitemcount}}}\relax
+  \immediate\write\@mcitecurauxout{\string\mciteSetMaxCount{\@mcitecurtrackID}{subitem}{\@mcitecorrectmaxcountsubitem}}\relax
+\fi
+\ifnum\mcitemaxcountbibitem=\arabic{mcitebibitemcount}\relax
+  \ifnum\mcitemaxcountsubitem=\@mcitecorrectmaxcountsubitem\relax\else
+    \@latex@warning@no@line{Mciteplus max count has changed}\global\@mciteLaTeXreruntrue
+  \fi
+\else
+  \@latex@warning@no@line{Mciteplus max count has changed}\global\@mciteLaTeXreruntrue
+\fi}
+
+
+% usage: \@mciteMaxWidthInitialize{type}
+% sets \mcitemaxwidth[TYPE] via \GetMaxWidth globally
+% if \GetMaxWidth returns \relax, sets them to the width (without sp units at end) of \mcitebstmaxwidth[TYPE]forminit
+% as evaluated when bibitem and subitem counters are both = 1
+% clears \@mcitecorrectmaxwidth[TYPE] globally to 0
+% uses \@mcitecurtrackID
+\def\@mciteMaxWidthInitialize#1{\edef\@mcitemaxwidthinitializetypeArg{#1}\relax
+\expandafter\mciteGetMaxWidth\expandafter{\expandafter\@mcitecurtrackID\expandafter}\expandafter{\expandafter\@mcitemaxwidthinitializetypeArg\expandafter}\expandafter{\csname mcitemaxwidth#1\endcsname}\relax
+\expandafter\ifx\csname mcitemaxwidth#1\endcsname\relax
+  \begingroup
+  % set counters to 1 locally
+  \csname c@mcitebibitemcount\endcsname 1\relax
+  \csname c@mcitesubitemcount\endcsname 1\relax
+  \settowidth{\@mcitetmpdima}{\csname mcitemaxwidth#1forminit\endcsname}\relax
+  \@mcitetmpcnta=\@mcitetmpdima\relax
+  \expandafter\xdef\csname mcitemaxwidth#1\endcsname{\the\@mcitetmpcnta}\relax
+  \endgroup
+\fi
+\expandafter\xdef\csname @mcitecorrectmaxwidth#1\endcsname{0}}
+%
+% usage: \@mciteMaxWidthUpdate{type}
+% globally updates \@mcitecorrectmaxwidth[TYPE] based on \mcitemaxwidth[TYPE]form
+\def\@mciteMaxWidthUpdate#1{\relax
+\settowidth{\@mcitetmpdima}{\csname mcitemaxwidth#1form\endcsname}\relax
+\@mcitetmpcnta=\@mcitetmpdima\relax
+\@mcitetmpcntb=\csname @mcitecorrectmaxwidth#1\endcsname\relax
+\ifnum\@mcitetmpcnta>\@mcitetmpcntb\relax
+  \expandafter\xdef\csname @mcitecorrectmaxwidth#1\endcsname{\the\@mcitetmpcnta}\relax
+\fi}
+%
+%
+% usage: \@mciteMaxWidthAuxWrite uses \@mcitecurauxout and \@mcitecurtrackID
+% writes \mciteSetMaxWidth{track ID}{type}{correct width in sp}
+% for both bibitem and subitem to \@mcitecurauxout
+% and warns if correct values do not match \mcitemaxwidthbibitem, \mcitemaxwidthsubitem
+\def\@mciteMaxWidthAuxWrite{\relax
+\if@filesw
+  \immediate\write\@mcitecurauxout{\string\mciteSetMaxWidth{\@mcitecurtrackID}{bibitem}{\@mcitecorrectmaxwidthbibitem}}\relax
+  \immediate\write\@mcitecurauxout{\string\mciteSetMaxWidth{\@mcitecurtrackID}{subitem}{\@mcitecorrectmaxwidthsubitem}}\relax
+\fi
+\ifnum\mcitemaxwidthbibitem=\@mcitecorrectmaxwidthbibitem\relax
+  \ifnum\mcitemaxwidthsubitem=\@mcitecorrectmaxwidthsubitem\relax\else
+    \@latex@warning@no@line{Mciteplus max width has changed}\global\@mciteLaTeXreruntrue
+  \fi
+\else
+  \@latex@warning@no@line{Mciteplus max width has changed}\global\@mciteLaTeXreruntrue
+\fi}
+
+
+
+
+
+% empty \mciteheadlist in case someone trys to access it before a \cite
+\def\mciteheadlist{}
+
+% default wrappers for \cite and \nocite, package hooks (e.g., multibbl) can change these later
+\def\@mciteCiteWrapper{\mciteCiteA{\mciteauxout}{\mcitetrackID}{\relax}{\relax}{\mciteOrgcite}}
+\def\@mciteNociteWrapper{\mciteCiteA{\mciteauxout}{\mcitetrackID}{\relax}{\relax}{\mciteOrgnocite}}
+
+
+% \mcite was undocumented in mcite.sty. We don't need it and it will not work with
+% some multibibliography packages. So, we'll not use them.
+% mcite version of \cite
+%\def\mcite{\mciteCiteA{\mciteauxout}{\mcitetrackID}{\relax}{\relax}{\mciteOrgcite}}
+% mcite version of \nocite
+%\def\mnocite{\mciteCiteA{\mciteauxout}{\mcitetrackID}{\relax}{\relax}{\mciteOrgnocite}}
+
+
+% mciteplus \cite wrappers
+% usage: \mciteCiteA*{aux out}{track ID}{prehandler}{posthandler}{fwd macro}*[opt1][opt2]{cite list}
+%        \mciteCiteB*{aux out}{track ID}{prehandler}{posthandler}{fwd macro}*[opt1][opt2]{sec ID}{cite list}
+% B form is for \cite that use two arguments, such as that of multibbl.sty
+% processes cite list and fowards arguments and list of heads to specified \cite macro
+% star form means no default \mciteDoList processing
+\DeclareRobustCommand{\mciteCiteA}{\@mciteCiteSecIDArgfalse\@mciteCiteAB}
+\DeclareRobustCommand{\mciteCiteB}{\@mciteCiteSecIDArgtrue\@mciteCiteAB}
+
+
+\def\@mciteCiteAB{\@ifstar{\mciteMacroStarFormtrue\@@mciteCiteAB}{\mciteMacroStarFormfalse\@@mciteCiteAB}}
+
+\def\@@mciteCiteAB#1#2#3#4#5{\def\mciteCiteAuxArg{#1}\def\mciteCiteTrackArg{#2}\def\mciteCitePrehandlerArg{#3}\relax
+                             \def\mciteCitePosthandlerArg{#4}\relax\def\mciteCiteFwdArg{#5}\relax
+                             \@ifstar{\mciteCiteStarFwdArgtrue\@@@mciteCiteAB}{\mciteCiteStarFwdArgfalse\@@@mciteCiteAB}}
+
+\def\@@@mciteCiteAB{\@ifnextchar[{\mciteMacroOptArgItrue\@@@@mciteCiteAB}%
+{\mciteMacroOptArgIfalse\@@@@mciteCiteAB[\relax]}}
+
+\def\@@@@mciteCiteAB[#1]{\def\mciteCiteOptArgI{#1}\relax
+\@ifnextchar[{\mciteMacroOptArgIItrue\@@@@@mciteCiteAB}%
+{\mciteMacroOptArgIIfalse\@@@@@mciteCiteAB[\relax]}}
+
+\def\@@@@@mciteCiteAB[#1]{\def\mciteCiteOptArgII{#1}\relax
+\if@mciteCiteSecIDArg
+\def\@mciteNextMacroChain{\@@@@@mciteCiteB}\relax
+\else
+\let\mciteCiteSecIDArg\relax
+\def\@mciteNextMacroChain{\@@@@@@mciteCiteAB}\relax
+\fi
+\@mciteNextMacroChain}
+
+
+\def\@@@@@mciteCiteB#1{\def\mciteCiteSecIDArg{#1}\@@@@@@mciteCiteAB}
+
+\def\@@@@@@mciteCiteAB#1{\def\mciteCiteListArg{#1}\relax
+\edef\mciteFwdCiteListArg{}\relax
+% execute the user's pre-handler code
+\mciteCitePrehandlerArg\relax
+\ifmciteMacroStarForm
+% star form means no mcite default processing
+% the user will have to do all of this in their handler
+\else
+% otherwise, process the cite list and set the forward cite list to the list of heads
+\mciteDoList{\mciteCiteAuxArg}{\mciteCiteTrackArg}{\mciteCiteListArg}\relax
+\edef\mciteFwdCiteListArg{\mciteheadlist}\relax
+% optional additional calls to do lists for duplicate/global bibliographies
+\mciteExtraDoLists\relax
+\fi
+\relax
+% execute the user's post-handler code
+\mciteCitePosthandlerArg\relax
+% build the forwarding macro and arguments list
+\@mcitetmptoksA=\expandafter{\mciteCiteFwdArg}\relax
+\ifmciteCiteStarFwdArg
+\@mciteAppendToTmpToksA{*}\relax
+\fi
+\ifmciteMacroOptArgI
+\@mciteAppendToTmpToksA{[}\relax
+\expandafter\@mciteAppendToTmpToksA\expandafter{\mciteCiteOptArgI}\relax
+\@mciteAppendToTmpToksA{]}\relax
+\fi
+\ifmciteMacroOptArgII
+\@mciteAppendToTmpToksA{[}\relax
+\expandafter\@mciteAppendToTmpToksA\expandafter{\mciteCiteOptArgII}\relax
+\@mciteAppendToTmpToksA{]}\relax
+\fi
+\if@mciteCiteSecIDArg
+\expandafter\@mciteAppendToTmpToksA\expandafter{\expandafter{\mciteCiteSecIDArg}}\relax
+\fi
+\expandafter\@mciteAppendToTmpToksA\expandafter{\expandafter{\mciteFwdCiteListArg}}\relax
+\edef\@mciteCiteFwd{\the\@mcitetmptoksA}\relax
+% forward to the "real" \cite
+\@mciteCiteFwd}
+
+
+% mciteplus engine
+% processes cite list, records status of keys and writes tail (and head)
+% citations to aux file
+% list of heads is output to \mciteheadlist for forwarding to \cite
+% usage: \mciteDoList{aux out}{track ID}{cite list}
+% use noauxwrite for aux out to disable writes to aux
+\def\mciteDoList#1#2#3{\edef\@mcitecurauxout{#1}\edef\@mcitecurtrackID{#2}\edef\@mcitetemp{#3}\relax
+\expandafter\@mciteDoList\expandafter{\@mcitetemp}}
+
+% flag to determine if mciteDoList should write to aux file
+\newif\if@mciteDoListwriteaux \@mciteDoListwriteauxtrue
+\def\@mciteMacronoauxwrite{noauxwrite}
+
+\def\@mciteDoList#1{\let\@mcitecurhead\relax % reset current head
+\@mciteDoListwriteauxtrue
+% disable aux writes if aux parameter is "noauxwrite"
+\ifx\@mcitecurauxout\@mciteMacronoauxwrite\@mciteDoListwriteauxfalse\fi
+\@mcitefirstentrytrue\@mcitefirstheadentrytrue
+\def\mciteheadlist{}\def\@mcitecurstatus{\relax}\relax
+\@for\@mcitecurkey:=#1\do{\expandafter\@mciteCheckKey\@mcitecurkey\end\relax
+% ignore empty keys
+\ifx\@mcitecurkey\@empty
+% warn about \nocite{*}
+\if@mcitestarentry
+  \typeout{** WARNING: mciteplus: Wildcard `*' citation entry declared. BibTeX will add untracked entries to the bibliography.}\relax
+  % add * to the head list
+  \if@mcitefirstentry
+    \@mcitefirstentryfalse
+    \edef\mciteheadlist{*}\relax
+  \else
+    \edef\mciteheadlist{\mciteheadlist,*}\relax
+  \fi
+\fi
+\else % key is not empty
+% get entry status
+\@mciteGetEntryStatus*{\@mcitecurtrackID}{\@mcitecurkey}{\@mcitecurstatus}\relax
+% if entry status is undefined, set status number code to undetermined and update \@mcitecurstatus
+\ifx\@mcitecurstatus\relax
+  \@mciteSetEntryStatus{\@mcitecurtrackID}{\@mcitecurkey}{0}\relax
+  \@mciteGetEntryStatus{\@mcitecurtrackID}{\@mcitecurkey}{\@mcitecurstatus}\relax
+\fi
+\if@mcitestarentry % if declared to be a tail
+  \if@mcitefirstheadentry % tail cannot be declared until after a head
+    \PackageError{mciteplus}{Tail `\@mcitecurkey' is declared without a valid head}{You have to
+                             declare a head citation before entering tail citations in cite list.}\relax
+  \fi
+  \ifnum\@mcitecurstatus>1\relax % cannot have been previously declared as a head
+    \PackageError{mciteplus}{Tail citation `\@mcitecurkey' has previously been declared as a head}{Declare
+                             each citation entry as a head or a tail, but not both.}\relax
+  \fi
+  \if@mciteheadredeclared % the current head has been redeclared, OK with some restrictions
+    \ifnum\@mcitecurstatus=0\relax % cannot add new tails to previous group definitions
+    \PackageError{mciteplus}{New tail citation `\@mcitecurkey' cannot be added to the already existing
+                             definition of group of head `\@mcitecurhead'}{You cannot define a group,
+                             then reissue the head and add new tail citations.}\relax
+    \fi
+    \ifnum\@mcitecurstatus=1\relax % OK to respecify tails as long as they already belong to this group, 
+                                   % this allows for overall (global) bibliographies
+      \@mciteGetHeadofTail{\@mcitecurtrackID}{\@mcitecurkey}{\@mciteheadofcurkey}\relax
+      \ifx\@mciteheadofcurkey\@mcitecurhead
+      % Note: We don't/can't catch the case of repeated tail declarations under a redeclared head.
+      % Not a mandatory error anyway.
+      \else
+        % tail cannot have been declared in definition of another group
+        \PackageError{mciteplus}{Tail citation `\@mcitecurkey' is not allowed in group of head
+                                 `\@mcitecurhead' as this tail has already been declared in group
+                                 of head `\@mciteheadofcurkey'}{You cannot have a tail citation
+                                 that appears in more than one citation group.}\relax
+      \fi
+    \fi
+  \else % head not redeclared
+    \ifnum\@mcitecurstatus=1\relax % the current head has not been declared before, so neither should any of its tails
+      \@mciteGetHeadofTail{\@mcitecurtrackID}{\@mcitecurkey}{\@mciteheadofcurkey}\relax
+      \ifx\@mciteheadofcurkey\@mcitecurhead
+        % tail cannot be declared twice in initial definition, this is an optional error
+        \PackageError{mciteplus}{Tail citation `\@mcitecurkey' has been declared more than once in
+                                 definition of group for head `\@mcitecurhead'}{Each tail
+                                 citation can only be specified once in the definition
+                                 of a group.}\relax
+      \else
+        % tail cannot have been declared in definition of another group
+        \PackageError{mciteplus}{Tail citation `\@mcitecurkey' is not allowed in group of head
+                                 `\@mcitecurhead' as this tail has already been declared in group
+                                 of head `\@mciteheadofcurkey'}{You cannot have a tail citation
+                                 that appears in more than one citation group.}\relax
+      \fi
+    \fi
+  \fi% end if head redeclared
+  % if not declared before, process as a valid tail
+  \ifnum\@mcitecurstatus=0\relax
+    % record type as tail
+    \@mciteSetEntryStatus{\@mcitecurtrackID}{\@mcitecurkey}{1}\relax
+    \@mciteGetEntryStatus{\@mcitecurtrackID}{\@mcitecurkey}{\@mcitecurstatus}\relax
+    % write out tail citation to aux as it will not be forwarded to \cite
+    \if@mciteDoListwriteaux
+      \@mcitewritecurkeytoaux
+    \fi
+    % record head for this tail
+    \@mciteSetHeadofTail{\@mcitecurtrackID}{\@mcitecurkey}{\@mcitecurhead}\relax
+    % change current head from code 3 (single) to 2 (one or more tails)
+    \@mciteSetEntryStatus{\@mcitecurtrackID}{\@mcitecurhead}{2}\relax
+  \fi
+\else % is declared to be a head
+  \edef\@mcitecurhead{\@mcitecurkey}\relax % this is our new current head
+  % add to the head list
+  \if@mcitefirstentry
+    \@mcitefirstentryfalse
+    \edef\mciteheadlist{\@mcitecurkey}\relax
+  \else
+    \edef\mciteheadlist{\mciteheadlist,\@mcitecurkey}\relax
+  \fi
+  \@mcitefirstheadentryfalse
+  \ifnum\@mcitecurstatus=1\relax % cannot have previously been used as a tail
+    \@mciteGetHeadofTail{\@mcitecurtrackID}{\@mcitecurkey}{\@mciteheadofcurkey}\relax
+    \PackageError{mciteplus}{Head citation `\@mcitecurkey' has previously been declared
+                             as a tail of `\@mciteheadofcurkey'}{Declare each citation
+                             entry as a head or a tail, but not both.}\relax
+  \fi
+  \@mciteheadredeclaredfalse % assume not redeclared
+  \ifnum\@mcitecurstatus>1\relax % has already been declared?
+    \@mciteheadredeclaredtrue % OK, but do not allow any new future tails for this head
+  \fi
+  % if not declared before, set as a head, single. Will later change to code 2 if tails are found.
+  \if@mciteheadredeclared\else
+    \@mciteSetEntryStatus{\@mcitecurtrackID}{\@mcitecurkey}{3}\relax
+    \@mciteGetEntryStatus{\@mcitecurtrackID}{\@mcitecurkey}{\@mcitecurstatus}\relax
+    % write out head citation to aux.
+    % This will result in the entry appearing twice in the aux file as the
+    % entry will be part of the \mciteheadlist which will be forwarded to \cite.
+    % However, we need to write this out now to preserve the order of the citations.
+    \if@mciteDoListwriteaux
+      \@mcitewritecurkeytoaux
+    \fi
+    % this is the new current head
+    \let\@mcitecurhead\@mcitecurkey
+  \fi % fi not headredeclared
+\fi % fi tail or head
+% debug report
+\if@OPTIONmcitedebug
+  \ifnum\@mcitecurstatus=1\relax
+  \edef\@mcitedebugheadoftail{Head of this tail: `\@mcitecurhead'}\relax
+    \else
+  \edef\@mcitedebugheadoftail{}\relax
+  \fi
+  \typeout{** Mciteplus Debug: Citation Entry: `\@mcitecurkey' TrackID: `\@mcitecurtrackID'
+  Auxout: \ifx\@mcitecurauxout\@mciteMacronoauxwrite `none (\@mciteMacronoauxwrite)' \else `\the\@mcitecurauxout' \fi
+  Status: `\@mciteStatusNumToWordH{\@mcitecurstatus}' \@mcitedebugheadoftail}\relax
+\fi
+% end debug report
+\fi % only nonempty
+}% end do loop
+}
+
+% hook to allow for a redo. Useful for global bibliographies
+\def\mciteExtraDoLists{\relax}
+
+% determines if an entry starts with an *, removes the * from the start of the entry name
+% and sets \@mcitestarentry and \@mcitecurkey accordingly
+\def\@mciteCheckKey#1#2\end{\@mcitestarentryfalse
+\ifx*#1\@mcitestarentrytrue\edef\@mcitecurkey{#2}\relax
+\else
+\edef\@mcitecurkey{#1#2}%
+\fi}
+
+% writes current key citation to aux. We put this in a macro because some packages
+% may fiddle with \if@filesw (making it a macro rather than an if), tripping up
+% TeX's parser if \if@filesw is ever within another conditional as is the case
+% within \@mciteDoList
+\def\@mcitewritecurkeytoaux{\if@filesw\immediate\write\@mcitecurauxout{\string\citation{\@mcitecurkey}}\fi}
+
+
+
+% custom \ref command displays \mcitesubrefform when
+% \ref'd
+% prefix to reference labels to avoid namespace clash
+\def\@mcitereflabelprefix{MciteSubReferenceLabel}
+\def\@mciteSetSubRefLabel{\begingroup\def\@currentlabel{\mcitesubrefform}\label{\@mcitereflabelprefix:\@mcitecurtrackID:\mciteBibitemArgI}\endgroup}
+% default to using the actual sublist form.
+\providecommand{\mcitesubrefform}{\arabic{mcitebibitemcount}.\alph{mcitesubitemcount}}
+% give user access to sublist \ref and \pageref
+% usage: \mciteSubRef[track ID]{cite key}
+\def\mciteSubRef{\@ifnextchar[{\@mciteSubRef}{\@mciteSubRef[\mcitetrackID]}}
+\def\@mciteSubRef[#1]#2{\ref{\@mcitereflabelprefix:#1:#2}}
+\def\mciteSubPageRef{\@ifnextchar[{\@mciteSubPageRef}{\@mciteSubPageRef[\mcitetrackID]}}
+\def\@mciteSubPageRef[#1]#2{\pageref{\@mcitereflabelprefix:#1:#2}}
+
+
+% for debug, head of tail lookup
+\def\@mcitecurheadlookup{}
+
+
+
+
+% mciteplus version of \bibitem
+% support the optional arg of \bibitem[]{} as well
+\def\mcitebibitem{\@ifnextchar[{\global\mciteBibitemOptArgItrue\@mcitebibitem}%
+{\global\mciteBibitemOptArgIfalse\@mcitebibitem[\relax]}}
+
+\def\@mcitebibitem[#1]#2{\relax
+% build the forwarding macro: \mciteOrgbibitem{#2} or \mciteOrgbibitem[#1]{#2}
+\gdef\mciteBibitemOptArgI{#1}\gdef\mciteBibitemArgI{#2}\relax
+\@mcitetmptoksA={\mciteOrgbibitem}\relax
+\ifmciteBibitemOptArgI
+\@mciteAppendToTmpToksA{[}\relax
+\expandafter\@mciteAppendToTmpToksA\expandafter{\mciteBibitemOptArgI}\relax
+\@mciteAppendToTmpToksA{]}\relax
+\fi
+\expandafter\@mciteAppendToTmpToksA\expandafter{\expandafter{\mciteBibitemArgI}}\relax
+% build the command. we need a global def here so that the changes will persist in spite
+% of a later closed sublist
+\xdef\@mciteBibitemFwdMacroArgs{\the\@mcitetmptoksA}\relax
+% on the very first \bibitem initialize the maxwidths
+% we do this here so that the bibstyle can have its say on the forminit
+\if@mcitefirstentry
+  \@mciteMaxWidthInitialize{bibitem}\relax
+  \@mciteMaxWidthInitialize{subitem}\relax
+\fi
+% get status of entry and process accordingly
+\@mciteGetEntryStatus{\@mcitecurtrackID}{#2}{\@mcitecurstatus}\relax
+% status get may happen inside a list, so make the changes to \@mcitecurstatus global
+\global\let\@mcitecurstatus\@mcitecurstatus
+% debug report
+\if@OPTIONmcitedebug
+  \ifnum\@mcitecurstatus=1\relax
+    \@mciteGetHeadofTail{\@mcitecurtrackID}{\mciteBibitemArgI}{\@mcitecurheadlookup}\relax
+    \edef\@mcitedebugheadoftail{Head of this tail: `\@mcitecurheadlookup' (from citation),  `\@mcitecurhead' (in bibliography)}\relax
+  \else
+    \edef\@mcitedebugheadoftail{}\relax
+  \fi
+  \typeout{** Mciteplus Debug: \string\mcitebibitem\space Entry: `\mciteBibitemArgI' TrackID: `\@mcitecurtrackID'
+  Status: `\@mciteStatusNumToWord{\@mcitecurstatus}' \@mcitedebugheadoftail}\relax
+\fi
+% end debug report
+\ifnum\@mcitecurstatus=1\relax % if a tail
+  % error if a tail starts the bibliography
+  \if@mcitefirstentry
+  \PackageError{mciteplus}{Bibliography begins with a tail entry `\mciteBibitemArgI'}{For sorting
+                           bibstyles, you must set the `mcitetail' BibTeX database field
+                           for each tail entry and use a bibstyle that understands that field.}\relax
+  \fi
+  \mcitemidpunct\relax
+  % open sublist if needed
+  \if@mcitesublistmode
+    \if@mcitesublistopen\else
+      \global\@mcitesublistopentrue
+      \relax\mcitesublistbegin\relax
+    \fi
+    \relax\mcitesublistlabel\relax\@mciteSetSubRefLabel\relax\@mciteMaxWidthUpdate{subitem}\relax
+  \fi
+  \@mciteMaxCountUpdate
+  \addtocounter{mcitesubitemcount}{1}\relax
+\else% is head
+   \if@mcitefirstentry\else\mciteendpunct\relax\mciteEndOfBibGroupPresubcloseHook\relax\fi
+   % close sublist if open
+   % watch out with variables as this will close off local changes
+   % addtocounter and setcounter make global changes
+   \if@mcitesublistopen
+     \mcitesublistend\relax
+     \global\@mcitesublistopenfalse
+   \fi
+   \relax\mciteEndOfBibGroupPostsubcloseHook\relax
+   % record current head key and argument info
+   \xdef\@mcitecurhead{#2}\relax
+   \gdef\mciteCurheadBibitemArgI{#2}\relax
+   \gdef\mciteCurheadBibitemOptArgI{#1}\relax
+   \ifmciteBibitemOptArgI\global\mciteCurheadBibitemOptArgItrue\else\global\mciteCurheadBibitemOptArgIfalse\fi
+   % note: with \mcitebibitem mcitebibitemcount advances with heads
+   % and holds the current head count until the next \mcitebibitem
+   % However, at the end of the \mcitebibitem, mcitesubitemcount
+   % is one more than the number of subitems as the label is
+   % rendered before updating the counter.
+   \setcounter{mcitesubitemcount}{1}\relax
+   \addtocounter{mcitebibitemcount}{1}\relax
+   \@mciteMaxCountUpdate
+   \if@mcitefirstentry\else\relax\mciteseppunct\relax\fi
+   \@mciteBibitemFwdMacroArgs\relax\relax\relax
+   % check and update the bibitem label width
+   \@mciteMaxWidthUpdate{bibitem}\relax
+   \ifnum\@mcitecurstatus=2\relax % if head with tails
+     \if@mcitesublistmodef
+       % open sublist if needed
+       \if@mcitesublistopen\else
+         \global\@mcitesublistopentrue
+         \mcitesublistbegin\relax
+       \fi
+       \relax\mcitesublistlabel\relax\@mciteSetSubRefLabel\relax\@mciteMaxWidthUpdate{subitem}\relax
+       \addtocounter{mcitesubitemcount}{1}\relax
+     \fi
+   \fi
+   \ifnum\@mcitecurstatus=3\relax % if head without tails
+     \if@mcitesublistmodeh
+       % open sublist if needed
+       \if@mcitesublistopen\else
+         \global\@mcitesublistopentrue
+         \mcitesublistbegin\relax
+       \fi
+       \relax\mcitesublistlabel\relax\@mciteSetSubRefLabel\relax\@mciteMaxWidthUpdate{subitem}\relax
+       \addtocounter{mcitesubitemcount}{1}\relax
+     \fi
+   \fi
+   \if@mcitesublistmodeb
+     \addtocounter{mcitesubitemcount}{1}\relax
+   \fi
+\fi% if tail or head
+\global\@mcitefirstentryfalse\ignorespaces}
+
+% End of \bibitem marker from bibstyle
+\def\EndOfBibitem{\relax}
+
+% hook inserted at the end of bibitem group, before the sublist is closed
+\def\mciteEndOfBibGroupPresubcloseHook{\relax}
+% hook inserted at the end of bibitem group, after the sublist is closed
+\def\mciteEndOfBibGroupPostsubcloseHook{\relax}
+
+% hook inserted at \mcitethebibliography
+\def\mcitethebibliographyHook{\relax}
+
+
+% hook to allow insertion of custom code at end of mcitethebibliography
+\def\mciteBIBdecl{\relax}
+% hook to allow insertion of custom code at end of endmcitethebibliography
+\def\mciteBIBenddecl{\relax}
+% hook to allow insertion of custom code at end of thebibliography
+\def\mcitefwdBIBdecl{\relax}
+
+
+
+
+% Bibdecl for package hooks
+\def\@mcitepkgBIBdecl{\relax}
+% single use internal BIB hook, is automatically reset to \relax at end of \mcitethebibliography
+\let\@mciteoneshotBIBdecl\relax
+
+
+% mciteplus version of \thebibliography
+\def\mcitethebibliography#1{\@mcitefirstentrytrue
+  \@mcitesublistopenfalse
+  \let\@mcitecurauxout\mcitebibauxout
+  \let\@mcitecurtrackID\mcitebibtrackID
+  \ifmciteResetBibitemCount\setcounter{mcitebibitemcount}{0}\fi
+  \setcounter{mcitesubitemcount}{0}\relax
+  \xdef\mciteorgbibsamplelabel{#1}\relax
+  % set these to something so that init forms that reference them won't choke
+  \gdef\mciteBibitemOptArgI{\relax}\relax
+  \gdef\mciteBibitemArgI{\relax}\relax
+  \global\mciteBibitemOptArgIfalse
+  \gdef\mciteCurheadBibitemOptArgI{\relax}\relax
+  \gdef\mciteCurheadBibitemArgI{\relax}\relax
+  \global\mciteCurheadBibitemOptArgIfalse
+  % note: pkg and user hooks may update tracking ID
+  \relax\@mcitepkgBIBdecl\relax
+  \relax\@mciteoneshotBIBdecl\relax
+  \relax\mciteBIBdecl\relax
+  \@mciteMaxCountInitialize
+  % we initialize here to get a valid \mcitemaxwidthbibitem for \mcitebibsamplelabel
+  % but we will reinitialize again at the first \bibitem so that any BST changes can take affect
+  \@mciteMaxWidthInitialize{bibitem}\relax
+  % debug report
+  \if@OPTIONmcitedebug
+  \typeout{}\typeout{}\relax
+  \typeout{** Mciteplus Debug: \string\mcitethebibliography\space TrackID: `\@mcitecurtrackID' Auxout: `\the\@mcitecurauxout'}\relax
+  \fi
+  % end debug report
+  \thebibliography{\mcitebibsamplelabel}\relax
+  \mcitethebibliographyHook\relax
+  \relax\mcitefwdBIBdecl\relax
+  \let\mciteOrgbibitem\bibitem
+  \def\bibitem{\mcitebibitem}}
+
+\def\endmcitethebibliography{\mciteendpunct\relax
+  \relax\mciteEndOfBibGroupPresubcloseHook\relax
+  % close sublist if open
+  \if@mcitesublistopen
+    \mcitesublistend\relax
+    \@mcitesublistopenfalse
+  \fi
+  \relax\mciteEndOfBibGroupPostsubcloseHook\relax
+  \relax\mciteBIBenddecl\relax
+  % globally clear oneshot decl
+  \global\let\@mciteoneshotBIBdecl\relax
+  % restore original \bibitem as some \endthebibliography tack notes at the end (e.g., REVTeX)
+  % we'll add them to the count with mcite's counters and continue to track the bibitem width
+  \setcounter{mcitesubitemcount}{1}\relax
+  \def\bibitem{\addtocounter{mcitebibitemcount}{1}\@mciteMaxWidthUpdate{bibitem}\relax\mciteOrgbibitem}
+  \endthebibliography\relax
+  % update max count for possible \endthebibliography tack notes
+  \@mciteMaxCountUpdate
+  % write correct max counter to aux and warn if changed
+  \@mciteMaxCountAuxWrite
+  % write correct max widths to aux and warn if changed
+  \@mciteMaxWidthAuxWrite
+  % debug report
+  \if@OPTIONmcitedebug
+  \typeout{}\relax
+  \typeout{** Mciteplus Debug: \string\endmcitethebibliography^^J
+  Current Max bibitem count: `\mcitemaxcountbibitem'^^J
+  Correct Max bibitem count: `\arabic{mcitebibitemcount}'^^J^^J
+  Current Max subitem count: `\mcitemaxcountsubitem'^^J
+  Correct Max subitem count: `\@mcitecorrectmaxcountsubitem'^^J^^J
+  Current Max bibitem width: `\mcitemaxwidthbibitem'(sp)^^J
+  Correct Max bibitem width: `\@mcitecorrectmaxwidthbibitem'(sp)^^J^^J
+  Current Max subitem width: `\mcitemaxwidthsubitem'(sp)^^J
+  Correct Max subitem width: `\@mcitecorrectmaxwidthsubitem'(sp)}^^J
+  \fi}
+
+
+% warn at end if any \mcitethebibliography requires a rerun due to a max width/count change
+\AtEndDocument{\if@mciteLaTeXrerun\@latex@warning@no@line{Rerun to ensure correct mciteplus label max width/count}\fi}
+
+% always ensure \mciteSetMaxWidth{}{}{} and \mciteSetMaxCount{}{}{} are defined in the .aux,
+% lest the package be unloaded and the initial .aux still refers to it.
+\AtBeginDocument{\if@filesw\immediate\write\@mainaux{\string\providecommand{\string\mciteSetMaxWidth}[3]{\string\relax}}\relax
+\immediate\write\@mainaux{\string\providecommand{\string\mciteSetMaxCount}[3]{\string\relax}}\fi}
+
+
+
+% hook into system only after all packages have been loaded
+\AtBeginDocument{\let\mciteOrgcite\cite\let\mciteOrgnocite\nocite
+\if@OPTIONmcitenohooks\else
+% hook into system \cite unless user says otherwise
+\def\cite{\@mciteCiteWrapper}
+\def\nocite{\@mciteNociteWrapper}
+\fi}
+
+
+
+
+
+% special \if macros needed for PKG hooks
+% we've got to define these here to shield the \ifcontinuouslabels
+% and and \fi from TeX's scanner when multibib is *not* loaded
+% as \ifcontinuouslabels will not be defined and TeX would still
+% see the \fi when skipping over the code.
+%
+% multibib 
+\def\@mciteMULTIBIBcontinuouslabelsWarn{\relax
+\ifmciteResetBibitemCount
+   \ifcontinuouslabels
+     \typeout{** WARNING: mciteplus is using \string\mciteResetBibitemCounttrue, but multibib was not invoked with `resetlabels' option.}
+   \fi
+\else
+   \ifcontinuouslabels\else
+     \typeout{** WARNING: mciteplus is using \string\mciteResetBibitemCountfalse, but multibib was invoked with `resetlabels' option.}
+   \fi
+\fi}
+
+
+% bibunits global copy list handler
+\def\@mciteBIBUNITSExtraDoListHandler{\ifglobalcitecopy
+\mciteDoList{\mciteauxout}{main}{\mciteCiteListArg}\relax
+\else
+\ifmciteCiteStarFwdArg
+\mciteDoList{\mciteauxout}{main}{\mciteCiteListArg}\relax
+\fi
+\fi}
+
+
+% natbib command names
+\def\@mciteNatbibCiteCmdList{citep,Citep,citet,Citet,citealp,Citealp,citealt,Citealt,citeauthor,Citeauthor,citeyear,citeyearpar,citepalias,citetalias}
+
+% if natbib loaded, save originals at start
+\expandafter\ifx\csname ver@natbib.sty\endcsname\relax\else
+\AtBeginDocument{\@for\@mcitecurcmdname:=\@mciteNatbibCiteCmdList\do{\relax
+\expandafter\let\expandafter\@mcitetmpA\csname \@mcitecurcmdname\endcsname
+\expandafter\let\csname mciteOrg\@mcitecurcmdname\endcsname\@mcitetmpA}}
+\fi
+
+
+
+
+
+% *** External Package Hooks ***
+\if@OPTIONmcitenohooks\else% hook into packages
+
+
+
+% *** natbib.sty hooks
+\expandafter\ifx\csname ver@natbib.sty\endcsname\relax\else
+\typeout{** mciteplus: Detected natbib.sty. Invoking hooks.}\relax
+\AtBeginDocument{\@for\@mcitecurcmdname:=\@mciteNatbibCiteCmdList\do{\relax
+% reroute original cite macro \X through \mciteCiteA
+% \X -> \mciteCiteA{\mciteauxout}{\mcitetrackID}{\relax}{\relax}{\mciteOrgX}
+\expandafter\@mcitetmptoksA\expandafter=\expandafter{\csname mciteOrg\@mcitecurcmdname\endcsname}\relax
+\expandafter\edef\csname \@mcitecurcmdname\endcsname{\noexpand\mciteCiteA{\noexpand\mciteauxout}{\noexpand\mcitetrackID}{\relax}{\relax}{\the\@mcitetmptoksA}}\relax
+}}
+\fi % if natbib.sty detected
+
+
+
+
+% *** cite.sty hooks
+\expandafter\ifx\csname ver@cite.sty\endcsname\relax\else
+\typeout{** mciteplus: Detected cite.sty. Invoking hooks.}\relax
+\AtBeginDocument{\let\@mciteCITEOrgciten\citen
+\def\@mciteCITEciten{\mciteCiteA{\mciteauxout}{\mcitetrackID}{\relax}{\relax}{\@mciteCITEOrgciten}}\relax
+% This will still work even though cite.sty routes \citex through \citen.
+% The double calls to mciteplus will be OK as the second call to mciteplus
+% will only have a head list of already defined entries and so it will do nothing
+% other than write the list to the aux again.
+% Not the most elegant approach though.
+\def\citen{\@mciteCITEciten}\relax
+% Handle the aliases as well.
+\def\citenum{\@mciteCITEciten}\relax
+\def\citeonline{\@mciteCITEciten}}
+\fi % if cite.sty detected
+
+
+
+% *** drftcite.sty hooks
+\expandafter\ifx\csname ver@drftcite.sty\endcsname\relax\else
+\typeout{** mciteplus: Detected drftcite.sty. Invoking hooks.}\relax
+\AtBeginDocument{\let\@mciteDRFTCITEOrgciten\citen
+\def\@mciteDRFTCITEciten{\mciteCiteA{\mciteauxout}{\mcitetrackID}{\relax}{\relax}{\@mciteDRFTCITEOrgciten}}\relax
+% As with cite.sty, this will still work even though drftcite.sty
+% routes \citex through \citen.
+\def\citen{\@mciteDRFTCITEciten}\relax}
+\fi % if drftcite.sty detected
+
+
+
+% *** chapterbib hooks
+\expandafter\ifx\csname ver@chapterbib.sty\endcsname\relax\else
+\typeout{** mciteplus: Detected chapterbib.sty. Invoking hooks.}\relax
+% one gotcha is that LaTeX closes and reopens \@partaux so aux handle number
+% does not change
+\def\mcitetrackID{chapterbib\@currentipfile}
+\def\mcitebibtrackID{chapterbib\@currentipfile}
+% make a second set of entry status macros for the duplicate bibliographies
+% produced under the duplicate option. Won't hurt anything if the duplicate
+% bibliography is not used. Note that chapterbib uses the .bbl suffix for
+% \@currentipfile when reading the duplicate bibliographies.
+\def\mciteExtraDoLists{\mciteDoList{noauxwrite}{chapterbib\@currentipfile.bbl}{\mciteCiteListArg}\relax
+% create third set only when chapterbib is using the rootbib option.
+% We can't just write this out all the time because the rootbib option can
+% cause a conflict in the mciteplus status of a key if that same key is
+% used in different parts of the document. And we can't test for the use of
+% the chapterbib rootbib option because chapterbib is rerun without the
+% rootbib option.
+\if@OPTIONmcitechapterbibrootbib
+  \mciteDoList{noauxwrite}{chapterbib\jobname}{\mciteCiteListArg}\relax
+\fi}
+\fi % if chapterbib detected
+
+
+
+
+% *** multibib hooks
+\expandafter\ifx\csname ver@multibib.sty\endcsname\relax\else
+\typeout{** mciteplus: Detected multibib.sty. Invoking hooks.}\relax
+\let\@mciteOrgMULTIBIBnewcites\newcites
+
+% internally braced \nocite with \@aux handler as needed by multibib
+% usage: \@mciteMULTIBIBgroupedOrgNocite{multibib section name}{cite list}
+\def\@mciteMULTIBIBgroupedOrgNocite#1#2{{\expandafter\let\expandafter\@auxout\csname @auxout#1\endcsname
+\mciteOrgnocite{#2}}}
+
+\def\@mciteMULTIBIBnewcites#1#2{\relax
+% forward to original \newcites and let it do its thing first
+\@mciteOrgMULTIBIBnewcites{#1}{#2}%
+% now redo some of what it did our way
+\@for\@mciteCurRefName:=#1\do{\relax
+%
+% build auxout names and track ID
+\edef\@mcitetempauxout{\csname @auxout\@mciteCurRefName\endcsname}\relax
+\edef\@mcitetemptrackID{multibib\@mciteCurRefName}\relax
+%
+% reroute original \citeX through \mciteCiteA using \@mciteCurRefName in aux and track
+% \citeX -> \mciteCiteA{\@auxoutX}{multibibX}{\relax}
+%                      {\let\@citex\mb@@citex\let\@newciteauxhandle\@auxoutX}
+%                      {\mciteOrgcite}
+% basic command name list
+\def\@mciteMULTIBIBCiteCmdList{cite}
+% add natbib names if natbib is loaded
+\expandafter\ifx\csname ver@natbib.sty\endcsname\relax\else
+\edef\@mciteMULTIBIBCiteCmdList{\@mciteMULTIBIBCiteCmdList,\@mciteNatbibCiteCmdList}\relax
+\fi
+\@for\@mcitecurcmdname:=\@mciteMULTIBIBCiteCmdList\do{\relax
+\@mcitetmptoksA=\expandafter{\expandafter{\@mcitetempauxout}}\relax
+\expandafter\@mciteAppendToTmpToksA\expandafter{\expandafter{\@mcitetemptrackID}{\relax}}\relax
+% install multibib \citeX internals into handler
+\edef\@mcitetemp{{\let\noexpand\@citex\noexpand\mb@@citex
+\let\noexpand\@newciteauxhandle\csname @auxout\@mciteCurRefName\endcsname}}\relax
+\expandafter\@mciteAppendToTmpToksA\expandafter{\@mcitetemp}\relax
+% forward to standard \cite (\mciteOrgcite), can't go through current \cite
+% as that goes through mcite again and would write entries to standard aux
+\expandafter\@mciteAppendToTmpToksA\expandafter{\expandafter{\csname mciteOrg\@mcitecurcmdname\endcsname}}\relax
+% define new \citeX wrapper
+\expandafter\expandafter\expandafter\def\expandafter\expandafter\csname \@mcitecurcmdname\@mciteCurRefName\endcsname
+\expandafter{\expandafter\mciteCiteA\the\@mcitetmptoksA}\relax
+}% \do for \@mciteMULTIBIBCiteCmdList
+%
+% reroute original \nociteX through \mciteCiteA using \@mciteCurRefName in aux and track
+% \nociteX -> \mciteCiteA{\@auxoutX}{multibibX}{\relax}
+%                      {\relax}
+%                      {\@mciteMULTIBIBgroupedOrgNocite}
+\@mcitetmptoksA=\expandafter{\expandafter{\@mcitetempauxout}}\relax
+\expandafter\@mciteAppendToTmpToksA\expandafter{\expandafter{\@mcitetemptrackID}{\relax}{\relax}}\relax
+% forward to standard \@mciteMULTIBIBgroupedOrgNocite, can't go through current \nocite
+% as that goes through mcite again and would write entries to standard aux also because
+% multibib changes \@auxout, we need to use the internally grouped version with
+% the \@aux handler in it
+\edef\@mcitetemp{{\noexpand\@mciteMULTIBIBgroupedOrgNocite{\@mciteCurRefName}}}
+% define new \nociteX wrapper
+\expandafter\@mciteAppendToTmpToksA\expandafter{\@mcitetemp}
+\expandafter\expandafter\expandafter\def\expandafter\expandafter\csname nocite\@mciteCurRefName\endcsname
+\expandafter{\expandafter\mciteCiteA\the\@mcitetmptoksA}\relax
+% now reroute \bibliographyX
+% save as \@mciteOrgMULTIBIBbibliographyX
+\expandafter\let\expandafter\@mcitetemp\csname bibliography\@mciteCurRefName\endcsname
+\expandafter\let\csname @mciteOrgMULTIBIBbibliography\@mciteCurRefName\endcsname\@mcitetemp
+\@mcitetmptoksA=\expandafter{\csname @mciteOrgMULTIBIBbibliography\@mciteCurRefName\endcsname}\relax
+\expandafter\edef\csname bibliography\@mciteCurRefName\endcsname{\def\@mciteoneshotBIBdecl{\def\noexpand\@mcitecurtrackID{\@mcitetemptrackID}}\the\@mcitetmptoksA}\relax
+% we depend on the default \mciteauxout and \mcitetrackID for \cite, \nocite and \mcite
+}% end ref name do loop
+}% end def \@mcitePKGnewcites
+%
+% setup multibib BIB hooks
+% no need to install bibliography wrapper uaing \@auxoutX as multibbl wrapper alters
+% \@auxout to point to \@auxoutX before starting \mcitethebibliography
+% Thus, the default bibteckID will work.
+% 
+% warn if a mismatch between the settings of mciteplus entry label counter resets and those of multibib
+\expandafter\@mcitetmptoksA\expandafter=\expandafter{\@mcitepkgBIBdecl}
+\addto@hook\@mcitetmptoksA{\@mciteMULTIBIBcontinuouslabelsWarn}
+\edef\@mcitepkgBIBdecl{\the\@mcitetmptoksA}
+% reroute all \newcites calls through \@mciteMULTIBIBnewcites
+\let\newcites\@mciteMULTIBIBnewcites
+\fi% if multibib detected
+
+
+
+% *** multibbl hooks
+\expandafter\ifx\csname ver@multibbl.sty\endcsname\relax\else
+\typeout{** mciteplus: Detected multibbl.sty. Invoking hooks.}\relax
+% for checking that the user has called \newbibliography before \cite.
+\def\@mciteMULTIBBLcheckAuxDefined{\expandafter\ifx\csname\mciteCiteSecIDArg @auxfile\endcsname\relax
+\PackageError{mciteplus}{multibbl: Bibliography `\mciteCiteSecIDArg' has not been defined}{Use multibbl's \string\newbibliography\space to
+ declare this bibliography before using it in \string\cite.}\relax
+\fi}
+%\cite -> \mciteCiteB{\secID@auxfile}{multibbl\secID}{create aux track arguments}{\relax}{\mciteOrgcite}}
+%\cite -> \mciteCiteB{\secID@auxfile}{multibbl\secID}{create aux track arguments}{\relax}{\mciteOrgcite}}
+% we use prehandler to set aux and track arguments to use mciteCiteSecIDArg
+\def\@mciteCiteWrapper{\mciteCiteB{Bogus auxout}{Bogus trackID}{\relax
+\def\mciteCiteAuxArg{\csname \mciteCiteSecIDArg @auxfile\endcsname}\relax
+\def\mciteCiteTrackArg{multibbl\mciteCiteSecIDArg}\@mciteMULTIBBLcheckAuxDefined}{\relax}{\mciteOrgcite}}
+% nocite
+\def\@mciteNociteWrapper{\mciteCiteB{Bogus auxout}{Bogus trackID}{\relax
+\def\mciteCiteAuxArg{\csname \mciteCiteSecIDArg @auxfile\endcsname}\relax
+\def\mciteCiteTrackArg{multibbl\mciteCiteSecIDArg}\@mciteMULTIBBLcheckAuxDefined}{\relax}{\mciteOrgnocite}}
+% hook into bibliography at start of document, use one shot interface for single use setup of the aux and track ID
+\AtBeginDocument{\let\mciteOrgbibliography\bibliography
+% we need to update \mcitethebibliography's tracking ID, to reflect what multibbl is using,
+% multibbl.sty does not read in non-main aux files. We use the one shot so that the definition is cleared
+% after each bibliography (but in this case it would be anyway as it is defined inside the
+% \bibliography environment).
+\def\bibliography#1#2#3{\def\@mciteoneshotBIBdecl{\relax
+  \def\@mcitecurtrackID{multibbl#1}}
+  \mciteOrgbibliography{#1}{#2}{#3}}}
+
+\fi% if multibbl detected
+
+
+
+% *** bibunits hooks
+\expandafter\ifx\csname ver@bibunits.sty\endcsname\relax\else
+\typeout{** mciteplus: Detected bibunits.sty. Invoking hooks.}\relax
+
+\def\@mciteBIBUNITSbibunit{\def\mcitetrackID{bibunits\@bibunitname}\relax
+\def\mcitebibtrackID{bibunits\@bibunitname}\mciteOrgBIBUNITSbibunit}
+
+\def\@mciteBIBUNITSbu@cite{\@startbibunitorrelax\mciteCiteA{\@bibunitaux}{\mcitetrackID}{\relax}{\@mciteBIBUNITSExtraDoListHandler}{\mciteOrgBIBUNITSbu@cite}}
+\def\@mciteBIBUNITSbu@nocite{\@startbibunitorrelax\mciteCiteA{\@bibunitaux}{\mcitetrackID}{\relax}{\@mciteBIBUNITSExtraDoListHandler}{\mciteOrgBIBUNITSbu@nocite}}
+
+\AtBeginDocument{\let\mciteOrgBIBUNITSbu@cite\bu@cite
+\let\mciteOrgBIBUNITSbu@nocite\bu@nocite
+\let\mciteOrgBIBUNITSbibunit\bibunit
+\let\mciteOrgBIBUNITSstd@bibliography\std@bibliography
+\let\bibunit\@mciteBIBUNITSbibunit
+\let\bu@cite\@mciteBIBUNITSbu@cite
+\let\bu@nocite\@mciteBIBUNITSbu@nocite
+% have to restore main track ID for global bibliography when using \bibliographyunit
+\def\std@bibliography{\def\mcitebibtrackID{main}\mciteOrgBIBUNITSstd@bibliography}}
+
+\fi% if bibunits detected
+
+
+% *** backref.sty (from hyperref) hooks
+\expandafter\ifx\csname ver@backref.sty\endcsname\relax\else
+\typeout{** mciteplus: Detected backref.sty. Invoking hooks.}\relax
+% disable backref's \bibitem intercept within mcitethebibliography
+\expandafter\@mcitetmptoksA\expandafter=\expandafter{\mcitethebibliographyHook}
+\addto@hook\@mcitetmptoksA{\def\BR@@lbibitem{\@lbibitem}\def\BR@@bibitem{\@bibitem}}
+\edef\mcitethebibliographyHook{\the\@mcitetmptoksA}
+%\def\BR@bibitem{\BRorg@bibitem}
+% and install our own
+\def\mciteBACKREFform{{}\ \BR@backref{\@mcitecurhead}}
+\expandafter\@mcitetmptoksA\expandafter=\expandafter{\mciteEndOfBibGroupPresubcloseHook}
+\addto@hook\@mcitetmptoksA{\mciteBACKREFform}
+\edef\mciteEndOfBibGroupPresubcloseHook{\the\@mcitetmptoksA}
+\fi % if backref.sty detected
+
+
+% *** citeref.sty hooks
+\expandafter\ifx\csname ver@citeref.sty\endcsname\relax\else
+\typeout{** mciteplus: Detected citeref.sty. Invoking hooks.}\relax
+% disable citeref's \bibitem intercepts within mcitethebibliography
+\expandafter\@mcitetmptoksA\expandafter=\expandafter{\mcitethebibliographyHook}
+\addto@hook\@mcitetmptoksA{\def\@@lbibitem{\@lbibitem}\def\@@bibitem{\@bibitem}}
+\edef\mcitethebibliographyHook{\the\@mcitetmptoksA}
+%\def\@@lbibitem{\@lbibitem}
+%\def\@@bibitem{\@bibitem}
+% and install our own
+\def\mciteCITEREFform{\bibitempages{\@citerefpages{\@mcitecurhead}}}
+\expandafter\@mcitetmptoksA\expandafter=\expandafter{\mciteEndOfBibGroupPresubcloseHook}
+\addto@hook\@mcitetmptoksA{\mciteCITEREFform}
+\edef\mciteEndOfBibGroupPresubcloseHook{\the\@mcitetmptoksA}
+\fi % if citeref.sty detected
+
+
+
+% *** detect attempts to use incompatible packages ***
+% might be best not to lockout amsrefs and biblatex - maybe somebody wants
+% and knows how to use them "in parallel" with mciteplus
+
+% *** incompatible with bibtopic.sty
+\expandafter\ifx\csname ver@bibtopic.sty\endcsname\relax\else
+\PackageError{mciteplus}{Bibtopic.sty cannot be used with mciteplus.sty}{These two packages won't work together.}\relax
+\fi
+
+% *** incompatible with inlinebib.sty
+\expandafter\ifx\csname ver@inlinebib.sty\endcsname\relax\else
+\PackageError{mciteplus}{inlinebib.sty cannot be used with mciteplus.sty}{These two packages won't work together.}\relax
+\fi
+
+% *** incompatible with jurabib.sty
+\expandafter\ifx\csname ver@jurabib.sty\endcsname\relax\else
+\PackageError{mciteplus}{jurabib.sty cannot be used with mciteplus.sty}{These two packages won't work together.}\relax
+\fi
+
+% *** incompatible with opcit.sty
+\expandafter\ifx\csname ver@opcit.sty\endcsname\relax\else
+\PackageError{mciteplus}{opcit.sty cannot be used with mciteplus.sty}{These two packages won't work together.}\relax
+\fi
+
+% *** incompatible with splitbib.sty
+\expandafter\ifx\csname ver@splitbib.sty\endcsname\relax\else
+\PackageError{mciteplus}{Splitbib.sty cannot be used with mciteplus.sty}{These two packages won't work together.}\relax
+\fi
+\fi % if hooks enabled
+
+
+\endinput

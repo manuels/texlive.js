@@ -1,0 +1,204 @@
+%    tikz-qtree.tex
+%    Version 1.2, 20 Apr 2012
+
+%    Copyright (C) 2002, 2009 by David Chiang
+
+%    This program is free software; you can redistribute it and/or modify
+%    it under the terms of the GNU General Public License as published by
+%    the Free Software Foundation; either version 2 of the License, or
+%    (at your option) any later version.
+
+%    This program is distributed in the hope that it will be useful,
+%    but WITHOUT ANY WARRANTY; without even the implied warranty of
+%    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%    GNU General Public License for more details.
+
+%    You should have received a copy of the GNU General Public License along
+%    with this program; if not, write to the Free Software Foundation, Inc.,
+%    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+% New in version 1.2:
+% - level-specific styles (thanks to Andrew Stacey)
+
+% New in version 1.11:
+% - make options compatible with standard tikz trees
+
+% New in version 1.1:
+% - sideways trees
+
+%% These macros facilitate building up an object recursively before
+%% putting it into the input stream.
+
+\newtoks\@result
+\def\@call#1#2{\let\@cont=#2\bgroup\@result={}#1}
+\def\@return{\global\@result=\@result\egroup\@cont}
+
+\def\@ifequal#1#2{\edef\testa{#1}\edef\testb{#2}\ifx\testa\testb}
+
+%% scan a tree: this just scans a subtree and then puts it onto the
+%% input stream
+
+\def\Tree{\@call\@subtree\@Tree}
+\def\@Tree{%
+%\showthe\@result %debug
+\ifpgfpicture % is there a test for tikzpicture?
+\pgftree{\the\@result}%
+\else
+\tikzpicture[baseline]\pgftree{\the\@result}\endtikzpicture
+\fi
+}
+
+%% scan a subtree
+\newtoks\child@list
+\newtoks\root@node
+
+\def\@subtree[{%
+\root@node={}%
+\pgfutil@ifnextchar.{\@call\@interior\@@subtree}{\@@@subtree}}
+\def\@@subtree{%
+\root@node=\@result
+\@@@subtree
+}
+\def\@@@subtree{%
+\@call\@children\@@@@subtree
+}
+\def\@@@@subtree]{%
+\child@list=\@result
+\pgfutil@ifnextchar.{\@call\@interior\@@@@@subtree}{\@@@@@@subtree}}
+\def\@@@@@subtree{%
+%%% Check for mismatch.
+\@ifequal{\the\root@node}{\pgfutil@empty}%
+  \root@node=\@result
+\fi
+\@ifequal{\the\root@node}{\the\@result}\else
+  \message{Warning: mismatched labels, \the\root@node{} and \the\@result.}%
+\fi
+\@@@@@@subtree
+}
+\def\@@@@@@subtree{%
+\@ifequal{\the\root@node}{\pgfutil@empty}%
+\edef\act{\noexpand\@result={%
+\noexpand\subtree@hook
+\noexpand\pgfsubtree{\noexpand\path coordinate (\noexpand\nodename);}{\the\child@list}}}%
+\else
+\edef\act{\noexpand\@result={%
+\noexpand\subtree@hook
+\noexpand\pgfsubtree{\the\root@node}{\the\child@list}}}%
+\fi
+\act
+\@return}
+
+%% scan a sequence of subtrees or leaves
+
+\newif\ifscanned@edge
+
+\def\@children{%
+\scanned@edgefalse
+\child@list{}%
+\@@children}
+\def\@@children{%
+\pgfutil@ifnextchar]{\@result\child@list\@return}{% end of children
+\pgfutil@ifnextchar\edge{% explicit edge
+\ifscanned@edge
+\message{Warning: more than one edge given for a single child}\let\next\@@children % ignore
+\else
+\scanned@edgetrue\let\next\@@@children
+\fi
+\@call\@edge\next}{%
+% else, a real node is next
+\ifscanned@edge\else % no explicit edge, supply default
+\expandafter\child@list\expandafter{\the\child@list{\edge@adapter{}}}%
+\fi
+\scanned@edgefalse
+\pgfutil@ifnextchar[{% subtree
+\expandafter\child@list\expandafter{\the\child@list{\level@hook\interior@hook}}%
+\@call\@subtree\@@@children}%
+{% leaf
+\expandafter\child@list\expandafter{\the\child@list{\level@hook\frontier@hook}}%
+\@call\@leaf\@@@children}%
+}}}
+\def\@@@children{%
+% wrap child inside curly braces
+\expandafter\@result\expandafter{\expandafter{\the\@result}}%
+\edef\act{\noexpand\child@list{\the\child@list \the\@result}}\act
+\@@children
+}
+
+\def\@interior.{\@result{\node[alias=\nodename][every tree node,every internal node,every level \the\pgftree@level\space node/.try]}\@label}
+
+\def\@leaf{\@call\@label\@@leaf}
+\def\@@leaf{\edef\act{\noexpand\@result{%
+\noexpand\subtree@hook
+\noexpand\pgfsubtree{\noexpand\node[alias=\noexpand\nodename][every tree node,every leaf node,every level \noexpand\the\pgftree@level\space node/.try]\the\@result}{}}}\act\@return}
+
+\def\@edge\edge #1;{%
+\@result{\edge@adapter{#1}}%
+\@return}
+\def\edge@adapter#1{%
+\let\tikzparentnode\parentnodename
+\let\tikzchildnode\nodename
+\path edge from parent #1;%
+}
+
+\def\level@hook{%
+{\advance\pgftree@level by 1\relax
+\xdef\@act{\noexpand\tikzset{level \the\pgftree@level/.try}}}\@act}
+\def\subtree@hook{%
+%\edef\act{\noexpand\tikzset{every tree node/.append code={\noexpand\tikzset{every level \the\pgftree@level+ node/.try}}}}\act
+{\advance\pgftree@level by 1\relax
+\xdef\@act{\noexpand\tikzset{level \the\pgftree@level+/.try}}}\@act
+}
+\def\interior@hook{\tikzset{interior/.try}}
+\def\frontier@hook{\tikzset{frontier/.try}}
+
+% a label is either text or PGF/TikZ code starting with \node
+\def\@label{\pgfutil@ifnextchar\node{\@litlabel}{\@@label}}
+\def\@@label#1 {%
+\expandafter\@result\expandafter{\the\@result{#1};}%
+\@return}
+
+% try to copy \node command into \@result without stripping braces
+\def\@litlabel\node{\@@litlabel}
+\def\@@litlabel{\pgfutil@ifnextchar\bgroup{\@@@litlabel}{\@@@@litlabel}}
+\def\@@@litlabel#1{\expandafter\@result\expandafter{\the\@result {#1}}\@@litlabel}
+\def\@@@@litlabel#1;{\expandafter\@result\expandafter{\the\@result #1;}\@return}
+
+% predefined edges
+
+\def\tree@edge#1#2{(#1.\pgftree@parentanchor) -- (#2.\pgftree@childanchor)}
+
+\def\roof@edge#1#2{\csname roof@edge@\leveldirection\endcsname{#1}{#2}}
+\def\roof@edge@down#1#2{(#1.south) -- (#2.north west) -- (#2.north east) -- cycle}
+\def\roof@edge@up#1#2{(#1.north) -- (#2.south west) -- (#2.south east) -- cycle}
+\def\roof@edge@left#1#2{(#1.west) -- (#2.north east) -- (#2.south east) -- cycle}
+\def\roof@edge@right#1#2{(#1.east) -- (#2.north west) -- (#2.south west) -- cycle}
+
+%%% Options
+\pgfkeysgetvalue{/tikz/level distance/.@cmd}{\orig@leveldistance}
+\tikzoption{level distance}{\pgfmathsetlength\levelsep{#1}\orig@leveldistance#1\pgfeov}
+\tikzoption{distance from root}{\pgfmathsetlength\levelsep{#1}\advance\levelsep by -\pgftree@depth}
+\pgfkeysgetvalue{/tikz/sibling distance/.@cmd}{\orig@siblingdistance}
+\tikzoption{sibling distance}{\pgfmathsetlength\subtreesep{#1}\orig@siblingdistance#1\pgfeov} % different semantics
+
+% I don't really like this scheme
+\pgfkeysgetvalue{/tikz/grow/.@cmd}{\orig@grow}
+\tikzoption{grow}{\csname grow@#1\endcsname\orig@grow#1\pgfeov}
+\pgfkeysgetvalue{/tikz/grow'/.@cmd}{\orig@growprime}
+\tikzoption{grow'}{\csname growprime@#1\endcsname\orig@growprime#1\pgfeov}
+\def\grow@up{\def\leveldirection{up}\def\siblingdirection{left}}
+\def\grow@down{\def\leveldirection{down}\def\siblingdirection{right}}
+\def\growprime@up{\def\leveldirection{up}\def\siblingdirection{right}}
+\def\growprime@down{\def\leveldirection{down}\def\siblingdirection{left}}
+\def\grow@left{\def\leveldirection{left}\def\siblingdirection{down}}
+\def\grow@right{\def\leveldirection{right}\def\siblingdirection{up}}
+\def\growprime@left{\def\leveldirection{left}\def\siblingdirection{up}}
+\def\growprime@right{\def\leveldirection{right}\def\siblingdirection{down}}
+
+% defaults appropriate for linguistic trees
+\def\tikz@edge@to@parent@path{\tree@edge{\tikzparentnode}{\tikzchildnode}}
+\tikzset{every tree node/.style={anchor=base}}
+\tikzset{every leaf node/.style={}}
+\tikzset{every internal node/.style={}}
+
+% predefined roof style
+\tikzset{roof/.style={edge from parent path=\roof@edge{\tikzparentnode}{\tikzchildnode}}}

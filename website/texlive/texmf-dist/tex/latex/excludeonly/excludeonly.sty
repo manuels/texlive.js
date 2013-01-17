@@ -1,0 +1,83 @@
+% excludeonly.sty 
+% Dan Luecking <luecking@uark.edu> and Donald Arseneau <asnd@triumf.ca>
+%
+% This software is contributed to the public domain.
+%
+% Usage:
+% ~~~~~~
+% In the document preamble, "\excludeonly{aaa,bbb}" will prevent files
+% aaa.tex and bbb.tex from being typeset by \include{aaa} and \include{bbb}. 
+% If both \includeonly and \excludeonly are used, then only the files
+% permitted by both declarations are used:
+% \includeonly{aaa,bbb}
+% \excludeonly{bbb,ccc}
+% results in only aaa being included.
+%
+% This behavior contradicts the name "exclude only" but the name is 
+% desirable anyway to show the relationship with \includeonly.
+%     In case it is actually desireable that \excludeonly lives up
+% to its name, and causes *all* parts to be included, except those
+% explicitly listed for exclusion, there is an [only] package option 
+% \usepackage[only]{excludeonly}
+% The effect of this is to override any \includeonly commands.
+%
+% Conflicts:
+% ~~~~~~~~~~ 
+% This package redefines the internal \@include command, so it could
+% conflict with other redefinitions.  Known conflicts are with document 
+% classes "paper.cls" and "thesis.cls" by Wenzel Matiaske. 
+%     A different method for implementing \excludeonly would be to 
+% redefine \@setckpt to compile a file-inclusion list (\@partlist)
+% that accounts for exclusions.  Surprisingly, several packages
+% redefine \@setckpt, so this alternative would have more conflicts.
+%
+\ProvidesPackage{excludeonly}[2003/03/14 v1.0 %
+   eponymous command opposite to \string\includeonly]
+%
+\newif\if@excludesw \@excludeswfalse
+\let\ExOn@swaset\relax
+%
+\DeclareOption{only}{\let\ExOn@swaset\@tempswatrue}
+\ProcessOptions
+%
+\newcommand*{\excludeonly}[1]{%
+  \@excludeswtrue
+  \edef\@excllist{\zap@space#1 \@empty}}
+\@onlypreamble\excludeonly
+%
+\def\@include#1 {%
+  \clearpage
+  \if@filesw
+    \immediate\write\@mainaux{\string\@input{#1.aux}}%
+  \fi
+  \@tempswatrue
+  \if@partsw
+    \@tempswafalse
+    \edef\reserved@b{#1}%
+    \@for\reserved@a:=\@partlist\do
+      {\ifx\reserved@a\reserved@b\@tempswatrue\fi}%
+  \fi
+  \if@excludesw
+    \ExOn@swaset
+    \edef\reserved@b{#1}%
+    \@for\reserved@a:=\@excllist\do
+      {\ifx\reserved@a\reserved@b\@tempswafalse\fi}%
+  \fi
+  \if@tempswa
+    \let\@auxout\@partaux
+    \if@filesw
+      \immediate\openout\@partaux #1.aux
+      \immediate\write\@partaux{\relax}%
+    \fi
+    \@input@{#1.tex}%
+    \clearpage
+    \@writeckpt{#1}%
+    \if@filesw
+      \immediate\closeout\@partaux
+    \fi
+  \else
+    \deadcycles\z@
+    \@nameuse{cp@#1}%
+  \fi
+  \let\@auxout\@mainaux}
+\endinput

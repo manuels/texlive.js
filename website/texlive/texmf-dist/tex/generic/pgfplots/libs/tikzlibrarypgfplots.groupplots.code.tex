@@ -1,0 +1,489 @@
+%--------------------------------------------
+%
+% Package pgfplots
+%
+% Provides a user-friendly interface to create function plots (normal
+% plots, semi-logplots and double-logplots).
+% 
+% It is based on Till Tantau's PGF package.
+%
+% Copyright 2009 by Nick Papior Andersen.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%--------------------------------------------
+
+\newif\ifpgfplots@group@sharedlabels
+
+\def\pgfplots@group@xticklabels{}
+\def\pgfplots@group@yticklabels{}
+\def\pgfplots@group@xlabels{}
+\def\pgfplots@group@ylabels{}
+\def\pgfplots@group@totalplots{1}
+\def\pgfplots@group@columns{1}
+\def\pgfplots@group@rows{1}
+\def\pgfplots@group@name{group}
+\def\pgfplots@group@style{}
+\gdef\pgfplots@group@rmopts{}
+\newcount\pgfplots@group@current@plot
+\newcount\pgfplots@group@current@row
+\newcount\pgfplots@group@current@column
+
+\usetikzlibrary{calc}
+
+\pgfkeys{
+    /pgfplots/group/.is family,
+    /pgfplots/group style/.store in=\pgfplots@group@style,
+    /pgfplots/group/horizontal sep/.initial=1cm,
+    /pgfplots/group/vertical sep/.initial=1cm,
+    /pgfplots/group/group size/.style args={#1 by #2}{/pgfplots/group/columns=#1,/pgfplots/group/rows=#2},
+    /pgfplots/group/group size/.default={1 by 1},
+    /pgfplots/group/columns/.store in=\pgfplots@group@columns,
+    /pgfplots/group/rows/.store in=\pgfplots@group@rows,
+    /pgfplots/group/every plot/.style=,
+    /pgfplots/group/shared labels/.is if=pgfplots@group@sharedlabels,
+    /pgfplots/group/shared labels=false,
+    /pgfplots/group/xticklabels at/.is choice,
+    /pgfplots/group/xticklabels at/all/.code=\def\pgfplots@group@xticklabels{all},
+    /pgfplots/group/xticklabels at/edge top/.code=\def\pgfplots@group@xticklabels{top},
+    /pgfplots/group/xticklabels at/edge bottom/.code=\def\pgfplots@group@xticklabels{lower},
+    /pgfplots/group/xticklabels at/edge left/.code=\def\pgfplots@group@xticklabels{left}, % TODO
+    /pgfplots/group/xticklabels at/edge right/.code=\def\pgfplots@group@xticklabels{right}, % TODO
+    /pgfplots/group/xticklabels at=all,
+    /pgfplots/group/yticklabels at/.is choice,
+    /pgfplots/group/yticklabels at/all/.code=\def\pgfplots@group@yticklabels{all},
+    /pgfplots/group/yticklabels at/edge left/.code=\def\pgfplots@group@yticklabels{left},
+    /pgfplots/group/yticklabels at/edge right/.code=\def\pgfplots@group@yticklabels{right},
+    /pgfplots/group/yticklabels at/edge top/.code=\def\pgfplots@group@yticklabels{top}, % TODO
+    /pgfplots/group/yticklabels at/edge bottom/.code=\def\pgfplots@group@yticklabels{bottom}, % TODO
+    /pgfplots/group/yticklabels at=all,
+    /pgfplots/group/xlabels at/.is choice,
+    /pgfplots/group/xlabels at/all/.code=\def\pgfplots@group@xlabels{all},
+    /pgfplots/group/xlabels at/edge top/.code=\def\pgfplots@group@xlabels{top},
+    /pgfplots/group/xlabels at/edge bottom/.code=\def\pgfplots@group@xlabels{lower},
+    /pgfplots/group/xlabels at/edge right/.code=\def\pgfplots@group@xlabels{right}, % TODO
+    /pgfplots/group/xlabels at/edge left/.code=\def\pgfplots@group@xlabels{left},% TODO
+    /pgfplots/group/xlabels at=all,
+    /pgfplots/group/ylabels at/.is choice,
+    /pgfplots/group/ylabels at/all/.code=\def\pgfplots@group@ylabels{all},
+    /pgfplots/group/ylabels at/edge left/.code=\def\pgfplots@group@ylabels{left},
+    /pgfplots/group/ylabels at/edge right/.code=\def\pgfplots@group@ylabels{right},
+    /pgfplots/group/ylabels at/edge top/.code=\def\pgfplots@group@ylabels{top}, % TODO
+    /pgfplots/group/ylabels at/edge bottom/.code=\def\pgfplots@group@ylabels{bottom}, % TODO
+    /pgfplots/group/ylabels at=all,
+    /pgfplots/group/x descriptions at/.is choice,
+    /pgfplots/group/x descriptions at/all/.style={
+        /pgfplots/group/xlabels at=all,
+        /pgfplots/group/xticklabels at=all
+    },
+    /pgfplots/group/x descriptions at/edge bottom/.style={
+        /pgfplots/group/xlabels at=edge bottom,
+        /pgfplots/group/xticklabels at=edge bottom
+    },
+    /pgfplots/group/x descriptions at/edge top/.style={
+        /pgfplots/group/xlabels at=edge top,
+        /pgfplots/group/xticklabels at=edge top
+    },
+    /pgfplots/group/y descriptions at/.is choice,
+    /pgfplots/group/y descriptions at/all/.style={
+        /pgfplots/group/ylabels at=all,
+        /pgfplots/group/yticklabels at=all
+    },
+    /pgfplots/group/y descriptions at/edge left/.style={
+        /pgfplots/group/ylabels at=edge left,
+        /pgfplots/group/yticklabels at=edge left
+    },
+    /pgfplots/group/y descriptions at/edge right/.style={
+        /pgfplots/group/ylabels at=edge right,
+	/pgfplots/group/yticklabels at=edge right
+    },
+    /pgfplots/group/group name/.store in=\pgfplots@group@name,
+    /pgfplots/group/empty plot/.style={/pgfplots/hide axis=true},
+	/pgfplots/trim axis group left/.code={%
+		\pgfutil@ifundefined{pgfsettrimleft}{%
+			\pgfplots@error{Sorry, the 'trim axis group left' requires a more recent PGF version.}%
+		}{%
+			\pgfkeysalso{/tikz/trim left={(group c1r1.south west)}}%
+		}%
+	},%
+	/tikz/trim axis group left/.style={/pgfplots/trim axis group left},
+	/pgfplots/trim axis group right/.code={%
+		\pgfutil@ifundefined{pgfsettrimleft}{%
+			\pgfplots@error{Sorry, the 'trim axis group right' requires a more recent PGF version.}%
+		}{%
+			\pgfkeysalso{/pgfplots/trim axis right}%
+		}%
+	},%
+	/tikz/trim axis group right/.style={/pgfplots/trim axis group right},
+}
+
+\def\nextgroupplot{%
+    \pgfutil@ifnextchar[{\pgfplots@group@nextplot}{\pgfplots@group@nextplot[]}%}
+}
+
+%
+% The actual addition of the new plots
+%
+\def\pgfplots@group@nextplot[#1]{%
+    % Check if it legal to produce another plot
+    \ifnum\pgfplots@group@current@plot=\pgfplots@group@totalplots\relax
+      \pgfplots@warning{You are adding more plots than you specified, current plots=\the\pgfplots@group@current@plot\space vs. total allowed
+          plots=\pgfplots@group@totalplots.}
+    \else
+      % 
+      % If there has been other plots before then end the plot
+      % 
+      \ifnum0<\pgfplots@group@current@plot\relax
+        % DEBUG: \message{DEBUG: Ending plot}
+        \endpgfplots@environment@opt
+      \fi
+      % Prepare for next plot, increment plot, row and column
+      \pgfplots@group@increment@numbers
+      % DEBUG: \message{DEBUG: Cur. Plot: \the\pgfplots@group@current@plot. Current Row: \the\pgfplots@group@current@row. Current Column: \the\pgfplots@group@current@column.}    
+      % Creation of the new axis environment
+      \pgfplots@group@environment@create{#1}
+    \fi
+}
+%
+% This creates an environment according to which plots that have been typeset.
+% The code utilizes previous plots anchor points to position themselves, unless it's the 
+% first plot.
+% Using the figure below to describe the code implementation:
+% ____    ____   ____
+%|        | |        | |        |
+%|   1   | |   2   | |   3   |
+%|___| |___| |___|
+% ____    ____   ____
+%|        | |        | |        |
+%|   4   | |   5   | |   6   |
+%|___| |___| |___|
+% ____    ____   ____
+%|        | |        | |        |
+%|   7   | |   8   | |   9   |
+%|___| |___| |___|
+% 
+% The plots anchors are as follows: 
+%    1: plot is typeset normally
+%    2: the "1" plot anchor "east" is anchored to "west"
+%    3: the "2" plot anchor "east" is anchored to "west"
+%    4: the "1" plot anchor "south" is anchored to "north"
+%    5: the "2" plot anchor "south" is anchored to "north"
+%    6: the "3" plot anchor "south" is anchored to "north"
+%    7: the "4" plot anchor "south" is anchored to "north"
+%    8: the "5" plot anchor "south" is anchored to "north"
+%    9: the "6" plot anchor "south" is anchored to "north"
+%
+\def\pgfplots@group@environment@create#1{%
+    \ifnum1=\pgfplots@group@current@row\relax
+      \ifnum1=\pgfplots@group@current@column\relax
+        \pgfplots@environment@opt[name={\pgfplots@group@name\space c\the\pgfplots@group@current@column r\the\pgfplots@group@current@row},%
+          /pgfplots/group/every plot,%
+          /pgfplots/group/plot c\the\pgfplots@group@current@column r\the\pgfplots@group@current@row,%
+          #1]
+      \else
+        \pgfplotsgroupplotsmath@decrease\pgfplots@group@current@column
+        \xdef\pgfplots@glob@TMPb{\pgfplots@group@name\space c\pgfmathresult r\the\pgfplots@group@current@row}
+        \pgfplots@environment@opt[name={\pgfplots@group@name\space c\the\pgfplots@group@current@column r\the\pgfplots@group@current@row},%
+          /pgfplots/group/every plot,%
+          /pgfplots/group/plot c\the\pgfplots@group@current@column r\the\pgfplots@group@current@row,%
+          at={($(\pgfplots@glob@TMPb.east)+(\pgfkeysvalueof{/pgfplots/group/horizontal sep},0)$)},anchor=west,%
+          #1]
+      \fi
+    \else
+      \pgfplotsgroupplotsmath@decrease\pgfplots@group@current@row
+      \xdef\pgfplots@glob@TMPb{\pgfplots@group@name\space c\the\pgfplots@group@current@column r\pgfmathresult}
+      \pgfplots@environment@opt[name={\pgfplots@group@name\space c\the\pgfplots@group@current@column r\the\pgfplots@group@current@row},%
+        /pgfplots/group/every plot,%
+        /pgfplots/group/plot c\the\pgfplots@group@current@column r\the\pgfplots@group@current@row,%
+        at={($(\pgfplots@glob@TMPb.south)-(0,\pgfkeysvalueof{/pgfplots/group/vertical sep})$)},anchor=north,%
+        #1]%
+    \fi%
+}
+
+%
+% Determine the labels of both x and y.
+%
+\def\pgfplots@group@determine@labels{%
+    \def\pgfplots@loc@TMPa{all}
+    \def\pgfplots@loc@TMPb{lower}
+    \ifx\pgfplots@loc@TMPa\pgfplots@group@xlabels%
+      % xlabels at=all
+      % Do nothing as all should have xlabels
+    \fi
+    \gdef\pgfplots@glob@TMPa{}
+    \ifx\pgfplots@loc@TMPb\pgfplots@group@xlabels%
+	  % xlabels at=lower
+      \ifnum1<\pgfplots@group@rows\relax
+        \foreach \pgfplots@column in {1,...,\pgfplots@group@columns} {%
+            \foreach \pgfplots@row in {1,...,\pgfplots@group@rows} {%
+                \ifnum\pgfplots@row=\pgfplots@group@rows\relax%
+                \else
+                \expandafter\xdef\expandafter\pgfplots@glob@TMPa\expandafter{%
+                    \pgfplots@glob@TMPa,/pgfplots/group/plot c\pgfplots@column r\pgfplots@row/.append style={/pgfplots/xlabel={}}}%
+                \fi
+            }%
+        }%
+      \fi%
+	\else
+		\def\pgfplots@loc@TMPb{top}%
+		\ifx\pgfplots@loc@TMPb\pgfplots@group@xlabels%
+			% xlabels at=top
+			\ifnum1<\pgfplots@group@rows\relax
+				\foreach \pgfplots@column in {1,...,\pgfplots@group@columns} {%
+					\foreach \pgfplots@row in {1,...,\pgfplots@group@rows} {%
+						\ifnum\pgfplots@row=1 %
+						\expandafter\xdef\expandafter\pgfplots@glob@TMPa\expandafter{%
+							\pgfplots@glob@TMPa,/pgfplots/group/plot c\pgfplots@column r\pgfplots@row/.append style={/pgfplots/xticklabel pos=upper}}%
+						\else
+						\expandafter\xdef\expandafter\pgfplots@glob@TMPa\expandafter{%
+							\pgfplots@glob@TMPa,/pgfplots/group/plot c\pgfplots@column r\pgfplots@row/.append style={/pgfplots/xlabel={}}}%
+						\fi
+					}%
+				}%
+			\fi%
+		\fi
+    \fi
+    % 
+    % Defining styles for the y's
+    % 
+    \ifx\pgfplots@loc@TMPa\pgfplots@group@ylabels%
+	  % ylabels at=all
+      % Do nothing as all should have ylabels
+	\else
+		\def\pgfplots@loc@TMPb{left}%
+		\ifx\pgfplots@loc@TMPb\pgfplots@group@ylabels%
+			% ylabels at=left
+			\ifnum1<\pgfplots@group@columns\relax
+				\foreach \pgfplots@row in {1,...,\pgfplots@group@rows} {%
+					\foreach \pgfplots@column in {2,...,\pgfplots@group@columns} {%
+						\expandafter\xdef\expandafter\pgfplots@glob@TMPa\expandafter{%
+							\pgfplots@glob@TMPa,/pgfplots/group/plot c\pgfplots@column r\pgfplots@row/.append style={/pgfplots/ylabel={}}}%
+					}%
+				}%
+			\fi%
+		\else
+			\def\pgfplots@loc@TMPb{right}%
+			\ifx\pgfplots@loc@TMPb\pgfplots@group@ylabels%
+				% ylabels at=right
+				\ifnum1<\pgfplots@group@columns\relax
+					\foreach \pgfplots@row in {1,...,\pgfplots@group@rows} {%
+						\foreach \pgfplots@column in {1,...,\pgfplots@group@columns} {%
+							\ifnum\pgfplots@column=\pgfplots@group@columns\relax
+							\expandafter\xdef\expandafter\pgfplots@glob@TMPa\expandafter{%
+								\pgfplots@glob@TMPa,/pgfplots/group/plot c\pgfplots@column r\pgfplots@row/.append style={/pgfplots/yticklabel pos=upper}}%
+							\else
+							\expandafter\xdef\expandafter\pgfplots@glob@TMPa\expandafter{%
+								\pgfplots@glob@TMPa,/pgfplots/group/plot c\pgfplots@column r\pgfplots@row/.append style={/pgfplots/ylabel={}}}%
+							\fi
+						}%
+					}%
+				\fi
+			\fi%
+		\fi
+    \fi
+    \expandafter\pgfkeys\expandafter{\pgfplots@glob@TMPa}
+}
+
+%
+% Determine the ticklabels of both x and y.
+%
+\def\pgfplots@group@determine@ticklabels{%
+    \def\pgfplots@loc@TMPa{all}
+    \def\pgfplots@loc@TMPb{top}
+    \def\pgfplots@loc@TMPc{lower}
+    \ifx\pgfplots@loc@TMPa\pgfplots@group@xticklabels%
+      % Do nothing as all should have xticklabels
+    \fi
+    \gdef\pgfplots@glob@TMPa{}
+    \ifx\pgfplots@loc@TMPb\pgfplots@group@xticklabels%
+      \foreach \pgfplots@column in {1,...,\pgfplots@group@columns} {%
+          \expandafter\xdef\expandafter\pgfplots@glob@TMPa\expandafter{%
+              \pgfplots@glob@TMPa,/pgfplots/group/plot c\pgfplots@column r1/.append style={xticklabel pos=upper}}%
+          \ifnum1<\pgfplots@group@rows\relax
+            \foreach \pgfplots@row in {2,...,\pgfplots@group@rows} {%
+                \expandafter\xdef\expandafter\pgfplots@glob@TMPa\expandafter{%
+                    \pgfplots@glob@TMPa,/pgfplots/group/plot c\pgfplots@column r\pgfplots@row/.append style={/pgfplots/xticklabels={}}}%
+            }%
+          \fi%
+      }%
+    \fi
+    \ifx\pgfplots@loc@TMPc\pgfplots@group@xticklabels%
+      \foreach \pgfplots@column in {1,...,\pgfplots@group@columns} {%
+          \expandafter\xdef\expandafter\pgfplots@glob@TMPa\expandafter{%
+              \pgfplots@glob@TMPa,/pgfplots/group/plot c\pgfplots@column r\pgfplots@group@rows/.append style={xticklabel pos=lower}}%
+          \ifnum1<\pgfplots@group@rows\relax
+            \pgfplotsgroupplotsmath@decrease\pgfplots@group@rows
+            \foreach \pgfplots@row in {1,...,\pgfmathresult} {%
+                \expandafter\xdef\expandafter\pgfplots@glob@TMPa\expandafter{%
+                    \pgfplots@glob@TMPa,/pgfplots/group/plot c\pgfplots@column r\pgfplots@row/.append style={/pgfplots/xticklabels={}}}%
+            }%
+          \fi%
+      }%
+    \fi%
+    % 
+    % Defining styles for the ytick's
+    % 
+    \def\pgfplots@loc@TMPb{left}
+    \def\pgfplots@loc@TMPc{right}
+    \ifx\pgfplots@loc@TMPa\pgfplots@group@yticklabels%
+      % Do nothing as all should have yticklabels
+    \fi
+    \ifx\pgfplots@loc@TMPb\pgfplots@group@yticklabels%
+      \foreach \pgfplots@row in {1,...,\pgfplots@group@rows} {%
+          \expandafter\xdef\expandafter\pgfplots@glob@TMPa\expandafter{%
+              \pgfplots@glob@TMPa,/pgfplots/group/plot c1r\pgfplots@row/.append style={yticklabel pos=left}}%
+          \ifnum1<\pgfplots@group@columns\relax
+            \foreach \pgfplots@column in {2,...,\pgfplots@group@columns} {%
+                \expandafter\xdef\expandafter\pgfplots@glob@TMPa\expandafter{%
+                    \pgfplots@glob@TMPa,/pgfplots/group/plot c\pgfplots@column r\pgfplots@row/.append style={/pgfplots/yticklabels={}}}%
+            }%
+          \fi%
+      }%
+    \fi
+    \ifx\pgfplots@loc@TMPc\pgfplots@group@yticklabels%
+      \foreach \pgfplots@row in {1,...,\pgfplots@group@rows} {%
+          \expandafter\xdef\expandafter\pgfplots@glob@TMPa\expandafter{%
+              \pgfplots@glob@TMPa,/pgfplots/group/plot c\pgfplots@group@columns r\pgfplots@row/.append style={yticklabel pos=right}}%
+          \ifnum1<\pgfplots@group@columns\relax
+            \pgfplotsgroupplotsmath@decrease\pgfplots@group@columns
+            \foreach \pgfplots@column in {1,...,\pgfmathresult} {%
+                \expandafter\xdef\expandafter\pgfplots@glob@TMPa\expandafter{%
+                    \pgfplots@glob@TMPa,/pgfplots/group/plot c\pgfplots@column r\pgfplots@row/.append style={/pgfplots/yticklabels={}}}%
+            }%
+          \fi%
+      }%
+    \fi%
+    \expandafter\pgfkeys\expandafter{\pgfplots@glob@TMPa}
+}
+
+%
+% The counters which are used to determine the current plot:
+%    \pgfplots@group@current@plot
+%    \pgfplots@group@current@column
+%    \pgfplots@group@current@row
+% gets incremented according to the scheme below:
+% ____    ____   ____
+%|        | |        | |        |
+%|   1   | |   2   | |   3   |
+%|___| |___| |___|
+% ____    ____   ____
+%|        | |        | |        |
+%|   4   | |   5   | |   6   |
+%|___| |___| |___|
+% ____    ____   ____
+%|        | |        | |        |
+%|   7   | |   8   | |   9   |
+%|___| |___| |___|
+% where the number matches the plot number.
+%
+\def\pgfplots@group@increment@numbers{%
+    \advance\pgfplots@group@current@plot by1
+    \ifnum\pgfplots@group@current@column=\pgfplots@group@columns\relax
+      \ifnum1=\pgfplots@group@current@plot\relax
+      \else
+        \advance\pgfplots@group@current@row by1
+      \fi
+      \pgfplots@group@current@column=1
+    \else
+      \advance\pgfplots@group@current@column by1
+    \fi
+}
+
+\def\pgfplots@group@get@plot@name#1,#2\in#3{%
+    \edef#3{c#1r#2}%
+}
+
+
+%
+% Setting up all possible styles in current plot
+% I.e. Setting:
+% /pgfplots/group/plot c1r1/.style=
+% /pgfplots/group/plot c2r1/.style=
+% ...
+% /pgfplots/group/plot c<columns>r<rows>/.style=
+%
+\def\pgfplots@group@individual@setup{%
+    \gdef\pgfplots@glob@TMPa{}
+    \foreach \pgfplots@column in {1,...,\pgfplots@group@columns} {%
+        \foreach \pgfplots@row in {1,...,\pgfplots@group@rows} {%
+            \expandafter\xdef\expandafter\pgfplots@glob@TMPa\expandafter{%
+                \pgfplots@glob@TMPa,/pgfplots/group/plot c\pgfplots@column r\pgfplots@row/.style=}%
+        }%
+    }%
+    \expandafter\pgfkeys\expandafter{\pgfplots@glob@TMPa}%
+}
+
+
+
+%
+% Implementation of the environment {groupplots}
+\def\pgfplots@environment@groupplot{%
+	\pgfutil@ifnextchar[{\pgfplots@@environment@groupplot}{\pgfplots@@environment@groupplot[\pgfutil@empty]}%
+}
+
+\def\endpgfplots@environment@groupplot{\endpgfplots@environment@opt\endgroup}
+
+\def\pgfplots@@environment@groupplot[#1]{%
+    \begingroup%
+    % Only find the keys column and row
+    % the following things appear to be complete... ?
+    \pgfkeysinstallkeyfilterhandler{/pgf/key filter handlers/append filtered to}{\pgfplots@group@rmopts}%
+    \let\pgfplots@group@rmopts=\pgfutil@empty
+    \pgfkeysinstallkeyfilter{/pgf/key filters/equals}{/pgfplots/group style}
+    \pgfkeysinstallkeyfilter{/pgf/key filters/is descendant of}{/pgfplots/group}
+    \pgfqkeysfiltered{/pgfplots}{#1}
+    \edef\pgfplots@loc@TMPa{%
+        \noexpand\pgfkeys{/pgfplots/group/.cd,\pgfplots@group@style}
+    }\pgfplots@loc@TMPa
+	%
+	\let\pgfplots@set@options@sanitizemode@old=\pgfplots@set@options@sanitizemode
+	\let\pgfplots@set@options@sanitize@old=\pgfplots@set@options@sanitize
+	\let\pgfplots@set@options@sanitize=\relax
+	\let\pgfplots@set@options@sanitizemode=\relax
+    \expandafter\pgfplots@set@options\expandafter{\pgfplots@group@rmopts}
+	\let\pgfplots@set@options@sanitize=\pgfplots@set@options@sanitize@old
+	\let\pgfplots@set@options@sanitizemode=\pgfplots@set@options@sanitizemode@old
+	%
+    \pgfplots@group@individual@setup
+    \pgfplots@group@determine@ticklabels
+    \pgfplots@group@determine@labels
+    \pgfplots@group@current@plot=0%
+    \pgfplots@group@current@row=1%
+    \pgfplots@group@current@column=0%
+    \begingroup
+      \c@pgf@counta=\pgfplots@group@rows\relax
+      \multiply \c@pgf@counta by\pgfplots@group@columns\relax
+      \edef\pgfmathresult{\the\c@pgf@counta}%
+      \pgfmath@smuggleone\pgfmathresult
+    \endgroup
+    \edef\pgfplots@group@totalplots{\pgfmathresult}%
+    %DEBUG: \message{TEST: \pgfplots@group@totalplots, rows=\pgfplots@group@rows, columns=\pgfplots@group@columns}%
+}
+
+% Assigns \pgfmathresult as #1-1 (in integer arithmetics)
+%
+% #1 an integer (a register or something which expands to an integer).
+\def\pgfplotsgroupplotsmath@decrease#1{%
+    \begingroup
+      \c@pgf@counta=#1\relax
+      \advance\c@pgf@counta by-1
+      \edef\pgfmathresult{\the\c@pgf@counta}%
+      \pgfmath@smuggleone\pgfmathresult
+    \endgroup
+}
+
+\tikzaddtikzonlycommandshortcutlet\groupplot\pgfplots@environment@groupplot
+\tikzaddtikzonlycommandshortcutlet\endgroupplot\endpgfplots@environment@groupplot
+
+\endinput

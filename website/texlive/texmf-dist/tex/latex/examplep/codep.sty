@@ -1,0 +1,447 @@
+%
+% codep.sty -- typeset Source and Sample, and dump Source to an external file
+% by pts@fazekas.hu at Wed Jan  5 22:38:29 CET 2005
+%
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{codep}[2005/01/01 v0.01 typeset Source and Sample, dump to file]
+
+\RequirePackage{examplep}
+
+% Some docs in Hungarian
+% --- \begin{code} (WF és pts tervezése, a dokumentációt is ketten írták)
+%
+%    A pelda, peldak, kod környezetek továbbra is mûködnek, de használatuk
+%    nem javasolt. Helyettük létrejön a megszûnnek, helyettük marad a `code'
+%    környezet. A környezet alakja:
+% 
+%    \begin{code}
+%    j szöveg
+%    j szöveg
+%    \end{code}
+%    
+%    ahol 'j' egy egykarakteres jel, 'szöveg' pedig a kódszöveg.
+%    'j' lehetséges értékei v,f,d,l,p,0,t,b,<,>, ,c,o,2,e. Ezek a jelek
+%    osztályokba vannak sorolva, az osztályok sorrendje meg van kötve, de az
+%    egy osztályba tartozók sorrendje tetszõleges. Az osztályokat Nagy
+%    betûvel jelöljük, de ez csak a kommunikációt segíti, egyébként nem 
+%    használjuk sehol.
+%
+%    Minden _osztályhoz_ tartozik egy default jelsorozat (default
+%    argumentummokkal). Ha egy osztály kimarad, akkor ez a default lefut.
+% 
+%    Azt kell vezérelnünk, hogy a code kódja hova menjen, és ott hogy
+%    jelenjen meg! Mehet *kód*ba (régen ez volt a kod környezet), mehet
+%    *kód*ba, és mellé *output*ba (régen ezt csinálta a pelda
+%    környezet), és az elõzõ két változattól függetlenül mehet egy
+%    *fájl*ba, ami egybõl futtatható is, és a CD-n mellékeljük!
+% 
+% 
+%    osztály
+%       jel default                   jelentés
+%    --+---+-------------------------+------------------------------------
+%    F |f  |(nincs _).tex            |a teljes kód bekerül egy fájlba:
+%      |   |                         |f nev.tex -> 2_63_nev.tex
+%      |   |                         |A .tex kiterjesztést is kötelezõ kiírni!
+%      |v  |                         |azonnal C-be lép D,L,P,B,E default-jait
+%      |   |                         |  megüresítve. Megadható `v .mp', ekkor
+%      |   |                         |  2_63_.mp alakú file fog keletkezni.
+%      |f! |                         |f!nev.tex -> nev.tex
+%      |v! |                         |v!nev.ps  -> nev.ps  
+%    --+---+-------------------------+------------------------------------
+%    G |   |                         |ide visz egy F-beli parancs
+%    --+---+-------------------------+------------------------------------
+%    D |d  |\documentclass{article}  |a LaTeX-fájl elsõ sora -> fájl
+%    --+---+-------------------------+------------------------------------
+%    L |l  |\usepackage[latin2]{inputenc} -> fájl
+%      |   |\usepackage[T1]{fontenc}      ha nem e három sort akarjuk, akkor egy
+%      |   |\usepackage[magyar]{babel}    üres l törli, és a p-be írjuk az újat.
+%    --+---+-------------------------+------------------------------------
+%    P |p 0|                         |preambulumba -> fájl
+%      |t  |                         |ha kódba is  -> fájl + kód(%^)
+%      |   |                         |pl. `t \usepackage{foo}
+%    --+---+-------------------------+------------------------------------
+%    B |b  |\begin{document}         | -> fájl
+%    --+---+-------------------------+------------------------------------
+%    C |< c|                         | -> kód + fájl
+%      |> o|                         | -> könyvbeli output
+%      |  2|                         | (`  ' vagy `2 ') -> kód + output + fájl
+%      |w  |                         | -> fájl
+%      |s  |                         | -> kód
+%      |%  |                         | komment, sehova nem kerül be
+%    --+---+-------------------------+------------------------------------
+%    E |e  |\end{document}           | -> fájl
+%    --+---+-------------------------+------------------------------------
+%    Z |   |                         |ide visz az \end{code}
+%    --+---+-------------------------+------------------------------------
+%
+%    A kiírásnál az alábbi korlátok (lennének) érvényesek:
+%
+%    -- a file mindenképpen soremelésre végzõdik (TeX \write tulajdonsága)
+%    -- a file-nak muszáj kiterjesztést adni (egyébként .tex lenne). Ha nem
+%       kívánkunk kiterjesztést, akkor `.noext' legyen (TeX \openout
+%       tulajdonsága)
+%    -- a sorvégi szóközök törlõdnek (akkor is, ha csak szóköz van a sorban)
+%    -- az ékezetes betûk ^^-pal íródnak ki ( pl. á -> ^^e1), hacsak nem
+%       `latex --translate-file cp8bit.tcx'-et futtatunk (nem
+%       `--translate-file il2-t1.tcx'-et, mert az a DVI-ben levõ õ-t elrontja)
+%       Ez információvesztéssel jár, mert mi van, ha eleve ^^-ot akartunk volna
+%       kiírni?
+%    -- nehézkes elkerülni, hogy ne generálódjon két azonos nevû file
+%       (ugyanazon az oldalon, ugyanabban a fejezetben két \begin{pelda}
+%    -- a régi peldak környezetben a sorhatárok elvesznek
+%
+%    Éppen ezért a file-ba írást nem a TeX-hel csináltatjuk, hanem egy Perl
+%    script-et fogok írni, ami az .aux file alapján dolgozik:
+%    `wrfiles.pl master.aux'. Ezt nyilván a LaTeX futtatása után kell majd
+%    futtatni. Ennek a megoldásnak a tulajdonságai:
+%
+%    -- (hátrány) \begin{code} és társai nem hívhatók olyan .tex file-ból,
+%       amely más .tex file-okat betölt; és a fõfile-on kívül csak olyan
+%       file-ból hívható, ami \input{...}-tal vagy \include{...}-dal (kapcsos
+%       zárójel kötelezõ!) lett betöltve (ez amiatt van, hogy a TeX-ben nem
+%       kérdezhetõ le az aktuális file neve)
+%    -- ha az \end{code} elõtti soremelés vagy belekerül a file-ba vagy nem
+%    -- nem kötelezõ a kiterjesztés a filenév végén
+%    -- sorvégi szóközök megmaradnak
+%    -- ékezetes betûk megmaradnak
+%    -- a sorhatárok \begin{peldak}-ban sem vesznek el
+%    -- a \begin{code} után közvetlenül a szóközök elnyelõdnek, majd 0 vagy 1
+%       soremelés is elnyelõdik
+%    -- a \begin{peldak} output-ba kerülõ részében (a kommentektõl eltekintve)
+%       helyesen kell egymásba ágyazni a kapcsoszárójeleket!
+%    -- akár Unicode-ös szövegfájl is létrehozható
+%
+%    A régi környezetek mûködése:
+%
+%    -- \begin{kod}: \begin{code}-ként mûködik, csupa `< ' jellel. Ez például
+%       azt jelenti, hogy a nyelvspecifikus részeket (babel csomag, L osztály)
+%       mindig kiírja a fájlba!
+%    -- \begin{pelda}: \begin{code}-ként mûködik, csupa `2 ' jellel
+%    -- \begin{peldak}: \begin{code}-ként mûködik, `< ' és `> ' jelekkel
+%       Az output-ba kerülõ részben (a kommentektõl eltekintve) helyesen kell
+%       egymásba ágyazni a kapcsoszárójeleket!
+%
+%    Tipikus használatok:
+%    
+%    1. Nem magyar szöveg -- mindhárom helyre
+% 
+%    \begin{code}
+%    f nembonyolult.tex
+%    l
+%      Not so complicated!
+%    \end{code}
+% 
+%    Az eredmény kimentõdik pl. a 2_63_nembonyolult.tex nevû állományba,
+%    ahol 2 a fejezet sorszáma, 63 az aktuális oldalszám.
+% 
+%    [pts] Az oldalszám kinyeréséhez \ref-et kell majd csinálni.
+% 
+%    2. Magyar szöveg -- mindhárom helyre
+% 
+%    \begin{code}
+%      ÁRVÍZTÛRÕ tükörfúrógép.
+%    \end{code}
+% 
+%    Az eredmény kimentõdik a 2_63.tex állományba, ahol 2 a fejezet
+%    sorszáma, 63 az aktuális oldalszám (kerüljük ezt a laza módszert,
+%    az f-et adjuk meg!)
+% 
+%    3. Nem magyar szöveg csomaggal, és nem írjuk ki fájlba
+% 
+%    \begin{code}
+%    f
+%    l
+%    p \usepackage{amsmath}
+%      \[1+1 \text{ equals to } 2\]
+%    \end{code}
+% 
+%    4. Nem magyar szöveg csomaggal -- de lássuk a könyvbeli kódon is,
+%       hogy milyen csomagot kell betölteni:
+% 
+%    \begin{code}
+%    l
+%    t \usepackage{amsmath}
+%      \[1+1 \text{ equals to } 2\]
+%    \end{code}
+% 
+%       (pts írja: ekkor a könyvbeli kód százalékjellel fog kezdõdni, mivel
+%       minden t-s sor százalékjelet szúr be: `%^\usepackage{amsmath}'
+%  
+%    5. Hazudunk, és mást írunk a kódba, mint az outputba:
+% 
+%    \begin{code}
+%    f filename.tex
+%    < \author{Szerzõ}
+%    < \date{}
+%    > \centering Szerzõ\\
+%    > 2004 augusztus 20.
+%    \end{code}
+% 
+%    6. Ha valami más kódot közlünk teljes egészében
+% 
+%    \begin{code}
+%    v!mikulaska.eps
+%    < %!PS-Adobe-2.0 EPSF-2.0
+%    < %%Title: mikulaska.eps
+%    < %%Creator: fig2dev Version 3.2 Patchlevel 3d
+%    < %%CreationDate: Mon Oct 27 17:01:57 2003
+%    < %%...és így tovább
+%    \end{code}
+%
+% `% ' type
+
+\newenvironment{code}{%
+  \begingroup
+  \verbfwr@default@acts% superfluous, will be overridden
+  \let\verbfwr@actemitdone\codep@code@done
+  \let\verbfwr@actemitlineone\codep@code@lineone
+  \let\verbfwr@actemitline\codep@code@line
+  \verbfwr@safespc% \catcode32 13
+  \def\codep@code@@curclass{F}%
+  \edef\codep@code@@inputlineno{\the\inputlineno}%
+  \global\let\pexa@@cursourcename\relax
+  \global\let\pexa@@cursamplename\relax
+  \ifhmode\unskip\fi% before \write. Strange: why is it needed for \immediate\write
+  \verbfwr@readenv\verbfwr@write% no more after this
+}{%
+  % Dat: too late for \ifhmode\unskip\fi
+  \endgroup% undo \catcode changes, see above
+  \ifx\pexa@@cursamplename\relax
+    \ifx\pexa@@cursourcename\relax\else
+      \PexaShowSource{srcstyle=leftnumhang}%
+    \fi
+  \else
+    \immediate\closeout\codep@code@samplefile
+    \ifx\pexa@@cursourcename\relax\else% Dat: there may be only Sample => don't show anything
+      \PexaShowBoth{srcstyle=leftnumhang}%
+      %\aftergroup\PexaShowBoth\aftergroup{\aftergroup}%
+    \fi
+  \fi
+  % Dat: no more \endgroup here, for \if@endpe
+  \aftergroup\clubpenalty\aftergroup\@clubpenalty% fundamental LaTeX design flaw -- BUGFIX at Fri Apr 16 00:32:04 CEST 2004
+}
+
+\def\codep@code@lineone{\let\verbfwr@actemitlineone\@empty}% std
+\let\codep@code@@prefix\@empty
+\def\codep@code@line#1{%
+  \expandafter\expandafter\expandafter\codep@code@line@a
+  \expandafter\codep@code@@prefix\VerbFwrLines\hfuzz
+}
+\begingroup\lccode\string`~\string`\ \lowercase{\endgroup
+%** Add spaces into the beginning if line length < 2
+\def\codep@code@line@a#1{%
+  \ifx#1\hfuzz\expandafter\codep@code@line@c\expandafter~\expandafter~\expandafter\hfuzz
+  \else\expandafter\codep@code@line@b\expandafter#1\fi
+}
+\def\codep@code@line@b#1#2{%
+  \ifx#2\hfuzz\expandafter\codep@code@line@c\expandafter#1\expandafter~\expandafter\hfuzz
+  \else\expandafter\codep@code@line@c\expandafter#1\expandafter#2\fi
+}
+}% \lowercase
+\def\codep@code@line@c#1#2#3\hfuzz{%
+  %%[(#1)(#2)#3]%
+  \edef\codep@code@@curcmd{\string#1\string#2}%
+  \expandafter\ifx\csname codep@code@\codep@code@@curcmd\endcsname\relax
+    \PackageError{lb}{Unknown code command \string`\codep@code@@curcmd'}\@eha
+    % Dat: no other commands of pattern `\codep@code@..'
+  \else
+    \csname codep@code@\codep@code@@curcmd\endcsname{#3}%
+  \fi
+}
+%** @param #1 uppercase letter token: [FGDLPBCE]
+%** @expands to positive class number or 0
+\def\codep@code@classnum#1{%
+  \if#1F1\else\if#1G2\else\if#1D3\else\if#1L4\else\if#1P5\else
+  \if#1B6\else\if#1C7\else\if#1E8\else\if#1Z9\else0\fi\fi\fi\fi\fi\fi\fi\fi\fi
+}
+\def\codep@code@toclass#1{%
+  \@tempcnta\expandafter\codep@code@classnum\codep@code@@curclass\relax
+  \@tempcntb\codep@code@classnum#1\relax
+  % ^^^ Dat: need these because of the cascaded \if
+  %%\showthe\@tempcnta \showthe\@tempcntb
+  \ifnum\@tempcnta>\@tempcntb
+    \PackageError{lb}{Code command \string`\codep@code@@curcmd' too late (class \codep@code@@curclass\space> #1)}\@ehc
+  \fi
+  \ifnum\@tempcnta<2 \ifnum\@tempcntb>2 % class F missing
+    % Imp: make class 0 the default
+    \codep@code@setwfile1{}%
+  \fi\fi
+  % vvv Dat: don't set \codep@code@@curcmd here
+  % vvv Dat: no need for this, the Perl script wrfiles.pl will do this
+  %\loop\ifnum\@tempcnta<\@tempcntb% call defaults
+  %  \ifcase\@tempcnta\or% F
+  %    \or% G
+  %    \or\csname\codep@code@d \endcsname{\string\documentclass{article}}% D
+  %    \or\csname\codep@code@l \endcsname{\string\usepackage[latin2]{inputenc}}% L
+  %       \csname\codep@code@l \endcsname{\string\usepackage[T1]{fontenc}}% L
+  %       \csname\codep@code@l \endcsname{\string\usepackage[magyar]babel}}% L
+  %  \fi
+  %  \advance\@tempcnta\@ne
+  %\repeat
+  \def\codep@code@@curclass{#1}%
+}
+
+\def\codep@code@@inputfile{\jobname.tex}
+% ^^^ Dat: \jobname never has `.tex', even if it was specified in the cmdline
+% ^^^ Imp: what if \jobname is foo.xyz?
+\def\codep@code@@tex{tex}%
+%\expandafter\def\expandafter\codep@code@setfile\expandafter#\expandafter
+%  1\string.#2 #3\hfuzz{%
+\def\codep@code@setfile#1 #2#3{%
+  \edef\reserved@a{#3}% usually .tex or .fd
+  \ifx\reserved@a\codep@code@@tex
+    \immediate\write\m@ne{Input File: #1#2}% .log file
+    \global\edef\codep@code@@inputfile{#1#2}% Imp: strip space
+  \fi
+}
+  
+%** Overrides latex.ltx
+%** Called for \include{...} and \input{...} (but not for `\input ... ')
+\long\def \InputIfFileExists#1#2{%
+  \IfFileExists{#1}{#2\@addtofilelist{#1}%
+    \edef\@filef@und{\expandafter\strip@prefix\meaning\@filef@und}% reset catcodes
+    \filename@parse{#1}%
+    % vvv Dat: \@filef@und always ends by ` '
+    \ifx\filename@ext\relax
+      \def\filename@ext{tex}% no ext specified
+      \expandafter\codep@code@setfile\@filef@und{.tex}{\filename@ext}%
+    \else
+      \expandafter\codep@code@setfile\@filef@und{}{\filename@ext}%
+    \fi
+    \@@input \@filef@und}}
+%** @param #1 0|1: emit automatic filename prefix?
+\def\codep@code@setwfile#1#2{%
+  %\protected@write\@auxout{}{\string\@gobble{code:\thechapter_\thepage_#1}}%
+  % vvv Dat: written at EOP with correct page number
+  % vvv Dat: this is not the final filename, wrfiles.pl will adjust it two
+  %     files will have the same name (e.g 1_4.tex)
+  \protected@write\@auxout{}{\string\@gobble{code:\codep@code@@inputfile:\codep@code@@inputlineno:%
+    \if\noexpand#10\else
+      \expandafter\ifx\csname thechapter\endcsname\relax\else\thechapter_\fi
+      \thepage
+      \ifx\hfuzz#2\hfuzz.tex\else_\fi
+    \fi
+    #2}}%
+}
+
+\def\codep@code@defaultlname#1{\jobname.cd#1}
+
+\def   \CodeDefaultD{\codep@code@default{d}}
+\def\endCodeDefaultD{\immediate\closeout\verbfwr@writefile}
+%** @example \begin{CodeDefaultL}
+%**   \usepackage[latin2]{inputenc}
+%**   \usepackage[T1]{fontenc}
+%**   \usepackage[english]{babel}
+%** \end{CodeDefaultL}
+\def   \CodeDefaultL{\codep@code@default{l}}
+\let\endCodeDefaultL\endCodeDefaultD
+\def   \CodeDefaultB{\codep@code@default{b}}
+\let\endCodeDefaultB\endCodeDefaultD
+\def   \CodeDefaultE{\codep@code@default{e}}
+\let\endCodeDefaultE\endCodeDefaultD
+%** @param #1 one of d, l, b, e
+\def\codep@code@default#1{%
+  \AtBeginDocument{\immediate\write\@auxout{\string\@gobble{cd#1:\codep@code@defaultlname{#1}}}}%
+  \immediate\openout\verbfwr@writefile\codep@code@defaultlname{#1}\relax
+  \let\verbfwr@writecs\verbfwr@writefile
+  \let\verbfwr@actwriteline\verbfwr@writeline
+  \verbfwr@default@acts
+  \verbfwr@readenv\verbfwr@write}% finish this \cs here
+
+%\def\CodeDefaultL
+
+\@namedef{codep@code@f }#1{%
+  \codep@code@toclass{F}%
+  \codep@code@toclass{G}%
+  \codep@code@setwfile1{#1}%
+}
+\@namedef{codep@code@f!}#1{%
+  \codep@code@toclass{F}%
+  \codep@code@toclass{G}%
+  \ifx\hfuzz#1\hfuzz \PackageWarning{lb}{Empty filename to write}\@eha
+  \else\codep@code@setwfile0{#1}\fi
+}
+\@namedef{codep@code@v }#1{%
+  \codep@code@toclass{F}%
+  \def\codep@code@@curclass{C}% ignore middle classes; also omts E (by wrfiles.pl)
+  \codep@code@setwfile1{#1}%
+}
+\@namedef{codep@code@v!}#1{%
+  \codep@code@toclass{F}%
+  \def\codep@code@@curclass{C}% ignore middle classes
+  \ifx\hfuzz#1\hfuzz \PackageWarning{lb}{Empty filename to write}\@eha
+  \else\codep@code@setwfile0{#1}\fi
+}
+\@namedef{codep@code@d }#1{\codep@code@toclass{D}}
+\@namedef{codep@code@l }#1{\codep@code@toclass{L}}
+\@namedef{codep@code@p }#1{\codep@code@toclass{P}}
+\expandafter\expandafter\expandafter\let\expandafter\expandafter
+  \csname codep@code@0 \endcsname \csname codep@code@p \endcsname
+%** Prefix to show in Source in front of `t ' 
+% WF %= is changed for %^ as it suggests taking up
+\edef\codep@code@tprefix{\expandafter\@gobble\string\%\string^}
+\@namedef{codep@code@t }#1{%
+  \codep@code@toclass{P}%
+  \expandafter\codep@code@tosource\expandafter{\codep@code@tprefix#1}%
+  % Dat: wrfiles.pl will write to CDfile
+}
+\@namedef{codep@code@w }#1{\codep@code@toclass{C}}%
+\@namedef{codep@code@\@percentchar\space}#1{\codep@code@toclass{C}}% Dat: must change classes, because that's how wrfiles.pl is implemented
+\@namedef{codep@code@\string< }#1{%
+  \codep@code@toclass{C}%
+  \codep@code@tosource{#1}%
+}
+\@namedef{codep@code@x }#1{%
+  \codep@code@toclass{C}%
+  \codep@code@tosample{#1}%
+}
+\expandafter\expandafter\expandafter\let\expandafter\expandafter
+  \csname codep@code@c \endcsname \csname codep@code@\string< \endcsname
+\expandafter\expandafter\expandafter\let\expandafter\expandafter
+  \csname codep@code@s \endcsname \csname codep@code@\string< \endcsname
+\@namedef{codep@code@\string> }#1{%
+  \codep@code@toclass{C}%
+  \codep@code@tosample{#1}%
+}
+\expandafter\expandafter\expandafter\let\expandafter\expandafter
+  \csname codep@code@o \endcsname \csname codep@code@\string> \endcsname
+\@namedef{codep@code@ \space}#1{%
+  \codep@code@toclass{C}%
+  \codep@code@tosource{#1}%
+  \codep@code@tosample{#1}%
+}
+\expandafter\expandafter\expandafter\let\expandafter\expandafter
+  \csname codep@code@2 \endcsname \csname codep@code@ \space\endcsname
+\@namedef{codep@code@e }#1{\codep@code@toclass{E}}
+\@namedef{codep@code@b }#1{\codep@code@toclass{B}}
+\def\codep@code@tosource#1{%
+  \ifx\pexa@@cursourcename\relax
+    \global\let\pexa@@cursourcename\pexa@@sourcename
+    \immediate\openout\verbfwr@writefile\pexa@@sourcename\relax
+  \fi
+  \immediate\write\verbfwr@writefile{#1}%
+  % !! page number, not \immediate
+  %%source[#1]%
+}
+\def\codep@code@tosample#1{%
+  \ifx\pexa@@cursamplename\relax
+    \ifx\codep@code@samplefile\@undefined
+      \newwrite\codep@code@samplefile
+    \fi
+    \global\let\pexa@@cursamplename\pexa@@samplename
+    \immediate\openout\codep@code@samplefile\pexa@@samplename\relax
+  \fi
+  \immediate\write\codep@code@samplefile{#1}%
+  %%sample[#1]%
+}
+\def\codep@code@done{%
+  \ifx\verbfwr@actemitlineone\@empty\else
+    \PackageWarning{lb}{Empty \string\begin{code}}%
+  \fi
+  \codep@code@toclass{Z}%
+  \ifx\pexa@@cursourcename\relax\else
+    \immediate\closeout\verbfwr@writefile \fi
+}%
+
+\endinput

@@ -1,0 +1,159 @@
+%--------------------------------------------------
+% Provides a feature for fully automated regression testing of PGF or derived works.
+%
+% DEPRECATED.
+% The idea might be interesting, but it is simply did not work and is
+% too complicated. Don't use it.
+%
+% Idea: 
+% - it is based on the 'external' lib of pgf (which automatically exports each tikzpicture to pdf).
+% - modification: in addition to the pdf export, call imagemagick's convert
+% tool to export to png as well and compare the png to a reference image.
+% - pgfregressiontest.sty provides two modes:
+%    1) the REFERENCE GENERATION mode
+%    - each image knows a reference revision tag (or the system default)
+%    - the 'system call' makes a "checkout" of the desired revision,
+%    generates the image and returns to the original revision
+%    - the images are stored with a unique prefix.
+%    2) the COMPARISON mode
+%    - each tikzpicture is compared to its reference image. If there
+%    is none, it should be generated.
+%    - if the comparison fails, a protocol is generated and the user
+%    is alerted.
+
+%-------------------------------------------------- 
+%
+\ProvidesPackage{pgfregressiontest}[2010/10/31 Version 0.1]
+
+\RequirePackage{tikz}
+\usetikzlibrary{external}
+
+\def\pgfregression@invokecmdkey#1#2{%
+	\pgfkeysvalueof{/pgf/regression/#1/.@cmd}#2\pgfeov
+}%
+
+\newif\ifpgfregressionpreamble
+\pgfregressionpreambletrue
+
+\def\pgfregressiontestset{\pgfqkeys{/pgf/regression}}%
+
+\pgfqkeys{/pgf/regression}{%
+	% will be set in \begin{document}
+	system call original/.initial=<not yet set>,
+	%
+	% 'rev checkout' can be used to manually change the environment
+	% state before actually generating the image.
+	% Example:
+	% 'rev checkout=cd ~/code/tex/pgfplots ; git checkout 1.3'
+	% or something like this.
+	%
+	% Use 'rev restore' to immediately undo the effects. All that
+	% stuff is executed in one shell environment, i.e. you can define
+	% and use shell variables.
+	rev checkout/.code=\def\pgfregression@revcheckout{#1},
+	rev checkout={},
+	rev restore/.code=\def\pgfregression@revrestore{#1},
+	rev restore={},
+	reference prefix/.initial=reference_images/,
+	protocol file/.initial=\jobname.protocol.sh,
+	convert to png/.initial={convert "\image.pdf" "\image.png"},%
+	reference mode/.code={
+		\def\pgfregr@replacement@syscall{%
+			\ifx\pgfregression@revcheckout\pgfutil@empty
+			\else
+				\pgfregression@revcheckout;^^J%
+				@echo "'rev checkout' was successful, generating pdf...";^^J%
+			\fi
+			mkdir -p \pgfkeysvalueof{/pgf/regression/reference prefix};^^J%
+			\pgfkeysvalueof{/pgf/regression/system call original}; EXITCODE=$$?; \\^^J%
+			\ifx\pgfregression@revrestore\pgfutil@empty
+			\else
+				\pgfregression@revrestore; \\^^J%
+				echo "'rev restore' was successful.";^^J%
+			\fi
+			@if [ "$$EXITCODE" != "0" ]; then echo "pdf generation failed; Abort"; false; fi;^^J%
+			\pgfkeysvalueof{/pgf/regression/convert to png};^^J%
+		}%
+		\def\pgfregr@style{%
+			\message{^^Jpgfregressiontest: Running in REFERENCE GENERATION mode.^^J}%
+			\pgfqkeys{/pgf/regression}{%
+				/tikz/external/prefix=\pgfkeysvalueof{/pgf/regression/reference prefix},
+			}%
+		}%
+		\ifpgfregressionpreamble
+		\else
+			\pgfkeyslet{/tikz/external/system call}\pgfregr@replacement@syscall
+			\pgfregr@style
+		\fi
+	},
+	comparison mode/.code={
+		\def\pgfregr@replacement@syscall{%
+			\pgfkeysvalueof{/pgf/regression/system call original};^^J%
+			\pgfkeysvalueof{/pgf/regression/convert to png};^^J%
+			diff "\image.png" "\expandafter\expandafter\expandafter\pgfregr@get@reference@image@for\image\relax.png";^^J%
+			if [ ! $? -eq 0 ]; then ^^J
+				echo 'echo "file \image.pdf differs from \expandafter\expandafter\expandafter\pgfregr@get@reference@image@for\image\relax.pdf (displaying differences now)".' >> \pgfkeysvalueof{/pgf/regression/protocol file};^^J
+				echo 'convert "\image.png" "\expandafter\expandafter\expandafter\pgfregr@get@reference@image@for\image\relax.png" -compose difference -composite -colorspace gray miff:- | display' >>\pgfkeysvalueof{/pgf/regression/protocol file};^^J%
+			else^^J
+				rm -f "\image.png";^^J%
+			fi;^^J%
+		}%
+		\def\pgfregr@style{%
+			\message{^^Jpgfregressiontest: Running in COMPARISON mode.^^J}%
+			\expandafter\def\expandafter\pgfregr@get@reference@image@for\tikzexternal@filenameprefix####1\relax{%
+				\pgfkeysvalueof{/pgf/regression/reference prefix}####1%
+			}%
+		}%
+		\ifpgfregressionpreamble
+		\else
+			\pgfkeyslet{/tikz/external/system call}\pgfregr@replacement@syscall
+			\pgfregr@style
+		\fi
+	},
+	comparison mode,
+}
+
+% Check for "command line arguments".
+% if 'pdflatex '\def\referencemode{1}\input{filename}'  has been used,
+% the 'reference mode' will be enabled. Otherwise we are in
+% 'comparison mode'.
+\expandafter\ifx\csname referencemode\endcsname\relax
+	\pgfregressiontestset{comparison mode}%
+	\message{^^Jpgfregressiontest: use pdflatex '\string\def\string\referencemode{1}\string\input{\jobname}' to enable reference generation.^^J}%
+\else
+	\pgfregressiontestset{reference mode}%
+\fi
+
+
+\AtBeginDocument{%
+	\tikzifexternalizehasbeencalled{}{%
+		\PackageError{pgfregressiontest}{%
+			Please call \string\tikzexternalize\space somewhere in your preamble. I can only perform my tests together with image externalization}{}%
+	}%
+	\pgfkeysgetvalue{/tikz/external/system call}\pgfregression@temp
+	\pgfkeyslet{/pgf/regression/system call original}\pgfregression@temp
+	%
+	\pgfkeyslet{/tikz/external/system call}\pgfregr@replacement@syscall
+	\pgfregr@style
+	%
+	\immediate\openout\w@pgf@writea=\pgfkeysvalueof{/pgf/regression/protocol file} %
+	\immediate\closeout\w@pgf@writea
+	%
+	\global\pgfregressionpreamblefalse
+}
+
+\AtEndDocument{%
+	\openin\r@pgf@reada=\pgfkeysvalueof{/pgf/regression/protocol file} %
+	\ifeof\r@pgf@reada
+	\else
+		\message{
+			^^J%
+			======================================^^J%
+			There have been regression errors.^^J%
+			Use^^J%
+			>> bash \pgfkeysvalueof{/pgf/regression/protocol file}^^J%
+			to visualize them.^^J%
+			======================================^^J%
+		}%
+	\fi
+}%

@@ -1,0 +1,364 @@
+# -*- CPERL -*-
+package LaTeXML::Package::Pool;
+use strict;
+use LaTeXML::Package;
+DefMacro('\iprec','1000000');
+DefMacro('\niprec','-1000000');
+DefConstructor('\crossrefOp[]{}',
+       "?#2(<ltx:XMApp role='CROSSREFOP'>"
+              .  "<ltx:XMTok role='CROSSREFOP' cr='?#1(#1)(fun)'/>"
+              .  "<ltx:XMWrap>#2</ltx:XMWrap>"
+              ."</ltx:XMApp>)()",
+   requireMath=>1);
+
+DefMacro('\prefix[]{}{}','\@prefix[#1]{\ensuremath{\crossrefOp[fun]{#2}}}{\ensuremath{#3 }}');
+DefConstructor('\@prefix OptionalKeyVals:mi {}{}',
+                "<omdoc:rendering "
+               .  "?&defined(&KeyVal(#1,'p'))(precedence='&KeyVal(#1,'p')') "
+               .  "argprec='&argument_precedence(#1)'>"
+               .  "<m:mrow>"
+       .    "#2"
+               .    "<m:mrow>"
+               .      "<m:mo fence='true'>(</m:mo>"
+               .      "#3"
+               .      "<m:mo fence='true'>)</m:mo>"
+               .    "</m:mrow>"
+               .  "</m:mrow>"
+               ."</omdoc:rendering>",
+      afterDigest=>sub {
+        #Default argument precedence is -\infty
+        my $keyval = $_[1]->getArg(1);
+        $keyval->setValue('pi',-1000000) unless ($keyval && defined($keyval->getValue('pi')));
+        applyPrecedencePreferences(@_);
+      },
+      properties=>sub { getSymmdefProperties($_[1]); });
+DefMacro('\postfix []{}{}','\@postfix[#1]{\ensuremath{\crossrefOp[fun]{#2}}}{\ensuremath{#3 }}');
+DefConstructor('\@postfix OptionalKeyVals:mi {}{}',
+              "<omdoc:rendering "
+               . "?&defined(&KeyVal(#1,'p'))(precedence='&KeyVal(#1,'p')') "
+               ."argprec='&argument_precedence(#1)'>"
+               .  "<m:mrow>"
+               .    "<m:mrow>"
+               .      "<m:mo fence='true'>(</m:mo>"
+               .      "#3"
+               .      "<m:mo fence='true'>)</m:mo>"
+               .    "</m:mrow>"
+               .    "#2"
+               .  "</m:mrow>"
+               ."</omdoc:rendering>",
+       afterDigest=>sub {
+         #Default argument precedence is -\infty
+         my $keyval = $_[1]->getArg(1);
+         $keyval->setValue('pi',-1000000) unless ($keyval && defined($keyval->getValue('pi')));
+         applyPrecedencePreferences(@_);
+       },
+       properties=>sub { getSymmdefProperties($_[1]); });
+DefConstructor('\funapp{}{}','<ltx:XMApp>#1#2</ltx:XMApp>');
+our $max_arguments = 10;  #Currently max 10 arguments to \symdef.
+DefKeyVal('mi','lbrack','Semiverbatim');
+DefKeyVal('mi','rbrack','Semiverbatim');
+DefKeyVal('mi','p','Semiverbatim');
+DefKeyVal('mi','pi','Semiverbatim');
+DefKeyVal('mi','pii','Semiverbatim'); #Why are we using this at mixfixai ?
+DefKeyVal('mi','cd','Semiverbatim');
+DefKeyVal('mi','name','Semiverbatim');
+DefKeyVal('mi','nobrackets','Semiverbatim');
+sub argument_precedence {
+  my ($keyval) = @_;
+  my $attr = 'pi';
+  my @precs = ();
+  foreach (1..$max_arguments) {
+    if (defined KeyVal($keyval,$attr)) {
+      push @precs, ToString(KeyVal($keyval,$attr))
+    } else {
+      push @precs, "";
+    }
+    $attr = $attr.'i';
+  }
+  return join(" ",@precs)." ";
+}
+sub applyPrecedencePreferences {
+ my ($stomach,$whatsit) = @_;
+ my @args = $whatsit->getArgs;
+ my $keyvals = shift @args;
+ return unless (defined $keyvals);
+ my %kvhash = %{$keyvals->getKeyVals};
+ #Default p (operator precedence) if not set:
+ my $default_precedence = LookupValue('default_precedence');
+ $keyvals->setValue('p',$default_precedence) unless defined($keyvals->getValue('p'));
+ return unless (exists $kvhash{'nobrackets'});
+ $keyvals->setValue('p',1000000);
+ $keyvals->setValue('pi',-1000000);
+ $keyvals->setValue('pii',-1000000);
+ $keyvals->setValue('piii',-1000000);
+ return;
+}#$
+DefMacro('\mixfixi[]{}{}{}',
+         '\@mixfixi[#1]{\ensuremath{\crossrefOp[fun]{#2}}}{\ensuremath{#3 }}'
+        .             '{\ensuremath{\crossrefOp[fun]{#4}}}');
+DefConstructor('\@mixfixi OptionalKeyVals:mi {}{}{}',
+        "<omdoc:rendering"
+       .   "?&defined(&KeyVal(#1,'p'))(precedence='&KeyVal(#1,'p')')"
+       .   " argprec='&argument_precedence(#1)'>"
+       .  "<m:mrow>"
+       .    "<m:mo egroup='fence' fence='true'>(</m:mo>"
+       .    "#2 #3 #4"
+       .    "<m:mo egroup='fence' fence='true'>)</m:mo>"
+       .  "</m:mrow>"
+       ."</omdoc:rendering>",
+       afterDigest=>sub { applyPrecedencePreferences(@_);},
+       properties=>sub { getSymmdefProperties($_[1]); });#$
+DefMacro('\mixfixa[]{}{}{}{}',
+         '\@mixfixa[#1]{\ensuremath{\crossrefOp[fun]{#2}}}{\ensuremath{#3 }}'
+        .              '{\ensuremath{\crossrefOp[fun]{#4}}}'
+        .              '{\ensuremath{\crossrefOp[fun]{\ensuremath{#5 }}}}');
+DefConstructor('\@mixfixa OptionalKeyVals:mi {}{}{}{}',
+        "<omdoc:rendering "
+       .   "?&defined(&KeyVal(#1,'p'))(precedence='&KeyVal(#1,'p')')>"
+       .   "<m:mrow>"
+       .     "<m:mo egroup='fence' fence='true'>(</m:mo>"
+       .     "#2"
+       .     "<omdoc:iterate name='args' "
+       .         "?&defined(&KeyVal(#1,'pi'))(precedence='&KeyVal(#1,'pi')')>"
+       .       "<omdoc:separator>#5</omdoc:separator>"
+       .       "<omdoc:render name='arg' "
+       .         "?&defined(&KeyVal(#1,'pi'))(precedence='&KeyVal(#1,'pi')')/>"
+       .     "</omdoc:iterate>"
+       .     "#4"
+       .     "<m:mo egroup='fence' fence='true'>)</m:mo>"
+       .   "</m:mrow>"
+       ."</omdoc:rendering>",
+       afterDigest=>sub { applyPrecedencePreferences(@_);},
+       properties=>sub { getSymmdefProperties($_[1]); });#$
+DefKeyVal('mii','lbrack','Semiverbatim');
+DefKeyVal('mii','rbrack','Semiverbatim');
+DefKeyVal('mii','p','Semiverbatim');
+DefKeyVal('mii','pi','Semiverbatim');
+DefKeyVal('mii','pii','Semiverbatim');
+DefKeyVal('mii','cd','Semiverbatim');
+DefKeyVal('mii','name','Semiverbatim');
+DefKeyVal('mii','nobrackets','Semiverbatim');
+DefMacro('\mixfixii[]{}{}{}{}{}',
+         '\@mixfixii[#1]{\ensuremath{\crossrefOp[fun]{#2}}}{\ensuremath{#3 }}'
+        .              '{\ensuremath{\crossrefOp[fun]{#4}}}{\ensuremath{#5 }}'
+        .              '{\ensuremath{\crossrefOp[fun]{#6}}}');
+DefConstructor('\@mixfixii OptionalKeyVals:mi {}{}{}{}{}',
+        "<omdoc:rendering "
+       .    "?&defined(&KeyVal(#1,'p'))(precedence='&KeyVal(#1,'p')') "
+       .    "argprec='&argument_precedence(#1)'>"
+       .  "<m:mrow>"
+       .    "<m:mo egroup='fence' fence='true'>(</m:mo>"
+       .    "#2 #3 #4 #5 #6"
+       .    "<m:mo egroup='fence' fence='true'>)</m:mo>"
+       .  "</m:mrow>"
+       ."</omdoc:rendering>",
+       afterDigest=>sub { applyPrecedencePreferences(@_);},
+       properties=>sub { getSymmdefProperties($_[1]); });#$
+DefMacro('\mixfixia[]{}{}{}{}{}{}',
+         '\@mixfixia[#1]{\ensuremath{\crossrefOp[fun]{#2}}}{\ensuremath{#3 }}'
+        .              '{\ensuremath{\crossrefOp[fun]{#4}}}{\ensuremath{#5 }}'
+        .              '{\ensuremath{\crossrefOp[fun]{#6}}}'
+        .              '{\ensuremath{\crossrefOp[fun]{#7}}}');
+DefConstructor('\@mixfixia OptionalKeyVals:mii {}{}{}{}{}{}',
+        "<omdoc:rendering "
+       .    "?&defined(&KeyVal(#1,'p'))(precedence='&KeyVal(#1,'p')') "
+       .    " argprec='&argument_precedence(#1)'>"
+       .  "<m:mrow>"
+       .    "<m:mo egroup='fence' fence='true'>(</m:mo>"
+       .    "#2 #3 #4"
+       .    "<omdoc:iterate name='args' "
+       .        "?&defined(&KeyVal(#1,'pi'))(precedence='&KeyVal(#1,'pi')')>"
+       .      "<omdoc:separator>#7</omdoc:separator>"
+       .      "<omdoc:render name='arg' "
+       .        "?&defined(&KeyVal(#1,'pi'))(precedence='&KeyVal(#1,'pi')')/>"
+       .    "</omdoc:iterate>"
+       .    "#6"
+       .    "<m:mo egroup='fence' fence='true'>)</m:mo>"
+       .  "</m:mrow>"
+       ."</omdoc:rendering>",
+       afterDigest=>sub { applyPrecedencePreferences(@_);},
+       properties=>sub { getSymmdefProperties($_[1]); });#$
+DefMacro('\mixfixai[]{}{}{}{}{}{}',
+         '\@mixfixai[#1]{\ensuremath{\crossrefOp[fun]{#2}}}{\ensuremath{#3 }}'
+        .'{\ensuremath{\crossrefOp[fun]{#4}}}{\ensuremath{#5 }}'
+        .'{\ensuremath{\crossrefOp[fun]{#6}}}'
+        .'{\ensuremath{\crossrefOp[fun]{#7}}}');
+DefConstructor('\@mixfixai OptionalKeyVals:mi {}{}{}{}{}{}',
+              "<omdoc:rendering "
+            .     "?&defined(&KeyVal(#1,'p'))(precedence='&KeyVal(#1,'p')') "
+            .     " argprec='&argument_precedence(#1)'>"
+       .  "<m:mrow>"
+               .    "<m:mo egroup='fence' fence='true'>(</m:mo>"
+       .    "#2"
+       .    "<omdoc:iterate name='args' "
+       .      "?&defined(&KeyVal(#1,'pi'))(precedence='&KeyVal(#1,'pi')')>"
+       .      "<omdoc:separator>#7</omdoc:separator>"
+       .      "<omdoc:render name='arg' "
+       .         "?&defined(&KeyVal(#1,'pi'))(precedence='&KeyVal(#1,'pi')')/>"
+       .    "</omdoc:iterate>"
+       .    "#4 #5 #6"
+       .    "<m:mo egroup='fence' fence='true'>)</m:mo>"
+       .  "</m:mrow>"
+       ."</omdoc:rendering>",
+       afterDigest=>sub { applyPrecedencePreferences(@_);},
+       properties=>sub { getSymmdefProperties($_[1]); });#$
+DefKeyVal('miii','lbrack','Semiverbatim');
+DefKeyVal('miii','rbrack','Semiverbatim');
+DefKeyVal('miii','p','Semiverbatim');
+DefKeyVal('miii','pi','Semiverbatim');
+DefKeyVal('miii','pii','Semiverbatim');
+DefKeyVal('miii','piii','Semiverbatim');
+DefKeyVal('miii','cd','Semiverbatim');
+DefKeyVal('miii','name','Semiverbatim');
+DefKeyVal('miii','nobrackets','Semiverbatim');
+DefMacro('\mixfixiii[]{}{}{}{}{}{}{}',
+         '\@mixfixiii[#1]{\ensuremath{\crossrefOp[fun]{#2}}}{\ensuremath{#3 }}'
+       .                '{\ensuremath{\crossrefOp[fun]{#4}}}{\ensuremath{#5 }}'
+       .                '{\ensuremath{\crossrefOp[fun]{#6}}}{\ensuremath{#7 }}'
+       .                '{\ensuremath{\crossrefOp[fun]{#8}}}');
+DefConstructor('\@mixfixiii OptionalKeyVals:mi {}{}{}{}{}{}{}',
+              "<omdoc:rendering "
+            .    "?&defined(&KeyVal(#1,'p'))(precedence='&KeyVal(#1,'p')') "
+            .    " argprec='&argument_precedence(#1)'>"
+       .  "<m:mrow>"
+       .    "<m:mo egroup='fence' fence='true'>(</m:mo>"
+       .    "#2 #3 #4 #5 #6 #7 #8"
+       .    "<m:mo egroup='fence' fence='true'>)</m:mo>"
+       .  "</m:mrow>"
+       ."</omdoc:rendering>",
+       afterDigest=>sub { applyPrecedencePreferences(@_);},
+       properties=>sub { getSymmdefProperties($_[1]); });#$
+DefMacro('\mixfixaii[]{}{}{}{}{}{}{}{}',
+         '\@mixfixaii[#1]{\ensuremath{\crossrefOp[fun]{#2}}}{\ensuremath{#3 }}'
+         .              '{\ensuremath{\crossrefOp[fun]{#4}}}{\ensuremath{#5 }}'
+         .              '{\ensuremath{\crossrefOp[fun]{#6}}}{\ensuremath{#7 }}'
+         .              '{\ensuremath{\crossrefOp[fun]{#8}}}'
+         .              '{\ensuremath{\crossrefOp[fun]{#9}}}');
+DefConstructor('\@mixfixaii OptionalKeyVals:mi {}{}{}{}{}{}{}{}',
+        "<omdoc:rendering "
+       .    "?&defined(&KeyVal(#1,'p'))(precedence='&KeyVal(#1,'p')') "
+       .    " argprec='&argument_precedence(#1)'>"
+       .  "<m:mrow>"
+       .    "<m:mo egroup='fence' fence='true'>(</m:mo>"
+       .    "#2"
+       .    "<omdoc:iterate name='args' "
+       .        "?&defined(&KeyVal(#1,'pi'))(precedence='&KeyVal(#1,'pi')')>"
+       .      "<omdoc:separator>#9</omdoc:separator>"
+       .      "<omdoc:render name='arg' "
+       .         "?&defined(&KeyVal(#1,'pi'))(precedence='&KeyVal(#1,'pi')')/>"
+       .    "</omdoc:iterate>"
+       .    "#4 #5 #6 #7 #8"
+       .    "<m:mo egroup='fence' fence='true'>)</m:mo>"
+       .  "</m:mrow>"
+       ."</omdoc:rendering>",
+       afterDigest=>sub { applyPrecedencePreferences(@_);},
+       properties=>sub { getSymmdefProperties($_[1]); });#$
+DefMacro('\mixfixiai[]{}{}{}{}{}{}{}{}',
+         '\@mixfixiai[#1]{\ensuremath{\crossrefOp[fun]{#2}}}{\ensuremath{#3 }}'
+        .                '{\ensuremath{\crossrefOp[fun]{#4}}}{\ensuremath{#5 }}'
+        .                '{\ensuremath{\crossrefOp[fun]{#6}}}{\ensuremath{#7 }}'
+        .                '{\ensuremath{\crossrefOp[fun]{#8}}}'
+        .                '{\ensuremath{\crossrefOp[fun]{#9}}}');
+DefConstructor('\@mixfixiai OptionalKeyVals:mi {}{}{}{}{}{}{}',
+        "<omdoc:rendering "
+       .    "?&defined(&KeyVal(#1,'p'))(precedence='&KeyVal(#1,'p')') "
+       .    " argprec='&argument_precedence(#1)'>"
+       .  "<m:mrow>"
+       .    "<m:mo egroup='fence' fence='true'>(</m:mo>"
+       .    "#2 #3 #4"
+       .    "<omdoc:iterate name='args' "
+       .       "?&defined(&KeyVal(#1,'pi'))(precedence='&KeyVal(#1,'pi')')>"
+       .      "<omdoc:separator>#9</omdoc:separator>"
+       .      "<omdoc:render name='arg' "
+       .          "?&defined(&KeyVal(#1,'pi'))(precedence='&KeyVal(#1,'pi')')/>"
+       .    "</omdoc:iterate>"
+       .    "#6 #7 #8"
+       .    "<m:mo egroup='fence' fence='true'>)</m:mo>"
+       .  "</m:mrow>"
+       ."</omdoc:rendering>",
+       afterDigest=>sub { applyPrecedencePreferences(@_);},
+       properties=>sub { getSymmdefProperties($_[1]); });#$
+DefMacro('\mixfixiia[]{}{}{}{}{}{}{}{}',
+         '\@mixfixiia[#1]{\ensuremath{\crossrefOp[fun]{#2}}}{\ensuremath{#3 }}'
+        .                '{\ensuremath{\crossrefOp[fun]{#4}}}{\ensuremath{#5 }}'
+        .                '{\ensuremath{\crossrefOp[fun]{#6}}}{\ensuremath{#7 }}'
+        .                '{\ensuremath{\crossrefOp[fun]{#8}}}'
+        .                '{\ensuremath{\crossrefOp[fun]{#9}}}');
+DefConstructor('\@mixfixiia OptionalKeyVals:mi {}{}{}{}{}{}{}',
+        "<omdoc:rendering "
+       .  "?&defined(&KeyVal(#1,'p'))(precedence='&KeyVal(#1,'p')') "
+       .      " argprec='&argument_precedence(#1)'>"
+       .  "<m:mrow>"
+       .    "<m:mo egroup='fence' fence='true'>(</m:mo>"
+       .    "#2 #3 #4 #5 #6"
+       .    "<omdoc:iterate name='args' "
+       .        "?&defined(&KeyVal(#1,'pi'))(precedence='&KeyVal(#1,'pi')')>"
+       .      "<omdoc:separator>#9</omdoc:separator>"
+       .      "<omdoc:render name='arg' "
+       .          "?&defined(&KeyVal(#1,'pi'))(precedence='&KeyVal(#1,'pi')')/>"
+       .    "</omdoc:iterate>"
+       .    "#8"
+       .    "<m:mo egroup='fence' fence='true'>)</m:mo>"
+       .  "</m:mrow>"
+       ."</omdoc:rendering>",
+       afterDigest=>sub { applyPrecedencePreferences(@_);},
+       properties=>sub { getSymmdefProperties($_[1]); });#$
+DefMacro('\prefixa[]{}{}{}','\@prefixa[#1]{\ensuremath{\crossrefOp[fun]{#2}}}{\ensuremath{#3 }}{\ensuremath{#4 }}');
+DefConstructor('\@prefixa OptionalKeyVals:mi {}{}{}',
+                "<omdoc:rendering "
+               .  "?&defined(&KeyVal(#1,'p'))(precedence='&KeyVal(#1,'p')') "
+               .  "argprec='&argument_precedence(#1)'>"
+               .  "<m:mrow>"
+       .    "#2"
+               .    "<m:mrow>"
+               .      "<m:mo fence='true'>(</m:mo>"
+               .      "<omdoc:iterate name='args' "
+               .          "?&defined(&KeyVal(#1,'pi'))(precedence='&KeyVal(#1,'pi')')>"
+               .        "<omdoc:separator>#4</omdoc:separator>"
+               .        "<omdoc:render name='arg' "
+               .            "?&defined(&KeyVal(#1,'pi'))(precedence='&KeyVal(#1,'pi')')/>"
+               .      "</omdoc:iterate>"
+              .      "<m:mo fence='true'>)</m:mo>"
+               .    "</m:mrow>"
+               .  "</m:mrow>"
+               ."</omdoc:rendering>",
+      afterDigest=>sub {
+        #Default argument precedence is -\infty
+        my $keyval = $_[1]->getArg(1);
+        $keyval->setValue('pi',-1000000) unless ($keyval && defined($keyval->getValue('pi')));
+        applyPrecedencePreferences(@_);
+      },
+      properties=>sub { getSymmdefProperties($_[1]); });
+DefMacro('\postfixa []{}{}{}','\@postfixa[#1]{\ensuremath{\crossrefOp[fun]{#2}}}{\ensuremath{#3 }}{\ensuremath{#4 }}');
+DefConstructor('\@postfixa OptionalKeyVals:mi {}{}{}',
+              "<omdoc:rendering "
+               . "?&defined(&KeyVal(#1,'p'))(precedence='&KeyVal(#1,'p')') "
+               ."argprec='&argument_precedence(#1)'>"
+               .  "<m:mrow>"
+               .    "<m:mrow>"
+               .      "<m:mo fence='true'>(</m:mo>"
+               .      "<omdoc:iterate name='args' "
+               .          "?&defined(&KeyVal(#1,'pi'))(precedence='&KeyVal(#1,'pi')')>"
+               .        "<omdoc:separator>#4</omdoc:separator>"
+               .        "<omdoc:render name='arg' "
+               .          "?&defined(&KeyVal(#1,'pi'))(precedence='&KeyVal(#1,'pi')')/>"
+               .      "</omdoc:iterate>"
+              .      "<m:mo fence='true'>)</m:mo>"
+               .    "</m:mrow>"
+               .    "#2"
+               .  "</m:mrow>"
+               ."</omdoc:rendering>",
+       afterDigest=>sub {
+         #Default argument precedence is -\infty
+         my $keyval = $_[1]->getArg(1);
+         $keyval->setValue('pi',-1000000) unless ($keyval && defined($keyval->getValue('pi')));
+         applyPrecedencePreferences(@_);
+       },
+       properties=>sub { getSymmdefProperties($_[1]); });
+RawTeX('
+\newcommand{\infix}[4][]{\mixfixii[#1]{}{#3}{#2}{#4}{}}
+\newcommand{\assoc}[3][]{\mixfixa[#1]{}{#3}{}{#2}}
+');
+DefConstructor('\arrayline{}{}','<ltx:XMRow>#1<ltx:XMCell>#2</ltx:XMCell></ltx:XMRow>');
+DefConstructor('\arraycell{}','<ltx:XMCell>#1</ltx:XMCell>');
+1;

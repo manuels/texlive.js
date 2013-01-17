@@ -1,0 +1,358 @@
+\ifx\LABELS\relax\endinput\else\let\LABELS=\relax\fi % \input only once
+%
+% labels.tex: Macros to print address labels (and bulk letters).
+% version: 1.0  release: 24 October 1991
+%
+% copyright (c) 1991 Marcel R. van der Goot
+%	You can use these macros to typeset documents. You may
+%	distribute this file freely, provided that you also distribute
+%	the accompanying documentation.
+%	    You may make changes to this file, or extract portions
+%	of it for inclusion in other files, provided that
+%	    (1) you change the name of the file;
+%	    (2) you give proper credit and include copyright
+%		information where applicable;
+%	    (3) explain how an unchanged version can be obtained; and
+%	    (4) document the usage of your macros/changes (if usage
+%		of your macros is not worth documenting, they must not
+%		be worth using).
+%	You are not allowed to use the name ``Midnight Macros'' for
+%	any changed files.
+%	    The above rules for making changes do not apply where it
+%	is explicitly noted in this file that something can be changed
+%	to conform to your local installation.
+%
+% USAGE:
+%   See the file labels.doc
+%   You need Midnight/dolines.tex and Midnight/loop.tex to use these
+%   macros.
+%
+% original: csvax.cs.caltech.edu [131.215.131.131] in pub/tex
+%	    (use anonymous ftp). Also in various archives.
+%
+% Caltech, Pasadena  ---  Marcel van der Goot
+%			  marcel@cs.caltech.edu
+%			    Caltech 256--80
+%			    Pasadena, CA 91125
+%			    USA
+%			    (818) 356--4603
+%
+
+% update history:
+% version 1.0: This one.
+%	release 24 Oct 1991: I undid the change from 6 Aug 1991: Matthias
+%		Feyerabend suggested a more elegant change that has the
+%		same result (involving \the\expandafter\lbl_txt#1).
+%	release 6  Aug 1991: Dolines.tex was changed since the previous
+%		release: it now calls \everyline with a single macro rather
+%		than with the text of the line. This required a change in
+%		the creation of \lbl_txt; \addlbl_txt was added.
+%	release 14 Feb 1991: The original
+%
+
+%%%%%% CODE: (you don't need to read this to use the macros)
+
+\input Midnight/dolines % CHANGE this filename to correspond to
+			% your installation
+
+%%%%%%% Registers
+% All user-accessible registers. Some private registers are declared
+% later.
+% Individual labels:
+\newdimen\vlblsize
+\newdimen\hlblsize
+\newskip\vindent
+\newskip\hindent
+\newdimen\lbloutline
+\newtoks\beforelbl
+\newtoks\afterlbl
+
+% Labels on a page:
+\newcount\vlbls
+\newcount\hlbls
+\newdimen\vfirst
+\newdimen\hfirst
+\newdimen\vinter
+\newdimen\hinter
+
+% We make `_' into a letter to make macros private
+\vlbls=\catcode`\_ % minor trick to remember old value
+\catcode`\_=11
+
+\newbox\lbl_ % box in which a label is constructed
+
+
+%%%%%%% Error message
+% If a label is too large, we give an error message. \err_dim is the
+% excess size of the label, \lbl_txt is the text of the label. \lbl_txt
+% is set while reading the label, so that we can report which label is
+% too large. Depending on the value of \err_act, more action is
+% taken: 0 --> nothing, 1 --> print label anyway, others --> print
+% this label on \lbl_log=lblerror.tex as well. \lbl_log is closed
+% and an appropriate message printed by \close_log.
+
+\newdimen\err_dim
+\newtoks\lbl_txt
+\newcount\err_act
+\newcount\err_cnt
+\newwrite\lbl_log
+
+\let\erroraction=\err_act
+
+\def\err_lbl#1% #1 = "wide" or "high"
+   {{\global\advance\err_cnt by 1
+     \newlinechar=`\^^J
+     \immediate\write16{^^J**** Label is \the\err_dim\space too #1:}%
+     \immediate\write16{\the\lbl_txt}%
+     \ifcase\err_act
+     \or\make_lbl
+     \else\immediate\write\lbl_log{\the\lbl_txt}%
+     \fi
+   }}
+
+\def\close_msg#1%
+   {\ifnum\err_cnt>0 \immediate\write16{#1}%
+    \fi
+   }
+
+\def\close_log
+   {\ifcase\err_act
+	 \close_msg{**** \the\err_cnt\space error(s) ****}%
+    \or  \close_msg{**** \the\err_cnt\space label(s) with errors %
+			 are included in the dvi file ****}%
+    \else\immediate\closeout\lbl_log
+	 \close_msg{**** \the\err_cnt\space error(s): see lblerror.tex ****}%
+    \fi
+   }
+
+%%%%%%% Reading a label
+% Every group of lines is set in a vbox, using dolines.tex (see dolines.doc).
+% \lbl_before corresponds to \beforelines (see dolines), etc.
+% Every line itself is set in an hbox. The sizes of the hboxes and
+% vboxes are not specified here, because we want to do our own checking
+% rather than rely on TeX's checking and error messages. The computation
+% in \lbl_before is used to position the baseline of the first line
+% independently of the height of that line. \vindent is similar to TeX's
+% \topskip.
+
+\def\lbl_before
+   {\global\lbl_txt={}%
+    \setbox\lbl_=\vbox\bgroup
+		   \advance\vindent by -\baselineskip
+		   \ifdim\vindent<0sp \vindent=0sp \fi
+		   \vskip\vindent
+		   \prevdepth=0sp
+		   \the\beforelbl
+   }
+
+% #1 is always equal to `\_ln', which in turn expands to the line of text.
+% That works fine with \hbox, but we must somehow expand \_ln first before
+% we put it in \lbl_txt. That is what the second expandafter is for. The
+% first expandafter is to expand \the\lbl_txt (and \_ln) before the '{' is
+% read. Otherwise no expansion is done: TeX does not expand the tokens in
+% the text of a token variable.
+% --- thanks for this solution to Matthias Feyerabend.
+
+\def\lbl_every#1%
+   {\hbox{#1}%
+    \global\lbl_txt=\expandafter{\the\expandafter\lbl_txt#1^^J}%
+   }
+
+\def\lbl_after
+   {\the\afterlbl
+    \egroup % closes \lbl_=\vbox{...}
+    \check_lbl
+   }
+
+%%%%%%% Making a label
+% \check_lbl checks whether the label is not too large, and, if not,
+% calls \make_lbl. (\make_lbl can also be called from \err_lbl.)
+% Note that \check_lbl only checks for the natural size of the label;
+% if \hindent or \vindent have shrink components, the label may
+% actually fit.
+
+\def\check_lbl
+   {\err_dim=\wd\lbl_ \advance\err_dim by \hindent
+    \ifdim\err_dim>\hlblsize
+         \advance\err_dim by -\hlblsize
+	 \err_lbl{wide}%
+    \else\err_dim=\ht\lbl_ \advance\err_dim by \dp\lbl_
+	 \ifdim\err_dim>\vlblsize
+	      \advance\err_dim by -\vlblsize
+	      \err_lbl{high}%
+	 \else\make_lbl
+    \fi  \fi
+   }
+
+\def\make_lbl
+   {\setbox\lbl_=\vbox to \vlblsize{\unvbox\lbl_ \vss}%
+    \setbox\lbl_=\hbox to \hlblsize
+	{\kern -\lbloutline \vrule width\lbloutline
+	 \hskip\hindent \box\lbl_ \hss
+	 \vrule width\lbloutline \kern -\lbloutline
+	}%
+    \setbox\lbl_=\vbox
+	{\kern -\lbloutline \hrule height\lbloutline
+	 \box\lbl_
+	 \hrule height\lbloutline \kern -\lbloutline
+	}%
+    \add_to_row
+   }
+
+%%%%%%% Making a page
+% \lbl_out takes the label constructed in \lbl_ and adds it to the current
+% row. If the row is full, as counted by \h_cnt, the row is added
+% to the current page. Similarly, if \v_cnt indicates a full page,
+% the page is shipped out. (Note: There is no interline glue between
+% rows because of the way \unvbox does (not) affect \prevdepth.)
+% \finish_page ships out any remaining incomplete page.
+% \count1 is used to count the labels (this is only used to report
+% to the user when a page is shipped out).
+
+\newbox\lbl_page
+\newbox\lbl_row
+\newcount\v_cnt
+\newcount\h_cnt
+
+\def\add_to_row
+   {\ifnum\h_cnt=0
+	 \global\setbox\lbl_row=\hbox{\kern\hfirst \box\lbl_}%
+    \else\global\setbox\lbl_row=
+			\hbox{\unhbox\lbl_row \kern\hinter \box\lbl_}%
+    \fi
+    \global\advance\h_cnt by 1 \global\advance\count1 by 1
+    \ifnum\h_cnt<\hlbls
+    \else\add_to_page \global\h_cnt=0
+    \fi
+   }
+
+\def\add_to_page
+   {\ifnum\v_cnt=0
+	 \global\setbox\lbl_page=\vbox{\kern\vfirst \box\lbl_row}%
+    \else\global\setbox\lbl_page=
+			\vbox{\unvbox\lbl_page \kern\vinter \box\lbl_row}%
+    \fi
+    \global\advance\v_cnt by 1
+    \ifnum\v_cnt<\vlbls
+    \else\shipout\box\lbl_page \global\v_cnt=0 \global\advance\count0 by 1
+    \fi
+   }
+
+\def\finish_page
+   {\ifnum\h_cnt>0 \add_to_page \fi
+    \ifnum\v_cnt>0 \shipout\box\lbl_page \global\advance\count0 by1 \fi
+   }
+
+%%%%%%% Typesetting labels
+% In \setup_lbl the \bgroup is to prevent some changes from continuing
+% after \endlabels (e.g., catcode changes). Of course, we could also have
+% reset them to the (presumed) old values in \endlabels. And anyway,
+% it is a rather unnecessary refinement, since it doesn't make much
+% sence to combine typesetting labels with other things in the same
+% TeX run. We prevent changes of \erroraction while labels are being
+% typeset, since such changes would cause confusion with respect to
+% the log file. (Another unnecessary refinement: if you change the
+% action you deserve what you get.)
+% The \hsize is set properly in case \beforelbl or \afterlbl contains
+% horizontal material (this will be typeset as a normal paragraph).
+% It also allows the use of \line in these token registers.
+
+\def\catcode_lbl{\catcode`\&=12 \catcode`\#=12 }
+
+\def\setup_lbl
+   {\vfill\supereject
+    \ifcase\err_act\or\else
+	\immediate\openout\lbl_log=lblerror.tex  %<- significant space
+    \fi
+    \let\beforelines=\lbl_before \let\afterlines=\lbl_after
+    \let\everyline=\lbl_every
+    \let\finishdolines=\endlabels \def\enddolines{\endlabels}%
+    \bgroup
+    \dimen0=\hlblsize \advance\dimen0 by-\hindent
+    \hsize=\dimen0
+    \let\erroraction=\relax \err_cnt=0
+    \h_cnt=0 \v_cnt=0 \global\count1=0
+    \voffset=-1in \hoffset=-1in
+    \catcode_lbl
+   }
+
+\def\endlabels
+   {\finish_page
+    \egroup
+    \close_log
+   }
+
+\def\beginlabels{\setup_lbl \begindolines}
+
+\def\labelfile#1{\setup_lbl \filedolines{#1}\endlabels}
+
+
+%%%%%%% Typesetting bulk letters
+% This is kept quite simple: Labels are read one by one from a file,
+% and consist of a vbox with an hbox for each line. No extra indentations
+% or other frills. After each label has been read, we simply \input the
+% bulk letter. In the letter, \bulkaddress will typeset the label.
+% Just before we input the letter, we set \end=\relax, just in case the
+% letter ends with \bye. (This is better than setting \bye=\relax, since
+% \bye may insert extra material.) The grouping from \filedolines will
+% restore the original \end.
+
+\def\bulk_before{\setbox\lbl_=\vbox\bgroup}
+\def\bulk_every#1{\hbox{#1\strut}}
+
+\def\bulk_after
+   {\egroup % closes \setbox\lbl_=\vbox\bgroup
+    \catcode_plain
+    \let\end=\relax
+    \input\bulk_in %
+    \vfill\supereject
+    \catcode_lbl
+   }
+
+\def\bulkaddress{\copy\lbl_}
+
+\def\bulk#1#2% addresses, letter
+   {\vfill\supereject
+    \edef\catcode_plain{\catcode`\noexpand\&=\the\catcode`\&%
+			\catcode`\noexpand\#=\the\catcode`\#}%
+    \let\beforelines=\bulk_before \let\afterlines=\bulk_after
+    \let\everyline=\bulk_every
+    \catcode_lbl
+    \def\bulk_in{#2}%
+    \filedolines{#1}%
+    \catcode_plain
+   }
+
+
+%%%%%%% Initial values
+% \errorcontextlines (exists in TeX 3.0 and later versions) is set in
+% order to not unnecessarily confuse unexperienced users. Supposedly,
+% the macros above don't cause errors. Any errors are most likely
+% caused by something in \beforelines or \afterlines.
+
+\catcode`\_=\vlbls % restore catcode
+
+\ifx\errorcontextlines\undefined % \then old TeX version
+\else\errorcontextlines=-1
+\fi
+
+\erroraction=2
+\lbloutline=0sp
+\beforelbl={}
+\afterlbl={}
+
+% The following defaults are rather arbitrary, in practice the user
+% always has to set these values.
+\vlblsize=5cm
+\hlblsize=10cm
+\vindent=1.3\baselineskip
+\hindent=0.5cm
+
+\vlbls=5
+\hlbls=2
+\vfirst=1cm
+\hfirst=5mm
+\vinter=2mm
+\hinter=2mm
+
+%%%%%%%

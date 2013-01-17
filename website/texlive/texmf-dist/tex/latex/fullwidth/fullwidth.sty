@@ -1,0 +1,402 @@
+%%
+%% Package fullwidth
+%%
+%% Currently the package has a beta-Status
+%%
+%% Copyright (c) 2011 Marco Daniel
+%%
+%% This package may be distributed under the terms of the LaTeX Project
+%% Public License, as described in lppl.txt in the base LaTeX distribution.
+%% Either version 1.0 or, at your option, any later version.
+
+
+%% Allgemeine Angaben
+\def\fwdversion{v0.1}
+\def\fwdpackagename{fullwidth}
+\def\fwddate{2011/11/18\space}
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{fullwidth}[\fwddate \fwdversion: \fwdpackagename]
+
+%%Benoetigte Pakete
+\RequirePackage{kvoptions,etoolbox}
+\RequirePackage{zref-abspage}
+\SetupKeyvalOptions{family=fwd,prefix=fwd@}
+%%Schleifenmakro zur Optioneneingabe
+\DeclareListParser*{\fwd@dolist}{,}
+
+%Laengenoptionen
+\def\fwd@do@lengthoption#1{%
+  \fwd@lengthoption@doubledo#1\@nil%
+}
+\def\fwd@lengthoption@doubledo#1==#2\@nil{%
+  \csdef{fwd@#1}{}
+  \expandafter\newlength\csname fwd@#1@length\endcsname%
+  \expandafter\deflength\csname fwd@#1@length\endcsname{#2\relax}%
+  \fdw@define@key@length{#1}%
+}
+\newrobustcmd*{\fdw@define@key@length}[1]{%
+   \define@key{fwd}{#1}{%
+      \expandafter\deflength\csname fwd@#1@length\endcsname{##1\relax}%
+   }%
+}
+
+\fwd@dolist{\fwd@do@lengthoption}{%
+   {width==\linewidth},%
+   {skipabove==\topskip},%
+   {skipbelow==\topskip},%
+   {leftmargin==\z@},%
+   {rightmargin==\z@},%
+   {innertopmargin==0.4\baselineskip},%
+   {innerbottommargin==0.4\baselineskip},%
+   {splittopskip==\topsep},%
+   {splitbottomskip==\z@},%
+   {outermargin==\z@},%
+   {innermargin==\z@},%
+   {footenotedistance==\medskipamount},
+}
+
+%Nutzung des Paketes needspace
+\define@key{fwd}{needspace}[\z@]{%
+     \begingroup%
+        \setlength{\dimen@}{#1}%
+        \vskip\z@\@plus\dimen@%
+        \penalty -100\vskip\z@\@plus -\dimen@%
+        \vskip\dimen@%
+        \penalty 9999%
+        \vskip -\dimen@%
+        \vskip\z@skip % hide the previous |\vskip| from |\addvspace|
+      \endgroup%
+}
+\DeclareBoolOption[true]{twosidemode}
+\DeclareBoolOption{nobreak}
+\DeclareBoolOption{footnoteinside}
+
+\ProcessKeyvalOptions*\relax
+\newrobustcmd{\fullwidthsetup}{\setkeys{fwd}}
+
+
+%%Anpassung lrbox
+\let\fwd@lrbox\lrbox
+\patchcmd\fwd@lrbox\hbox\vbox{}{}
+\patchcmd\fwd@lrbox\color@setgroup{%
+\color@setgroup%
+\hsize=\fwd@width@length%
+\columnwidth=\hsize%
+\textwidth=\hsize%
+\linewidth=\hsize%
+}{}{}
+\def\endfwd@lrbox{\unskip\color@endgroup}
+
+%Anpassung trivlist
+\let\fwd@trivlist\trivlist
+\let\endfwd@trivlist\endtrivlist
+\patchcmd\endfwd@trivlist\@endparenv\fwd@endparenv{}{}
+\def\fwd@endparenv{%
+  \addpenalty\@endparpenalty\addvspace\fwd@skipbelow@length\@endpetrue}
+
+\newrobustcmd*\fwd@footnoterule{%
+    \kern0\p@%
+    \hrule \@width 1in \kern 2.6\p@}
+
+
+\newrobustcmd*\fwd@footnoteoutput{%
+     \ifvoid\@mpfootins\else
+          \nobreak%
+          \vskip\fwd@footenotedistance@length%
+          \normalcolor%
+          \fwd@footnoterule
+          \unvbox\@mpfootins
+     \fi%
+}
+
+\newrobustcmd*\fwd@footnoteinput{%
+   \def\@mpfn{mpfootnote}%
+   \def\thempfn{\thempfootnote}%
+   \c@mpfootnote\z@%
+   \let\@footnotetext\@mpfootnotetext%
+}
+
+
+\let\fwd@reserved@a\@empty
+\newrobustcmd*\fwd@detect@output{%
+  \iffwd@nobreak%Option nobreak=true?
+        \def\fwd@reserved@a{\fwd@standalone}%
+     \else
+       \def\fwd@reserved@a{\fwd@putframe}%
+       \ifnum\@floatpenalty<0\relax%Detecting float
+          \if@twocolumn%
+             \ifx\@captype\@undefined
+                 \def\fwd@reserved@a{\fwd@putframe}%
+             \else
+                 \PackageWarning{fullwidth}{fullwidth inside float  ^^J
+                                 fullwidth uses option nobreak}%
+                 \def\fwd@reserved@a{\fwd@standalone}%   
+             \fi
+          \else
+             \PackageWarning{fullwidth inside float  ^^J
+                             fullwidth uses option nobreak}%
+             \def\fwd@reserved@a{\fwd@standalone}%     
+          \fi%
+       \fi%
+       \if@minipage%
+             \PackageWarning{fullwidth inside minipage  ^^J
+                             fullwidth uses option nobreak}%
+             \def\fwd@reserved@a{\fwd@standalone}%
+       \fi%
+       \ifinner%
+            \PackageWarning{fullwidth inside a box ^^J
+                            fullwidth uses option nobreak }%
+             \def\fwd@reserved@a{\fwd@standalone}%
+      \fi%
+  \fi%
+%\fwd@standalone%
+\fwd@reserved@a%
+}
+
+
+\def\fullwidth{\@ifnextchar[\fullwidth@i\fullwidth@ii}%
+\def\fullwidth@ii{\fullwidth@i[]}%
+\def\fullwidth@i[#1]{% default-Umgebung
+  \begingroup
+  \fullwidthsetup{#1}%%
+   \fwd@twoside@checklength%
+   \let\width\z@%
+   \let\height\z@%
+   \setlength{\topsep}{\fwd@skipabove@length}%
+   \begingroup%
+     \let\partopsep\z@%
+   \expandafter\endgroup%   
+   \begin{fwd@trivlist}\item\relax%
+   \hsize=\fwd@width@length\relax%
+   \fwd@footnoteinput%
+   \begin{fwd@lrbox}{\@tempboxa}%
+ }
+\def\endfullwidth{%
+    \iffwd@footnoteinside%
+      \def\fwd@reserveda{%
+        \fwd@footnoteoutput%
+        \end{fwd@lrbox}%
+        \fwd@detect@output}%
+    \else%
+      \def\fwd@reserveda{%
+        \end{fwd@lrbox}
+        \fwd@detect@output%
+        \fwd@footnoteoutput%
+        }%
+    \fi%
+    \fwd@reserveda%
+    \end{fwd@trivlist}%
+    \hrule \@height\z@ \@width\hsize
+\endgroup%\@endparenv%
+}
+
+
+
+%%==================================================%%
+%%================== Twoside-Modus =================%%
+%%==================================================%%
+\newrobustcmd*\fwd@twoside@checklength{%
+ \if@twoside
+     \setlength\fwd@rightmargin@length{\fwd@outermargin@length}%
+     \setlength\fwd@leftmargin@length{\fwd@innermargin@length}%
+%     \booltrue{fwd@twosidemode}%
+ \else
+     \boolfalse{fwd@twosidemode}%
+ \fi%
+}
+
+\newcounter{fwd@zref@counter}%keine doppelten laebes
+\zref@newprop*{fwd@pagevalue}[0]{\number\value{page}}
+\zref@addprop{\ZREF@mainlist}{fwd@pagevalue}
+
+\newrobustcmd*\fwd@zref@label{%
+   \stepcounter{fwd@zref@counter}
+   \zref@label{fwd@pagelabel-\number\value{fwd@zref@counter}}%
+}
+
+\newrobustcmd*\if@fwd@pageodd{%
+     \zref@refused{fwd@pagelabel-\the\value{fwd@zref@counter}}%
+     \ifodd\zref@extract{fwd@pagelabel-\the\value{fwd@zref@counter}}{fwd@pagevalue}%
+         \edef\fwd@reserveda{\fwd@pageisodd}%
+     \else
+        \edef\fwd@reserveda{\fwd@pageiseven}%
+     \fi
+     \fwd@reserveda%
+}
+
+\newrobustcmd*\fwd@pageisodd{%
+    \setlength\fwd@rightmargin@length{\fwd@outermargin@length}%
+    \setlength\fwd@leftmargin@length{\fwd@innermargin@length}%
+}
+\newrobustcmd*\fwd@pageiseven{%
+    \setlength\fwd@leftmargin@length{\fwd@outermargin@length}%
+    \setlength\fwd@rightmargin@length{\fwd@innermargin@length}%
+}
+
+\newrobustcmd*\fwd@@setzref{\fwd@zref@label\if@fwd@pageodd}
+
+%%==================================================%%
+%%================= Platz auf Seite ================%%
+%%==================================================%%
+
+\newlength\fwd@freevspace@length
+\newrobustcmd*\fwd@freepagevspace{%
+     \penalty\@M \vskip 2\baselineskip \vskip\height
+     \penalty9999 \vskip -2\baselineskip \vskip-\height
+     \penalty9999
+     \ifdimequal{\pagegoal}{\maxdimen}%
+          {\fwd@freevspace@length\vsize}%
+          {\fwd@freevspace@length=\pagegoal\relax%
+           \advance\fwd@freevspace@length by -\pagetotal\relax%
+          }%
+}
+
+\newrobustcmd*\fwd@standalone{\relax%
+   \ifvoid\@tempboxa\relax
+      \PackageWarning{fullwidth}{The environment is empty\MessageBreak}%
+      \let\fwd@reserved@a\relax%
+   \else
+      \def\fwd@reserved@a{\fwd@putbox@tempboxa}%
+   \fi
+   \fwd@reserved@a%
+}
+
+
+\def\fwd@putframe{\relax%
+  \ifvoid\@tempboxa\relax
+    \PackageWarning{fullwidth}{The environment is empty\MessageBreak}%
+    \let\fwd@reserved@a\relax%
+  \else
+   \fwd@freepagevspace%
+   \ifdimless{\fwd@freevspace@length}{2\baselineskip}
+             {\PackageInfo{fullwidth}{Not enough space on this page}%die Seite hat nur noch minimal Platz
+              \vfill\eject%
+              \def\fwd@reserved@a{\fwd@putframe}%
+             }{%
+              \ifdimless{\ht\@tempboxa+\dp\@tempboxa}{\fwd@freevspace@length}%
+                {%passt auf Seite%
+                  \begingroup
+                   \ifbool{fwd@twosidemode}{\fwd@@setzref}{}%
+                     \fwd@putbox@tempboxa%%
+                  \endgroup
+                 \let\fwd@reserved@a\relax}%
+                {\def\fwd@reserved@a{\fwd@putframe@i}}%passt nicht auf Seite
+             }%
+  \fi
+ \fwd@reserved@a%
+}
+
+\def\fwd@putframe@i{%Box muss gesplittet werden -- Ausgabe der ersten Teilbox
+   %Berechnung der Splittgroesse Abstand oben
+   \fwd@freepagevspace%
+   \dimen@=\the\fwd@freevspace@length%
+   \dimen@i=\fwd@innertopmargin@length%
+   \advance\dimen@i by 2\baselineskip%
+   \ifdim\dimen@<\dimen@i\relax
+      \hrule \@height\z@ \@width\hsize%
+      \vfill\eject%
+      \def\fwd@reserved@a{\fwd@putframe}%
+   \else%
+      \ifdimless{\ht\@tempboxa+\dp\@tempboxa}{\dimen@}%
+         {\PackageWarning{fullwidth}{You got a bad break\MessageBreak
+                             you have to change it manually\MessageBreak
+                             by changing the text, the space\MessageBreak
+                             or something else}%
+          \advance\dimen@ by -1.8\baselineskip\relax%
+         }{}%
+         \advance\dimen@ by -1pt\relax%Box darf nicht zu Groß werden.
+         \splitmaxdepth\z@ \splittopskip\fwd@splittopskip@length%
+         \setbox\tw@\vsplit\@tempboxa to \dimen@
+         \setbox\tw@\vbox{\unvbox\tw@}%needed?
+         \ifdimgreater{\ht\tw@+\dp\tw@}{\dimen@}{%Falsch gesplittet
+            \PackageInfo{fullwidth}{Box was splittet wrong\MessageBreak}%
+             \dimen@i=\dimen@
+              \advance\dimen@ by -\ht\tw@
+              \advance\dimen@ by -\dp\tw@
+              \advance\dimen@i by 0.5\dimen@
+             \splittopskip\z@%
+             \setbox\@tempboxa\vbox{\unvbox\tw@%
+                                     \hrule \@height\dp\strutbox \@width\z@%benoetigt um Tiefe zu haben
+                                     \unvbox\@tempboxa}
+             \splittopskip\fwd@splittopskip@length%
+             \setbox\tw@\vsplit\@tempboxa to \dimen@i
+             \setbox\tw@\vbox{\unvbox\tw@}%
+             }{}%
+         \setbox\@tempboxa\vbox{\unvbox\@tempboxa}%PRUEFEN!!!!
+         \ifvoid\@tempboxa
+           \PackageWarning{fullwidth}{You got a bad break\MessageBreak
+                               because the splittet box is empty\MessageBreak
+                               You have to change the page settings\MessageBreak
+                               like enlargethispage or something else}%
+           \setbox\@tempboxa\vbox{\box\tw@\box\@tempboxa}%
+           \def\fwd@reserved@a{\fwd@putframe}%
+         \fi
+         \ifvoid\tw@%%pruefe, ob erste Box leer ist
+          \hrule \@height\z@ \@width\hsize
+          \vfill\eject%  
+             \def\fwd@reserved@a{\fwd@putframe}%
+         \else
+          \ifdimequal{\ht\tw@}{0pt}%
+            {\hrule \@height\z@ \@width\hsize%
+             \vfill\eject%
+             \setbox\@tempboxa\vbox{\unvbox\tw@\unvbox\@tempboxa}
+             \def\fwd@reserved@a{\fwd@putframe}%
+            }%
+            {%
+            \begingroup
+               \ifbool{fwd@twosidemode}{\fwd@@setzref}{}%
+               \fwd@putbox@tw@%Groesse des Splittens passt
+            \endgroup
+            \hrule \@height\z@ \@width\hsize
+            \vfill\eject%
+            \def\fwd@reserved@a{\fwd@putframe@ii}%
+            }%
+         \fi% 
+      \fi%
+\fwd@reserved@a%
+}
+
+\def\fwd@putframe@ii{%Ausgabe der mittleren Box(en) wenn vorhanden
+  \setlength{\fwd@freevspace@length}{\vsize}%
+  \setlength{\dimen@}{\dimexpr\ht\@tempboxa+\dp\@tempboxa\relax}%
+   \ifdimgreater{\dimen@}{\fwd@freevspace@length}%
+    {%
+        \advance\fwd@freevspace@length by -\fwd@splitbottomskip@length
+        \splitmaxdepth\z@ \splittopskip\fwd@splittopskip@length%
+        \setbox\tw@\vsplit\@tempboxa to \fwd@freevspace@length%
+        \setbox\tw@\vbox{\unvbox\tw@}%PRUEFEN!!!
+        \setbox\@tempboxa\vbox{\unvbox\@tempboxa}%PRUEFEN!!!!
+        \ifvoid\@tempboxa\relax%
+           \fwd@PackageWarning{You got a bad break\MessageBreak
+                               because the split box is empty\MessageBreak
+                               You have to change the settings}%
+         \fi%
+        \begingroup
+           \ifbool{fwd@twosidemode}{\fwd@@setzref}{}%
+           \fwd@putbox@tw@%
+        \endgroup
+        \hrule \@height\z@ \@width\hsize
+        \vfill\eject
+        \def\fwd@reserved@a{\fwd@putframe@ii}%
+     }%Hier die Ausgabe der mittleren Box
+     {\ifvoid\@tempboxa
+           \fwd@PackageWarning{You got a bad break\MessageBreak
+                               because the last split box is empty\MessageBreak
+                               You have to change the settings}%
+      \fi%
+      \begingroup
+          \ifbool{fwd@twosidemode}{\fwd@@setzref}{}%
+          \fwd@putbox@tempboxa%
+      \endgroup
+      \let\fwd@reserved@a\relax%
+     }%Hier kommt die Ausgabe der letzten Box
+  \fwd@reserved@a%
+}
+
+
+\newrobustcmd\fwd@leftline[1]{\leftline{\hspace*{\fwd@leftmargin@length}#1}}%Keine Modifikation
+
+\newrobustcmd\fwd@putbox@tempboxa{\fwd@leftline{\box\@tempboxa}}
+\newrobustcmd\fwd@putbox@tw@{\fwd@leftline{\box\tw@}}
+
+\endinput

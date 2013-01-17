@@ -1,0 +1,238 @@
+
+
+%%% LaTeX support for TeXplorators / M. Spivak dvipaste program
+%%% Copyright 1997 David Carlisle
+
+
+% This program can redistributed and/or modified under the terms
+% of the LaTeX Project Public License Distributed from CTAN
+% archives in directory macros/latex/base/lppl.txt; either
+% version 1 of the License, or (at your option) any later version.
+
+%%% Usage notes in the file dvipaste.txt
+
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{grfpaste}
+          [1997/07/18 v0.2 dvipaste LaTeX graphics style (DPC)]
+
+% 1997/07/17 v0.1
+% 1997/07/18 v0.2  add ref system.
+
+% To include previously prepared dvi fragments, use
+% \usepackage{grfpaste}
+% and include the graphics with \includegraphics{file.dvi}
+% or \includegraphics[num=5]{file.dvi}
+%
+% To make a file that produces suitable fragments, use
+% \usepackage[write]{grfpaste}
+% and mark each fragment with \sendout{....}
+% 
+\DeclareOption{write}{\let\sendout\relax}
+\DeclareOption{writepages}{\let\sendout\relax\let\GP@sendout\@empty}
+\DeclareOption{include}{%
+  \def\sendout#1{\PackageError{grfpaste}{Use write option}{}}}
+\DeclareOption{defpaste}{\def\paste#1#2{\includegraphics[num=#2]{#1}}}
+\DeclareOption*{\PassOptionsToPackage{\CurrentOption}{graphicx}}
+\ExecuteOptions{include}
+\ProcessOptions
+\RequirePackage{graphicx}
+
+\ifx\sendout\relax
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Marking DVI Sections For Inclusion In Other Files
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Size information will be written in to a file filename.dat
+% which is opened now and closed at the end of the run.
+
+\newwrite\writedata@
+\immediate\openout\writedata@=\jobname.dat
+%\AtEndDocument{\immediate\closeout\writedata@}
+
+% The format of the .dat file is identical to that written by
+% dvipaste.tex, the format of the dvi file is compatible.
+% dvipaste uses a more complicated scheme that uses a custom output
+% routine and then \eject each section, however I can't see why
+% \sendout can not just \shipout the box directly, so that is what
+% this version does.
+
+\def\sendout{\@testopt\GP@sendout{}}
+
+\ifx\GP@sendout\@empty
+
+\def\GP@sendout[#1]#2{\PackageError{grfpaste}{write pages
+    only}{}}
+
+\let\GP@shipout\shipout
+\def\shipout{\global\setbox\xxx}
+\newbox\xxx
+\let\GP@outputpage\@outputpage
+\def\@outputpage{%
+  \GP@outputpage
+  \immediate\write\writedata@
+      {\the\ht\xxx\space\the\dp\xxx\space\the\wd\xxx}%
+  {\let\protect\noexpand
+  \advance\c@page\m@ne
+  \GP@shipout\hbox{%
+    \special{beginpaste:}%
+    \wd\xxx\z@
+    \box\xxx
+    \special{endpaste:}%
+    }%
+  }}
+
+\else
+
+\long\def\GP@sendout[#1]#2{%
+  \sbox\z@{#2}%
+  \immediate\write\writedata@
+      {\the\ht\z@\space\the\dp\z@\space\the\wd\z@
+        \ifx\box#1\box\else\space\@percentchar#1\fi}%
+  \shipout\vbox{%
+    \vskip\ht\z@
+    \special{beginpaste:}%
+    \ht\z@\z@\dp\z@\z@\wd\z@\z@
+    \noindent\box\z@
+    \special{endpaste:}%
+% the original had this rule, but seems not to be needed.
+%    \smash{\vrule \@height1sp\@width1sp\@depth\z@}%
+    \@@par
+    \vskip2pc%
+    \hbox{\normalfont File [\jobname], \#\number\c@page}}%
+  \stepcounter{page}}
+
+\fi
+
+\else
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Including DVI Sections Into The Current File
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Graphics will be able to include dvi file segments, reading size
+% info from .dat files (compatible with dvipast.tex for plain tex)
+
+\DeclareGraphicsRule{.dvi}{dvi}{.dat}{}
+
+% Add .dvi to the default list of extensions.
+
+\g@addto@macro\Gin@extensions{,.dvi}
+
+
+% dvipaste allows multiple dvi fragments to be included from the
+% same file. Add a new key num= (defaulting to 1) which says
+% which bit to include. Maintaining numbers if you have a lot of
+% fragments is inconvenient so may use symbolic references
+% instead of number.
+% ref=xxx refers to a fragment marked with the label xxx by use
+% of an optional argument \sendout[xxx]{......} to \sendout.
+% If \sendout is used with such an optional argument
+% the fragment may be included either by number or by label.
+% (The numeric form must be used if the fragment is included using
+% dvipaste.tex's \paste command.)
+
+
+\define@key{Gin}{num}{\def\Gin@num{#1}}
+\define@key{Gin}{ref}{\def\Gin@ref{#1 }}
+\setkeys{Gin}{num=1,ref=}
+
+% Unlike other graphics formats, which only have natural height and
+% width, dvipaste fragments are TeX boxes, with depth as well.
+% add a new key to set the depth (for cases where you don't want to
+% use a .dat file).
+
+\define@key{Gin}{natdepth}{%
+  \Gin@defaultbp\@tempaa{#1}%
+  \Gin@nat@depth\@tempaa bp\relax}
+
+% Ah. Don't look too carefully. The internal command \Gin@setfile
+% in the kernel of the graphics package was not expecting this, and
+% explicitly sets the depth of the graphic box to zero, so patch that
+% to make it set it to the new \Gin@req@depth macro.
+%
+% pulls apart the macro at \dp\z@\z@ and then puts it all back together
+% again.
+
+\def\@tempa#1\dp\z@\z@#2!{%
+  \def\Gin@setfile##1##2##3{%
+    #1%
+    \dp\z@\Gin@req@depth
+    #2}}
+\expandafter\@tempa\Gin@setfile{#1}{#2}{#3}!
+
+% Scaling is not currently supported, so natural depth and
+% required depth are the same.
+
+\def\Gin@req@depth{\Gin@nat@depth}
+
+\newdimen\Gin@nat@depth
+
+
+% For each new file type the graphics package needs two functions.
+% \Gread@<type> defines how to read the size information.
+% \Ginclude@type defines how to set the actual box and specials.
+% These functions are pretty similar to the code in dvipaste.tex
+
+% as in the dvipaste.tex version, the size information for
+% all the fragments in a single dvi file is saved in a macro
+% so the file only needs to be read once.
+
+\def\Gread@dvi#1{%
+  \expandafter\let\expandafter\@tempb\csname Gread@#1\endcsname
+  \ifx\@tempb\relax
+  \let\@tempb\@empty
+  \let\do\relax
+  \immediate\openin\@inputcheck#1 %
+  \catcode`\%9\relax
+  \ifeof\@inputcheck
+    \@latex@error{File `#1' not found}\@ehc
+  \else
+     \Gread@true
+     \loop
+       \read\@inputcheck to\@tempa
+       \ifeof\@inputcheck
+         \Gread@false
+       \else
+         \xdef\@tempb{\@tempb\do\@tempa\relax}%
+       \fi
+     \ifGread@
+     \repeat
+    \immediate\closein\@inputcheck
+  \fi
+  \global\expandafter\let\csname Gread@#1\endcsname\@tempb
+  \fi
+%
+% Temporarily set \do to count up to the required fragment number
+% and then grab the size info. Then execute the list (in \@tempb).
+  \count@\z@
+  \Gread@false
+  \def\do##1 ##2 ##3 ##4\relax{%
+    \advance\count@\@ne
+    \def\@tempa{##4}%
+    \ifx\@tempa\Gin@ref
+      \edef\Gin@num{\the\count@}%
+    \fi
+    \ifnum\Gin@num=\count@
+      \Gread@true
+  \def\Gin@llx{0}%
+  \let\Gin@lly\Gin@llx
+  \Gin@defaultbp\Gin@urx{##3}%
+  \Gin@defaultbp\Gin@ury{##1}%
+       \Gin@nat@depth##2\relax
+    \fi}%
+  \@tempb
+  \let\do\noexpand}
+
+\def\Ginclude@dvi#1{%
+  \ifGread@
+    \dimen@\Gin@nat@height
+    \advance\dimen@\Gin@nat@depth
+    \hbox{\special{dvipaste: \Gin@base\space\Gin@num}% 
+    \lower\Gin@nat@depth\vbox to\dimen@{\hbox to\Gin@nat@width{}\vfil}}%
+  \else
+    \Gin@nosize{\Gin@base[\Gin@num]}%
+  \fi}
+
+
+\fi
+

@@ -1,0 +1,215 @@
+%    pgftree.tex
+%    Version 1.2, 20 Apr 2012
+
+%    Copyright 2009 by David Chiang
+
+%    This program is free software; you can redistribute it and/or modify
+%    it under the terms of the GNU General Public License as published by
+%    the Free Software Foundation; either version 2 of the License, or
+%    (at your option) any later version.
+
+%    This program is distributed in the hope that it will be useful,
+%    but WITHOUT ANY WARRANTY; without even the implied warranty of
+%    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%    GNU General Public License for more details.
+
+%    You should have received a copy of the GNU General Public License along
+%    with this program; if not, write to the Free Software Foundation, Inc.,
+%    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+% New in version 1.2:
+% - level-specific styles (thanks to Andrew Stacey)
+
+% New in version 1.1:
+% - major restructuring to not do arbitrary nesting of subpicture environments
+% - sideways trees
+
+% To do:
+% - trees with all leaves at same level
+% - if \nodename does not exist as desired, wrap inside a rectangle node
+% - don't use pgfsubpic internals
+
+\newdimen\levelsep \levelsep=30pt
+\newdimen\subtreesep \subtreesep=2pt
+\newdimen\smuggle@levelsep
+\newdimen\smuggle@subtreesep
+\newdimen\this@levelsep
+\newdimen\this@subtreesep
+
+\def\leveldirection{down}
+\def\siblingdirection{right}
+
+% definitions of growing directions
+\def\pgftree@levelshift{\csname pgftree@levelshift@\leveldirection\endcsname}
+\def\pgftree@parentanchor{\csname pgftree@parentanchor@\leveldirection\endcsname}
+\def\pgftree@childanchor{\csname pgftree@childanchor@\leveldirection\endcsname}
+% these assume that the current subpicture is the child
+\def\pgftree@presiblingshift{\csname pgftree@presiblingshift@\siblingdirection\endcsname}
+\def\pgftree@postsiblingshift{\csname pgftree@postsiblingshift@\siblingdirection\endcsname}
+
+\def\pgftree@levelshift@down{\pgfpoint{0}{-\levelsep}}
+\def\pgftree@parentanchor@down{south}
+\def\pgftree@childanchor@down{north}
+
+\def\pgftree@levelshift@up{\pgfpoint{0}{\levelsep}}
+\def\pgftree@parentanchor@up{north}
+\def\pgftree@childanchor@up{south}
+
+\def\pgftree@levelshift@right{\pgfpoint{\levelsep}{0}}
+\def\pgftree@parentanchor@right{east}
+\def\pgftree@childanchor@right{west}
+
+\def\pgftree@levelshift@left{\pgfpoint{-\levelsep}{0}}
+\def\pgftree@parentanchor@left{west}
+\def\pgftree@childanchor@left{east}
+
+\def\pgftree@presiblingshift@right{\pgf@process{\pgf@x-\pgf@subpicminx \advance\pgf@x\subtreesep \pgf@y 0pt}}
+\def\pgftree@postsiblingshift@right{\pgf@process{\pgf@x\pgf@subpicmaxx \pgf@y 0pt}}
+
+\def\pgftree@presiblingshift@left{\pgf@process{\pgf@x-\pgf@subpicmaxx \advance\pgf@x-\subtreesep \pgf@y 0pt}}
+\def\pgftree@postsiblingshift@left{\pgf@process{\pgf@x\pgf@subpicminx \pgf@y 0pt}}
+
+\def\pgftree@presiblingshift@up{\pgf@process{\pgf@x 0pt \pgf@y-\pgf@subpicminy \advance\pgf@y\subtreesep}}
+\def\pgftree@postsiblingshift@up{\pgf@process{\pgf@x 0pt \pgf@y\pgf@subpicmaxy}}
+
+\def\pgftree@presiblingshift@down{\pgf@process{\pgf@x 0pt \pgf@y-\pgf@subpicmaxy \advance\pgf@y-\subtreesep}}
+\def\pgftree@postsiblingshift@down{\pgf@process{\pgf@x 0pt \pgf@y\pgf@subpicminy}}
+
+% for convenience if you are using \pgftree directly
+\def\drawnode#1{\pgfnode{rectangle}{base}{#1}{\nodename}{\pgfusepath{discard}}}
+\def\drawedge{%
+\pgfpathmoveto{\pgfpointanchor{\parentnodename}{\pgftree@parentanchor}}%
+\pgfpathlineto{\pgfpointanchor{\nodename}{\pgftree@childanchor}}%
+\pgfusepath{stroke}}
+
+% local variables that we need to assign to inside a \pgfforeach
+\newdimen\pgftree@childx
+\newdimen\pgftree@savechildx
+\newdimen\pgftree@childy
+\newdimen\pgftree@savechildy
+\newcount\pgftree@childi
+\newcount\pgftree@savechildi
+\newcount\pgftree@level
+\newdimen\pgftree@depth
+
+%%% \pgftree{subtree}
+
+\def\pgftree#1{%
+\def\nodename{r}%
+\pgftree@level=0\relax
+\pgftree@depth=0pt\relax
+#1%
+\pgfplacesubpicture
+}
+
+%%% \pgfsubtree{root}{subtrees}
+% The first argument draws the root node using PGF/TikZ commands.
+% The node must be named \nodename.
+
+% The second argument is a sequence of 3n tokens.
+% Token 3n-2 draws the nth edge. It should draw an edge from \parentnodename to \nodename.
+% Token 3n-1 is a hook that can change \levelsep or \subtreesep for child n only.
+% Token 3n draws the nth subtree. Its root must be named \nodename.
+
+\pgfnewsubpicture{children}
+\newdimen\pgftree@lastchildx
+\newdimen\pgftree@lastchildy
+
+\def\pgfsubtree#1#2{%
+\let\parentnodename\nodename
+\pgftree@savechildx=\pgftree@childx
+\pgftree@savechildy=\pgftree@childy
+\pgftree@savechildi=\pgftree@childi
+% Build subpicture with all the children and their subtrees
+{\pgftree@childx=0pt%
+\pgftree@childy=0pt%
+\pgftree@childi=0%
+\process@children #2}%
+\begin{pgfsubpicture}%
+% Create node
+#1%
+\ifnum\pgftree@childi>0%
+% Place children
+{% center so that parent is midway between origins of first and last children
+\pgftransformshift{\pgfpointscale{-0.5}{\pgfqpoint{\the\pgftree@childx}{\the\pgftree@childy}}}%
+\pgfplacesubpicture}%
+% Draw the edges
+{\pgftree@childi=0%
+\process@edges #2}%
+\fi
+\end{pgfsubpicture}%
+\global\pgftree@childi=\pgftree@savechildi
+\global\pgftree@childx=\pgftree@savechildx
+\global\pgftree@childy=\pgftree@savechildy
+}
+
+\def\process@children{%
+\pgfutil@ifnextchar\egroup
+{% No more children, step back to origin of last child
+\global\pgftree@childx\pgftree@lastchildx
+\global\pgftree@childy\pgftree@lastchildy
+\global\pgftree@childi\pgftree@childi
+\ifnum\pgftree@childi>0%
+\pgfrestoresubpicture{children}% pass children back to caller
+\fi
+}%
+{\@process@children}%
+}
+\def\@process@children#1#2#3{% 
+% #1 is the edge, #2 is the hook, #3 is the child
+{% call hook to get \levelsep and \subtreesep
+% and put them in \this@levelsep and \this@subtreesep
+% to hide them from descendants
+#2%
+\global\smuggle@levelsep\levelsep
+\global\smuggle@subtreesep\subtreesep}%
+\this@levelsep\smuggle@levelsep
+\this@subtreesep\smuggle@subtreesep
+% Build the current child
+{\edef\nodename{\parentnodename-\the\pgftree@childi}%
+\advance\pgftree@level by 1\relax
+\advance\pgftree@depth by \this@levelsep
+#3}%
+\begin{pgfsubpicture}%
+% Place current child
+{%
+% The \levelsep and \subtreesep set in #2 apply only here
+\levelsep\this@levelsep
+\subtreesep\this@subtreesep
+\ifnum\pgftree@childi>0% the first child is always at 0
+\pgftree@presiblingshift \global\advance\pgftree@childx\pgf@x \global\advance\pgftree@childy\pgf@y
+\fi
+\pgftransformshift{\pgftree@levelshift}%
+\pgftransformshift{\pgfqpoint{\the\pgftree@childx}{\the\pgftree@childy}}%
+\pgfplacesubpicture
+\global\pgftree@lastchildx\pgftree@childx
+\global\pgftree@lastchildy\pgftree@childy
+\pgftree@postsiblingshift \global\advance\pgftree@childx\pgf@x \global\advance\pgftree@childy\pgf@y
+}%
+% Save the augmented row of children back into "children"
+\end{pgfsubpicture}
+\ifnum\pgftree@childi>0%
+\pgfmergesubpicture{children}
+\else
+\pgfsavesubpicture{children}%
+\fi
+\advance\pgftree@childi by 1%
+\process@children
+}
+
+\def\process@edges{%
+\pgfutil@ifnextchar\egroup
+{}%
+{\@process@edges}%
+}
+\def\@process@edges#1#2#3{%
+\edef\nodename{\parentnodename-\the\pgftree@childi}%
+#1%
+\advance\pgftree@childi by 1%
+\process@edges
+}
+
+\def\subtreeof#1{%
+% the subpicture which contains a node also contains exactly its subtree
+\csname pgf@sh@pi@#1\endcsname
+}

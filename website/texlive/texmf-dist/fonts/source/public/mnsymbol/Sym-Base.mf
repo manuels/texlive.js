@@ -1,0 +1,479 @@
+
+mode_setup;
+
+% mf2pt1 support
+
+if known ps_output:
+  pencircle      := mfplain_pencircle;
+  let filldraw   := mfplain_filldraw;
+  let unfilldraw := mfplain_unfilldraw;
+fi;
+
+define_pixels(u, asc_height, desc_depth, delim_height, x_height);
+define_whole_pixels(dot_size, small_op_size, med_op_size, large_op_size, plus_size,
+  order_width, equal_spread, greater_spread,
+  arrow_horiz_len, arrow_vert_len, arrow_diag_len, arrow_spread);
+
+math_axis      := good.y(math_axis# * hppp);
+rule_thickness := ceiling(rule_thickness# * hppp);
+side_bearing   := ceiling(side_bearing# * hppp);
+stroke_through_thickness := 2/3rule_thickness;
+
+pickup pencircle scaled rule_thickness;
+rule_pen := savepen;
+pickup pencircle scaled stroke_through_thickness;
+stroke_pen := savepen;
+
+def vcentre(expr size) =
+  size/2 + math_axis#, size/2 - math_axis#
+enddef;
+
+current_char := -1;
+
+def beginsymbol(expr width, height, depth) =
+  current_char := current_char + 1;
+  beginchar(current_char, width, height, depth);
+enddef;
+
+def beginoperator(expr size, ratio) =
+  beginsymbol(size + 2side_bearing#, vcentre(ratio * size + rule_thickness#));
+    pair centre;
+    centre := (w/2, (h-d)/2);
+enddef;
+
+def beginbigop(expr xscale, yscale) =
+  beginsymbol(xscale * 3/2order_width# + 2side_bearing#,
+              ((yscale - 1)/2 + 1) * asc_height# + yscale * 1/6equal_spread# + 2/3rule_thickness#,
+              (yscale - 1)/2 * asc_height# + yscale * 1/6equal_spread# + 2/3rule_thickness#);
+    pair centre;
+    centre := (w/2, (h-d)/2);
+    op_width  := xscale * 3/2order_width;
+    op_height := yscale * (asc_height + 1/3equal_spread);
+enddef;
+
+def beginsquarebigop(expr xscale, yscale) =
+  beginsymbol(xscale * (asc_height# + 1/3equal_spread#) + 2side_bearing#,
+              ((yscale - 1)/2 + 1) * asc_height# + yscale * 1/6equal_spread# + 2/3rule_thickness#,
+              (yscale - 1)/2 * asc_height# + yscale * 1/6equal_spread# + 2/3rule_thickness#);
+    pair centre;
+    centre := (w/2, (h-d)/2);
+    op_width  := xscale * (asc_height + 1/3equal_spread);
+    op_height := yscale * (asc_height + 1/3equal_spread);
+enddef;
+
+def beginarrow(expr angle, scale, spread) =
+  arrow_len# := scale *
+    if     angle mod 180 =  0: arrow_horiz_len#
+    elseif angle mod 180 = 90: arrow_vert_len#
+    else:                      arrow_diag_len#
+    fi;
+  arrow_len := scale *
+    if     angle mod 180 =  0: arrow_horiz_len
+    elseif angle mod 180 = 90: arrow_vert_len
+    else:                      arrow_diag_len
+    fi;
+
+  beginsymbol(arrow_len# * abs (cosd (angle)) + spread * abs (sind (angle)) + 2side_bearing#,
+      vcentre(arrow_len# * abs (sind (angle)) + spread * abs (cosd (angle)) + rule_thickness#));
+
+    pair centre, head, foot;
+
+    centre := (w/2, (h-d)/2);
+    head   := centre + arrow_len/2 * dir angle;
+    foot   := centre - arrow_len/2 * dir angle;
+    arrow_dir := angle;
+enddef;
+
+def beginorder(expr sign, width, spread) =
+  beginsymbol(width + 2u#, vcentre(spread));
+
+    pair centre, left_point, right_point;
+
+    centre   := (w/2, (h-d)/2);
+
+    left_point   := centre - sign * (w/2 - u - 1/2rule_thickness) * right;
+    right_point  := centre + sign * (w/2 - u - 1/2rule_thickness) * right;
+enddef;
+
+vardef stroke text t =
+  forsuffixes e = l, r:
+    path_.e := t;
+  endfor
+  path_.l -- reverse path_.r -- cycle
+enddef;
+
+% paths
+
+def triangle(expr centre, size, angle) =
+  (centre + size * dir angle) --
+  (centre + size * dir (angle + 120)) --
+  (centre + size * dir (angle + 240)) --
+  cycle
+enddef;
+
+def square(expr centre, size, angle) =
+  (centre + sqrt(2) * size * dir (angle +  45)) --
+  (centre + sqrt(2) * size * dir (angle + 135)) --
+  (centre + sqrt(2) * size * dir (angle + 225)) --
+  (centre + sqrt(2) * size * dir (angle + 315)) --
+  cycle
+enddef;
+
+def circle(expr centre, radius) =
+  (centre + radius * dir   0){dir  90} ...
+  (centre + radius * dir  45){dir 135} ...
+  (centre + radius * dir  90){dir 180} ...
+  (centre + radius * dir 135){dir 225} ...
+  (centre + radius * dir 180){dir 270} ...
+  (centre + radius * dir 225){dir 315} ...
+  (centre + radius * dir 270){dir   0} ...
+  (centre + radius * dir 315){dir  45} ...
+  cycle
+enddef;
+
+def ellipse(expr centre, rad_a, rad_b, alpha) =
+  (centre + rad_a * dir alpha){dir (alpha +  90)} ...
+  (centre + 1/2sqrt 2 * rad_a * dir alpha + 1/2sqrt 2 * rad_b * dir (alpha + 90)){dir (alpha + 135)} ...
+  (centre + rad_b * dir (alpha +  90)){dir (alpha + 180)} ...
+  (centre - 1/2sqrt 2 * rad_a * dir alpha + 1/2sqrt 2 * rad_b * dir (alpha + 90)){dir (alpha + 225)} ...
+  (centre + rad_a * dir (alpha + 180)){dir (alpha + 270)} ...
+  (centre - 1/2sqrt 2 * rad_a * dir alpha - 1/2sqrt 2 * rad_b * dir (alpha + 90)){dir (alpha + 315)} ...
+  (centre + rad_b * dir (alpha + 270)){dir (alpha +   0)} ...
+  (centre + 1/2sqrt 2 * rad_a * dir alpha - 1/2sqrt 2 * rad_b * dir (alpha + 90)){dir (alpha +  45)} ...
+  cycle
+enddef;
+
+def sign(expr x) =
+  if x < 0: -1 elseif x = 0: 0 else: 1 fi
+enddef;
+
+def super_ellipse_point(expr centre, rad_a, rad_b, exponent, alpha, beta) =
+  begingroup
+    save c, s;
+    c := cosd beta;
+    s := sind beta;
+
+    (centre + sign(c) * rad_a * (abs c ** exponent) * dir alpha
+            + sign(s) * rad_b * (abs s ** exponent) * dir (alpha + 90))
+  endgroup
+enddef;
+
+def super_ellipse(expr centre, rad_a, rad_b, exponent, alpha) =
+  super_ellipse_point(centre, rad_a, rad_b, exponent, alpha,   0) ..
+  super_ellipse_point(centre, rad_a, rad_b, exponent, alpha,  30) ..
+  super_ellipse_point(centre, rad_a, rad_b, exponent, alpha,  60) ..
+  super_ellipse_point(centre, rad_a, rad_b, exponent, alpha,  90) ..
+  super_ellipse_point(centre, rad_a, rad_b, exponent, alpha, 120) ..
+  super_ellipse_point(centre, rad_a, rad_b, exponent, alpha, 150) ..
+  super_ellipse_point(centre, rad_a, rad_b, exponent, alpha, 180) ..
+  super_ellipse_point(centre, rad_a, rad_b, exponent, alpha, 210) ..
+  super_ellipse_point(centre, rad_a, rad_b, exponent, alpha, 240) ..
+  super_ellipse_point(centre, rad_a, rad_b, exponent, alpha, 270) ..
+  super_ellipse_point(centre, rad_a, rad_b, exponent, alpha, 300) ..
+  super_ellipse_point(centre, rad_a, rad_b, exponent, alpha, 330) ..
+  cycle
+enddef;
+
+def half_circle(expr centre, radius, angle) =
+  (centre + radius * dir (angle +   0)){dir (angle +  90)} ...
+  (centre + radius * dir (angle +  45)){dir (angle + 135)} ...
+  (centre + radius * dir (angle +  90)){dir (angle + 180)} ...
+  (centre + radius * dir (angle + 135)){dir (angle + 225)} ...
+  (centre + radius * dir (angle + 180)){dir (angle + 270)}
+enddef;
+
+def reg_poly_points(suffix $)(expr n, centre, radius, angle) =
+  for i = 0 upto n-1:
+    z$[i] = centre + radius * dir (angle + i/n * 360);
+  endfor;
+enddef;
+
+% left half of an arrow head
+def arrowhead_left(expr pos, angle, spread) =
+  pos{dir (angle + 170)} ..
+  {dir (angle + 130)}(pos - 3/4spread * dir angle + spread/2 * dir (angle + 90)){dir (angle - 50)} ..
+  {dir (angle -  50)}(pos - 1/4spread * dir angle)
+enddef;
+
+% right half of an arrow head
+def arrowhead_right(expr pos, angle, spread) =
+  (pos - 1/4spread * dir angle){dir (angle - 130)} ..
+  {dir (angle - 130)}(pos - 3/4spread * dir angle + spread/2 * dir (angle - 90)){dir (angle + 50)} ..
+  {dir (angle +  10)}pos
+enddef;
+
+% the whole arrow head
+def arrowhead(expr pos, angle, spread) =
+  arrowhead_left(pos, angle, spread) & arrowhead_right(pos, angle, spread)
+enddef;
+
+% intersect the arrowhead curve with a path
+def arrowhead_intersection(expr pos, angle, spread, p) =
+  (p intersectionpoint
+                      ((pos - 3/4spread * dir angle + spread/2 * dir (angle + 90)){dir (angle - 50)} ..
+    {dir (angle -  50)}(pos - 1/4spread * dir angle){dir (angle - 130)} ..
+    {dir (angle - 130)}(pos - 3/4spread * dir angle + spread/2 * dir (angle - 90))))
+enddef;
+
+def stroke_through_arrow(expr pos, alpha, spread)(text angles) =
+  begingroup;
+    stroke_dir := arrow_dir + select(alpha/45)(angles);
+    stroke_len := 1/2spread / sind (stroke_dir - arrow_dir);
+
+    pickup stroke_pen;
+    draw (pos + stroke_len * dir stroke_dir) -- (pos - stroke_len * dir stroke_dir);
+  endgroup;
+enddef;
+
+def ellipse_set(suffix $,@,@@,$$) =
+  % given |z$,x@,z$$|, find |y@| and |z@@|
+  % such that the path |z${x@-x$,0}..z@{0,y@-y$}..{z$$-z@@}z@@|
+  % is consistent with an ellipse
+  % and such that the line |z@@--z$$| has a given |slope|
+  alpha_ := slope * (x@ - x$);
+  beta_  := y$$ - y$ - slope * (x$$ - x$);
+  gamma_ := alpha_ / beta_;
+  y@  - y$  = .5(beta_ - alpha_ * gamma_);
+  x@@ - x$  = -2gamma_ * (x@ - x$) / (1 + gamma_ * gamma_);
+  y@@ - y$$ = slope * (x@@ - x$$)
+enddef;
+
+def bulb(suffix $,$$,$$$) =
+  z$$$r = z$$r;
+
+  path_.l := z$l{x$$r - x$r, 0} ... {0, y$$r - y$r}z$$l;
+
+  filldraw path_.l -- z$$r{0, y$r - y$$r} ... {x$r - x$$r, 0}z$r -- cycle; % link
+
+  path_.r := z$$$l{0, y$r - y$$r} .. z$$$r{0, y$$r - y$r}; % near-circle
+
+  filldraw subpath(0, xpart(path_.r intersectiontimes path_.l)) of path_.r
+        -- z$$r{0, y$$r - y$r} .. cycle; % bulb
+enddef;
+
+vardef super_arc.r(suffix $,$$) =
+  % outside of super-ellipse
+
+  pair center, corner;
+
+  if y$ = y$r:
+    center = (x$$r, y$r);
+    corner = (x$r, y$$r);
+  else:
+    center = (x$r, y$$r);
+    corner = (x$$r, y$r);
+  fi
+  z$.r{corner - z$.r} ... superness[center,corner]{z$$.r - z$.r}
+                      ... {z$$.r - corner}z$$.r
+enddef;
+
+vardef super_arc.l(suffix $,$$) =
+  % inside of super-ellipse
+
+  pair center, corner;
+  if y$ = y$r:
+    center = (x$$l, y$l);
+    corner = (x$l, y$$l);
+  else:
+    center = (x$l, y$$l);
+    corner = (x$$l, y$l);
+  fi
+  z$l{corner - z$l} ... superness[center,corner]{z$$l - z$l}
+                    ... {z$$l - corner}z$$l
+enddef;
+
+vardef pulled_super_arc.r(suffix $,$$)(expr superpull) =
+  pair center, corner;
+
+  if y$ = y$r:
+    center = (x$$r, y$r);
+    corner = (x$r, y$$r);
+  else:
+    center = (x$r, y$$r);
+    corner = (x$$r, y$r);
+  fi
+  z$r{corner - z$r} ... superness[center,corner]{z$$r - z$r}
+                    ... {z$$r - corner}z$$r
+enddef;
+
+vardef pulled_super_arc.l(suffix $,$$)(expr superpull) =
+  pair center, corner, outer_point;
+
+  if y$ = y$r:
+    center = (x$$l, y$l);
+    corner = (x$l, y$$l);
+    outer_point = superness[(x$$r, y$r), (x$r, y$$r)];
+  else:
+    center = (x$l, y$$l);
+    corner = (x$$l, y$l);
+    outer_point = superness[(x$r, y$$r), (x$$r, y$r)];
+  fi
+  z$l{corner - z$l}
+   ... superpull[superness[center,corner], outer_point]{z$$l - z$l}
+   ... {z$$l - corner}z$$l
+enddef;
+
+vardef pulled_arc@#(suffix $,$$) =
+  pulled_super_arc@#($,$$)(superpull)
+enddef;
+
+def sim(expr l, r) =
+     ( 0/26[l, r] - 1/3equal_spread * dir ((angle (r-l) + 90) mod 180))
+  .. ( 1/26[l, r])
+  .. ( 5/26[l, r] + 1/3equal_spread * dir ((angle (r-l) + 90) mod 180))
+  .. (13/26[l, r])
+  .. (21/26[l, r] - 1/3equal_spread * dir ((angle (r-l) + 90) mod 180))
+  .. (25/26[l, r])
+  .. (26/26[l, r] + 1/3equal_spread * dir ((angle (r-l) + 90) mod 180))
+enddef;
+
+def prec(expr l, r, spread) =
+     (r - 1/2spread * dir (angle (r-l) + 90)){dir (angle (r-l) + 140)}
+  .. {dir (angle (r-l) + 180)}l{dir (angle (r-l))}
+  .. {dir (angle (r-l) + 40)}(r + 1/2spread * dir (angle (r-l) + 90));
+enddef;
+
+def subset(expr l, r, spread) =
+     (r - 1/2spread * dir (angle (r-l) + 90))
+  -- (1/3[l, r] - 1/2spread * dir (angle (r-l) + 90)){l - r}
+  .. l
+  .. (1/3[l, r] + 1/2spread * dir (angle (r-l) + 90)){r - l}
+  .. (r + 1/2spread * dir (angle (r-l) + 90))
+enddef;
+
+def smile(expr sign, l, r, spread, round_smile) =
+  if round_smile:
+       (l + sign * 1/2spread * dir (angle (r-l) + 90))
+    .. {r - l}(1/2[l,r] - sign * 1/2spread * dir (angle (r-l) + 90)){r - l}
+    .. (r + sign * 1/2spread * dir (angle (r-l) + 90))
+  else:
+       (l + sign * 1/2spread * dir (angle (r-l) + 90))
+    -- (1/2[l,r] - sign * 1/2spread * dir (angle (r-l) + 90))
+    -- (r + sign * 1/2spread * dir (angle (r-l) + 90))
+  fi
+enddef;
+
+def stroke_through(expr pos, spread) =
+  begingroup;
+    stroke_len := 1/2spread / cosd 15;
+
+    pickup stroke_pen;
+    draw (pos + stroke_len * dir 75) -- (pos - stroke_len * dir 75);
+  endgroup;
+enddef;
+
+def draw_product(expr centre, width, height, sign, thick) =
+  thin  := 1/2thick;
+
+  z1 - z0 = z3 - z2 = width * dir 0;
+  z2 - z0 = sign * height * dir 90;
+
+  1/2[1/2[z0,z1], 1/2[z2,z3]] = centre;
+
+  x0 := hround (x0 - 0.5);
+  x1 := hround (x1 + 0.5);
+  x2 := hround (x2 - 0.5);
+  x3 := hround (x3 + 0.5);
+
+  z4 = 1/3[z0,z1];
+  z5 = 2/3[z0,z1];
+
+  x4 := hround (x4 + 0.5);
+  x5 := hround (x5 - 0.5);
+
+  z6 = 1/2[z0,z4] + sign * max (1/8height, 3/2thin) * dir 90;
+  z7 = 1/2[z1,z5] + sign * max (1/8height, 3/2thin) * dir 90;
+
+  z8 = z6 + sign * min (3/4height, height - 3thin) * dir 90;
+  z9 = z7 + sign * min (3/4height, height - 3thin) * dir 90;
+
+  penpos 0(thin, sign * 90);
+  penpos 1(thin, sign * 90);
+  penpos 2(thin, sign * 90);
+  penpos 3(thin, sign * 90);
+  penpos 4(thin, sign * 90);
+  penpos 5(thin, sign * 90);
+  penpos 6(thick, 0);
+  penpos 7(thick, 0);
+  penpos 8(thick, 0);
+  penpos 9(thick, 0);
+
+  x6l := hround (x6l - 0.5);
+  x6r := hround (x6r + 0.5);
+  x7l := hround (x7l - 0.5);
+  x7r := hround (x7r + 0.5);
+  x8l := hround (x8l - 0.5);
+  x8r := hround (x8r + 0.5);
+  x9l := hround (x9l - 0.5);
+  x9r := hround (x9r + 0.5);
+
+  y10 = y11 = y2r - sign * 1/2[thin,thick];
+  x10 = x6r;
+  x11 = x7l;
+
+  z10a = z10 - sign * min (1/20height, 4/5sign * (y10 - y9)) * dir 90;
+  z10b = z10 + 1/20height * dir 0;
+  z11a = z11 - sign * min (1/20height, 4/5sign * (y10 - y9)) * dir 90;
+  z11b = z11 - 1/20height * dir 0;
+
+  fill z0l -- z0r{dir 0}   .. {sign * dir 90}z6l -- z6r{sign * dir -90} .. {dir 0}z4r   -- z4l -- cycle;
+  fill z1l -- z1r{dir 180} .. {sign * dir 90}z7r -- z7l{sign * dir -90} .. {dir 180}z5r -- z5l -- cycle;
+  fill z2r -- z2l{dir 0} .. {sign * dir -90}z8l -- z8r -- z10a{sign * dir 90} .. {dir 0}z10b --
+       z11b{dir 0} .. {sign * dir -90}z11a -- z9l -- z9r{sign * dir 90} .. z3l -- z3r -- cycle;
+  fill z6l -- z8l -- z8r -- z6r -- cycle;
+  fill z7l -- z9l -- z9r -- z7r -- cycle;
+
+  penlabels(0,1,2,3,4,5,6,7,8,9,10,11,10a,10b,11a,11b);
+enddef;
+
+def draw_integral(suffix $)(expr scale, center) =
+  thick := 2rule_thickness * sqrt (sqrt scale);
+  thin  := 1/2thick;
+
+  penpos0$(4/5thick, 0);
+  penpos1$(4/5thick, 0);
+  penpos2$(5/11thick, -90);
+  penpos3$(4/5thick, 0);
+  penpos4$(5/11thick, -90);
+
+  z0$ = 1/2[z1$,z3$] = 1/2[z2$,z4$];
+  z1$ - z3$ = whatever * dir 80;
+  z2$ - z4$ = whatever * dir 70;
+
+  x0$l = xpart centre;
+  top y2$ = h;
+  bot y4$ = -d;
+  y1$ = 1/2[y0$,y2$];
+
+  penpos5$(2/3thick,-135);
+  penpos6$(2/3thick,-135);
+  y5$ = 1/9[y2$, y1$];
+  x5$ = 8/5[x1$r, x2$r];
+  y6$ = 1/9[y4$, y3$];
+  x6$ = 8/5[x3$l, x4$l];
+
+  x2$r := floor   min (x2$r, x5$r);
+  x4$l := ceiling max (x4$l, x6$l);
+
+  x5$r := ceiling x5$r + 1;
+  y5$r := ceiling y5$r;
+  x6$l := floor   x6$l - 1;
+  y6$l := floor   y6$l;
+
+  if abs (angle (z5$r - z2$r)) < 55:
+    fill z5$l .. z2$l{left} .. {z3$-z1$}z1$l -- z3$l{z3$-z1$} .. tension 1.5 .. z4$l{left} .. z6$l -- z6$r
+      .. z4$r{right} .. {z1$-z3$}z3$r -- z1$r{z1$-z3$} .. tension 1.5 .. z2$r{right} .. z5$r -- cycle;
+  else:
+    z7$ = z2$r + whatever * dir -30 = whatever[z5$l, z5$r];
+    z8$ = z4$l + whatever * dir -30 = whatever[z6$l, z6$r];
+
+    fill z5$l .. z2$l{left} .. {z3$-z1$}z1$l -- z3$l{z3$-z1$} .. tension 1.5 .. z4$l .. z8$ -- z6$r
+      .. z4$r{right} .. {z1$-z3$}z3$r -- z1$r{z1$-z3$} .. tension 1.5 .. z2$r .. z7$ -- cycle;
+  fi;
+
+  fill circle(z5$, 1/3thick);
+  fill circle(z6$, 1/3thick);
+
+  penlabels(0$,1$,2$,3$,4$,5$,6$);
+enddef;
+

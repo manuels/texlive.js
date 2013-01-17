@@ -1,0 +1,245 @@
+% Package robustindex.sty, Wilberd van der Kallen Feb 2005.
+%
+% This package addresses two issues.
+%
+% 1. The main issue.
+% Third parties often change the page numbers without rerunning makeindex.
+% One would like to make the page numbers in the index entries more robust.
+% We use the \pageref mechanism for that. Only after adding, deleting or
+% otherwise modifying an \index{entry}, or after changing the order of the
+% index entries, does one have to rerun makeindex.
+% Other changes do not matter, as long as one runs LaTeX or pdflatex twice.
+% As usual a makeindex run has to be preceded and also followed by its
+% LaTeX or pdflatex run.
+%
+% 2. A patch.
+% The theindex environment does not create a hyperref destination.
+% Therefore we introduce \indexincontents.
+% It does what \addcontentsline{toc}{chapter}{Index} or
+% \addcontentsline{toc}{section}{Index} should have done in the first place:
+% When one clicks on the link that displays the word Index, one actually ends
+% up in the index.
+% Our patch is much more simpleminded than the tocbibind package.
+%
+% If you use hyperref, choose the option hyperindex=false. Otherwise hyperref
+% may block our code. And our package already gives hyperlinks in the
+% index.
+% Alternatively, you may go against the advice of hyperref and put our
+% package later.
+%
+% We tested a little with
+%
+% \usepackage[plainpages=false,hyperindex=false]{hyperref}
+%
+% The implicit page range formation of makeindex is disabled.
+% Commands of the type \index{entry|editing command} are supported,
+% but much more naively than in the encapsulating mechanism of makeindex.
+% For instance, \index{term|(textbf} may be followed by \index{term|)textit},
+% but not by \index{term|textbf}, even if there is a later
+% \index{term|)textbf}.
+%
+% See robustsample.tex at 
+% http://www.math.uu.nl/people/vdkallen/stind.html
+% for further details.
+%
+% There you find examples like
+%
+% \index{alpha!see beta}
+% \index{alpha!see also gamma\gobblepageref}
+%
+% \indexincontents % always put this before the index.
+%
+% Our package performs no miracles. But in simple situations all you need is
+% adding the \usepackage{robustindex} to the preamble. Do not exclude any
+% relevant files, as in \includeonly.
+%
+% Copyright 2005 Wilberd van der Kallen
+%
+% This file may be distributed under the conditions of the LaTeX Project Public
+% License, either version 1.2 of this license or (at your option) any
+% later version.  The latest version of this license is in
+%    http://www.latex-project.org/lppl.txt
+% and version 1.2 or later is part of all distributions of LaTeX
+% version 1999/12/01 or later.
+
+\ProvidesPackage{robustindex}
+  [2005/02/24
+  index entries with pagerefs]
+
+\newcounter{indexctr}%
+
+\newcounter{maxindctr}% Used to check if number of \index commands has changed.
+
+\newcommand{\indstring}{ind.}%
+
+\def\@wrindex#1{%
+  \stepcounter{indexctr}%
+  \stepcounter{indexctr}% second time, to emulate makeindex -r.
+  \@bsphack \protected@write \@auxout {}{%
+     \string \newlabel {\indstring\theindexctr}{{\relax }{\thepage }%
+     \ifx\ifHy@bookmarks\undefined\else{\relax }{page.\thepage }{}\fi%
+     }%
+  }%
+  \@esphack
+  \protected@write
+    \@indexfile {}{\string \indexentry
+    {\findencap#1|\relax }{\theindexctr}}% \findencap will check for the
+  \endgroup                              % encap symbol | in the argument.
+  \@esphack
+}%
+
+\newcommand{\indpageref}[1]{%
+   \ifnum\c@maxindctr<#1\relax\setcounter{maxindctr}{#1}\fi
+   \pageref{\indstring#1}%
+}%
+
+\newcommand{\indexpreamble}{\relax}% compare the preamble of makeindex
+
+\newcommand{\indexincontents}{%
+  \def\indexpreamble{%
+     \addcontentsline{toc}%
+        {\ifx\c@chapter\undefined section\else chapter\fi}{\indexname}%
+  }%
+}%
+
+\newcommand{\old@theindex}{}%
+
+\let\old@theindex\theindex
+
+\newcommand{\cndhyprndxwrng}{%
+    \ifHy@hyperindex
+       \PackageWarning{robustind}{%
+          Use option hyperindex=false in hyperref. Hyperlinks in the index
+	  will be made through \string\pageref. Detected%
+       }%
+    \fi
+}%
+
+\def\theindex{%
+   \old@theindex
+   \refstepcounter{subsection}\indexpreamble
+   % We use that \refstepcounter{subsection} creates a destination.
+   % An index is not to be followed immediately by a subsection.
+   % We do not use \phantomsection, as we do not assume hyperref is used.
+   \ifx\ifHy@hyperindex\undefined\else\cndhyprndxwrng\fi
+}%
+
+\ifx\ifHy@hyperindex\undefined\else\Hy@hyperindexfalse\fi
+% If you put our package after the hyperref package,
+% then you probably do not mind our disabling its hyperindex mechanism.
+
+\AtEndDocument{%
+   \ifnum\c@indexctr=\c@maxindctr
+   \else
+      \ifnum\c@indexctr=0%
+         \PackageWarning{robustind}{%
+	    Package needs \string\make index in preamble,
+	    and if you use hyperref, you must
+	    use option hyperindex=false. Detected%
+	 }%
+      \else
+         \PackageWarning{robustind}{%
+            Index not up to date, run makeindex. Detected%
+         }%
+      \fi
+   \fi
+}%
+
+\newcommand{\wrappageref}{\protect\wrapindpageref}%
+
+\newcommand{\wrapindpageref}{}%
+
+\def\wrapindpageref#1, \indpageref#2{%
+   \ifnum\c@maxindctr<#2\relax
+      \setcounter{maxindctr}{#2}%
+   \fi
+   #1{\pageref{\indstring#2}}%
+}%
+
+\newcommand{\gobbleindpageref}{\wrappageref\@gobble}
+
+\newcommand{\gobblepageref}{% to supress one page number.
+      \protect\gobbleindpageref
+}%
+
+
+% Now it gets technical, because we wish to implement a poor man's encap
+% mechanism, distinguishing \index{entry}, \index{entry|(}, \index{entry|)},
+% \index{entry|(towrap}, \index{entry|)towrap}, where towrap is a sequence
+% of letters and \towrap is to be wrapped around \indpageref{countervalue}.
+
+\newcommand{\findencap}{}%
+
+\def\findencap#1|#2\relax{%
+   \ifx\relax#2\relax
+      #1|indpageref% The easy case
+   \else
+      #1|\wr@pencap#2% There is a | in the argument.
+   \fi
+}%
+
+\newcommand{\wr@pencap}{}%
+
+\def\wr@pencap#1|{encpageref{#1}}%
+
+\newcommand{\encpageref}[2]{%
+   \findleftbrack#1(\relax{#2}%
+}%
+
+\newcommand{\findleftbrack}{}%
+
+\def\findleftbrack#1(#2\relax#3{%
+   \ifx|#1| \dropleftbrack#2{#3}%
+   \else \findrightbrack#1)\relax{#3}%
+   \fi
+}%
+
+\newcommand{\dropleftbrack}{}%
+
+\def\dropleftbrack#1(#2{%
+   \unskip
+   \ifx|#1|\indpageref{#2}%
+   \else
+      \csname #1\endcsname{\indpageref{#2}}%
+   \fi
+   \gobblecomma
+}%
+
+\newcommand{\gobblecomma}{}%
+
+\newcommand{\oldndpgrf}{}%
+
+\let\oldndpgrf\indpageref
+
+\def\gobblecomma#1,{%
+   \def\indpageref{\rangewarning}%
+   \ignorespaces #1%
+}%
+
+\newcommand{\rangewarning}{%
+   \PackageWarning{robustind}{%
+       You must first close the page range. Detected%
+   }%
+}%
+
+\newcommand{\findrightbrack}{}%
+
+\def\findrightbrack#1)#2\relax#3{%
+   \ifx|#1| \droprightbrack#2{#3}
+   \else
+      \csname#1\endcsname{\indpageref{#3}}%
+   \fi
+}%
+
+\newcommand{\droprightbrack}{}%
+
+\def\droprightbrack#1)#2{%
+   \let\indpageref\oldndpgrf
+   \ifx|#1|\unskip \mbox{--}\nobreak\indpageref{#2}%
+   \else
+      \unskip \mbox{--}\nobreak\csname #1\endcsname{\indpageref{#2}}%
+   \fi
+   \ignorespaces
+}%
+
+\relax

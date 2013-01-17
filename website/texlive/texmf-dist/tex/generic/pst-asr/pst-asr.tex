@@ -1,0 +1,753 @@
+% 30 March 07.  Many changes from 1.2, mostly in the inclusion of
+% some useful macros from eplain (particularly \@futurenonspacelet)
+% and their systematic use throughout this file.  This fixes some
+% erratic behavior when a macro immediately followed \asr[...]
+%
+% 20 Feb 10.  Fixed problem with latest version of pstricks
+% 2011/04/20 fixed problem with pstricks v2.19 (2011/03/25)
+\def\fileversion{1.6}
+\def\filedate{2011/04/20}
+\csname ASRLoaded\endcsname
+\let\ASRLoaded\endinput
+\ifx\PSTricksLoaded\endinput \else \input pstricks \fi\relax
+\ifx\PSTXKeyLoaded\endinput \else \input pst-xkey \fi\relax
+\edef\TheAtCode{\the\catcode`\@}
+\catcode`\@=11\relax
+% utilities
+% eplain utilities
+% \@futurenonspacelet, \@getoptionalarg, \ifempty
+\def\@futurenonspacelet#1{\def\cs{#1}%
+   \afterassignment\@stepone\let\@nexttoken=
+}
+\begingroup
+\def\\{\global\let\@stoken= }%
+\\ %
+\endgroup
+\def\@stepone{\expandafter\futurelet\cs\@steptwo}%
+\def\@steptwo{\expandafter\ifx\cs\@stoken\let\@@next=\@stepthree
+   \else\let\@@next=\@nexttoken\fi \@@next}%
+\def\@stepthree{\afterassignment\@stepone\let\@@next= }%
+\def\@getoptionalarg#1{%
+   \let\@optionaltemp = #1%
+   \let\@optionalnext = \relax
+   \@futurenonspacelet\@optionalnext\@bracketcheck
+}
+\def\@bracketcheck{%
+   \ifx [\@optionalnext
+      \expandafter\@@getoptionalarg
+   \else
+      \let\@optionalarg = \empty
+      \expandafter\@optionaltemp
+   \fi
+}
+\def\@@getoptionalarg[#1]{%
+   \def\@optionalarg{#1}%
+   \@optionaltemp
+}
+\def\ifempty#1{\@@ifempty #1\@emptymarkA\@emptymarkB}%
+\def\@emptymarkA{\@emptymarkB}%
+\def\@@ifempty#1#2\@emptymarkB{\ifx #1\@emptymarkA}%
+% end eplain utilities
+% other utilities
+\def\@enamedef#1{\expandafter\edef\csname #1\endcsname}
+\def\writeln#1{\immediate\write16{#1}\ignorespaces}
+\def\@gobbleignore#1{\ignorespaces}
+\def\psset@useoptionalarg{%
+   \ifx\@optionalarg\empty \else
+      \expandafter\psset\expandafter{\@optionalarg}\fi
+}
+\def\xaddto#1#2{%
+   \pssetxlength\pst@dimg{#2}%
+   \advance#1 by\pst@dimg}
+\def\xsettosum#1#2#3{%
+   \pssetxlength#1{#2}
+   \xaddto#1{#3}\ignorespaces
+}
+\def\ysettodiff#1#2#3{%
+   \pssetylength#1{#2}%
+   \pssetlength\pst@dimg{#3}%
+   \advance#1 by -\pst@dimg
+   \ignorespaces
+}
+\def\ASR@addtotoks#1#2{\expandafter
+   #2\expandafter{\expandafter#1\the#2}}
+\def\ASR@trimtoks#1{\expandafter\expandafter\expandafter#1%
+   \expandafter\expandafter\expandafter{%
+      \expandafter\@gobble\the#1}%
+}
+% \XKVforn is \XKV@for@n from XKeyVal with \ignorespaces trailer
+\long\def\XKVforn#1#2#3{%
+   \def#2{#1}%
+   \ifx#2\@empty
+      \XKV@for@break
+   \else
+      \expandafter\XKV@f@r
+   \fi
+   #2{#3}#1,\@nil,%
+\ignorespaces
+}
+\def\DefList#1{%
+   \XKVforn{#1}\@X{\expandafter\def\@X}%
+   \ignorespaces
+}
+\def\interpolate(#1)(#2)#3#4{%
+   \begingroup
+   \SpecialCoor
+   \pst@getcoor{#1}\pst@tempa%
+   \pst@getcoor{#2}\pst@tempb%
+   \pnode(!%
+     \pst@tempa /YA exch \pst@number\psyunit div def
+     /XA exch \pst@number\psxunit div def
+     \pst@tempb /YB exch \pst@number\psyunit div def
+     /XB exch \pst@number\psxunit div def
+     /dx XB XA sub def
+     /dy YB YA sub def
+     dx #3\space mul XA add dy #3\space mul YA add){#4}
+   \endgroup
+   \ignorespaces
+}
+% \ASRyvalue{xxx} for \ASR@xxx, \ASRyvalue*{xxx} for \ASRxxx
+% sets \temp and \pst@dima
+\def\ASRyvalue{\pst@ifstar\ASRyvalue@a}
+\def\ASRyvalue@a#1{%
+   \edef\temp{\if@star \else @\fi#1}%
+   \expandafter\ASRyvalue@b
+}
+\def\ASRyvalue@b#1#2\@nil{%
+   \ifx#1!%
+      \pssetylength\pst@dimb{#2}%
+      \expandafter\pst@dima\csname ASR\temp\endcsname
+         \advance\pst@dima by \pst@dimb
+   \else
+      \pssetylength\pst@dima{#1#2}\fi
+}
+\newdimen\ASR@dima
+\newdimen\ASR@dimb
+\newdimen\ASR@dimc
+\newdimen\ASR@dimd
+\newdimen\ASR@dime
+\newdimen\ASR@dimf
+% \dbox, \dput resources and definitions
+\newbox\ASR@hbox
+\newbox\tmpbox
+\newdimen\ASR@left
+\newdimen\ASR@down
+\newdimen\ASR@xpos
+\newdimen\ASR@ypos
+\newdimen\ASR@maxleft
+\newdimen\ASR@maxright
+\newdimen\ASR@maxup
+\newdimen\ASR@maxdown
+\newdimen\ASR@dputht
+%
+\def\dput#1(#2,#3){%
+   \def\pst@par{}%
+   \def\ASR@dput{#1(#2,#3)}%
+   \pssetxlength\ASR@xpos{#2}%
+   \pssetylength\ASR@ypos{#3}%
+   \ASR@addtotoks\ASR@egg\everyhbox
+   \expandafter\rput\ASR@dput
+}
+\def\ASR@egg{\aftergroup\ASR@updateafter}
+\def\ASR@updateafter{%
+   \ASR@trimtoks\everyhbox
+   \ASR@dputht=\ht\pst@hbox
+   \expandafter\psset\expandafter{\pst@par}%
+   \advance\ASR@xpos by -\psk@xref\wd\pst@hbox
+   \ifdim\ASR@xpos<\ASR@maxleft \ASR@maxleft=\ASR@xpos \fi
+   \advance\ASR@xpos by \wd\pst@hbox
+   \ifdim\ASR@xpos>\ASR@maxright \ASR@maxright=\ASR@xpos \fi
+   \ifx\psk@yref\relax
+         \advance\ASR@ypos by \ASR@dputht
+         \advance\ASR@dputht by \dp\pst@hbox
+      \else
+         \advance\ASR@dputht by \dp\pst@hbox
+         \advance\ASR@ypos by \ASR@dputht
+         \advance\ASR@ypos by -\psk@yref\ASR@dputht
+      \fi
+   \ifdim\ASR@ypos>\ASR@maxup \ASR@maxup=\ASR@ypos \fi
+   \advance\ASR@ypos by -\ASR@dputht
+   \ifdim\ASR@ypos<\ASR@maxdown \ASR@maxdown=\ASR@ypos \fi
+}
+\def\dbox{\setbox\ASR@hbox=\hbox\bgroup
+   \ASR@maxleft=\maxdimen
+   \ASR@maxright=-\maxdimen
+   \ASR@maxup=0pt
+   \ASR@maxdown=0pt
+}
+\def\ASR@Maxtransfer{%
+   \xdef\ASR@MaxAfter{%
+      \noexpand\ASR@maxleft=\the\ASR@maxleft
+      \noexpand\ASR@maxright=\the\ASR@maxright
+      \noexpand\ASR@maxdown=\the\ASR@maxdown
+      \noexpand\ASR@maxup=\the\ASR@maxup}%
+   \aftergroup\ASR@MaxAfter
+}
+\def\ASR@asrBtransfer{%
+   \xdef\ASR@asrBAfter{%
+      \noexpand\def\noexpand\ASR@asrB{\ASR@asrB}}%
+   \aftergroup\ASR@asrBAfter
+}
+\def\enddbox{%
+   \ASR@Maxtransfer
+   \ASR@asrBtransfer
+   \egroup
+   \dp\ASR@hbox=-\ASR@maxdown
+   \ht\ASR@hbox=\ASR@maxup
+   \leavevmode
+   \kern-\ASR@maxleft\lower\ASR@asrB\box\ASR@hbox\kern\ASR@maxright}
+% -------------------------------------------------------------
+% finally, we can can start to build the ASR specific macros
+% \newtier, defines a list of tiers
+\pst@addfams{ASR}
+\def\asrsetkeys#1{\setkeys[psset]{ASR}{#1}\ignorespaces}
+%\def\pssetkeys#1{\setkeys[psset]{}{#1}\ignorespaces}
+\def\newtier#1{\Newtier@A#1,\@nil,\@nil}
+\def\Newtier@A#1#2,{\ifx#1\@nil \let\temp\@gobbleignore
+      \else \Newtier@B{#1#2}\let\temp\Newtier@A \fi \temp}
+\def\Newtier@B#1{%
+   \@enamedef{ASR#1B}{0pt}%
+   \@enamedef{ASR@#1dp}{.7ex}%
+   \@enamedef{ASR@#1ht}{1.8ex}%
+   \define@key[psset]{ASR}{#1B}{%
+      \ASRyvalue*{#1B}##1\@nil
+      \@enamedef{ASR#1B}{\the\pst@dima}%
+      \pst@dimb=\pst@dima
+      \advance\pst@dimb by \@nameuse{ASR@#1ht}%
+      \@enamedef{ASR#1t}{\the\pst@dimb}%
+      \pst@dimb=\@nameuse{ASR@#1dp}%
+      \advance\pst@dima by -\pst@dimb
+      \@enamedef{ASR#1b}{\the\pst@dima}%
+      }%
+   \define@key[psset]{ASR}{#1ht}{%
+      \ASRyvalue{#1ht}##1\@nil
+      \@enamedef{ASR@#1ht}{\the\pst@dima}%
+      \advance\pst@dima by \@nameuse{ASR#1B}%
+      \@enamedef{ASR#1t}{\the\pst@dima}%
+      }%
+   \define@key[psset]{ASR}{#1dp}{%
+      \ASRyvalue{#1dp}##1\@nil
+      \@enamedef{ASR@#1dp}{\the\pst@dima}%
+      \pst@dima=-\pst@dima
+      \advance\pst@dima by \@nameuse{ASR#1B}%
+      \@enamedef{ASR#1b}{\the\pst@dima}%
+      }%
+   \define@key[psset]{ASR}{#1}{%
+      \TierSet@##1 {} {} \@nil
+      \if@star \expandafter\ASR@dima\@nameuse{ASR#1B}
+         \else
+         \@enamedef{ASR#1B}{\the\ASR@dima}\fi
+      \@enamedef{ASR@#1dp}{\the\pst@dimb}%
+      \@enamedef{ASR@#1ht}{\the\pst@dimc}%
+      \pst@dimb=-\pst@dimb
+      \advance\pst@dimb by \ASR@dima
+      \@enamedef{ASR#1b}{\the\pst@dimb}%
+      \advance\pst@dimc by \ASR@dima
+      \@enamedef{ASR#1t}{\the\pst@dimc}%
+      }%
+}
+\def\TierSet@{\futurelet\temp\TierSet@@}
+\def\TierSet@@{%
+   \@starfalse
+   \ifx\temp(\let\next\TierSet@a
+   \else \ifx\temp*\let\next\TierSet@b
+   \else \let\next\TierSet@c \fi\fi \next}
+\def\TierSet@a(#1) #2 {%
+   \pssetylength\ASR@dima{#2}%
+   \expandafter\pst@dimb\@nameuse{ASR#1B}%
+   \advance\ASR@dima by \pst@dimb
+   \TierSet@d
+}
+\def\TierSet@b#1 {\@startrue\TierSet@d}
+\def\TierSet@c#1 {\pssetylength\ASR@dima{#1}\TierSet@d}
+\def\TierSet@d{\@ifnextchar(\TierSet@e{\TierSet@e() }}
+\def\TierSet@e(#1) #2 #3 #4\@nil{%
+   \setbox\tmpbox=\hbox{#1}%
+   \def\tempb{#2}%
+   \ifx\tempb\@empty                % \pst@dimb = depth
+      \pst@dimb=\ASR@extragap       % \pst@dimc = height
+      \pst@dimc=\pst@dimb
+   \else
+      \pssetylength\pst@dimc{#2}%
+      \def\tempa{#3}%
+      \ifx\tempa\@empty
+         \pst@dimb=\pst@dimc
+      \else
+         \pssetylength\pst@dimb{#3}
+      \fi
+   \fi
+   \advance\pst@dimb by \dp\tmpbox
+   \advance\pst@dimc by \ht\tmpbox
+}
+\define@key[psset]{ASR}{extragap}{%
+   \pssetylength\pst@dima{#1}%
+   \@enamedef{ASR@extragap}{\the\pst@dima}}
+\psset{extragap=.5ex}
+%
+% \tierput onto a tier, and drawing associations
+%
+\newdimen\ASR@dimf
+\newdimen\ASR@dime
+\def\tierput{\ASR@dimf=0pt
+   \@ifnextchar[\tierput@a\tierput@b}
+\def\tierput@a[#1]{\pssetxlength\ASR@dimf{#1}\tierput@b}
+\def\tierput@b(#1,#2){%
+   \pssetxlength\ASR@dime{#1}%
+   \advance\ASR@dime by \ASR@dimf
+   \edef\ASR@lasttierx{\the\ASR@dime}\edef\ASR@lasttier{#2}%
+   \edef\ASR@lasttierB{\@nameuse{ASR#2B}}%
+   \dput[B](\ASR@dime,\ASR@lasttierB)%
+}
+\def\assoc{\@getoptionalarg\assoc@a}
+\def\assoc@a#1(#2,#3){%
+   \pssetxlength\pst@dima{#2}%
+   \edef\tempc{\the\pst@dima}%
+   \def\tempd{#3}%
+   \assoc@b}
+\def\assoc@b{%
+   \bgroup
+   \psset@useoptionalarg
+   \@ifnextchar(\assoc@c\assoc@d
+}
+\def\assoc@c#1(#2){%
+   \let\ASR@lasttierx=\tempc
+   \let\ASR@lasttier=\tempd
+   \edef\ASR@lasttierB{\@nameuse{ASR\tempd B}}%
+   \assoc@e(#2)}
+\def\assoc@d{%
+   \edef\tempe{(\tempc,\tempd)}%
+   \expandafter\assoc@e\tempe}
+\def\assoc@e(#1,#2){%
+   \ifdim\ASR@lasttierB<\@nameuse{ASR#2B}%
+      \@tierorder bt%
+   \else
+      \@tierorder tb%
+   \fi
+   \edef\temp{(#1,\@nameuse{ASR#2\tempa})%
+      (\ASR@lasttierx,\@nameuse{ASR\ASR@lasttier\tempb})}%
+   \expandafter\psline\temp
+   \ifASR@xed
+      \expandafter\putxed\temp
+   \fi
+   \egroup\ignorespaces
+}
+\def\@tierorder#1#2{\def\tempa{#1}\def\tempb{#2}}
+
+\def\tiershortcuts{\let\@=\tierput \let\-=\assoc}
+%
+\define@cmdkey[psset]{ASR}[ASR@]{everyph}[]{}
+\def\putph#1{%
+   \dput[B](\xpos,\ASRphB){\ASR@everyph #1}
+   \psline(\xpos,\ASRtsb)(\xpos,\ASRpht)
+   \dput[B](\xpos,\ASRtsB){\ASR@tssym}
+   \advance\xpos by\ASRxgap
+   \ignorespaces
+}
+\def\putgem#1{%
+   \ASR@dima=\xpos
+   \advance\ASR@dima by .5\ASRxgap
+   \dput[B](\ASR@dima,\ASRphB){\ASR@everyph #1}
+   \dput[B](\xpos,\ASRtsB){\ASR@tssym}
+   \psline(\xpos,\ASRtsb)(\ASR@dima,\ASRpht)
+   \advance\xpos by \ASRxgap
+   \dput[B](\xpos,\ASRtsB){\ASR@tssym}
+   \psline(\xpos,\ASRtsb)(\ASR@dima,\ASRpht)
+   \advance\xpos by \ASRxgap
+   \ignorespaces
+}
+% bug fix, 12/08/07: everyph did not apply in nots mode
+\def\notsputph#1{%
+   \tierput(\xpos,ts){\ASR@everyph #1}%
+   \stepxpos{1}%
+}
+\def\notsputgem#1{%
+   \notsputph{#1}%
+   \notsputph{#1}%
+}
+\define@key[psset]{ASR}{reptype}{%
+   \@nameuse{ASRreptype@#1}%
+}
+\def\ASRreptype@ts{%
+   \let\ASR@dd=\ASR@standard
+   \let\ASR@putobj\putph
+   \let\ASR@putgemobj\putgem
+}
+\def\ASRreptype@nots{%
+   \let\ASR@dd=\ASR@standard
+   \let\ASR@putobj=\notsputph
+   \let\ASR@putgemobj=\notsputgem
+   \asrsetkeys{ts=* (ky),syB=!.35ex}%
+}
+\ASRreptype@ts
+\def\LevelsIncrement{%
+   \pssetylength\ASR@dima{\ASRtsB}%
+   \ASR@dima=-\ASR@dima
+   \ASR@dimb=\ASRsyB
+   \advance\ASR@dima by 2\ASR@dimb
+   \asrsetkeys{tsB=\ASRsyB,syB=\the\ASR@dima}%
+}
+%%%% timing slot matters (including \xpos)
+%
+\newdimen\xpos
+\newdimen\ASRxgap
+\define@boolkey[psset]{ASR}[ASR@]{unitxgap}%
+   {\psset{xunit=\ASRxgap}}
+\define@key[psset]{ASR}{xgap}%
+   {\@setxgapaux#1\@nil
+   \edef\ASR@xgap{\the\pst@dima}%
+   \ASRxgap=\pst@dima
+   \ifASR@unitxgap \psset{xunit=\pst@dima}\fi
+}
+\def\@setxgapaux{\@ifnextchar!\@setxgapauxA\@setxgapauxB}
+\def\@setxgapauxA#1#2\@nil{\pssetxlength\pst@dima{#2}%
+   \advance\pst@dima by \ASRxgap}
+\def\@setxgapauxB#1\@nil{\pssetxlength\pst@dima{#1}}
+\define@cmdkey[psset]{ASR}[ASR@]{tssym}[$\times$]{}
+\def\bare#1{%
+   \dput[B](\xpos,\ASRtsB){#1}%
+   \advance\xpos by \ASRxgap
+   \ignorespaces
+}
+\def\X{\bare{\ASR@tssym}}
+\def\setxpos#1{%
+   \pssetxlength\xpos{#1}%
+   \ignorespaces
+}
+\def\stepxpos#1{%
+   \pssetxlength\pst@dima{#1}%
+   \advance\xpos by \pst@dima
+   \ignorespaces
+}
+%
+%%% placing and associating a phoneme
+\def\varph{\@getoptionalarg\varph@a}
+\def\varph@a#1#2{%
+   \xsettosum\ASR@dima\xpos{#2}%
+   \dput[B](\ASR@dima,\ASRphB){\ASR@everyph #1}%
+   \begingroup
+      \psset@useoptionalarg
+      \psline(\xpos,\ASRtsb)(\ASR@dima,\ASRpht)%
+      \xdef\temp{\ASR@tssym}%
+   \endgroup
+   \bare{\temp}%
+   \ignorespaces
+}
+%%% syllables
+\define@cmdkey[psset]{ASR}[ASR@]{sysym}[$\sigma$]{}
+\def\monosysym{$\sigma^{\mu}\mskip-10mu$}
+\def\bisysym{$\sigma^{\mu\mu}\mskip-18mu$}
+\def\varsyl{\@getoptionalarg\varsyl@a}
+\def\varsyl@a#1#2{%
+   \begingroup
+   \psset@useoptionalarg
+   \xsettosum\pst@dimc{\xpos}{#1}%
+   \tierput(\pst@dimc,sy){\ASR@sysym}%
+   \XKV@for@n{#2}\N{%
+      \xsettosum\pst@dimd{\xpos}{\N}%
+      \psline(\pst@dimc,\ASRsyb)(\pst@dimd,\ASRtst)%
+      }%
+   \ASR@Maxtransfer
+   \endgroup
+   \ignorespaces
+}
+\def\qsyl{\@ifnextchar(\qsyl@a{\qsyl@a(\ASR@sysym)}}
+\def\qsyl@a(#1)#2{%
+   \pssetxlength\pst@dimd{#2}%
+   \advance\pst@dimd by -\ASRxgap
+   \xsettosum\pst@dimc{\xpos}{.5\pst@dimd}%
+   \tierput(\pst@dimc,sy){#1}%
+   \pst@cnta=0
+   \loop \ifnum\pst@cnta<#2
+      {\advance\xpos by \the\pst@cnta\ASRxgap
+      \assoc(\xpos,ts)}\advance\pst@cnta by 1 \repeat
+   \ignorespaces
+}
+\def\1{\qsyl 1}
+\def\2{\qsyl 2}
+\def\3{\qsyl 3}
+\def\4{\qsyl 4}
+\def\5{\qsyl 5}
+%
+% xed crossout, parameters: xed, xedsep,xedht,xedratio,xedtype
+%
+\define@boolkey[psset]{ASR}[ASR@]{xed}{}
+\define@key[psset]{ASR}{xedsep}{%
+   \pssetlength\pst@dima{#1}%
+   \edef\ASR@xedsep{\the\pst@dima}%
+}
+\define@key[psset]{ASR}{xedht}{%
+   \pssetlength\pst@dima{#1}%
+   \edef\ASR@xedht{\the\pst@dima}%
+}
+\define@cmdkey[psset]{ASR}[ASR@]{xedratio}{}
+\define@cmdkey[psset]{ASR}[ASR@]{xedlinewidth}{}
+\define@key[psset]{ASR}{xedtype}{\def\ASR@xedtype{#1}}
+\def\xedparlines{%
+   \ASR@dima=\ASR@xedsep \ASR@dima=.5\ASR@dima
+   \ASR@dimb=\ASR@xedht  \ASR@dimb=.5\ASR@dimb
+   \psline(-\ASR@dima,-\ASR@dimb)(-\ASR@dima,\ASR@dimb)
+   \psline(\ASR@dima,-\ASR@dimb)(\ASR@dima,\ASR@dimb)%
+}
+\def\xedcirc{%
+   \pscircle[linestyle=solid,linewidth=.5pt](0,0){.7ex}%
+}
+\setkeys[psset]{ASR}{xedsep=2.2pt,xedht=8pt,xedratio=.5,
+   xedlinewidth=1pt,xedtype=\xedparlines,xed=false}
+\def\putxed{\@getoptionalarg\putxed@b}
+\def\putxed@b#1(#2,#3)#4(#5,#6){%
+   \begingroup
+   \psset@useoptionalarg
+   \pssetxlength\ASR@dimc{#2}\pssetxlength\ASR@dime{#5}
+   \advance\ASR@dime by -\ASR@dimc
+   \advance\ASR@dimc by \ASR@xedratio\ASR@dime
+   \pssetylength\ASR@dimd{#3}\pssetylength\ASR@dimf{#6}
+   \advance\ASR@dimf by -\ASR@dimd
+   \advance\ASR@dimd by \ASR@xedratio\ASR@dimf
+   \psset{linewidth=\ASR@xedlinewidth}
+   \SpecialCoor
+   \rput{(\ASR@dime,\ASR@dimf)}(\ASR@dimc,\ASR@dimd){\ASR@xedtype}
+   \NormalCoor
+   \endgroup
+   \ignorespaces
+}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% \ASR ... \endasr  boxing
+\define@cmdkey[psset]{ASR}[ASR@]{everyasr}[]{}
+\edef\TheBarCode{\the\catcode`\|}
+\catcode`\|=\active
+\def\asr{%
+   \leavevmode\dbox
+   \ASR@everyasr
+   \xpos=0pt
+   \catcode`|=\active
+   \let|=\ASRpush
+   \@getoptionalarg\asr@a
+}
+\let\endasr\enddbox
+\def\asr@a{\psset@useoptionalarg\ASR@d}
+\def\ASR@d{\@futurenonspacelet\temp\ASR@dd}
+\def\ASR@standard{%
+   \ifx\temp\bgroup \let\next=\ASR@char \else
+   \ifx\temp|\let\next=\ASRpush\else
+   \ifx\temp'\let\next=\ASR@juncture\else
+   \ifx\temp<\let\next=\ASR@displace\else
+   \ifx\temp\endasr \let\next=\relax \else
+   \ifcat\noexpand\temp\noexpand\ASR\let\next=\ASR@cs
+   \else \let\next=\ASR@char
+   \fi\fi\fi\fi\fi\fi\next
+}
+\let\ASR@dd=\ASR@standard
+\def\ASRpush#1{\let|\ASRpop \ignorespaces}
+\def\ASRpop{\let|\ASRpush \ASR@d}
+\catcode`\|=\TheBarCode
+% junctures on the timing tier
+\def\ASR@juncture#1#2{\edef\@juncs{\JunctureChoose#2}\ASR@junctureA}
+\def\ASR@junctureA{\@ifnextchar'\ASR@junctureB\ASR@junctureC}
+\define@cmdkey[psset]{ASR}[ASR@]{juncsep}{}
+\def\ASR@junctureB#1#2{%
+   \edef\@juncs{\@juncs\kern\ASR@juncsep\JunctureChoose{#2}}%
+   \ASR@junctureA
+}
+\def\NormalJunctureChoose#1%
+   {\ifx#1<\langle\else\ifx#1>\rangle\else#1\fi\fi}
+\let\JunctureChoose=\NormalJunctureChoose
+\def\ASR@junctureC{%
+   \ASR@dima=\xpos \advance\ASR@dima by -.5\ASRxgap
+   \ASR@currjuncput[B](\ASR@dima,\ASRtsB){$\@juncs$}\ASR@d
+}
+\define@boolkey[psset]{ASR}[ASR@]{phantomjunctures}{%
+   \ifASR@phantomjunctures \let\ASR@currjuncput\rput
+      \else \let\ASR@currjuncput\dput \fi
+}
+% displaced evaluation
+\def\ASR@displace#1{%
+   \def\@displace{-1}%
+   \@ifnextchar[\ASR@displaceA\ASR@displaceB
+}
+\def\ASR@displaceA[#1]{\def\@displace{#1}\ASR@displaceB}
+\def\ASR@displaceB#1{{\advance\xpos by \@displace\ASRxgap #1}\ASR@d}
+%
+\def\ASR@finish#1{\enddbox}
+\def\ASR@cs#1{#1\ASR@d}
+\def\ASR@char#1{\def\ASR@hold{#1}\@ifnextchar:\ASR@gem\ASR@charA}
+\def\ASR@charA{\ASR@putobj{\ASR@hold}\ASR@d}
+\def\ASR@gem#1{\ASR@putgemobj{\ASR@hold}\ASR@d}
+\define@key[psset]{ASR}{asrB}{%
+   \ASRyvalue{asrB}#1\@nil
+   \edef\ASR@asrB{\the\pst@dima}}
+%%%%%%
+%% reptype=DM
+\newcount\morphcount
+\def\ASRreptype@DM{%
+   \let\ASR@dd=\ASR@standard
+   \let\ASR@char=\ASR@putmorph
+   \morphcount=1
+}
+\def\ASR@putmorph#1{%
+   \expandafter\parse@putmorph #1,,\@nil
+   \setbox\tmpbox\hbox{\tempa}%
+   \pst@dima=\wd\tmpbox
+   \advance\xpos by .5\pst@dima
+   \@enamedef{morphcoord@A\the\morphcount}{\the\xpos,\ASRtst}%
+   \advance\morphcount by 1
+   \dput[B](\xpos,\ASRtsB){\box\tmpbox}%
+   \ifx\tempb\@empty
+   \else
+      \dput[B](\xpos,\ASRphB){\ASR@everyph \tempb}
+      \expandafter\psline\expandafter[\ASR@realstyle]%
+         (\xpos,\ASRtsb)(\xpos,\ASRpht)
+   \fi
+   \advance\xpos by .5\pst@dima
+   \advance\xpos by \ASRxgap
+   \@ifnextchar:\ASR@d\ASR@d
+}
+\def\parse@putmorph #1,#2,#3\@nil{%
+   \def\tempa{#1}%
+   \def\tempb{#2}%
+}
+\def\@getASRcoord#1#2#3{%
+   \edef\temp{\@nameuse{morphcoord@#3}}%
+   \expandafter\@getcoord@a
+      \expandafter#1\expandafter#2\temp\@nil
+}
+\def\@getcoord@a#1#2#3,#4\@nil{%
+   #1=#3\relax #2=#4\relax
+}
+\def\merge{\@getoptionalarg\merge@a}
+\def\merge@a#1{%
+   \ASR@parsecoors#1\@nil
+   \begingroup
+   \psset@useoptionalarg
+   \@getoptionalarg\merge@b
+}
+\def\ASR@parsecoors#1,#2,#3\@nil{%
+   \@getASRcoord\pst@dima\pst@dimb{#1}%
+   \@getASRcoord\pst@dimc\pst@dimd{#2}%
+   \def\@tar{#3}%
+}
+\def\merge@b{%
+   \ifx\@optionalarg\@empty
+      \def\@@directive{}%
+   \else
+      \expandafter\mk@@directive\@optionalarg\@nil
+   \fi
+   \@ifnextchar\bgroup\merge@label\merge@nolabel
+}
+\def\mk@@directive #1#2\@nil{\def\@@directive{#1}}
+\def\merge@label#1{%
+   \ifdim\pst@dimb>\pst@dimd
+      \ASR@dimb=\pst@dimb
+   \else
+      \ASR@dimb=\pst@dimd
+   \fi
+   \advance\ASR@dimb by \ASR@mlevelsep
+   \ifx \@optionalarg\@empty
+      \@binupmirror
+   \else \expandafter \ifx \@@directive M%
+      \@binupmirror
+   \else \expandafter\ifx \@@directive C%
+      \@binupratio{.5}%
+   \else
+      \expandafter\@binupratio\expandafter{\@optionalarg}%
+   \fi\fi\fi
+   \@morphdrawbranches
+   \def\temp{#1}%
+   \ifx\temp\@empty
+   \else
+      \advance\ASR@dimb by \ASR@tsdp
+      \dput[B](\xpos,\ASR@dimb){#1}%
+      \advance\ASR@dimb by \ASR@tsht
+   \fi
+   \ASR@endbinup
+}
+\def\@morphdrawbranches{%
+   \expandafter\psline\expandafter[\ASR@lbstyle]%
+      (\pst@dima,\pst@dimb)(\xpos,\ASR@dimb)%
+   \expandafter\psline\expandafter[\ASR@rbstyle]%
+      (\pst@dimc,\pst@dimd)(\xpos,\ASR@dimb)%
+}
+\define@key[psset]{ASR}{mlevelsep}{%
+   \pssetylength\pst@dima{#1}%
+   \edef\ASR@mlevelsep{\the\pst@dima}%
+}
+\def\@binupratio#1{%
+   \ASR@dima=\pst@dimc
+   \advance\ASR@dima by -\pst@dima
+   \xpos=\pst@dima
+   \advance\xpos by #1\ASR@dima
+}
+\def\@binupmirror{%
+   \ASR@dimd=\ASR@dimb
+   \advance\ASR@dimd by -\pst@dimb
+   \ASR@dime=\ASR@dimb
+   \advance\ASR@dime by -\pst@dimd
+   \advance\ASR@dime by \ASR@dimd
+   \pst@divide\ASR@dimd\ASR@dime\temp%
+   \@binupratio{\temp}%
+}
+\def\ASR@endbinup{%
+   \xdef\@message{\noexpand\xpos=\the\xpos\relax
+      \noexpand\ASR@dimb=\the\ASR@dimb}%
+   \aftergroup\@message
+   \ASR@Maxtransfer
+   \endgroup
+   \@enamedef{morphcoord@\@tar}{\the\xpos,\the\ASR@dimb}%
+   \ignorespaces
+}
+\def\merge@nolabel{%
+   \ifx\@optionalarg\@empty
+   \else
+      \edef\ASR@mslope{\@optionalarg}%
+   \fi
+   \pssetylength\ASR@dima{\ASR@mslope}
+   \pssetxlength\ASR@dimb{1}
+   \pst@divide\ASR@dima\ASR@dimb\@slope
+   \pst@divide\ASR@dimb\ASR@dima\@recipslope
+   \xpos=.5\pst@dima
+   \advance\xpos by .5\pst@dimc
+   \ASR@dimb=.5\pst@dimd
+   \advance\ASR@dimb by -.5\pst@dimb
+   \advance\xpos by \@recipslope\ASR@dimb
+   \ASR@dimb=.5\pst@dimb
+   \advance\ASR@dimb by .5\pst@dimd
+   \ASR@dimc=.5\pst@dimc
+   \advance\ASR@dimc by -.5\pst@dima
+   \advance\ASR@dimb by \@slope\ASR@dimc
+   \@morphdrawbranches
+   \dput(\xpos,\ASR@dimb){}%
+   \ASR@endbinup
+}
+\define@cmdkey[psset]{ASR}[ASR@]{mslope}[1]{}
+\asrsetkeys{mslope=1}%
+\define@key[psset]{ASR}{lbstyle}{%
+   \def\ASR@lbstyle{style=BS@#1}}
+\define@key[psset]{ASR}{rbstyle}{%
+   \def\ASR@rbstyle{style=BS@#1}}
+\define@key[psset]{ASR}{realstyle}{%
+   \def\ASR@realstyle{style=BS@#1}}
+\def\newbranchstyle#1{\newpsstyle{BS@#1}}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% the settings below can be changed or overwritten to suit the user
+%% settings for reptype=normal and reptype=nots
+\newtier{ts,ph,sy}
+\newpsstyle{assoc}{linestyle=solid,linewidth=.08ex}
+\setkeys[psset]{ASR}{asrB=0,unitxgap=true,phantomjunctures=false}
+\asrsetkeys{tssym,sysym,everyph,everyasr}  % all have defaults
+\newpsstyle{medsyls}{extragap=.5ex,unitxgap=true,xgap=2.5ex,
+   ts=0pt ($\times$),sy=3.5ex ($\sigma$),ph=-3.5ex (pf),
+   juncsep=0pt}
+\newpsstyle{bigsyls}{extragap=.6ex,unitxgap=true,xgap=3.5ex,
+   ts=0pt ($\times$),sy=5.5ex ($\sigma$) .7ex,ph=-4.5ex (pf)}
+\psset{unit=1em,style=medsyls}
+%% settings for reptype=DM
+\newbranchstyle{normal}{linewidth=.1ex,linestyle=solid}
+\newbranchstyle{spell}{linewidth=.1ex,linestyle=solid,
+   arrowsize=.6ex 1.3,arrows=->}
+\newbranchstyle{head}{linewidth=.3ex,linestyle=solid,arrows=c-}
+\newbranchstyle{adjunct}{linewidth=.1ex,yunit=.8ex,
+   linestyle=dashed}
+\asrsetkeys{lbstyle=normal,rbstyle=normal,realstyle=spell,
+   mslope=1,mlevelsep=1em}
+
+
+\catcode`\@\TheAtCode

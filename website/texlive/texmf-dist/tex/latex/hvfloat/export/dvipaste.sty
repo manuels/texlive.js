@@ -1,0 +1,339 @@
+% Copyright (C) The TeXplorators Corporation 1989
+
+% This is DVIPASTE.TEX, to be used with DVIPASTE.EXE, which is
+% Copyright (C) The TeXplorators Corporation 1989.
+
+% First we want to have a control sequence that stands for the current
+% category code of @, so that we can restore this category code at the end,
+% after temporarily making @ a letter (PLAIN makes @ category 12, but
+% AmS-TeX, for example, makes @ category 13). Using \csname CCC@\endcsname,
+% we can even let this control sequence be called \CCC@, before actually
+% making @ a letter, except that this won't work when @ has category 
+% code 13, so instead we have to use the \uccode and \uppercase trick.
+
+% MODS by Jean-Pierre Drucbert (JPFD)
+% - use \@@line in place of \line (LaTeX compatibility)
+% - place the File number in the right margin (with \rlap)
+% - make the microscopic rules really invisible (width 0sp)
+%
+
+{\uccode`\Z=`\@
+ \uppercase{\expandafter\xdef\csname CCCZ\endcsname{\the\catcode`\@}}
+}
+
+% Now we make @ a letter.
+
+\catcode`\@=11  
+
+
+% \eat@ gobbles a token; it is the same as in AmS-TeX.
+
+\def\eat@#1{}
+
+
+% We need to know if a \sendout or \paste has already occurred.  The
+% following are made true once the respective condition has occurred.
+
+\newif\ifsendout@  
+\newif\ifpaste@    
+
+
+% We need to allocate places for writing or reading the .dat file.
+
+\newwrite\writedata@    
+\newread\readdata@      
+
+
+% The definition of \sendout has the following features (%1, %2, etc.
+% refer to lines so marked within the definition of \sendout):
+
+%1  If \paste has occurred, we won't allow a \sendout to occur, because
+%   these shouldn't both occur in the same file; in fact, files having
+%   \sendout's will redefine the \output routine.
+
+%   In the \errmessage, we can't say \string\sendout, because \sendout is
+%   outer.  So we use \expandafter\eat@\string\\ to get the \, and then
+%   spell out sendout.
+
+%2  If a \paste hasn't occurred, we see if a previous \sendout has occurred,
+%   and if it hasn't, we do the following:
+    
+%3  Open the .dat file for writing.
+    
+%4  Declare \t@nrm to use for the name of the file and the page number
+%   in the footline (it is possible that no font with the necessary
+%   characters in it has been used in the file); the declaration is made 
+%   \global, just in case \sendout was used in a group, though it really 
+%   shouldn't be.
+    
+%5  Set \topskip to 0pt.
+
+%6  Change the \output routine, to simply \shipout the current page,
+%   followed by a line 2pc below with the name of the file, and the
+%   page number.
+    
+%7  We also want to redefine \bye, to close out the .dat file.  We can't
+%   put \gdef\bye within the definition of \sendout, since \bye is outer,
+%   but we can say \expandafter\gdef\csname bye\endcsname !
+    
+%8  And we make \ifsendout@ true.
+    
+%9  In any case (i.e., whether or not a previous \sendout has occurred),
+%   we now put #1 in \box0, so that we can refer to its height, depth and
+%   width (usually #1 will be a \box, but we don't know which one).
+    
+%10 Then we write this data to the .dat file; each \space will expand to a
+%   space (PLAIN has \def\space{ }).
+    
+%11 We start the page with an invisible \hrule (so that the next \vskip
+%   won't disappear).
+    
+%12 We move down to the bottom of the page.
+
+%13 We emit a special, which tells where the .dvi instructions for
+%   printing \box0 begin.
+    
+%14 We set the dimensions of \box0 to 0pt.
+    
+%15 We start an unindented paragraph with \box0.
+
+%16 Then we emit another special, which tells where the .dvi instructions
+%   for printing \box0 end.
+    
+%17 Finally, we put in a smashed (and tiny) \vrule.  Since this \vrule
+%   has to occur exactly at the same position where the \noindent began,
+%   the .dvi instructions for printing \box0 will bring us right back to
+%   the position we started at.
+    
+%18 Then we \eject, so that the \output routine will simply print \box0 on 
+%   a separate page.
+
+\outer\def\sendout#1{%          
+  \ifpaste@                                                                 %1
+    \errmessage{\expandafter\eat@\string\\sendout and 
+      \string\paste\space not allowed in same file 
+      (\string\paste\space has already appeared)}%
+  \else                                                                     %2
+    \ifsendout@                                                             
+    \else                                                                   
+      \immediate\openout\writedata@=\jobname.dat                            %3
+      \global\font\t@nrm=cmr10                                              %4
+      \global\topskip\z@                                                    %5
+      \global\output{\shipout\vbox{\vbox to\vsize{\unvbox255 }%             %6
+      \baselineskip2pc
+%     \@@line{\hfil\t@nrm File [\jobname], \#\number\count0\hfil}}%
+      \@@line{\hfil\rlap{\t@nrm File [\jobname], \#\number\count0}\qquad\null}}%         %JPFD
+        \global\advance\count0\@ne}%
+      \expandafter\gdef\csname bye\endcsname                                %7
+        {\immediate\closeout\writedata@\par\vfill\supereject\end}%
+      \global\sendout@true                                                  %8
+    \fi
+    \setbox\z@\hbox{#1}%                                                    %9
+    \immediate\write\writedata@
+%      {\the\ht\z@\space\the\dp\z@\space\the\wd\z@}%                        %10
+      {\number\csname ht\endcsname\z@ sp\space\number\csname dp\endcsname\z@ sp\space\number\csname wd\endcsname\z@ sp}%                        %10
+    \hrule height\z@                                                       %11
+    \vskip\vsize                                                           %12
+    \special{beginpaste:}%                                                 %13
+    \ht\z@=\z@\dp\z@=\z@\wd\z@=\z@                                         %14
+    \noindent\box\z@                                                       %15
+    \special{endpaste:}%                                                   %16
+    \smash{\vrule height1sp width0sp depth\z@}%                 %17 % 0sp JPFD
+    \eject                                                                 %18
+  \fi}
+
+
+% The scratch tokens \toks@@ are already used in AmS-TeX.
+
+\toksdef\toks@@=2
+
+
+% \rightappend@ is from The TeXbook, page 378.
+
+\long\def\rightappend@#1\to#2{\toks@{\\{#1}}%
+  \toks@@=\expandafter{#2}\xdef#2{\the\toks@@\the\toks@}}
+
+
+% \ifreading@ will be true while still reading the data file; it is simply
+% the opposite of \ifeof, but we need an \if... with these reversed values,
+% to use within a \loop.
+
+\newif\ifreading@  
+
+
+% The last line of the data file will produce a \par, so we need to have
+% something to test against \par.
+
+\def\Par@{\par}    
+
+
+% The definition of \paste has the following features:
+
+%1  If \sendout has occurred, we won't allow a \paste to occur.
+
+%2  If a \paste hasn't occurred, we do the following:
+
+%3  We make \ifpaste@ true.
+
+%4  When we read in a data file `file'.dat, we will record all the data
+%   in a control sequence \`file'@dat. This will be a list macro, as in 
+%   The TeXbook, page 378.
+
+%   To see whether we have read in the data file yet, we just see whether
+%   this control sequence, as specified by \csname, is \relax.
+
+%5  If not, we haven't read the file yet, so we immediately open it for
+%   reading.
+
+%6  We use \ifeof to test whether the file really exists.
+
+%7  Assuming the file does exist, we do the following.
+
+%8  We are going to temporarily store the data in the control sequence
+%   \next@, and at the end \let\`file'@dat=\next@.  We do this because it
+%   is rather awkward to continually refer to the control sequence
+%   \`file'@dat, which can only be named using \csname.  We begin by
+%   setting \next@ to be empty.
+
+%9  We set \ifreading@ to be true (it will be false when we get to the
+%   end of the data file).
+
+%10 We read using a \loop.
+
+%11 The \loop needs a test that is true if we are going to keep reading,
+%   so we set \ifreading@ false when \ifeof gives true.
+
+%12 If we are still reading the file, we read a line to \next@ii.  
+
+%13 The file has a \par at the end, so \ifx\next@ii\Par@ is true when we
+%   are at the last line. 
+
+%14 If that is not the case, then we want to add the data in \next@ii to
+%   \next@.  We need \expandafter\rightappend@; otherwise we would just
+%   get \next@ii in the token list, rather than the values it now has.
+
+%15 And we just keep doing that until the file is all read.
+
+%16 Then we close the file.
+
+%17 And then we want to \global\let\`file'@dat=\next@.  We need to expand
+%   the \csname...\endcsname after a \global\let, which requires the
+%   triple \expandafter trick of The TeXbook, page 374.
+
+%18 In any case (i.e., whether or not we first had to read in the data
+%   file), we now want to apply the \getdata@ construction, defined
+%   below, to \`file'@dat and the second argument #2 of \paste.  This
+%   also requires an \expandafter.
+
+%19 \ifgetdata@ will be true if #2 is actually the number of a line in
+%   the data file.
+
+%20 In this case, the three pieces of data will be stored in \data@ht,
+%   \data@dp, and \data@wd, and we will want to put in a box of that
+%   height, depth and width.  The easiest way is to lower a box of that
+%   height+depth by the depth, so we first set \dimen@ to that sum.
+
+%21 We make an \hbox containing the special, and then the empty box with 
+%   the desired dimensions. NOTE: It is important to put the \special
+%   in the \hbox, in case this empty box turns out to be the first
+%   thing on the page.  For some reason, \tex\ doesn't position such
+%   an empty box at the right place, although it does position anything
+%   that will actually appear on the page in the right place; a box
+%   with a \special in it is NOT treated as an empty box in this process.
+
+%22 If #2 is not the number of a line in the data file, we just give an
+%   error message ``No data for File [<data file>], #[<value of #2>]''
+%   In order to have # appear in the error message, rather than ##, we
+%   temporarily make # the \lccode of Z, put Z where we want the # to 
+%   appear, and then \lowercase the \errmessage.  However, we want to
+%   have uppercase N and F in this message, so we have to also set
+%   the \lccode of N to N, and of F to F.
+
+
+\def\paste#1#2{%
+  \ifsendout@                                                              %1
+    \errmessage{\string\paste\space and
+      \expandafter\eat@\string\\sendout not allowed in same file
+      (\expandafter\eat@\string\\sendout has already appeared)}%
+  \else                                                                    %2
+    \global\paste@true                                                     %3
+    \expandafter\ifx\csname #1@dat\endcsname\relax                         %4
+      \immediate\openin\readdata@=#1.dat                                   %5
+      \ifeof\readdata@\errmessage{No file #1.dat}%                         %6
+      \else                                                                %7
+        \def\next@{}%                                                      %8
+        \reading@true                                                      %9
+        \loop                                                              %10
+          \ifeof\readdata@\reading@false\fi                                %11
+          \ifreading@                                                      %12
+          \read\readdata@ to\next@ii  
+          \ifx\next@ii\Par@\else                                           %13
+            \expandafter\rightappend@\next@ii\to\next@\fi                  %14
+        \repeat                                                            %15
+        \immediate\closein\readdata@                                       %16
+        \expandafter\expandafter\expandafter\global\expandafter
+          \let\csname#1@dat\endcsname\next@                                %17
+      \fi
+    \fi
+    \expandafter\getdata@\csname#1@dat\endcsname{#2}%                      %18
+    \ifgetdata@                                                            %19
+      \dimen@=\data@ht\advance\dimen@\data@dp                              %20
+      \hbox{\special{dvipaste: #1 #2}%                                     %21
+      \lower\data@dp\vbox to\dimen@{\hbox to\data@wd{\hfil}\vfil}}%
+    \else                                                                  %22
+     {\lccode`\Z=`\#\lccode`\N=`\N\lccode`\F=`\F%
+     \lowercase{\errmessage{No data for File [#1], Z#2}}}%
+    \fi
+  \fi}
+
+
+% \data@ht, \data@dp, and \data@wd are registers in which \getdata@ will
+% store the data gotten.
+
+\newdimen\data@ht
+\newdimen\data@dp
+\newdimen\data@wd
+
+
+% We also use a flag \ifgetdata@ to tell whether there was data on the line
+% requested.
+
+\newif\ifgetdata@
+
+
+%  Argument #1 for \getdata@ is a list macro, and #2 a number.
+
+%1 We start by setting the counter \count@ to 0, and \ifgetdata@ to
+%  false.
+
+%2 We temporarily (i.e., within a group), define \\ to: (a) advance
+%  \count@ by 1 (so that \count@ is k when we are looking at the kth
+%  thing on the list); (b) if \count@=#2 (we are at the element of the
+%  lists specified by #2), set \ifgetdata@ true (so it is true only if
+%  there are at least #2 pieces of data); (c) and then use \getdata@@ to
+%  get the data out of this piece.  
+
+%3 And then we apply this \\ to the list.
+
+
+\def\getdata@#1#2{\count@\z@\getdata@false                                 %1
+  {\def\\##1{\advance\count@\@ne\ifnum\count@=#2\relax\global\getdata@true
+     \getdata@@##1\getdata@@\fi                                            %2
+  }#1}}                                                                    %3
+
+
+% The elements of the list macro will be of the form
+
+%   [...]pt [...]pt [...]pt
+
+%  with a space after the first and second pt, so we just have \getdata@
+%  delimit its first two arguments with spaces.
+
+
+\def\getdata@@#1 #2 #3\getdata@@{%
+  \global\data@ht=#1\relax\global\data@dp=#2\relax\global\data@wd=#3\relax}
+
+
+% Finally, we return @ to its old \catcode.
+
+\catcode`\@\CCC@

@@ -1,0 +1,1166 @@
+%  __________________________________________________
+% |                                                  |
+% |                                                  |
+% |                  xstring v1.5d                   |
+% |                                                  |
+% |                  March 28 2010                   |
+% |                                                  |
+% |__________________________________________________|
+%
+% This is xtring.tex
+%
+% "xstring" package consists of the 7 following files:
+%   xstring.tex (this file)
+%   xstring.sty
+%   README
+%   xstring_doc_fr.tex, xstring_doc_fr.pdf (manual in french)
+%   xstring_doc_en.tex, xstring_doc_en.pdf (manual in english)
+%
+% Christian Tellechea 2008-2010
+% email : unbonpetit@gmail.com
+% -------------------------------------------------------------------
+% This work may be distributed and/or modified under the
+% conditions of the LaTeX Project Public License, either version 1.3
+% of this license or (at your option) any later version.
+% The latest version of this license is in
+%
+%     http://www.latex-project.org/lppl.txt
+%
+% and version 1.3 or later is part of all distributions of LaTeX
+% version 2005/12/01 or later.
+% -------------------------------------------------------------------
+% This work has the LPPL maintenance status `maintained'.
+%
+% The Current Maintainer of this work is Christian Tellechea
+% -------------------------------------------------------------------
+\def\xstringversion     {1.5d}
+\def\xstringdate        {2010/03/28}
+\def\xstringfrenchdate  {28 mars 2010}
+\def\xstringenglishdate {March $28^{\mathrm{th}}$ 2010}
+\edef\CurrentAtCatcode  {\the\catcode`\@}
+\catcode`\@=11
+\newwrite\@xs@message% canal pour les messages
+\newcount\integerpart\newcount\decimalpart% compteurs utilis\'es par xstring
+\newif\if@xs@empty
+
+\expandafter\ifx\csname @latexerr\endcsname\relax% on n'utilise pas LaTeX ?
+	\immediate\write\m@ne{Package: xstring \xstringdate\space\space v\xstringversion\space\space String manipulations (C Tellechea)}%
+	\long\def\@firstoftwo#1#2{#1}
+	\long\def\@secondoftwo#1#2{#2}
+	\long\def\@gobble#1{}
+	\long\def\@ifnextchar#1#2#3{%
+		\let\reserved@d=#1%
+		\def\reserved@a{#2}%
+		\def\reserved@b{#3}%
+		\futurelet\@let@arg\@ifnch}
+	\def\@ifnch{%
+		\ifx\@let@arg\@sptoken
+			\let\reserved@c\@xifnch
+		\else
+			\ifx\@let@arg\reserved@d
+				\let\reserved@c\reserved@a
+			\else
+				\let\reserved@c\reserved@b
+			\fi
+		\fi
+		\reserved@c}
+	\def\:{\let\@sptoken= } \:
+	\def\:{\@xifnch} \expandafter\def\: {\futurelet\@let@arg\@ifnch}
+	\def\@ifstar#1{\@ifnextchar *{\@firstoftwo{#1}}}
+	\long\def\@testopt#1#2{\@ifnextchar[{#1}{#1[{#2}]}}
+	\def\@empty{}
+\fi% fin des d\'efinitions LaTeX
+
+\def\@xs@testempty#1{%
+	\expandafter\ifx\expandafter\@empty\detokenize{#1}\@empty\@xs@emptytrue\else\@xs@emptyfalse\fi}
+
+% Ouvre un groupe o\`u les catcodes sont \`a 12 et \`a 10 pour les espaces
+% ensuite, appelle \@xs@ReadVerb qui lit un argument entre d\'elimiteurs verb
+\def\@xs@MakeVerb{% lit 1 argument et le transforme en verb
+	\begingroup% groupe o\`u les catcodes sont \`a 12 pour la lecture suivante
+		\def\do##1{\catcode`##112\relax}%
+		\dospecials% on entre dans le mode verb
+		\obeyspaces% et on tient compte des espaces
+		\@xs@ReadVerb}% et on va lire l'argument
+
+% D\'efinit \@xs@ReadVerb qui lit un argument entre d\'elimiteurs verb
+\def\setverbdelim#1{% d\'efinit quel est le d\'elimiteur de verb
+	\expandafter\@xs@testempty\expandafter{\@gobble#1}%
+	\if@xs@empty
+	\else
+		\begingroup
+			\newlinechar`\^^J%
+			\immediate\write\@xs@message
+			{Package xstring Warning: verb delimiter is not a single token on input line \the\inputlineno^^J}%
+		\endgroup
+	\fi
+	\def\@xs@ReadVerb##1#1##2#1{% lit ##2 qui est entre les d\'elimiteurs de verb
+		\endgroup% on ferme le groupe
+		\@xs@afterreadverb{##2}}}% on appelle l'ex\'ecution de fin
+
+% Assigne l'argument entre d\'elimiteur verb dans la sc #1' +
+\def\verbtocs#1{%
+	\def\@xs@afterreadverb##1{\def#1{##1}}%
+	\@xs@MakeVerb}
+
+% Cette macro d\'eveloppe \'eventuellement #2
+% puis le transforme en token et l'assigne \`a #1
+\begingroup% on ouvre un groupe o\`u...
+\catcode\z@12\relax% ...le caract\`ere 0 a 12 pour catcode
+\gdef\tokenize#1#2{%
+	\begingroup
+		\@xs@def\@xs@reserved@A{#2}% on d\'eveloppe en accord avec \fullexpandarg ou \noexpandarg
+		\def\@xs@AssignResult^^00##1^^00\@xs@nil{\gdef#1{##1}}% on assigne en tenant compte du \@xs@nil qui vient de la fin du fichier virtuel
+		\everyeof{\@xs@nil}% met un \@xs@nil \`a la fin du fichier virtuel
+		\endlinechar\m@ne
+		\catcode\z@12\relax
+		\expandafter\@xs@AssignResult\scantokens\expandafter{\expandafter^^00\@xs@reserved@A^^00}% on fait l'assignation
+	\endgroup}%
+\endgroup
+
+% Macro tr\`es simple qui assigne ou affiche le r\'esultat, selon la pr\'esence
+% ou non de #2 qui est l'argument optionnel venant en derni\`ere position des macros
+\def\@xs@ReturnResult#1#2{%
+	\def\@xs@argument@A{#1}%
+	\@xs@testempty{#2}%
+	\if@xs@empty
+		\@xs@argument@A
+	\else
+		\let#2\@xs@argument@A
+	\fi}
+
+% Pas d'expansion des arguments
+\def\normalexpandarg{%
+	\let\@xs@def\def% on d\'efinit \@xs@call avec \def
+	\def\@xs@expand##1{\unexpanded\expandafter{##1}}}
+\let\noexpandarg\normalexpandarg% synonyme
+
+% 1-d\'eveloppement du premier token des arguments
+\def\expandarg{%
+	\let\@xs@def\def% on d\'efinit \@xs@call avec \def
+	\def\@xs@expand##1{\unexpanded\expandafter\expandafter\expandafter{##1}}}
+
+% D\'eveloppement maximum des arguments
+\def\fullexpandarg{%
+	\let\@xs@def\edef% on d\'efinit\@xs@call avec \edef
+	\def\@xs@expand##1{##1}}% et on neutralise \@xs@expand
+
+\def\saveexpandmode{\let\@xs@saved@def\@xs@defarg\let\@xs@saved@expand\@xs@expand}
+\def\restoreexpandmode{\let\@xs@defarg\@xs@saved@def\let\@xs@expand\@xs@saved@expand}
+
+% Macro interne renvoyant #2 si son argument commence par une accolade ouvrante "{"
+% et #3 sinon (Ulrich Diez sur comp.text.tex)
+\def\@xs@ifbeginwithbrace#1{%
+	\csname @%
+		\expandafter\@gobble\string{% ne sert à rien si ce n'est \'equilibrer les accolades dans la d\'efinition
+		\expandafter\@gobble\expandafter{\expandafter{\string#1}%
+		\expandafter\expandafter\expandafter\expandafter\expandafter\expandafter\expandafter\expandafter\expandafter\expandafter\expandafter\expandafter\expandafter\expandafter\expandafter\@firstoftwo
+		\expandafter\expandafter\expandafter\expandafter\expandafter\expandafter\expandafter\@gobble
+		\expandafter\expandafter\expandafter\@gobble
+		\expandafter\expandafter\expandafter{\expandafter\string\expandafter}\string}%
+		\expandafter\@gobble\string}%
+		\@secondoftwo{first}{second}oftwo%
+	\endcsname}
+
+% Cette macro interne prend la 1ere unit\'e syntaxique de #1 et assigne le r\'esultat \`a #2
+\def\@xs@returnfirstsyntaxunit#1#2{%
+	\def\@xs@groupfound{\expandafter\def\expandafter#2\expandafter{\expandafter{#2}}\@xs@gobbleall}% on met #2 dans des accolades et on finit
+	\def\@xs@assignfirsttok##1##2\@xs@nil{\let\@xs@toks0\def#2{##1}}%
+	\def\@xs@testfirsttok{%
+		\let\@xs@next\@xs@assignfirsttok
+		\ifx\@xs@toks\bgroup
+			\expandafter\@xs@ifbeginwithbrace\expandafter{\@xs@argument}{\def\@xs@next{\afterassignment\@xs@groupfound\def#2}}{}%
+		\fi
+		\@xs@next}%
+	\def\@xs@argument{#1}%
+	\edef\@xs@next{\expandafter\@xs@beforespace\detokenize{#1} \@xs@nil}% #1 commence par un espace ?
+	%\expandafter\expandafter\expandafter\@xs@testempty\expandafter\expandafter\expandafter{\expandafter\@xs@beforespace\detokenize{#1} \@xs@nil}
+	\ifx\@xs@next\@empty
+		\def\@xs@next{\expandafter\ifx\expandafter\@empty\detokenize\expandafter{\@xs@argument}\@empty\let#2\@empty\else\def#2{ }\let\@xs@toks0\fi}%
+	\else
+		\def\@xs@next{\expandafter\futurelet\expandafter\@xs@toks\expandafter\@xs@testfirsttok\@xs@argument\@xs@nil}%
+	\fi
+	\@xs@next}
+
+% Cette macro interne enl\`eve la 1ere unit\'e syntaxique de #1 et assigne le r\'esultat \`a #2
+\def\@xs@testsecondtoken#1\@xs@nil{\@xs@ifbeginwithbrace{#1}}
+\def\@xs@gobblespacebeforebrace#1#{}% supprime tout ce qui est avant la 1ere accolade ouvrante
+\def\@xs@removefirstsyntaxunit#1#2{%
+	\def\@xs@argument{#1}%
+	\expandafter\expandafter\expandafter\ifx\expandafter\expandafter\expandafter\@empty\expandafter\@xs@beforespace\detokenize\expandafter{\@xs@argument} \@xs@nil\@empty% #1 commence par un espace ?
+		\expandafter\@xs@testempty\expandafter{\@xs@argument}%
+		\if@xs@empty
+			\let#2\@empty
+		\else
+			\afterassignment\@xs@testsecondtoken% après avoir mangé le 1er token, on va tester si la suite commence par «{»
+			\expandafter\let\expandafter\@xs@secontoken\expandafter=\expandafter\@sptoken\@xs@argument\@xs@@nil\@xs@nil% on mange le 1er token et on rajoute \@xs@@nil à la fin pour éviter de perdre les accolades du groupe
+				{\expandafter\expandafter\expandafter\def\expandafter\expandafter\expandafter#2%
+				 \expandafter\expandafter\expandafter{\expandafter\@xs@gobblespacebeforebrace\@xs@argument}}%
+				{\expandafter\expandafter\expandafter\def\expandafter\expandafter\expandafter#2%
+				 \expandafter\expandafter\expandafter{\expandafter\@xs@behindspace\@xs@argument\@xs@nil}}%
+		\fi
+	\else
+		\expandafter\expandafter\expandafter\def\expandafter\expandafter\expandafter#2%
+		\expandafter\expandafter\expandafter{\expandafter\@gobble\@xs@argument}%
+	\fi}
+
+% Macros \`a arguments d\'elimit\'es pour les macros ci dessus
+\def\@xs@beforespace#1 #2\@xs@nil{#1}
+\def\@xs@behindspace#1 #2\@xs@nil{#2}
+\def\@xs@returnfirstsyntaxunit@ii#1#2\@xs@nil{#1}
+\def\@xs@gobbleall#1\@xs@nil{}
+
+% Cette macro interne est utilis\'ee dans les macros \'etoil\'ees pour :
+% 1) d\'evelopper l'argument selon qu'on a choisit \fullexpandarg
+%    ou \normalexpandarg, et ceci \`a l'aide de la macro \@xs@def
+% 2) Ensuite, on d\'etokenize ce d\'eveloppement de façon n'avoir plus que
+%    des catcodes de 10 pour les espaces et 12 pour le reste.
+\def\@xs@expand@and@detokenize#1#2{%
+	\def#1{#2}%
+	\expandafter\edef\expandafter#1\expandafter{\@xs@expand#1}% on d\'eveloppe #2 selon le mode de d\'eveloppement
+	\edef#1{\detokenize\expandafter{#1}}}% puis on d\'etokenize et on assigne \`a #1
+
+\def\@xs@expand@and@assign#1#2{\@xs@def#1{#2}}% on d\'eveloppe #2 selon \fullexpandarg ou \normalexpandarg
+
+\def\@xs@edefaddtomacro#1#2{\edef#1{\unexpanded\expandafter{#1}#2}}
+\def\@xs@addtomacro#1#2{\expandafter\def\expandafter#1\expandafter{#1#2}}
+
+\def\@xs@argstring{0########1########2########3########4########5########6########7########8########9}
+% \@xs@DefArg{3} met dans la sc \@xs@myarg les tokens "####1####2####3"
+\def\@xs@DefArg#1{\def\@xs@defarg0##1#1##2\@xs@nil{\def\@xs@myarg{##1#1}}\expandafter\@xs@defarg\@xs@argstring\@xs@nil}
+% \@xs@DefArg@{3} met dans la sc \@xs@myarg les tokens "[####1]####2####3####4"
+\def\@xs@DefArg@#1{\expandafter\@xs@defarg@\expandafter{\number\numexpr#1+1}}
+\def\@xs@defarg@#1{\def\@xs@defarg0##11##2#1##3\@xs@nil{\def\@xs@myarg{[##11]##2#1}}\expandafter\@xs@defarg\@xs@argstring\@xs@nil}
+% \@xs@OneArg{3} met dans la sc \@xs@myarg les tokens "####3"
+\def\@xs@OneArg#1{\expandafter\@xs@onearg\expandafter{\number\numexpr#1-1}{#1}}
+\def\@xs@onearg#1#2{\def\@xs@defarg##1#1##2#2##3\@xs@nil{\def\@xs@myarg{##2#2}}\expandafter\@xs@defarg\@xs@argstring\@xs@nil}
+
+% #1 : num\'ero du 1er argument; #2 : nombre de lignes; #3 argument optionnel; #4 : dernier num\'ero de l'argument devant être d\'etokenis\'e si \'etoile
+\def\@xs@BuildLines#1#2#3#4{%
+	\let\@xs@newlines\@empty
+	\let\@xs@newargs\@empty
+	\def\@xs@buildlines##1{%
+		\expandafter\@xs@OneArg\expandafter{\number\numexpr##1+#1-1}%
+		\edef\@xs@reserved@B{\noexpand\@xs@expand\csname @xs@arg@\romannumeral\numexpr##1\endcsname}%
+		\ifnum##1=\@ne% si c'est le premier argument
+			\@xs@testempty{#3}%
+			\if@xs@empty
+				\expandafter\@xs@addtomacro\expandafter\@xs@newargs\expandafter{\expandafter{\@xs@reserved@B}}%
+				\edef\@xs@reserved@B{\ifnum##1>#4 @xs@def\else @xs@assign\fi}%
+			\else% et s'il y a un argument optionnel alors, on met des crochets
+				\expandafter\@xs@addtomacro\expandafter\@xs@newargs\expandafter{\expandafter[\@xs@reserved@B]}%
+				\def\@xs@reserved@B{@xs@def}% ne pas d\'etok\'eniser l'argument optionnel grace au \@xs@def
+			\fi
+		\else
+			\expandafter\@xs@addtomacro\expandafter\@xs@newargs\expandafter{\expandafter{\@xs@reserved@B}}%
+			\edef\@xs@reserved@B{\ifnum##1>#4 @xs@def\else @xs@assign\fi}%
+		\fi
+		\edef\@xs@newlines{\unexpanded\expandafter{\@xs@newlines}\expandafter\noexpand\csname\@xs@reserved@B\endcsname\expandafter\noexpand\csname @xs@arg@\romannumeral\numexpr##1\endcsname{\@xs@myarg}}%
+		\ifnum##1<#2\relax
+			\def\@xs@next{\expandafter\@xs@buildlines\expandafter{\number\numexpr##1+1}}%
+			\expandafter\@xs@next
+		\fi}%
+	\@xs@buildlines\@ne}
+
+\def\@xs@newmacro{\@ifstar{\let\@xs@reserved@D\@empty\@xs@newmacro@}{\let\@xs@reserved@D\relax\@xs@newmacro@0}}
+% #1 : dernier num\'ero de l'argument devant être d\'etokenis\'e
+% #2 : nom de la macro publique
+% #3 : argument optionnel (vide si pas d'arg optionnel)
+% #4 : nombre d'arguments obligatoires
+% #5 : utilisation de testopt (1 si oui, 0 si non)
+% #6 : code de la macro
+\def\@xs@newmacro@#1#2#3#4#5{%
+	\edef\@xs@reserved@A{@xs@\expandafter\@gobble\string#2}%
+	\edef\@xs@reserved@C{\expandafter\noexpand\csname\@xs@reserved@A @\ifx\@empty#3\@empty @\fi\endcsname}%
+	\edef\@xs@reserved@B{%
+		\ifx\@empty\@xs@reserved@D
+			\def\noexpand#2{\noexpand\@ifstar
+				{\let\noexpand\@xs@assign\noexpand\@xs@expand@and@detokenize\expandafter\noexpand\@xs@reserved@C}%
+				{\let\noexpand\@xs@assign\noexpand\@xs@expand@and@assign\expandafter\noexpand\@xs@reserved@C}}%
+		\else
+			\def\noexpand#2{\let\noexpand\@xs@assign\noexpand\@xs@expand@and@assign\expandafter\noexpand\@xs@reserved@C}%
+		\fi
+		\ifx\@empty#3\@empty
+		\else
+			\def\expandafter\noexpand\@xs@reserved@C{%
+				\noexpand\@testopt{\expandafter\noexpand\csname\@xs@reserved@A @@\endcsname}{\ifx\@xs@def\edef#3\else\unexpanded{#3}\fi}}%
+		\fi}%
+	% Que fait \@xs@reserved@B ? Il d\'efinit :
+	% si #3 est vide : \NOM{\@ifstar{\let\@xs@assign\@xs@expand@and@detokenize\@xs@NOM@@}{\let\@xs@assign\@xs@expand@and@assign\@xs@NOM@@}}
+	% si #3 existe   : \NOM{\@ifstar{\let\@xs@assign\@xs@expand@and@detokenize\@xs@NOM@}{\let\@xs@assign\@xs@expand@and@assign\@xs@NOM@}}
+	%                  \@xs@NOM@{\@testopt{\@xs@NOM@@}{#3}}}
+	\@xs@reserved@B
+	\ifx\@empty#3\@empty
+		\@xs@BuildLines1{#4}{#3}{#1}%
+		\@xs@DefArg{#4}%
+	\else
+		\expandafter\@xs@BuildLines\expandafter1\expandafter{\number\numexpr#4+1}{#3}{#1}%
+		\@xs@DefArg@{#4}%
+	\fi
+	\edef\@xs@reserved@B{\def\expandafter\noexpand\csname\@xs@reserved@A @@\endcsname\@xs@myarg}%
+	\edef\@xs@reserved@C{\unexpanded\expandafter{\@xs@newlines}\edef\noexpand\@xs@call}%
+	\edef\@xs@reserved@D{\noexpand\noexpand\expandafter\noexpand\csname\@xs@reserved@A\endcsname\unexpanded\expandafter{\@xs@newargs}}%
+	\ifnum#5=\@ne\edef\@xs@reserved@D{\noexpand\noexpand\noexpand\@testopt{\unexpanded\expandafter{\@xs@reserved@D}}{}}\fi
+	\@xs@edefaddtomacro\@xs@reserved@C{{\unexpanded\expandafter{\@xs@reserved@D}}\noexpand\@xs@call}%
+	\@xs@edefaddtomacro\@xs@reserved@B{{\unexpanded\expandafter{\@xs@reserved@C}}}%
+	% Que fait \@xs@reserved@B ? Il d\'efinit par exemple pour 3 arguments obligatoires et 1 facultatif :
+	%    \def\@xs@NOM@@[##2]##3##4##5{%
+	%          \@xs@def\@xs@arg@i{##2}\@xs@assign\@xs@arg@ii{##3}\@xs@assign\@xs@arg@iii{##4}\@xs@asign\@xs@arg@iv{##5}%
+	% si #5=0: \edef\@xs@call{\noexpand\@xs@NOM[\@xs@expand\@xs@arg@i]{\@xs@expand\@xs@arg@ii}{\@xs@expand\@xs@arg@iii}{\@xs@expand\@xs@arg@iv}}%
+	% si #5=1: \edef\@xs@call{\noexpand\@testopt{\noexpand\@xs@NOM[\@xs@expand\@xs@arg@i]{\@xs@expand\@xs@arg@i}{\@xs@expand\@xs@arg@ii}{\@xs@expand\@xs@arg@iii}{\@xs@expand\@xs@arg@iv}}{}}%
+	%          \@xs@call}
+	\@xs@reserved@B
+	\edef\@xs@reserved@B{\def\expandafter\noexpand\csname\@xs@reserved@A\endcsname\@xs@myarg\ifnum#5=\@ne[\unexpanded{##}\number\numexpr\ifx\@empty#3\@empty#4+1\else#4+2\fi]\fi}%
+	% Que fait \@xs@reserved@B ? Il d\'efinit par exemple pour 3 arguments obligatoires et 1 facultatif :
+	%    \def \@xs@NOM[##2]##3##4##5[##6]{#6}
+	\@xs@reserved@B}
+
+% macro g\'en\'erique qui lit \@xs@reserved@C us par us
+% 3 sous-routines sont appel\'ees \`a des moments cl\'e :
+% \@xs@atendofgroup      (un groupe se finit, appel r\'ecursif)
+% \@xs@atbegingroup      (un groupe vient d'être ouvert)
+% \@xs@atnextsyntaxunit  (la future US n'est pas un groupe)
+\def\@xs@read@reserved@C{%
+	\expandafter\@xs@testempty\expandafter{\@xs@reserved@C}%
+	\if@xs@empty
+		\ifnum\@xs@nestlevel=\z@
+			\let\@xs@next\relax
+		\else
+			\let\@xs@next\@xs@atendofgroup
+		\fi
+	\else
+		\expandafter\@xs@returnfirstsyntaxunit\expandafter{\@xs@reserved@C}\@xs@reserved@A
+		\expandafter\@xs@removefirstsyntaxunit\expandafter{\@xs@reserved@C}\@xs@reserved@C
+		\let\@xs@next\@xs@read@reserved@C
+		\@xs@exploregroups
+		\ifx\bgroup\@xs@toks
+			\advance\integerpart\@ne
+			\begingroup
+				\expandafter\def\expandafter\@xs@reserved@C\@xs@reserved@A
+				\@xs@manage@groupID
+				\let\@xs@nestlevel\@ne
+				\integerpart\z@
+				\@xs@atbegingroup
+		\else
+			\global\advance\decimalpart\@ne
+			\@xs@atnextsyntaxunit
+		\fi
+	\fi
+	\@xs@next}
+
+% macro g\'en\'erique qui lit \@xs@reserved@D en proc\'edant \`a des tests avec \IfBeginWith
+% 2 sous-routines sont appel\'ees \`a des moments cl\'e :
+% \@xs@atendofgroup      (un groupe se finit, appel r\'ecursif)
+% \@xs@atoccurfound      (une occurrence a \'et\'e trouv\'ee)
+\def\@xs@read@reserved@D{%
+	\expandafter\@xs@testempty\expandafter{\@xs@reserved@D}%
+	\if@xs@empty
+		\ifnum\@xs@nestlevel=\z@
+			\let\@xs@next\relax
+		\else
+			\let\@xs@next\@xs@atendofgroup
+		\fi
+	\else
+		\expandafter\expandafter\expandafter\@xs@IfBeginWith@i\expandafter\expandafter\expandafter{\expandafter\@xs@reserved@D\expandafter}\expandafter{\@xs@reserved@E}%
+		{\global\advance\decimalpart\@ne
+		 \let\@xs@reserved@D\@xs@reserved@A
+		 \@xs@atoccurfound}%
+		{\expandafter\@xs@returnfirstsyntaxunit\expandafter{\@xs@reserved@D}\@xs@reserved@A
+		 \expandafter\@xs@removefirstsyntaxunit\expandafter{\@xs@reserved@D}\@xs@reserved@D
+		 \let\@xs@next\@xs@read@reserved@D
+		 \@xs@exploregroups
+		 \ifx\bgroup\@xs@toks
+		 	\advance\integerpart\@ne
+		 	\begingroup
+		 		\expandafter\def\expandafter\@xs@reserved@D\@xs@reserved@A
+				\@xs@manage@groupID
+		 		\let\@xs@reserved@C\@empty
+		 		\let\@xs@nestlevel\@ne
+		 		\integerpart\z@
+		 \else
+		 	\expandafter\@xs@addtomacro\expandafter\@xs@reserved@C\expandafter{\@xs@reserved@A}%
+		 \fi}%
+	\fi
+	\@xs@next}
+
+\@xs@newmacro\StrRemoveBraces{}{1}{1}{%
+	\def\@xs@reserved@C{#1}%
+	\let\@xs@reserved@B\@empty
+	\let\@xs@nestlevel\z@
+	\@xs@StrRemoveBraces@i
+	\expandafter\@xs@ReturnResult\expandafter{\@xs@reserved@B}{#2}}
+
+\def\@xs@StrRemoveBraces@i{%
+	\expandafter\@xs@testempty\expandafter{\@xs@reserved@C}%
+	\if@xs@empty
+		\ifnum\@xs@nestlevel=\z@
+			\let\@xs@next\relax
+		\else
+			\expandafter\endgroup
+			\expandafter\@xs@addtomacro\expandafter\@xs@reserved@B\expandafter{\@xs@reserved@B}%
+			\let\@xs@next\@xs@StrRemoveBraces@i
+		\fi
+	\else
+		\expandafter\@xs@returnfirstsyntaxunit\expandafter{\@xs@reserved@C}\@xs@reserved@A
+		\expandafter\@xs@removefirstsyntaxunit\expandafter{\@xs@reserved@C}\@xs@reserved@C
+		\let\@xs@next\@xs@StrRemoveBraces@i
+		\ifx\bgroup\@xs@toks
+			\ifx\@xs@exploregroups\relax% on explore les groupes ?
+				\begingroup
+					\expandafter\def\expandafter\@xs@reserved@C\@xs@reserved@A
+					\let\@xs@nestlevel\@ne
+					\integerpart\z@
+					\let\@xs@reserved@B\@empty
+			\else
+				\expandafter\@xs@addtomacro\expandafter\@xs@reserved@B\@xs@reserved@A
+			\fi
+		\else
+			\expandafter\@xs@addtomacro\expandafter\@xs@reserved@B\expandafter{\@xs@reserved@A}%
+		\fi
+	\fi
+	\@xs@next}
+
+% \@xs@cutafteroccur coupe l'argument #1 apr\`es la #3\`eme occurrence de #2
+% \@xs@reserved@C : contient ce qui se trouve avant cette occurrence
+% \@xs@reserved@D : contient ce qui se trouve avant cette occurrence y compris cette occurrence
+% \@xs@reserved@E : contient ce qui se trouve apr\`es l'occurrence
+% si l'occurrence n'existe pas ou qu'un des arguments est vide, toutes les chaines renvoy\'ees sont vides
+\def\@xs@cutafteroccur#1#2#3{%
+	\def\@xs@reserved@D{#1}\let\@xs@reserved@C\@empty\def\@xs@reserved@E{#2}%
+	\decimalpart\z@\integerpart\z@\def\groupID{0}\let\@xs@nestlevel\z@
+	\def\@xs@atendofgroup{%
+		\expandafter\endgroup
+		\expandafter\@xs@addtomacro\expandafter\@xs@reserved@C\expandafter{\expandafter{\@xs@reserved@C}}%
+		\@xs@read@reserved@D}%
+	\def\@xs@atoccurfound{%
+		\ifnum\decimalpart=#3
+			\global\let\@xs@reserved@D\@xs@reserved@D
+			\global\let\@xs@reserved@C\@xs@reserved@C
+			\global\let\groupID\groupID
+			\@xs@exitallgroups
+			\let\@xs@next\relax
+		\else
+			\expandafter\@xs@addtomacro\expandafter\@xs@reserved@C\expandafter{\@xs@reserved@E}%
+			\let\@xs@next\@xs@read@reserved@D
+		\fi}%
+	\@xs@read@reserved@D
+	\def\@xs@argument@A{#2}%
+	\ifnum\decimalpart=#3% occurrence trouv\'ee ?
+		\let\@xs@reserved@E\@xs@reserved@D
+		\expandafter\expandafter\expandafter\def\expandafter\expandafter\expandafter\@xs@reserved@D\expandafter\expandafter\expandafter{\expandafter\@xs@reserved@C\@xs@argument@A}%
+	\else
+		\let\@xs@reserved@C\@empty\let\@xs@reserved@E\@empty\let\groupID\@empty
+	\fi}
+
+\@xs@newmacro*3\IfSubStr{1}{2}{0}{%
+	\def\@xs@argument@A{#2}\def\@xs@argument@B{#3}%
+	\expandafter\expandafter\expandafter\@xs@cutafteroccur
+	\expandafter\expandafter\expandafter{\expandafter\@xs@argument@A\expandafter}\expandafter{\@xs@argument@B}{#1}%
+	\expandafter\@xs@testempty\expandafter{\@xs@reserved@D}%
+	\if@xs@empty
+		\expandafter\@secondoftwo
+	\else
+		\expandafter\@firstoftwo
+	\fi}
+
+\@xs@newmacro*2\IfBeginWith{}{2}{0}{%
+	\def\@xs@argument@A{#1}\def\@xs@argument@B{#2}%
+	\expandafter\@xs@testempty\expandafter{\@xs@argument@B}%
+	\if@xs@empty
+		\let\@xs@next\@secondoftwo
+	\else
+		\def\@xs@next{\expandafter\expandafter\expandafter\@xs@IfBeginWith@i
+			\expandafter\expandafter\expandafter{\expandafter\@xs@argument@A\expandafter}\expandafter{\@xs@argument@B}}%
+	\fi
+	\@xs@next}
+
+\def\@xs@IfBeginWith@i#1#2{%
+	\def\@xs@argument@A{#1}\def\@xs@argument@B{#2}%
+	\expandafter\@xs@testempty\expandafter{\@xs@argument@B}%
+	\if@xs@empty% #2 est vide, tous les tests sont pass\'es avec succ\`es : on renvoie #3
+		\let\@xs@next\@firstoftwo
+	\else
+		\expandafter\@xs@testempty\expandafter{\@xs@argument@A}%\@xs@testempty{#1}%
+		\if@xs@empty
+			\let\@xs@next\@secondoftwo% #1 est vide, c'est que #2 est + long que #1 : on renvoie #4
+		\else
+			\expandafter\@xs@returnfirstsyntaxunit\expandafter{\@xs@argument@B}\@xs@reserved@B
+			\expandafter\@xs@returnfirstsyntaxunit\expandafter{\@xs@argument@A}\@xs@reserved@A
+			\ifx\@xs@reserved@A\@xs@reserved@B% il y a \'egalit\'e...
+				\expandafter\@xs@removefirstsyntaxunit\expandafter{\@xs@argument@B}\@xs@reserved@B
+				\expandafter\@xs@removefirstsyntaxunit\expandafter{\@xs@argument@A}\@xs@reserved@A% on enl\`eve les 1ere unit\'es syntaxiques				
+				\def\@xs@next{% et on recommence avec ces arguments racourcis d'1 unit\'e syntaxique
+					\expandafter\expandafter\expandafter\@xs@IfBeginWith@i
+					\expandafter\expandafter\expandafter{\expandafter\@xs@reserved@A\expandafter}\expandafter{\@xs@reserved@B}}%
+			\else
+				\let\@xs@next\@secondoftwo
+			\fi
+		\fi
+	\fi
+ 	\@xs@next}
+
+\@xs@newmacro*2\IfEndWith{}{2}{0}{%
+	\def\@xs@argument@A{#1}\def\@xs@argument@B{#2}%
+	\@xs@testempty{#2}%
+	\if@xs@empty
+		\let\@xs@reserved@A\@secondoftwo
+	\else
+		\expandafter\expandafter\expandafter\@xs@StrCount
+			\expandafter\expandafter\expandafter{\expandafter\@xs@argument@A\expandafter}\expandafter
+			{\@xs@argument@B}[\@xs@reserved@A]%
+		\ifnum\@xs@reserved@A=\z@
+			\let\@xs@reserved@A\@secondoftwo
+		\else
+			\expandafter\@xs@testempty\expandafter{\@xs@reserved@C}%
+			\if@xs@empty
+				\let\@xs@reserved@A\@firstoftwo
+			\else
+				\let\@xs@reserved@A\@secondoftwo
+			\fi
+		\fi
+	\fi
+	\@xs@reserved@A}
+
+\@xs@newmacro*4\IfSubStrBefore{1,1}{3}{0}{\@xs@IfSubStrBefore@i[#1]{#2}{#3}{#4}}
+\def\@xs@IfSubStrBefore@i[#1,#2]#3#4#5{%
+	\def\@xs@reserved@C{#3}%
+	\ifx\@xs@exploregroups\relax% si on explore les groupes
+		\let\@xs@reserved@B\@empty
+		\let\@xs@nestlevel\z@
+		\@xs@StrRemoveBraces@i% on retire les accolades
+		\let\@xs@reserved@C\@xs@reserved@B
+	\fi
+	\def\@xs@reserved@A{#5}%
+	\expandafter\expandafter\expandafter\@xs@cutafteroccur\expandafter\expandafter\expandafter{\expandafter\@xs@reserved@C\expandafter}\expandafter{\@xs@reserved@A}{#2}%
+	\def\@xs@reserved@A{#4}%
+	\expandafter\expandafter\expandafter\@xs@cutafteroccur\expandafter\expandafter\expandafter{\expandafter\@xs@reserved@C\expandafter}\expandafter{\@xs@reserved@A}{#1}%
+	\let\groupID\@empty
+	\expandafter\@xs@testempty\expandafter{\@xs@reserved@C}%
+	\if@xs@empty
+		\expandafter\@secondoftwo
+	\else
+		\expandafter\@firstoftwo
+	\fi}
+
+\@xs@newmacro*4\IfSubStrBehind{1,1}{3}{0}{\@xs@IfSubStrBehind@i[#1]{#2}{#3}{#4}}
+\def\@xs@IfSubStrBehind@i[#1,#2]#3#4#5{\@xs@IfSubStrBefore@i[#2,#1]{#3}{#5}{#4}}
+
+\def\@xs@formatnumber#1#2{%
+	\def\@xs@argument@A{#1}%
+	\@xs@testempty{#1}%
+	\if@xs@empty
+		\def#2{0X}% si vide, renvoie 0X
+	\else
+		\@xs@returnfirstsyntaxunit{#1}\@xs@reserved@A
+		\def\@xs@reserved@B{+}%
+		\ifx\@xs@reserved@A\@xs@reserved@B
+			\expandafter\@xs@removefirstsyntaxunit\expandafter{\@xs@argument@A}\@xs@reserved@C
+			\expandafter\@xs@testempty\expandafter{\@xs@reserved@C}%
+			\if@xs@empty
+			 	\def#2{+0X}%
+			 \else
+			 	\expandafter\def\expandafter#2\expandafter{\expandafter+\expandafter0\@xs@reserved@C}%
+			 \fi
+		\else
+			\def\@xs@reserved@B{-}%
+			\ifx\@xs@reserved@A\@xs@reserved@B
+				\expandafter\@xs@removefirstsyntaxunit\expandafter{\@xs@argument@A}\@xs@reserved@A
+				\expandafter\@xs@testempty\expandafter{\@xs@reserved@A}%
+				\if@xs@empty
+				 	\def#2{-0X}%
+				 \else
+				 	\expandafter\def\expandafter#2\expandafter{\expandafter-\expandafter0\@xs@reserved@A}%
+				 \fi
+			\else
+				\expandafter\def\expandafter#2\expandafter{\expandafter0\@xs@argument@A}%
+			\fi
+		\fi
+	\fi}
+
+\@xs@newmacro\IfInteger{}{1}{0}{%
+	\@xs@formatnumber{#1}\@xs@reserved@A
+	\decimalpart\z@
+	\afterassignment\@xs@defafterinteger\integerpart\@xs@reserved@A\relax\@xs@nil
+	\let\@xs@after@intpart\@xs@afterinteger
+	\expandafter\@xs@testdot\@xs@afterinteger\@xs@nil
+	\ifx\@empty\@xs@afterdecimal
+		\ifnum\decimalpart=\z@
+			\let\@xs@next\@firstoftwo% partie décimale constituée de 0 --> seul cas où on renvoie vrai
+		\else
+			\let\@xs@afterinteger\@xs@after@intpart
+			\let\@xs@next\@secondoftwo
+		\fi
+	\else
+		\let\@xs@afterinteger\@xs@after@intpart
+		\let\@xs@next\@secondoftwo
+	\fi
+	\@xs@next}
+
+\@xs@newmacro\IfDecimal{}{1}{0}{%
+	\expandafter\@xs@formatnumber\expandafter{\detokenize{#1}}\@xs@reserved@A
+	\decimalpart\z@
+	\afterassignment\@xs@defafterinteger\integerpart\@xs@reserved@A\relax\@xs@nil
+	\expandafter\@xs@testdot\@xs@afterinteger\@xs@nil
+	\ifx\@empty\@xs@afterdecimal
+		\expandafter\@firstoftwo
+	\else
+		\expandafter\@secondoftwo
+	\fi}
+
+\def\@xs@defafterinteger#1\relax\@xs@nil{\def\@xs@afterinteger{#1}}
+\def\@xs@testdot{\let\xs@decsep\@empty\@ifnextchar.{\def\xs@decsep{.}\@xs@readdecimalpart}{\@xs@testcomma}}
+\def\@xs@testcomma{\@ifnextchar,{\def\xs@dessep{,}\@xs@readdecimalpart}{\@xs@endnumber}}
+\def\@xs@readdecimalpart#1#2\@xs@nil{%
+	\ifx\@empty#2\@empty\def\@xs@reserved@A{0X}\else\def\@xs@reserved@A{0#2}\fi
+	\afterassignment\@xs@defafterinteger\decimalpart\@xs@reserved@A\relax\@xs@nil
+	\expandafter\@xs@endnumber\@xs@afterinteger\@xs@nil}
+\def\@xs@endnumber#1\@xs@nil{\def\@xs@afterdecimal{#1}}
+
+% test d'\'egalit\'e sur des chaines (et des chaines contenant des nombres)
+\def\@xs@IfStrEqFalse@i#1#2{\let\@xs@reserved@A\@secondoftwo}
+\def\@xs@IfStrEqFalse@ii#1#2{% renvoie vrai si les 2 arg sont d\'ecimaux et s'ils sont \'egaux, faux sinon
+	\@xs@IfDecimal{#1}%
+		{\@xs@IfDecimal{#2}%
+			{\ifdim#1pt=#2pt\let\@xs@reserved@A\@firstoftwo\else\let\@xs@reserved@A\@secondoftwo\fi}% les 2 sont d\'ecimaux : on fait le test
+			{\let\@xs@reserved@A\@secondoftwo}}% un seul est d\'ecimal
+		{\let\@xs@reserved@A\@secondoftwo}}% #1 n'est pas d\'ecimal
+
+\def\@xs@TestEqual#1#2{% teste si les 2 arguments sont \'egaux
+	\def\@xs@reserved@A{#1}\def\@xs@reserved@B{#2}%
+	\ifx\@xs@reserved@A\@xs@reserved@B
+		\let\@xs@reserved@A\@firstoftwo% \'egalit\'e parfaite des 2 chaines
+	\else
+		\expandafter\expandafter\expandafter\@xs@reserved@D\expandafter\expandafter\expandafter{\expandafter\@xs@reserved@A\expandafter}\expandafter{\@xs@reserved@B}%
+	\fi
+	\@xs@reserved@A}
+
+\@xs@newmacro*2\IfStrEq{}{2}{0}{% teste si les deux chaines sont \'egales
+	\let\@xs@reserved@D\@xs@IfStrEqFalse@i
+	\@xs@TestEqual{#1}{#2}}
+
+\@xs@newmacro*2\IfEq{}{2}{0}{% teste si les 2 arguments (chaine ou nombre) sont \'egaux
+	\let\@xs@reserved@D\@xs@IfStrEqFalse@ii
+	\@xs@TestEqual{#1}{#2}}
+
+\def\IfStrEqCase{\@ifstar{\def\@xs@reserved@E{\IfStrEq*}\@xs@IfStrCase}{\def\@xs@reserved@E{\IfStrEq}\@xs@IfStrCase}}
+\def\@xs@IfStrCase#1#2{\@testopt{\@xs@IfStringCase{#1}{#2}}{}}
+
+\def\IfEqCase{\@ifstar{\def\@xs@reserved@E{\IfEq*}\@xs@IfEqCase}{\def\@xs@reserved@E{\IfEq}\@xs@IfEqCase}}
+\def\@xs@IfEqCase#1#2{\@testopt{\@xs@IfStringCase{#1}{#2}}{}}
+
+\def\@xs@IfStringCase#1#2[#3]{%
+	\def\@xs@testcase##1##2##3\@xs@nil{% lit les 2 premieres unit\'es syntaxiques dans ##1 et ##2. Les autres dans ##3
+		\@xs@reserved@E{#1}{##1}%
+			{##2}% le test est positif, on ex\'ecute le code correspondant
+			{\@xs@testempty{##3}%
+			 \if@xs@empty% le test est n\'egatif
+			 	\def\@xs@next{#3}% s'il n'y a plus de cas, on ex\'ecute le code <autres cas>
+			 \else
+			 	\def\@xs@next{\@xs@testcase##3\@xs@nil}% sinon, on recommence avec ce qui reste
+			 \fi
+			 \@xs@next}}%
+	\@xs@testcase#2\@xs@nil}
+
+% Renvoie ce qui est \`a gauche de l'occurence n°#1 de la sous chaine #3 dans la chaine
+\@xs@newmacro*3\StrBefore{1}{2}{1}{%
+	\@xs@cutafteroccur{#2}{#3}{#1}%
+	\expandafter\@xs@ReturnResult\expandafter{\@xs@reserved@C}{#4}}
+
+% Renvoie ce qui est \`a droite de l'occurence n°#1 de la sous chaine #3 dans la chaine #2
+\@xs@newmacro*3\StrBehind{1}{2}{1}{%
+	\@xs@cutafteroccur{#2}{#3}{#1}%
+	\expandafter\@xs@ReturnResult\expandafter{\@xs@reserved@E}{#4}}
+
+% Renvoie ce qui est strictement compris entre les occurrences n°#1 et n°#2
+% des chaines #4 et #5 dans la chaine #3
+\@xs@newmacro*4\StrBetween{1,1}{3}{1}{\@xs@StrBetween@i[#1]{#2}{#3}{#4}[#5]}
+\def\@xs@StrBetween@i[#1,#2]#3#4#5[#6]{%
+	\begingroup
+		\noexploregroups
+		\@xs@cutafteroccur{#3}{#5}{#2}%
+		\expandafter\@xs@cutafteroccur\expandafter{\@xs@reserved@C}{#4}{#1}%
+		\expandafter
+	\endgroup
+	\expandafter\@xs@ReturnResult\expandafter{\@xs@reserved@E}{#6}%
+	\let\groupID\@empty}
+
+\def\exploregroups{\let\@xs@exploregroups\relax}
+\def\noexploregroups{\def\@xs@exploregroups{\let\@xs@toks0\relax}}
+\def\saveexploremode{\let\@xs@saveexploremode\@xs@exploregroups}
+\def\restoreexploremode{\let\@xs@exploregroups\@xs@saveexploremode}
+
+% Remplace les #1 premi\`eres occurences de la chaine #3
+% par la chaine #4 dans la chaine #2
+\@xs@newmacro\StrSubstitute{0}{3}{1}{%
+	\def\@xs@reserved@D{#2}\let\@xs@reserved@C\@empty\def\@xs@reserved@E{#3}%
+	\def\@xs@argument@C{#3}\def\@xs@argument@D{#4}%
+	\decimalpart\z@\integerpart\z@\def\groupID{0}\let\@xs@nestlevel\z@
+	\def\@xs@atendofgroup{%
+		\expandafter\endgroup
+		\expandafter\@xs@addtomacro\expandafter\@xs@reserved@C\expandafter{\expandafter{\@xs@reserved@C}}%
+		\@xs@read@reserved@D}%
+	\def\@xs@atoccurfound{%
+		\ifnum#1<\@ne
+			\let\@xs@reserved@A\@xs@argument@D
+		\else
+			\ifnum\decimalpart>#1
+				\let\@xs@reserved@A\@xs@argument@C
+			\else
+				\let\@xs@reserved@A\@xs@argument@D
+			\fi
+		\fi
+		\expandafter\@xs@addtomacro\expandafter\@xs@reserved@C\expandafter{\@xs@reserved@A}%
+		\@xs@read@reserved@D}%
+	\@xs@testempty{#3}%
+	\if@xs@empty
+		\expandafter\@xs@ReturnResult\expandafter{\@xs@reserved@D}{#5}%
+	\else
+		\@xs@read@reserved@D
+		\expandafter\@xs@ReturnResult\expandafter{\@xs@reserved@C}{#5}%
+	\fi}
+
+% Supprime les #1 premi\`eres occurrences de #3 dans #2
+\@xs@newmacro\StrDel{0}{2}{1}{\@xs@StrSubstitute[#1]{#2}{#3}{}[#4]}
+
+\def\@xs@exitallgroups{\ifnum\@xs@nestlevel>\z@\endgroup\expandafter\@xs@exitallgroups\fi}
+
+% Compte combien d'unit\'es syntaxiques contient la chaine #1 ?
+\@xs@newmacro\StrLen{}{1}{1}{%
+	\def\@xs@reserved@C{#1}%
+	\decimalpart\z@
+	\let\@xs@nestlevel\z@
+	\def\groupID{0}%
+	\let\@xs@atbegingroup\relax
+	\def\@xs@atendofgroup{\endgroup\@xs@read@reserved@C}%
+	\let\@xs@atnextsyntaxunit\relax
+	\@xs@read@reserved@C
+	\expandafter\@xs@ReturnResult\expandafter{\number\decimalpart}{#2}}
+
+% Macro interne fermant autant de groupes que n\'ecessaire pour trouver une unit\'e syntaxique derri\`ere
+\def\@xs@continuetonext{%
+	\expandafter\@xs@testempty\expandafter{\@xs@reserved@C}%
+	\if@xs@empty
+		\ifnum\@xs@nestlevel>\z@
+			\expandafter\endgroup\expandafter\@xs@addtomacro\expandafter\@xs@reserved@B\expandafter{\expandafter{\@xs@reserved@B}}% on concat\`ene
+			\expandafter\expandafter\expandafter\@xs@continuetonext% on recommence
+		\fi
+	\fi}%
+
+\def\@xs@manage@groupID{%
+	\begingroup\def\@xs@reserved@A{0}%
+	\ifx\@xs@reserved@A\groupID% si on arrive du groupe de niveau 0
+		\endgroup\edef\groupID{\number\integerpart}% on met simplement le niveau
+	\else
+		\endgroup\expandafter\@xs@addtomacro\expandafter\groupID\expandafter{\expandafter,\number\integerpart}%
+	\fi}
+
+% Cette macro coupe la chaine #1 apr\`es l'unit\'e syntaxique n°#2
+\def\StrSplit{\@ifstar{\let\@xs@reserved@E\@xs@continuetonext\StrSpl@t}{\let\@xs@reserved@E\relax\StrSpl@t}}
+\@xs@newmacro\StrSpl@t{}{2}{0}{\@xs@StrSplit@i{#2}{#1}\@xs@StrSplit@ii}
+% Cette macro interne coupe la chaine #2 apr\`es l'unit\'e syntaxique n°#1
+% Le d\'ebut est assign\'e dans \@xs@reserved@B et la fin dans \@xs@reserved@C
+\def\@xs@StrSplit@i#1#2{%
+	\def\@xs@reserved@D{#1}\def\@xs@reserved@C{#2}\let\@xs@reserved@B\@empty\let\groupID\@empty
+	\ifnum#1>\z@
+		\decimalpart\z@\integerpart\z@\def\groupID{0}\let\@xs@nestlevel\z@
+		\def\@xs@atendofgroup{%
+			\expandafter\endgroup
+			\expandafter\@xs@addtomacro\expandafter\@xs@reserved@B\expandafter{\expandafter{\@xs@reserved@B}}%
+			\@xs@read@reserved@C}%
+		\def\@xs@atbegingroup{\let\@xs@reserved@B\@empty}%
+		\def\@xs@atnextsyntaxunit{%
+			\expandafter\@xs@addtomacro\expandafter\@xs@reserved@B\expandafter{\@xs@reserved@A}%
+			\ifnum\decimalpart=\@xs@reserved@D\relax
+				\ifx\@xs@reserved@C\@empty\@xs@reserved@E\fi
+				\global\let\@xs@reserved@B\@xs@reserved@B
+				\global\let\@xs@reserved@C\@xs@reserved@C
+				\global\let\groupID\groupID
+				\@xs@exitallgroups
+				\let\@xs@next\relax
+			\fi}%
+		\@xs@read@reserved@C
+	\fi}
+\def\@xs@StrSplit@ii#1#2{\let#1\@xs@reserved@B\let#2\@xs@reserved@C}
+
+% De la chaine #1, renvoie ce qui se trouve entre les positions
+%  #2 et #3, unit\'es syntaxiques aux positions compris !
+\@xs@newmacro\StrMid{}{3}{1}{%
+	\begingroup
+		\noexploregroups
+		\let\@xs@reserved@E\relax
+		\@xs@StrSplit@i{#3}{#1}%
+		\edef\@xs@reserved@C{\number\numexpr#2-1}%
+		\let\@xs@reserved@E\relax
+		\expandafter\expandafter\expandafter\@xs@StrSplit@i\expandafter\expandafter\expandafter{\expandafter\@xs@reserved@C\expandafter}\expandafter{\@xs@reserved@B}%
+	\expandafter\endgroup
+	\expandafter\@xs@ReturnResult\expandafter{\@xs@reserved@C}{#4}%
+	\let\groupID\@empty}
+
+% supprime #2 unit\'es syntaxiques \`a gauche dans la chaine #1
+\@xs@newmacro\StrGobbleLeft{}{2}{1}{%
+	\let\@xs@reserved@E\relax
+	\@xs@StrSplit@i{#2}{#1}%
+	\expandafter\@xs@ReturnResult\expandafter{\@xs@reserved@C}{#3}}
+
+% extrait de #1 la chaine \`a gauche de longueur #2
+\@xs@newmacro\StrLeft{}{2}{1}{%
+	\let\@xs@reserved@E\relax
+	\@xs@StrSplit@i{#2}{#1}%
+	\expandafter\@xs@ReturnResult\expandafter{\@xs@reserved@B}{#3}}
+
+% supprime #2 unit\'es syntaxiques \`a droite dans la chaine #1
+\@xs@newmacro\StrGobbleRight{}{2}{1}{%
+	\@xs@StrLen{#1}[\@xs@reserved@D]%
+	\let\@xs@reserved@E\relax
+	\expandafter\@xs@StrSplit@i\expandafter{\number\numexpr\@xs@reserved@D-#2}{#1}%
+	\expandafter\@xs@ReturnResult\expandafter{\@xs@reserved@B}{#3}}
+
+% renvoie #2 unit\'es syntaxiques \`a la droite de la chaine #1
+\@xs@newmacro\StrRight{}{2}{1}{%
+	\@xs@StrLen{#1}[\@xs@reserved@D]%
+	\let\@xs@reserved@E\relax
+	\expandafter\@xs@StrSplit@i\expandafter{\number\numexpr\@xs@reserved@D-#2}{#1}%
+	\expandafter\@xs@ReturnResult\expandafter{\@xs@reserved@C}{#3}}
+
+\@xs@newmacro\StrChar{}{2}{1}{%
+	\let\@xs@reserved@B\@empty
+	\def\@xs@reserved@C{#1}\def\@xs@reserved@D{#2}%
+	\ifnum#2>\z@
+		\def\groupID{0}\let\@xs@nestlevel\z@\integerpart\z@\decimalpart\z@
+		\let\@xs@atbegingroup\relax
+		\def\@xs@atendofgroup{\endgroup\@xs@read@reserved@C}%
+		\def\@xs@atnextsyntaxunit{%
+			\ifnum\decimalpart=\@xs@reserved@D% la n i\`eme US est atteinte ?
+				\global\let\@xs@reserved@B\@xs@reserved@A% on capture l'US en cours qui est celle cherch\'ee
+				\global\let\groupID\groupID
+				\@xs@exitallgroups
+				\let\@xs@next\relax
+			\fi}%
+		\@xs@read@reserved@C
+	\fi
+	\expandafter\@xs@testempty\expandafter{\@xs@reserved@B}%
+	\if@xs@empty\let\groupID\@empty\fi
+	\expandafter\@xs@ReturnResult\expandafter{\@xs@reserved@B}{#3}}
+
+% Combien de fois compte t-on #2 dans #1 ?
+\@xs@newmacro\StrCount{}{2}{1}{%
+	\@xs@testempty{#2}%
+	\def\@xs@reserved@D{#1}\def\@xs@reserved@E{#2}\let\@xs@reserved@C\@empty
+	\if@xs@empty
+		\@xs@ReturnResult{0}{#3}%
+	\else
+		\decimalpart\z@\integerpart\z@\def\groupID{0}\let\@xs@nestlevel\z@
+		\def\@xs@atendofgroup{%
+			\expandafter\endgroup
+			\expandafter\@xs@addtomacro\expandafter\@xs@reserved@C\expandafter{\expandafter{\@xs@reserved@C}}%
+			\@xs@read@reserved@D}%
+		\def\@xs@atoccurfound{\let\@xs@reserved@C\@empty\@xs@read@reserved@D}%
+		\@xs@read@reserved@D
+		\expandafter\@xs@ReturnResult\expandafter{\number\decimalpart}{#3}%
+	\fi}
+
+% renvoie la position de l'occurrence #1 de la sous chaine #3 dans la chaine #2
+\@xs@newmacro\StrPosition{1}{2}{1}{%
+	\@xs@cutafteroccur{#2}{#3}{#1}%
+	\let\@xs@reserved@E\groupID
+	\ifx\@xs@reserved@C\@xs@reserved@D
+		\@xs@ReturnResult{0}{#4}%
+		\let\@xs@reserved@E\@empty
+	\else
+		\expandafter\@xs@StrLen\expandafter{\@xs@reserved@C}[\@xs@reserved@C]%
+		\expandafter\@xs@ReturnResult\expandafter{\number\numexpr\@xs@reserved@C+1}{#4}%
+	\fi
+	\let\groupID\@xs@reserved@E}
+
+\def\comparestrict{\let\@xs@comparecoeff\@ne}
+\def\comparenormal{\let\@xs@comparecoeff\z@}
+\def\savecomparemode{\let\@xs@saved@comparecoeff\@xs@comparecoeff}
+\def\restorecomparemode{\let\@xs@comparecoeff\@xs@saved@comparecoeff}
+% Compare les deux arguments #1 et #2
+% Renvoie 0 s'ils sont \'egaux et renvoie la
+% position de la premiere unit\'e syntaxiques diff\'erente sinon
+\@xs@newmacro*2\StrCompare{}{2}{1}{%
+	\def\@xs@reserved@A{#1}%
+	\def\@xs@reserved@B{#2}%
+	\ifx\@xs@reserved@B\@xs@reserved@A
+		\@xs@ReturnResult{0}{#3}%
+	\else
+		\def\@xs@next{\@xs@StrCompare@i{#1}{#2}{#3}}%
+		\expandafter\@xs@next
+	\fi}
+
+\def\@xs@StrCompare@i#1#2#3{%
+	\def\@xs@StrCompare@iii##1{%
+		\let\@xs@reserved@A\@empty
+		\expandafter\@xs@testempty\expandafter{\@xs@reserved@C}%
+		\if@xs@empty
+			\def\@xs@reserved@A{*\@xs@comparecoeff}%
+		\else
+			\expandafter\@xs@testempty\expandafter{\@xs@reserved@D}%
+			\if@xs@empty
+				\def\@xs@reserved@A{*\@xs@comparecoeff}%
+			\fi
+		\fi
+		\def\@xs@next{%
+			\expandafter\@xs@ReturnResult\expandafter
+			{\number\numexpr##1\@xs@reserved@A\relax}{#3}}}%
+	\def\@xs@StrCompare@ii##1{% ##1 est la position
+		\expandafter\@xs@returnfirstsyntaxunit\expandafter{\@xs@reserved@C}\@xs@reserved@A
+		\expandafter\@xs@returnfirstsyntaxunit\expandafter{\@xs@reserved@D}\@xs@reserved@B
+		\ifx\@xs@reserved@B\@xs@reserved@A
+			\expandafter\@xs@testempty\expandafter{\@xs@reserved@A}%
+			\if@xs@empty
+				\@xs@StrCompare@iii{##1}% les 2 unit\'es syntaxiques sont \'egales, on renvoie la position
+			\else
+				\def\@xs@next{\expandafter\@xs@StrCompare@ii\expandafter{\number\numexpr##1+1}}% les 2 unit\'es syntaxiques sont \'egales et non vides, on recommence
+				\expandafter\@xs@removefirstsyntaxunit\expandafter{\@xs@reserved@C}\@xs@reserved@C
+				\expandafter\@xs@removefirstsyntaxunit\expandafter{\@xs@reserved@D}\@xs@reserved@D
+			\fi
+		\else% les 2 unit\'es syntaxiques sont diff\'erentes : on renvoie la position
+			\@xs@StrCompare@iii{##1}%
+		\fi
+		\@xs@next}%
+	\def\@xs@reserved@C{#1}\def\@xs@reserved@D{#2}%
+	\@xs@StrCompare@ii1}
+
+\@xs@newmacro\StrFindGroup{}{2}{1}{%
+	\def\@xs@reserved@A{#2}\def\@xs@reserved@B{0}%
+	\ifx\@xs@reserved@A\@xs@reserved@B
+		\def\@xs@next{\@xs@ReturnResult{{#1}}{#3}}%
+	\else
+		\def\@xs@next{\@xs@StrFindGroup@i{#1}{#2}[#3]}%
+	\fi
+	\@xs@next}
+\def\@xs@StrFindGroup@i#1#2[#3]{%
+	\def\@xs@StrFindGroup@ii{%
+		\expandafter\@xs@testempty\expandafter{\@xs@reserved@C}%
+		\if@xs@empty
+			\def\@xs@next{\@xs@ReturnResult{}{#3}}% s'il ne reste plus rien, on renvoie vide
+		\else
+			\expandafter\@xs@returnfirstsyntaxunit\expandafter{\@xs@reserved@C}\@xs@reserved@D
+			\ifx\bgroup\@xs@toks% si la 1\`ere unit\'e syntaxique est un groupe explicite
+				\advance\decimalpart\@ne% on augmente le compteur
+				\ifnum\decimalpart=\@xs@reserved@A% on est au groupe cherch\'e lors de la profondeur courante ?
+					\ifx\@empty\@xs@reserved@B% on est \`a la profondeur maximale ?
+						\def\@xs@next{\expandafter\@xs@ReturnResult\expandafter{\@xs@reserved@D}{#3}}% on renvoie ce groupe
+					\else% sinon
+						\expandafter\def\expandafter\@xs@next\expandafter{\expandafter\@xs@StrFindGroup@i\@xs@reserved@D}% on recommence avec ce groupe
+						\expandafter\@xs@addtomacro\expandafter\@xs@next\expandafter{\expandafter{\@xs@reserved@B}[#3]}% et les profondeurs de recherche restantes
+					\fi
+				\else
+					\expandafter\@xs@removefirstsyntaxunit\expandafter{\@xs@reserved@C}\@xs@reserved@C
+					\let\@xs@next\@xs@StrFindGroup@ii
+				\fi
+			\else
+				\expandafter\@xs@removefirstsyntaxunit\expandafter{\@xs@reserved@C}\@xs@reserved@C
+				\let\@xs@next\@xs@StrFindGroup@ii
+			\fi
+		\fi
+		\@xs@next}%
+	\@xs@extractgroupnumber{#2}\@xs@reserved@A\@xs@reserved@B
+	\decimalpart\z@
+	\ifnum\@xs@reserved@A>\z@\def\@xs@reserved@C{#1}\else\let\@xs@reserved@C\@empty\fi
+	\@xs@StrFindGroup@ii}
+
+\def\@xs@extractgroupnumber#1#2#3{%
+	\def\@xs@extractgroupnumber@i##1,##2\@xs@nil{\def#2{##1}\def#3{##2}}%
+	\@xs@extractgroupnumber@i#1,\@xs@nil
+	\ifx\@empty#3\else\@xs@extractgroupnumber@i#1\@xs@nil\fi}
+
+\def\expandingroups{\let\@xs@expandingroups\exploregroups}
+\def\noexpandingroups{\let\@xs@expandingroups\noexploregroups}
+\def\StrExpand{\@testopt{\@xs@StrExpand}{1}}
+\def\@xs@StrExpand[#1]#2#3{%
+	\begingroup
+		\@xs@expandingroups
+		\ifnum#1>\z@
+			\integerpart#1\relax
+			\decimalpart\z@\def\groupID{0}\let\@xs@nestlevel\z@
+			\def\@xs@atendofgroup{%
+				\expandafter\endgroup
+				\expandafter\@xs@addtomacro\expandafter\@xs@reserved@B\expandafter{\expandafter{\@xs@reserved@B}}%
+				\@xs@read@reserved@C}%
+			\def\@xs@atbegingroup{\let\@xs@reserved@B\@empty}%
+			\def\@xs@atnextsyntaxunit{%
+				\expandafter\expandafter\expandafter\@xs@addtomacro
+				\expandafter\expandafter\expandafter\@xs@reserved@B
+				\expandafter\expandafter\expandafter{\@xs@reserved@A}}%
+			\def\@xs@reserved@C{#2}%
+			\@xs@StrExpand@i{#1}% Appel de la macro r\'ecursive
+		\else
+			\def\@xs@reserved@B{#2}%
+		\fi
+		\global\let\@xs@reserved@B\@xs@reserved@B
+	\endgroup
+	\let#3\@xs@reserved@B
+	\let\groupID\@empty}
+\def\@xs@StrExpand@i#1{%
+	\ifnum#1>\z@
+		\let\@xs@reserved@B\@empty
+		\@xs@read@reserved@C
+		\let\@xs@reserved@C\@xs@reserved@B
+		\def\@xs@reserved@A{\expandafter\@xs@StrExpand@i\expandafter{\number\numexpr#1-1}}%
+	\else
+		\let\@xs@reserved@A\relax
+	\fi
+	\@xs@reserved@A}
+
+\def\scancs{\@testopt{\@xs@scancs}{1}}
+\def\@xs@scancs[#1]#2#3{%
+	\@xs@StrExpand[#1]{#3}{#2}%
+	\edef#2{\detokenize\expandafter{#2}}}
+
+% Restaure le code de @
+\catcode`\@=\CurrentAtCatcode\relax
+% D\'efinit le d\'elimiteur verb
+% d\'efinit les diff\'erents modes et les m\'emorise
+\setverbdelim{|}%
+\fullexpandarg\saveexpandmode
+\comparenormal\savecomparemode
+\noexploregroups\saveexploremode
+\expandingroups
+\endinput
+%
+% Historique
+%------------------------------------------------------------------------------
+%% v1.0    4/7/2008 : - Package achev\'e.
+%          7/7/2008 : - Package publi\'e sur CTAN.
+%------------------------------------------------------------------------------
+% v1.1    15/8/2008
+%   - Le package ne n\'ecessite plus LaTeX et est d\'esormais utilisable sous
+%     Plain eTeX.
+%   - Ajout des macros \IfInteger et \IfDecimal.
+%     Pour cette derni\`ere, la partie enti\`ere et la partie d\'ecimale sont
+%     r\'ecup\'erables dans les compteurs \integerpart et \decimalpart. Ce
+%     qu'il reste apr\`es qu'un caract\`ere non attendu soit rencontr\'e est
+%     dispo dans \@xs@remainafterdecimal
+%   - Correction d'un bug dans \tokenize :
+%        suppression de l'expansion avec \normalexpandarg pour \'eviter le bug
+%        avec les lettres accentu\'ees dans l'exemple : \tokenize\aa{\'e\`u}
+%   - Am\'elioration du code de la plupart des macros.
+%   - \'Ecriture d'une routine \@xs@newmacro d\'efinissant les  macros.
+%   - Suppression de tous les compteurs grace \`a \numexpr.
+%   - Nouvelles fonctionnalit\'es internes dans :
+%      \IfSubStr
+%        ajout des chaines se trouvant avant et apr\`es l'occurrence test\'ee
+%        dans les sc \@xs@behind@IfSubStr et \@xs@before@IfSubStr
+%      \StrCount
+%        a) ajout de ce qui se trouve apr\`es la derni\`ere occurrence dans la
+%           sc \@xs@StrCount@afterlastocccur
+%        b) la macro ne d\'epend plus d'aucune autre
+%------------------------------------------------------------------------------
+% v1.2    23/8/2008
+%   - Am\'elioration du code de \StrMid \StrGobbleLeft, \StrLeft,
+%     \StrGobbleRight et \StrRight \`a l'aide de la nouvelle macro
+%     \@xs@StrSplit@i
+%   - Nouveau test \IfStrEq qui compare 2 chaines
+%   - Nouveau test \IfEq qui compare 2 chaines (ou 2 nombres si les 2 chaines
+%     contiennent un nombre)
+%   - Correction d'un bug dans \@xs@formatnumber. La macro n'envisageait pas le
+%     cas o\`u son argument \'etait vide ce qui faiasait planter
+%     \IfDecimal{}{V}{F} et \IfInteger{}{V}{F}
+%------------------------------------------------------------------------------
+% v1.3    21/9/2008
+%  - Am\'elioration du code, mise en place de r\'ecursivit\'es terminales dans
+%    toutes les macros r\'ecursives, simplification de \@xs@TestEqual en
+%    utilisant \ifx
+%  - Nouvelles macros \IfStrEqCase et \IfEqCase
+%      Teste si une chaîne est \'egale \`a plusieurs chaînes donn\'ee et
+%      ex\'ecute un code sp\'ecifique
+%  - Cr\'eation de la macro publique \StrSplit
+%      Coupe la chaine en 2 \`a une position donn\'ee
+%  - Nouvelle macro \StrCompare
+%      Compare 2 chaînes et renvoie la position du 1er caract\`ere diff\'erent.
+%      Renvoie 0 si elles sont \'egales.
+%------------------------------------------------------------------------------
+% v1.3a   29/9/2008
+%  - Correction d'un bug : \expandafter#1
+%    dans les macros \IfSubStrBefore et \StrBetween qui buggue si #1 est un
+%    nombre > 9 !
+%  - R\'e \'ecriture de \@xs@returnfirstsyntaxunit et \@gobble qui
+%    deviennent purement d\'eveloppables.
+%  - R\'e \'ecriture de \StrLen
+%  - Nouvelle macro interne \@xs@cutafteroccur
+%      Coupe la chaine apr\`es la ni\`eme occurrence d'une sous chaine.
+%  - Code am\'elior\'e de \StrMid, \StrLeft, \StrGobbleLeft, \StrRight,
+%    \StrGobbleRight grace \`a \@xs@cutafteroccur
+%------------------------------------------------------------------------------
+% v1.4   4/11/2008
+%  - xstring traite ses arguments par unit\'e syntaxique, et donc toutes les
+%    macros internes ont \'et\'e r\'e-\'ecrites \`a cette fin.
+%  - Le manuel a \'et\'e r\'e-\'ecrit, rendu plus clair et mieux structur\'e.
+%  - Nouvelle fonctionnalit\'e : \expandarg
+%      le 1er lex\`eme de chaque argument est 1-d\'evelopp\'e avant que la
+%      macro ne soit appel\'ee. Si un argument comporte plus qu'1 lex\`eme,
+%      il faut passer par \scancs*[1] pour 1-d\'evelopper toutes les unit\'es
+%      syntaxiques.
+%  - Correction de 2 erreurs dans le manuel anglais :  0 est la valeur par
+%    d\'efaut dans \StrSubstitute et \StrDel
+%  - Coh\'erence dans les nom des s\'equences de contr\^oles temporaires qui
+%    sont d\'esormais : \@xs@reserved@A \`a \@xs@reserved@E
+%------------------------------------------------------------------------------
+% v1.4a  12/11/2008
+%  - Correction d'un bug dans \@xs@StrSplit dans le cas o\`u l'argument
+%     num\'erique est <1 : la 1ere coupure doit être vide et le seconde doit
+%     être \'egale \`a l'argument.
+%------------------------------------------------------------------------------
+% v1.4b  16/11/2008
+%  - Correction de 2 bugs dans \@xs@returnfirstsyntaxunit
+%------------------------------------------------------------------------------
+% v1.5   31/12/2008
+%  - Nouvelles fonctionnalit\'es dans la recherche de groupes par un
+%    identificateur caract\'erisant leur imbrication. Impl\'ementation de :
+%      1) \StrFindGroup
+%      2) \groupID
+%  - Ajout des nouvelles macros g\'en\'eriques \@xs@read@reserved@C et
+%    \@xs@read@reserved@D
+%  - Correction d'un bug dans \StrSplit : \StrSplit{{a}bc}{1}[\truc] faisait
+%    que \truc contenait «a{a}».
+%  - Correction d'un bug dans \@xs@newmacro : l'argument optionnel \'etait
+%    d\'etok\'enis\'e \`a tort dans les macros \'etoil\'ees.
+%  - Dans \@xs@newmacro, on doit choisir le num\'ero du dernier argument devant
+%    être d\'etok\'enis\'e dans le cas d'une macro \'etoil\'ee (sachant que
+%     l'argument optionnel ne l'est jamais)
+%------------------------------------------------------------------------------
+% v1.5a  09/2/2009
+%  - Nouvelle macro \StrExpand, sensible au mode d'exploration. La macro est
+%    indépendante du mode d'exploration et dispose de ses propres commandes
+%    d'exploration : \expandingroups et \noexpandingroups
+%  - R\'e-\'ecriture de \scancs, qui devient triviale puisque d\'ependant de
+%    \StrExpand. Il n'y a plus de version \'étoil\'ee et d\'esormais, \scancs
+%    est sensible au mode d'exploration.
+%  - Correction d'un bug dans \IfInteger : \IfInteger{2.0}{V}{F} affichait F
+%  - Correction de bugs : mettre \let\@xs@reserved@E\relax avant d'appeler
+%    \@xs@StrSplit@i
+%  - Suppression des messages d'erreur, de warning et d'info. xstring devient
+%    donc silencieux ;)
+%  - Passage de 3 \'a 2 compteurs
+%  - Le manuel est d\'esormais plus color\'e, en esp\'erant qu'il sera un peu
+%    plus agr\'eable \`a lire !
+%------------------------------------------------------------------------------
+% v1.5b  13/3/2009
+%  - Modification d'un grand nombre de macros de telle sorte que vraiment
+%    n'importe quel code peut d\'esormais \^etre plac\'e dans les arguments des
+%    macros (comme par exemple des \if, \ifx ou autre, m\^eme sans leur \fi, ce
+%    qui n'\'etait pas possible jusqu'alors)
+%------------------------------------------------------------------------------
+% v1.5c  05/6/2009
+%  - Correction d'un bug dans \IfBeginWith : il faut appeler
+%    \@xs@returnfirstsyntaxunit pour l'argument #2 puis pour l'argument #1 et
+%    non pas l'inverse pour que \@xs@toks reflète ce qui se trouve dans #1
+%  - Correction d'un bug dans \@xs@returnfirstsyntaxunit au cas où #1 commence
+%    par un espace : mettre \@xs@toks à 0
+%  - Correction d'un bug dans \@xs@returnfirstsyntaxunit :
+%    \@xs@returnfirstsyntaxunit{{}}\truc
+%    faisait que \truc se développait en un espace.
+%  - Correction d'un bug dans \@xs@removefirstsyntaxunit où le cas
+%    \@xs@removefirstsyntaxunit{ {b}}\truc
+%    donnait \truc se développant en «b» au lieu de «{b}».
+%------------------------------------------------------------------------------
+% v1.5d  28/3/2010
+%  - Correction d'un bug dans \IfInteger : \@xs@afterinteger ne donnait pas le
+%    bon r\'esultat. Par exemple avec 1.23 il renvoyait {} au lieu de {.23}
+%  - \xs@formatnumber ne detokenize plus ses arguments (que m'est-il pass\'e
+%    par la t\^ete pour que je code un truc comme ca ?), et donc
+%    \@xs@afterinteger et \@xs@afterdecimal ont des tokens ayant le bon
+%    catcode

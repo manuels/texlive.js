@@ -1,0 +1,209 @@
+%    pgfsubpic.tex
+%    Version 1.1, 25 Dec 2009
+
+%    Copyright 2009 by David Chiang
+
+%    This program is free software; you can redistribute it and/or modify
+%    it under the terms of the GNU General Public License as published by
+%    the Free Software Foundation; either version 2 of the License, or
+%    (at your option) any later version.
+
+%    This program is distributed in the hope that it will be useful,
+%    but WITHOUT ANY WARRANTY; without even the implied warranty of
+%    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%    GNU General Public License for more details.
+
+%    You should have received a copy of the GNU General Public License along
+%    with this program; if not, write to the Free Software Foundation, Inc.,
+%    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+% New in version 1.1:
+% - the ability to save a subpicture in local variables
+% - nodes in subpictures are tracked if the subpicture is placed with arbitrary transforms
+% - new \pgffitsubpicture macro to transform a subpicture (preserving aspect) to fit in a desired box
+
+\newdimen\pgf@subpicminx
+\newdimen\pgf@subpicminy
+\newdimen\pgf@subpicmaxx
+\newdimen\pgf@subpicmaxy
+
+% Special virtual node for current subpicture's bounding box
+\expandafter\def\csname pgf@sh@ns@current subpicture\endcsname{rectangle}
+\expandafter\def\csname pgf@sh@np@current subpicture\endcsname{%
+  \def\southwest{\pgfqpoint{\pgf@subpicminx}{\pgf@subpicminy}}%
+  \def\northeast{\pgfqpoint{\pgf@subpicmaxx}{\pgf@subpicmaxy}}%
+}
+\expandafter\def\csname pgf@sh@nt@current subpicture\endcsname{{\pgf@pt@aa}{\pgf@pt@ab}{\pgf@pt@ba}{\pgf@pt@bb}{\the\pgf@pt@x}{\the\pgf@pt@y}} % the transformation at invocation time
+\expandafter\def\csname pgf@sh@pi@current subpicture\endcsname{\pgfpictureid}
+
+% Create a pgfpicture inside an hbox for delayed placement
+\def\pgfsubpicture{%
+\expandafter\global\expandafter\setbox\pgf@hbox=\hbox\bgroup
+\pgfinterruptpicture
+\pgfpicture
+\relax % not sure why. otherwise a curly brace immediately after causes an error
+}
+
+\def\endpgfsubpicture{
+\global\pgf@subpicminx=\pgf@picminx
+\global\pgf@subpicminy=\pgf@picminy
+\global\pgf@subpicmaxx=\pgf@picmaxx
+\global\pgf@subpicmaxy=\pgf@picmaxy
+\global\edef\subpictureid{\pgfpictureid}%
+\pgfsetbaseline{\pgf@picminy}%
+\endpgfpicture%
+\endpgfinterruptpicture%
+\egroup
+}
+
+% Allocate registers for saving a subpicture. #1 is text, not a control sequence.
+\def\pgfnewsubpicture#1{%
+\expandafter\newbox\csname pgf@subpic@hbox@#1\endcsname
+\expandafter\newdimen\csname pgf@subpic@minx@#1\endcsname
+\expandafter\newdimen\csname pgf@subpic@miny@#1\endcsname
+\expandafter\newdimen\csname pgf@subpic@maxx@#1\endcsname
+\expandafter\newdimen\csname pgf@subpic@maxy@#1\endcsname
+}
+
+% saved subpictures are local to the current group
+\def\pgfsavesubpicture#1{%
+\expandafter\setbox\csname pgf@subpic@hbox@#1\endcsname\box\pgf@hbox
+\csname pgf@subpic@minx@#1\endcsname\pgf@subpicminx
+\csname pgf@subpic@miny@#1\endcsname\pgf@subpicminy
+\csname pgf@subpic@maxx@#1\endcsname\pgf@subpicmaxx
+\csname pgf@subpic@maxy@#1\endcsname\pgf@subpicmaxy
+\expandafter\edef\csname pgf@subpic@id@#1\endcsname{\subpictureid}%
+}
+
+% place current subpicture into named subpicture
+\def\pgfmergesubpicture#1{%
+\begin{pgfsubpicture}
+% place current subpicture
+\pgfplacesubpicture
+% override containing picture
+\expandafter\xdef\csname pgf@sh@pi@\subpictureid\endcsname{\csname pgf@subpic@id@#1\endcsname}%
+% copy contents of #1
+\pgfrestoresubpicture{#1}
+\pgflowlevelobj{\pgftransformshift{\pgfqpoint{\the\pgf@subpicminx}{\the\pgf@subpicminy}}}{\pgfqbox\pgf@hbox}
+\pgfpathrectanglecorners{\pgfqpoint{\the\pgf@subpicminx}{\the\pgf@subpicminy}}{\pgfqpoint{\the\pgf@subpicmaxx}{\the\pgf@subpicmaxy}}%
+\pgfusepath{use as bounding box}%
+%
+\end{pgfsubpicture}
+\expandafter\setbox\csname pgf@subpic@hbox@#1\endcsname\box\pgf@hbox
+\csname pgf@subpic@minx@#1\endcsname\pgf@subpicminx
+\csname pgf@subpic@miny@#1\endcsname\pgf@subpicminy
+\csname pgf@subpic@maxx@#1\endcsname\pgf@subpicmaxx
+\csname pgf@subpic@maxy@#1\endcsname\pgf@subpicmaxy
+% but don't save the new picture id, keep the existing one
+}
+
+\def\pgfrestoresubpicture#1{%
+\edef\act{\global\noexpand\setbox\pgf@hbox\noexpand\box\csname pgf@subpic@hbox@#1\endcsname}\act
+\expandafter\global\expandafter\pgf@subpicminx\csname pgf@subpic@minx@#1\endcsname
+\expandafter\global\expandafter\pgf@subpicminy\csname pgf@subpic@miny@#1\endcsname
+\expandafter\global\expandafter\pgf@subpicmaxx\csname pgf@subpic@maxx@#1\endcsname
+\expandafter\global\expandafter\pgf@subpicmaxy\csname pgf@subpic@maxy@#1\endcsname
+\xdef\subpictureid{\csname pgf@subpic@id@#1\endcsname}%
+}
+
+% Place a previously-created subpicture, lining up its origin with the current origin
+\def\pgfplacesubpicture{
+\pgfscope
+% expand current bounding box to accommodate subpicture
+\pgfpathrectanglecorners{\pgfqpoint{\the\pgf@subpicminx}{\the\pgf@subpicminy}}{\pgfqpoint{\the\pgf@subpicmaxx}{\the\pgf@subpicmaxy}}%
+\pgfusepath{use as bounding box}%
+%
+% make the subpicture a node in the containing picture
+\expandafter\gdef\csname pgf@sh@ns@\subpictureid\endcsname{rectangle}%
+\expandafter\xdef\csname pgf@sh@np@\subpictureid\endcsname{%
+  \noexpand\def\noexpand\southwest{\noexpand\pgfqpoint{\the\pgf@subpicminx}{\the\pgf@subpicminy}}%
+  \noexpand\def\noexpand\northeast{\noexpand\pgfqpoint{\the\pgf@subpicmaxx}{\the\pgf@subpicmaxy}}%
+}%
+\pgfgettransform\pgf@temp
+\expandafter\xdef\csname pgf@sh@nt@\subpictureid\endcsname{\pgf@temp}%
+\expandafter\xdef\csname pgf@sh@pi@\subpictureid\endcsname{\pgfpictureid}%
+%
+% align origin of subpicture with origin
+\pgftransformshift{\pgfqpoint{\the\pgf@subpicminx}{\the\pgf@subpicminy}}%
+\pgfqboxsynced{\pgf@hbox}%
+\endpgfscope
+}
+
+% Hook onto existing macro \pgf@shape@interpictureshift.
+% This is called whenever we look up an anchor of a node.
+% This hook recursively checks to see if the node's picture
+% is a subpicture of another, and if so, adjusts its position accordingly.
+
+% This is slow. It makes drawing trees O(n^2) in the depth of the tree.
+% The alternative is to store, for each picture, a list of the nodes
+% inside it. But this way doesn't require us to hijack \pgfnode, and
+% is robust to re-placement of a subpicture. A compromise would be
+% to store, for each picture, a list of the *subpictures* inside it.
+
+\let\orig@pgf@shape@interpictureshift\pgf@shape@interpictureshift
+\def\unwind@subpic#1{%
+% is #1 the current picture?
+\edef\subpicid{#1}%
+\ifx\subpicid\pgfpictureid
+% yes, we're done
+\else
+% does #1 have a parent picture?
+\expandafter\ifx\csname pgf@sh@pi@#1\endcsname\relax
+% no, the original node was not inside the current picture
+\fallback
+\else
+% yes, apply transform and move up to parent picture
+{%
+  \pgfsettransform{\csname pgf@sh@nt@#1\endcsname}%
+  \pgf@pos@transform{\pgf@x}{\pgf@y}%
+  \global\pgf@x=\pgf@x
+  \global\pgf@y=\pgf@y
+}%
+\unwind@subpic{\csname pgf@sh@pi@#1\endcsname}%
+\fi
+\fi
+}
+\def\pgf@shape@interpictureshift#1{%
+\edef\fallback{\pgf@x=\the\pgf@x\pgf@y=\the\pgf@y\noexpand\orig@pgf@shape@interpictureshift{#1}}%
+\unwind@subpic{\csname pgf@sh@pi@#1\endcsname}%
+}
+
+% \pgffitsubpicture{sw}{ne}
+% Make the subpicture fit in the rectangle from sw to ne, preserving its aspect ratio.
+\def\pgffitsubpicture#1#2{%
+% current size
+\pgfpointdiff{\pgfpointanchor{current subpicture}{south west}}{\pgfpointanchor{current subpicture}{north east}}%
+\pgf@xa=\pgf@x \pgf@ya=\pgf@y
+% desired size
+\pgf@process{\pgfpointdiff{#1}{#2}}%
+\pgf@xb=\pgf@x \pgf@yb=\pgf@y
+\pgfmathparse{min(\pgf@xb/\pgf@xa,\pgf@yb/\pgf@ya)}%
+\pgfmathparse{min(1,\pgfmathresult)}%
+\pgftransformscale{\pgfmathresult}%
+%
+% current position
+\pgfpointanchor{current subpicture}{center}%
+\pgf@xa=\pgf@x \pgf@ya=\pgf@y
+% desired position
+% we scaled transform, so apply reverse scaling to argument
+\pgfmathparse{1/\pgfmathresult}%
+\pgf@process{\pgfpointscale{\pgfmathresult}{\pgfpointlineattime{0.5}{#1}{#2}}}%
+\pgf@xb=\pgf@x \pgf@yb=\pgf@y
+\pgfpointdiff{\pgfpoint{\pgf@xa}{\pgf@ya}}{\pgfpoint{\pgf@xb}{\pgf@yb}}%
+\pgftransformshift{\pgfpoint{\pgf@x}{\pgf@y}}%
+}
+
+% utility functions -- not currently used
+
+\def\pgfnodedelete#1{%
+\expandafter\global\expandafter\let\csname pgf@sh@ns@#1\endcsname\relax
+\expandafter\global\expandafter\let\csname pgf@sh@np@#1\endcsname\relax
+\expandafter\global\expandafter\let\csname pgf@sh@nt@#1\endcsname\relax
+\expandafter\global\expandafter\let\csname pgf@sh@pi@#1\endcsname\relax
+\expandafter\global\expandafter\let\csname pgf@sh@ma@#1\endcsname\relax
+}
+
+\def\pgfnodeifexists#1#2#3{%
+\expandafter\ifx\csname pgf@sh@ns@#1\endcsname\relax#3\else#2\fi
+}
+

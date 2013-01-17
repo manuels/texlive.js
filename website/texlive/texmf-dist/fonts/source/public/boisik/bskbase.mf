@@ -1,0 +1,1076 @@
+% The base file for Boisik font
+% Based on cmbase.mf
+
+bskbase:=1; % when |bskbase| is known, this file has been input
+
+let bskchar=\; % `|bskchar|' should precede each character
+let generate=input; % `|generate|' should follow the parameters
+
+autorounding:=0; smoothing:=0; % we do our own rounding
+def autorounded = interim autorounding:=2 enddef;
+
+newinternal slant,fudge,math_spread,superness,superpull,beak_darkness,ligs;
+boolean square_dots,hefty,serifs, medieval, monofig, bulbes,
+ monospace,variant_g,low_asterisk,math_fitting, testdpi, boldmath;
+ 
+ boldmath:=false;
+ 
+boolean dark,dark.dark,skewed,skewed.skewed; % for fast option testing
+dark=skewed=false; dark.dark=skewed.skewed=true;
+
+def infill text t:= cullit; path _p; _p:=t; erase fill _p; draw _p; 
+enddef;
+
+def dinfill text t:= erase draw t; 
+enddef;
+
+let bskboundary=relax;
+
+vardef Vround primary y = y_:=vround y;
+ if y_<min_Vround: min_Vround else: y_ fi enddef;
+newinternal y_,min_Vround;
+
+vardef diag_ratio(expr a,b,y,c) = % assuming that $a>\vert b/y\vert$,
+% compute the value $\alpha=(x\6{++}y)/y$ such that $ax+b\alpha=c$
+ numeric aa_,bb_,cc_; bb_=b/y; cc_=c/y; aa_=a*a-bb_*bb_;
+ (a*(cc_++sqrt aa_)-bb_*cc_)/aa_ enddef;
+
+def compute_spread(expr normal_spread,big_spread)=
+ spread#:=math_spread[normal_spread,big_spread];
+ spread:=2ceiling(spread#*hppp/2)+eps; enddef;
+
+def v_center(expr h_sharp) =
+ .5h_sharp+math_axis#, .5h_sharp-math_axis# enddef;
+
+def beginarithchar(expr c) = % ensure consistent dimensions for $+$, $-$, etc.
+ if monospace: beginchar(c,9.5u#,27/7u#+math_axis#,27/7u#-math_axis#);
+ else: beginchar(c,13u#,5.5u#+math_axis#,5.5u#-math_axis#); fi
+ italcorr math_axis#*slant-.5u#;
+ adjust_fit(0,0); enddef;
+
+boolean test, test.alt, test.nodraw; test=false; test.alt=true; test.nodraw:=true;
+
+%%%%%%%%%%%Dots and commas
+def dot(suffix $):=
+  filldraw if square_dots: ((.5,.25)..(-.5,.25)---(-.5,-.25)..(0,-.5)..(.5,-.25)---cycle) scaled dot_size
+           else:           fullcircle scaled dot_size
+	   fi shifted z$;
+  labels($);
+enddef;
+
+def comma(suffix $)(expr dim, jut, depth):=
+  {{ save p, oblu; path p[]; oblu:=.6dim;
+  numeric jutting;
+  jutting=if jut=infinity: hair else: jut fi;
+  if square_dots:  	
+  else:           penpos$'(dim,0); penpos$''(dim,90); z$'=z$''=z$;
+		  z$'''=(x$'r+jutting,y$''l); z$~=.5[z$,z$'l]+depth*down;
+		  p0:=z$'r{up}..z$''r{left}..{down}z$'l..{right}z$''l..cycle;
+		  p1:=point 3.5 of p0{direction 3.5 of p0 rotated -120}..z$~;
+		  filldraw z$~..z$'''..subpath (1.5,rundy(p0,3.5).zpet) of p0..
+		           subpath(rundy(p1,(0,.4dim)),infinity) of p1&cycle;
+                  labels($,$''',$~); penlabels($',$'');
+  fi
+  }}
+enddef;
+
+def ammoc(suffix $)(expr dim, jut, depth):=
+  {{ save p, oblu; path p[]; oblu:=.6dim;
+  numeric jutting;
+  jutting=if jut=infinity: hair else: jut fi;
+  if square_dots:  	
+  else:           penpos$'(dim,180); penpos$''(dim,270); z$'=z$''=z$;
+		  z$'''=(x$'r-jutting,y$''l); z$~=.5[z$,z$'l]+depth*up;
+		  p0:=z$'r{down}..z$''r{right}..{up}z$'l..{left}z$''l..cycle;
+		  p1:=point 3.5 of p0{direction 3.5 of p0 rotated -120}..z$~;
+		  filldraw z$~..z$'''..subpath (1.5,rundy(p0,3.5).zpet) of p0..
+		           subpath(rundy(p1,(0,.4dim)),infinity) of p1&cycle;
+                  labels($,$''',$~); penlabels($',$'');
+  fi
+  }}
+enddef;
+
+def turn_comma(suffix $)(expr dim, jut, depth):=
+  {{ save p, oblu; path p[]; oblu:=.6dim;
+  numeric jutting;
+  jutting=if jut=infinity: hair else: jut fi;
+  if square_dots:  	
+  else:           penpos$'(dim,0); penpos$''(dim,90); z$'=z$''=z$;
+		  z$'''=(x$'r+jutting,y$''l); z$~=.5[z$,z$'l]+depth*down;
+		  p0:=z$'r{up}..z$''r{left}..{down}z$'l..{right}z$''l..cycle;
+		  p1:=point 3.5 of p0{direction 3.5 of p0 rotated -120}..z$~;
+		  filldraw (z$~..z$'''..subpath (1.5,rundy(p0,3.5).zpet) of p0..
+		            subpath(rundy(p1,0),infinity) of p1 &cycle) 
+			   reflectedabout((x$,0),(x$,h));
+                  labels($,$''',$~); penlabels($',$'');
+  fi
+  }}
+enddef;
+
+%%%%%%%%%%%Serifs
+pair serif_bend, cap_serif_bend;
+
+def lowercase_points(suffix $,$$)(expr size)suffix modifier:=
+  pos$(stem,0); pos$$(stem,0); x$=x$$;
+  serif_bot($); drop_serif($$)(size).modifier;
+  penlabels($,$$);
+enddef;
+
+vardef lowercase_stem_draw(suffix $,$$):=
+  z$$r..{(x$a-x$r,-.25serif_drop)}z$$a&z$$a---obl($$b,$$a,$a)---z$a..z$b{left}..{right}z$c
+  ..z$+ser_boule*up..
+  z$d{right}..{left}z$e..{up}z$f
+enddef;
+
+vardef lowercase_stem_upper(suffix $,$$):=
+  (reverse (z$$r..{(x$a-x$r,-.25serif_drop)}z$$a&z$$a---obl($$b,$$a,$a)))
+enddef;
+
+vardef lowercase_lower_u_serif(suffix $)(expr jut):=
+  z$f{down}..{right}z$e..{left}z$d.. {z$b-z$f}.5[z$,z$l]+jut*down..z$l+jut*down--z$a
+enddef;
+
+vardef broken_stem_draw(suffix @,$,$$):=
+  z@--z$$r+.2u*left..{(x$a-x$r,-.25serif_drop)}z$$a&z$$a---z$$b 
+  if known correct: if correct: +.75u*left.. else:-- fi else: +.75u*left.. fi
+  z$$b+u*down---z$a if known correct: if correct:.. else: -- fi else: .. fi 
+  z$b{left}..z$c{right}..z$+ser_boule*up..{right}z$d..{left}z$e 
+  if known correct: if correct:..{up} else: -- fi else: ..{up} fi z$f
+enddef;
+
+def lowercase_stem(suffix $,$$)(expr size)suffix modifier:=
+  lowercase_points($,$$,size).modifier;
+  filldraw lowercase_stem_draw($,$$)---z$$r&cycle; 
+  enddef;
+
+def serif_bot(suffix $):=
+  z$a=z$l+stem*up; z$b=z$c+(o,0) rotated 30; z$c=z$l+jut*left;
+  z$d=z$r+jut*right; z$e=z$d+(-o,0) rotated -30; z$f=z$r+stem*up;
+  labels($a,$b,$c,$d,$e,$f);
+enddef;
+
+def drop_serif(suffix $)(expr size)suffix modifier=
+  z$a=z$l+size*left+if not test.modifier: .5\\fi serif_drop*down; 
+  z$b=(x$l,y$a-.25serif_drop);
+  labels($a,$b);
+enddef;
+
+def serifs_tl(suffix $):=
+  z$a=z$+jut*left; z$b=z$+.5ser_height*down; z$c=z$a+.707serif_o*down;
+  labels($a,$b,$c)
+enddef;
+
+def serifs_tr(suffix $):=
+  z$a=z$+jut*right; z$b=z$+.5ser_height*down; z$c=z$a+.707serif_o*down;
+  labels($a,$b,$c)
+enddef;
+
+def serifs_bl(suffix $):=
+  z$a=z$+jut*left; z$b=z$+.72ser_height*up; z$c=z$a+.707serif_o*up;
+  labels($a,$b,$c)
+enddef;
+
+def serifs_br(suffix $):=
+  z$a=z$+jut*right; z$b=z$+.72ser_height*up; z$c=z$a+.707serif_o*up;
+  labels($a,$b,$c)
+enddef;
+
+def cap_serifs_tl(suffix $):=
+  z$a=z$+cap_jut*left; z$b=z$+.7ser_height*down; z$c=z$a+serif_o*down;
+  labels($a,$b,$c)
+enddef;
+
+def cap_serifs_tr(suffix $):=
+  z$a=z$+cap_jut*right; z$b=z$+.7ser_height*down; z$c=z$a+serif_o*down;
+  labels($a,$b,$c)
+enddef;
+
+def cap_serifs_bl(suffix $):=
+  z$a=z$+cap_jut*left; z$b=z$+ser_height*up; z$c=z$a+serif_o*up;
+  labels($a,$b,$c)
+enddef;
+
+def cap_serifs_bl_p(suffix $)(expr coe):=
+  z$a=z$+coe*cap_jut*left; z$b=z$+ser_height*up; z$c=z$a+serif_o*up;
+  labels($a,$b,$c)
+enddef;
+
+def cap_serifs_br(suffix $):=
+  z$a=z$+cap_jut*right; z$b=z$+ser_height*up; z$c=z$a+serif_o*up;
+  labels($a,$b,$c)
+enddef;
+
+def cap_serifs_br_p(suffix $)(expr coe):=
+  z$a=z$+coe*cap_jut*right; z$b=z$+ser_height*up; z$c=z$a+serif_o*up;
+  labels($a,$b,$c)
+enddef;
+
+vardef diag_serif(suffix $,$$):=
+  y$bb=y$b; z$bb=whatever[z$,z$$];
+  z$bb{z$-z$$}
+enddef;
+
+def ital_serif(suffix $,$$):=
+  if unknown x$'l: x$'l=.5u; fi
+  y$'r=y$-.75serif_drop;
+  pos$'(hair,60);
+  y$''=y$'r-1.5curve; z$''=whatever[z$l,z$$l];
+  penlabels($',$'');
+  path _is;
+  _is:=z$r---z$l+o*down..{dir200}z$'r..z$'l&z$'l{right}..{down}z$'';
+enddef;
+
+def ital_hook(suffix $,$$)suffix modifier:=
+  if not known x$$l: rt x$$l=w; fi
+  y$$=.4bar_height; bot y$'l=-o; x$'=.45[x$,x$$];
+  pos$$(hair,150); pos$'(.5[hair,stem],90); penlabels($$,$');
+  z$$'=z$$r+hair*up; labels($$');
+  path _ih;
+  _ih:=z$l{down}..z$'l..z$$l if test.modifier and testdpi:-- else:..z$$'&z$$'..fi z$$r..z$'r..{up}z$r;
+enddef;
+
+def ital_kooh(suffix $,$$)suffix modifier:=
+  if not known x$$r: x$$r=0; fi
+  y$$=H-.25bar_height; top y$'r=H+o; x$'=.45[x$,x$$];
+  pos$$(hair,150); pos$'(.5[hair,stem],100); penlabels($$,$');
+  z$$'=z$$l+hair*dir(-110); labels($$');
+  path _ik;
+  _ik:=z$r{up}..z$'r..{dir-120}z$$r if test.modifier and testdpi:-- else: ..z$$'--z$$'+right..fi z$$l{dir60}..z$'l..{down}z$l;
+enddef;
+
+%%%%%%%%Arms 
+vardef arm_bot_r_points(suffix $, $$)suffix modifier=
+  numeric thick; thick=if test.modifier: alt_cap_hair else: cap_hair fi - currentbreadth;
+  pos$$(beak,-90); z$$a=z$$r+2u*unitvector(z$-z$$r);
+  z$$b=z$$r+.1u*down+1/3u*left;
+  x$$c=.35[x$$b,x$$a]; y$$c=y$$;
+  z$$d=z$$a+ser_height*left+thick*up; 
+  z$$e=z$+thick*up+cap_jut*right; z$$f=z$+.75ser_height*up;
+  if (x$$d<x$$e): x$$d:=x$$e fi;
+  z$$l.o=z$$l+serif_o*left+serif_o*down;
+  penlabels($$); labels($$a,$$b,$$c,$$d,$$e, $$f);
+  z$---z$$a...z$$b--z$$r---z$$l..{down}z$$l.o&z$$l.o..z$$c...z$$d---z$$e..{up}z$$f
+enddef;
+
+def arm_bot_r(suffix $, $$)suffix modifier=
+  filldraw arm_bot_r_points($, $$).modifier--cycle;
+enddef;
+
+vardef arm_bot_l_points(suffix $, $$)suffix modifier=
+  numeric thick; thick=if test.modifier: alt_cap_hair else: cap_hair fi - currentbreadth;
+  pos$$(beak,-90); z$$a=z$$r+2u*unitvector(z$-z$$r);
+  z$$b=z$$r+.1u*down+1/3u*right;
+  x$$c=.35[x$$b,x$$a]; y$$c=y$$;
+  z$$d=z$$a+ser_height*right+thick*up; 
+  z$$e=z$+thick*up+cap_jut*left; z$$f=z$+.75ser_height*up;
+  if (x$$d>x$$e): x$$d:=x$$e fi;
+  z$$l.o=z$$l+serif_o*right+serif_o*down;
+  penlabels($$); labels($$a,$$b,$$c,$$d,$$e, $$f);
+  z$---z$$a...z$$b--z$$r---z$$l..{down}z$$l.o&z$$l.o..z$$c...z$$d---z$$e..{up}z$$f
+enddef;
+
+def arm_bot_l(suffix $, $$)suffix modifier=
+  filldraw arm_bot_l_points($, $$).modifier--cycle;
+enddef;
+
+vardef arm_top_r_points(suffix $, $$)suffix modifier=
+  numeric thick; thick=if test.modifier: alt_cap_hair else: cap_hair fi - currentbreadth;
+  pos$$(.65beak,90); z$$a=z$$r+2u*left;
+  z$$b=z$$r+1/3u*left; z$$c=z$$l+serif_o*left;
+  z$$d=z$$a+.75stem*left+thick*down; 
+  z$$.$=z$+thick*down+cap_jut*right; z$$.$a=z$+.55ser_height*down;
+  penlabels($$); labels($$a,$$b,$$c,$$d,$$.$, $$.$a);
+  z$---z$$a{right}..{dir0}z$$b..z$$r+cap_hair*down---z$$l..z$$c{dir125}..z$$d---z$$.$..{down}z$$.$a 
+enddef;
+
+def arm_top_r(suffix $, $$)suffix modifier=
+  filldraw arm_top_r_points($, $$).modifier--cycle;
+enddef;
+
+vardef arm_top_l_points(suffix $, $$)suffix modifier=
+  numeric thick; thick=if test.modifier: alt_cap_hair else: cap_hair fi - currentbreadth;
+  pos$$(.65beak,90); z$$a=z$$r+2u*right;
+  z$$b=z$$r+1/3u*right; z$$c=z$$l+serif_o*right;
+  z$$d=z$$a+.75stem*right+thick*down; 
+  z$$e=z$+thick*down+cap_jut*left; z$$f=z$+.55ser_height*down;
+  penlabels($$); labels($$a,$$b,$$c,$$d,$$e, $$f);
+  z$---z$$a{left}..{left}z$$b..z$$r+cap_hair*down---z$$l..z$$c{dir55}..z$$d---z$$e..{down}z$$f
+enddef;
+
+def arm_top_l(suffix $, $$)suffix modifier=
+  filldraw arm_top_l_points($, $$).modifier--cycle;
+enddef;
+
+%%%%%%%Stroke endings
+vardef smitko(suffix $)(expr size):=  %draw bulb j, J , 3
+  pos$(size,150); z$'=z$+.2size*up+o*right; z$''=z$+.5(size-currentbreadth)*dir-135;
+  labels($',$'');
+  z$''..z$'..z$l if bulbes:--.5[z$l,z$'']..{down}.5[z$l,z$'']fi
+enddef;
+
+vardef one_serif(suffix $):=    % serif for numeral 1
+  rt z$a=(w-u,y$r); z$b=z$r+.75u*up; z$c=z$a+.5serif_o*up;
+  lft z$d=(u,y$l); z$e=z$l+.75u*up; z$f=z$d+.5serif_o*up;
+  labels($a,$b,$c,$d,$e,$f);
+  z$e..{left}z$f..z$d{right}..z$+ser_boule*up..{right}z$a..{left}z$c..z$b
+enddef;
+
+%%%%%%%Simple macros
+def bskpoints(suffix $,$$)(expr bjut, ejut):=
+  z$$ll=z$$l-bjut*unitvector(z$$-z$); z$rr=z$r-ejut*unitvector(z$-z$$);
+enddef;
+
+vardef bskrule(suffix $,$$)(expr bjut, ejut):=
+  bskpoints($,$$,bjut,ejut);
+  z$l---z$$ll..z$$r---z$rr..cycle
+enddef;
+
+%%%%%%%Macros for Unicode
+string charuni, empty; empty:="";
+numeric uniproc; uniproc:=0;
+
+def uni text t:=
+  charuni:=t;
+  if t<>"non": t; fi
+enddef;
+
+def unitext(text t):= enddef;
+
+extra_beginchar:=extra_beginchar&"charuni:=empty; numeric oblu; oblu:=f_obl;";
+
+%%%%%%Rounding
+def obl(suffix $,$$,$$$)suffix modifier:=      % rounded corners
+  if monospace and ((stem-hair)<.2hair):
+    z$
+  else:
+    z$+(oblu.modifier,0) rotated(angle(z$$-z$)) ... z$+(oblu.modifier,0) rotated(angle(z$$$-z$))
+  fi
+enddef;
+
+def tobl(suffix $,$$,$$$)suffix modifier:=      % rounded corners
+  if monospace and ((stem-hair)<.2hair):
+    z$
+  else:
+    if (abs(z$$-z$)>oblu.modifier):
+      z$+(oblu.modifier,0) rotated(angle(z$$-z$))
+    else:
+      .5[z$,z$$]{z$-z$$}
+    fi
+    ...
+    if (abs(z$$$-z$)>oblu.modifier):
+      z$+(oblu.modifier,0) rotated(angle(z$$$-z$))
+    else:
+      {z$$$-z$}.5[z$,z$$$]
+    fi
+  fi
+enddef;
+
+def ifobl(suffix $,$$,@,@@,#,##):=                  %rounded pair of corners
+  if abs(z$-z$$)>oblu.#+oblu.##: obl($,@,$$).#---obl($$,$,@@).## 
+  else: z$+(oblu.#,0) rotated(angle(z@-z$))... {z$$-z$}.5[z$,z$$]...z$$+(oblu.##,0) rotated(angle(z@@-z$$))
+  fi
+enddef;
+
+boolean smer, smer.zpet; smer:=true; smer.zpet:=false;
+vardef rundy(expr p, t)suffix modifier:= %rounded paths
+  numeric _rnd, _rndb, _oblu;
+  if monospace and ((stem-hair)<.2hair):
+    if numeric t: t else: xpart(t) fi
+  else:
+    _rnd:=if numeric t: t else: xpart(t) fi;
+    if _rnd=infinity: _rnd:=length(p); fi;
+    _rndb:=_rnd;
+    _oblu:=if numeric t: oblu else: ypart(t) fi;
+    forever: 
+      _rnd:=_rnd if (smer.modifier): + else: - fi 0.01;
+      exitif length (point _rnd of p - point _rndb of p) >= _oblu;
+      exitif (_rnd>length(p)) or (_rnd<0);
+    endfor;
+    if (_rnd>length(p)) or (_rnd<0): _rndb else: _rnd fi
+  fi
+  enddef;
+
+vardef bsktouch(expr _pa,_dira,_pb,_dirb):=
+  ((_pa shifted (max(1,.5currentbreadth)*_dira)) intersectionpoint (_pb shifted (max(1,.5currentbreadth)*_dirb)))
+enddef;
+
+%%%%%%Symbols
+def zeroent(suffix $)(expr ll, rr):=    % Numeral zero for percent sign
+  pos$a(ll,0); pos$b(vair,90); pos$c(rr,0); pos$d(vair,270);
+  x$a.l - x$c.r=-4.5u; x$b=x$d=.5[x$a,x$c]; 
+  y$d.r - y$b.l=if monospace: .75\\fi bar_height; y$c=y$a=.5[y$b,y$d];
+  filldraw z$a.l{down}..z$b.l..z$c.r..z$d.l..{down}cycle;
+  infill z$a.r{up}..z$d.r..z$c.l..z$b.r..{up}cycle;
+  penlabels($a,$b,$c,$d);
+enddef;
+
+vardef bskfrench(suffix $,$$):=        %French quote
+  save p; save tim;
+    path p; numeric tim[];
+    pos$(hair,0); pos$'(hair,0); pos$$(curve,0);
+    .5[y$,y$']=y$$; x$=x$'; x$l-x$$r=stem;
+    p:=z$'r{dir110}..{dir120}z$$r{dir60}..{dir70}z$r;
+    tim1=xpart(p intersectiontimes ( ((x$$l,y$$)--(x$r,y$$)) shifted (hair*down) ));
+    tim2=xpart(p intersectiontimes ( ((x$$l,y$$)--(x$r,y$$)) shifted (hair*up) ));
+    filldraw z$l{dir-120}..{dir-140}z$$l{dir-50}..{dir-60}z$'l..
+             subpath(0,tim1) of p..subpath(tim2,infinity) of p..cycle;
+    penlabels($,$',$$);
+enddef;
+
+vardef bskfrenchr(suffix $,$$):=   %Reversed french quote
+  save p; save tim;
+    path p; numeric tim[];
+    pos$(hair,0); pos$'(hair,0); pos$$(curve,0);
+    .5[y$,y$']=y$$; x$=x$'; x$r-x$$l=-stem;
+    p:=z$'l{dir70}..{dir60}z$$l{dir120}..{dir110}z$l;
+    tim1=xpart(p intersectiontimes ( ((x$$l,y$$)--(x$l,y$$)) shifted (hair*down) ));
+    tim2=xpart(p intersectiontimes ( ((x$$l,y$$)--(x$l,y$$)) shifted (hair*up) ));
+    filldraw z$r{dir-60}..{dir-40}z$$r{dir-130}..{dir-120}z$'r..
+             subpath(0,tim1) of p..subpath(tim2,infinity) of p..cycle;
+    penlabels($,$',$$);
+enddef;
+
+def less(suffix @,$,$$)suffix modifier:=
+  numeric _theta; path _less;
+  pos@(rule_thickness,0); x$=x$$; .5[y$r,y$$r]=y@; 
+  if (unknown y$r) and (unknown y$$r): y$r=h-.5rule_thickness; fi;
+  if (unknown x$r) and (unknown x$$r): x$r=w-x@l; fi;
+  _theta:=angle(z$r-z@r);
+  pos$(rule_thickness,_theta-90); pos$$(rule_thickness,_theta+45);
+  z@'=z@l+(rule_thickness-currentbreadth)*dir(_theta-90);
+  z@''=z@l+(rule_thickness-currentbreadth)*dir(_theta+45);
+  z@'''=whatever[z@',z$r]=whatever[z@'',z$$r];
+  y@l'=y@l+o; z@l'=whatever[z@l,z$l];
+  bskpoints(@,$,hair,hair);
+  _less:=z@l..z@l'---z$ll..z$r---obl(@''',$r,$$r)---z$$r..z$$l;
+  if not test.modifier: filldraw _less---cycle; fi;
+  penlabels(@,$,$$); labels(@',@'',@''',$ll,@l');
+enddef;
+
+def greater(suffix @,$,$$)suffix modifier:=
+  numeric _theta; path _greater;
+  pos@(rule_thickness,0); x$=x$$; .5[y$l,y$$l]=y@; 
+  if (unknown y$l) and (unknown y$$l): y$l=h-.5rule_thickness; fi;
+  if (unknown x$l) and (unknown x$$l): x$l=w-x@r; fi;
+  _theta:=angle(z$l-z@r);
+  pos$(rule_thickness,_theta-90); pos$$(rule_thickness,_theta-45);
+  z@'=z@l+(rule_thickness-currentbreadth)*dir(_theta+90);
+  z@''=z@l+(rule_thickness-currentbreadth)*dir(_theta-45);
+  z@'''=whatever[z@',z$r]=whatever[z@'',z$$r];
+  y@r'=y@r+o; z@r'=whatever[z@r,z$r];
+  bskpoints($,@,hair,hair);
+  _greater:=z@r..z@r'---z$rr..z$l---obl(@''',$l,$$r)---z$$r..z$$l;
+  if not test.modifier: filldraw _greater---cycle; fi;
+  penlabels(@,$,$$); labels(@',@'',@''',$rr,@r');
+enddef;
+
+def logor(suffix @,$,$$)suffix modifier:= %Logical or shape
+  numeric _theta; path _logor;
+  pos@(rule_thickness,90); y$=y$$; .5[x$l,x$$l]=x@; 
+  if (unknown y$l) and (unknown y$$): y$l=h; fi;
+  if unknown x$l: lft x$l=u; fi;
+  _theta:=angle(z$l-z@l);
+  pos$(rule_thickness,_theta-90); pos$$(rule_thickness,_theta+45);
+  z@'=z@l+(rule_thickness-currentbreadth)*dir(_theta-90);
+  z@''=z@l+(rule_thickness-currentbreadth)*dir(_theta+45);
+  z@'''=whatever[z@',z$r]=whatever[z@'',z$$r];
+  x@l'=x@l-o; z@l'=whatever[z@l,z$l];
+  bskpoints(@,$,hair,hair);
+  _logor:=z@l..z@l'---z$ll..z$r---obl(@''',$r,$$r)---z$$r..z$$l;
+  if not test.modifier: filldraw _logor---cycle; fi;
+  penlabels(@,$,$$); labels(@',@'',@''',$ll,@l');
+enddef;
+
+def logand(suffix @,$,$$)suffix modifier:= %Logical and shape
+  numeric _theta; path _logand;
+  pos@(rule_thickness,90); y$=y$$; .5[x$r,x$$r]=x@; 
+  if (unknown y$r) and (unknown y$$): y$r=-d; fi;
+  if unknown x$r: lft x$r=u; fi;
+  _theta:=angle(z$r-z@r);
+  pos$(rule_thickness,_theta-90); pos$$(rule_thickness,_theta-45);
+  z@'=z@l+(rule_thickness-currentbreadth)*dir(_theta+90);
+  z@''=z@l+(rule_thickness-currentbreadth)*dir(_theta-45);
+  z@'''=whatever[z@',z$l]=whatever[z@'',z$$r];
+  x@r'=x@r-o; z@r'=whatever[z@r,z$r];
+  bskpoints(@,$,hair,hair);
+  _logand:=z@r..z@r'---z$r...z$ll---obl(@''',$l,$$r)---z$$r..{z@r-z$$l}z$$l;
+  if not test.modifier: filldraw _logand---cycle; fi;
+  penlabels(@,$,$$); labels(@',@'',@''',$ll,@r');
+enddef;
+
+def circle_points(expr sirka):=
+  x4=x8=.5[x2,x6]; x1=x3=superness[x4,x2]; x5=x7=superness[x4,x6];
+  y2=y6=.5[y4,y8]; y1=y7=superness[y2,y8]; y3=y5=superness[y2,y4];
+  path _circle_path; 
+  _circle_path:=z8{right}...z1{z2-z8}...z2{down}...z3{z4-z2}...z4{left}
+                ...z5{z6-z4}...z6{up}...z7{z8-z6}...cycle;
+  pos2(sirka,180); pos4(sirka,90); pos6(sirka,0); pos8(sirka,270);
+  pos1(sirka,angle(direction 1 of _circle_path)+270); 
+  pos3(sirka,angle(direction 3 of _circle_path)+270); 
+  pos5(sirka,angle(direction 5 of _circle_path)-90);
+  pos7(sirka,angle(direction 7 of _circle_path)-90);
+  penlabels(1,2,3,4,5,6,7,8);
+enddef;
+
+def draw_circle suffix smer:=
+  z8.smer{right}...z1.smer{z2-z8}...z2.smer{down}...z3.smer{z4-z2}...z4.smer{left}...z5.smer{z6-z4}...z6.smer{up}...z7.smer{z8-z6}...cycle
+enddef;
+
+vardef vlnka_points(suffix $,$$):=
+    y$a.l=y$$; y$$a.r=y$; .5[x$,x$$]=.5[x$a,x$$a]=.5w; 
+    if unknown x$ : lft x$ =u;   fi;
+    top y$$- bot y$= spread;
+    if unknown y$$: top y$$=h; fi
+    x$$-x$$a=1/4(x$$-x$);
+    pos$(hair,0); pos$$(hair,0); pos$a(curve,290); pos$$a(curve,250);
+    z$$a.s=z$$a.r+curve*unitvector(z$$-z$);
+    penlabels($,$a,$$,$$a); labels($$a.s);
+enddef;
+
+vardef vlnka(suffix $,$$)suffix modifier:=
+    vlnka_points($,$$);
+    path _vlnka;
+    _vlnka:=z$r{z$a-z$}..z$a.r..z$$a.r..z$$a.s..{z$$-z$$a.r}z$$r..
+            z$$l{z$$a-z$$}..z$$a.l..z$a.l..{z$-z$a.l}z$l..{z$a-z$}z$r;
+    if not test.modifier: filldraw _vlnka..cycle; fi;
+enddef;
+
+vardef vlnka_inv_points(suffix $,$$):=
+    y$a.r=y$$; y$$a.l=y$; .5[x$,x$$]=.5[x$a,x$$a]=.5w; 
+    if unknown x$ : lft x$ =u;   fi;
+    top y$- bot y$$= spread;
+    if unknown y$: top y$=h; fi
+    x$$-x$$a=1/4(x$$-x$);
+    pos$(hair,180); pos$$(hair,180); pos$a(curve,250); pos$$a(curve,290);
+    z$$a.s=z$$a.l+curve*unitvector(z$$-z$);
+    penlabels($,$a,$$,$$a); labels($$a.s);
+enddef;
+
+vardef vlnka_inv(suffix $,$$)suffix modifier:=
+    vlnka_inv_points($,$$);
+    path _vlnka_inv;
+    _vlnka_inv:=z$r{z$a-z$}..z$a.r..z$$a.r..{z$$-z$$a.r}z$$r..
+            z$$l{z$$a-z$$}..z$$a.s...z$$a.l..z$a.l..{z$-z$a.l}z$l..{z$a-z$}z$r;
+    if not test.modifier: filldraw _vlnka_inv..cycle; fi;
+enddef;
+
+def sipka_points(suffix $,$$):=
+  numeric bskaw, bskat, bsktim[]; bskaw=abs(z$$l-z$$r)+currentbreadth;
+  pair bskadir; bskadir=unitvector(z$-z$$r); bskat=angle(bskadir);
+  path bskap[];
+  pos$a(bskaw,bskat+90); z$a.r=z$-bskadir*arrsize;
+  z$b=z$a.r+arrwidth*dir(bskat-90);
+  z$c=z$a.l+((1/3arrsize,0) rotated bskat);
+  z$d=z$a.r+((1/3arrsize,0) rotated bskat);
+  z$e=z$a.r+(arrwidth-.5currentbreadth)*dir(bskat+90);
+  bskap0:=z$b+(hair*up rotated bskat){dir(bskat+45)}..z$c;
+  bskap1:=z$d..{dir(bskat+135)}z$e+(hair*down rotated bskat);
+  bsktim0=xpart(bskap0 intersectiontimes ((z$a.l--z$) shifted (.35arrwidth*dir(bskat-90))));
+  bsktim1=xpart(bskap1 intersectiontimes ((z$a.r--z$) shifted (.35arrwidth*dir(bskat+90))));
+  penlabels($,$$,$a); labels($c,$b,$c,$d,$e);
+enddef;
+
+vardef sipka(suffix $,$$):=
+  sipka_points($,$$);
+  z$a.r{bskadir}..subpath(bsktim1,infinity) of bskap1&z$e+(hair*down rotated bskat){dir(bskat+135)}
+  ..z$e{dir(bskat-45)}..{dir(bskat-30)}z${dir(bskat-160)}..{dir(bskat-135)}z$b
+  ..{dir(bskat+45)}z$b+(hair*up rotated bskat)&subpath (0,bsktim0) of bskap0..{-bskadir}z$a.l
+enddef;
+
+vardef sipka_ext(suffix $,$$):=
+  numeric bskaw, bskat, bsktim[]; bskaw=abs(z$$l-z$$r)+currentbreadth;
+  pair bskadir; bskadir=unitvector(z$-z$$); bskat=angle(bskadir);
+  path bskap[];
+  pos$a(bskaw,bskat+90); z$a=z$-bskadir*arrsize;
+  z$b=z$a.r+arrwidth*dir(bskat-90);
+  z$c=z$a.l+((1/3arrsize,0) rotated bskat);
+  z$d=z$a.r+((1/3arrsize,0) rotated bskat);
+  z$e=z$a.r+(arrwidth-.5currentbreadth)*dir(bskat+90);
+  bskap0:=z$b+(hair*up rotated bskat){dir(bskat+45)}..z$c;
+  bskap1:=z$d..{dir(bskat+135)}z$e+(hair*down rotated bskat);
+  bsktim0=xpart(bskap0 intersectiontimes ((z$a.l--z$) shifted (.35arrwidth*dir(bskat-90))));
+  bsktim1=xpart(bskap1 intersectiontimes ((z$a.r--z$) shifted (.35arrwidth*dir(bskat+90))));
+  penlabels($,$$,$a); labels($c,$b,$c,$d,$e);
+  z$a.r{bskadir}..subpath(bsktim1,infinity) of bskap1&z$e+(hair*down rotated bskat){dir(bskat+135)}
+  ..z$e{dir(bskat-45)}..{dir(bskat-30)}z${dir(bskat-160)}..{dir(bskat-135)}z$b
+  ..{dir(bskat+45)}z$b+(hair*up rotated bskat)&subpath (0,bsktim0) of bskap0..{-bskadir}z$a.l
+enddef;
+
+def dvojsipka_points(suffix $,$$,@,@@):=
+  bsktim100=xpart(bskap0 intersectiontimes (z@@--z@@+(z$-z$$r)));
+  bsktim101=xpart(bskap1 intersectiontimes (z@--z@+(z$-z$$r)));
+  z$p=point bsktim100 of bskap0; z$p.r-z$p.l=z$$r-z$$l; .5[z$p.r,z$p.l]=z$p;
+  z$q=point bsktim101 of bskap1; z$q.r-z$q.l=z$$r-z$$l; .5[z$q.r,z$q.l]=z$q;
+  z@r-z@l=z$$r-z$$l; .5[z@.r,z@.l]=z@; z@@r-z@@l=z$$r-z$$l; .5[z@@.r,z@@.l]=z@@;
+  bskap3=z@l+(z$-z$$r)--z@l; bskap4=z@r--z@r+(z$-z$$r);
+  (bsktim11,bsktim12)=bskap1 intersectiontimes bskap3;
+  (bsktim13,bsktim14)=bskap1 intersectiontimes bskap4;
+  bskap5=z@@l+(z$-z$$r)--z@@l; bskap6=z@@r--z@@r+(z$-z$$r);
+  (bsktim15,bsktim16)=bskap0 intersectiontimes bskap5;
+  (bsktim17,bsktim18)=bskap0 intersectiontimes bskap6;
+penlabels($p,$q);
+enddef;
+
+vardef dvojsipka(suffix $,$$,@,@@):=
+  sipka_points($,$$);
+  dvojsipka_points($,$$,@,@@);
+  oblu:=f_obl;
+  penlabels(@,@@);
+  subpath(0,rundy(bskap1,bsktim11).zpet) of bskap1..
+  subpath(rundy(bskap3,bsktim12),infinity) of bskap3..
+  subpath(0,rundy(bskap4,bsktim14).zpet) of bskap4..
+  subpath(rundy(bskap1,bsktim13),infinity) of bskap1
+  &z$e+(hair*down rotated bskat){dir(bskat+135)}..z$e{dir(bskat-45)}..
+  {dir(bskat-30)}z${dir(bskat-160)}..{dir(bskat-135)}z$b..
+  {dir(bskat+45)}z$b+(hair*up rotated bskat)&
+  subpath(0,rundy(bskap0,bsktim15).zpet) of bskap0..
+  subpath(rundy(bskap5,bsktim16),infinity) of bskap5..
+  subpath(0,rundy(bskap6,bsktim18).zpet) of bskap6..
+  subpath(rundy(bskap0,bsktim17),infinity) of bskap0
+enddef;
+
+vardef whitehead(suffix $,$$,@,@@):=
+  z$'=z$+(rule_thickness-currentbreadth)*dir(bskat+180);
+  path _whp[]; numeric _wht[];
+  _whp0:=z$'{dir(bskat+180)}..{dir(bskat+160)}point bsktim12 of bskap3;
+  _whp1:=(bskap0 intersectionpoint (z@@r--z@@r+(z$-z$$))){dir(bskat+20)}..{dir(bskat)}z$';
+  (_wht0,_wht1)=(_whp0 shifted ((max(1,.5currentbreadth))*dir(bskat-90))) 
+                intersectiontimes (_whp1 shifted ((max(1,.5currentbreadth))*dir(bskat+90)));
+  labels($',$'');
+  subpath(rundy(_whp1,0),rundy(_whp1,_wht1).zpet) of _whp1
+  ..subpath(rundy(_whp0,_wht0),rundy(_whp0,infinity).zpet) of _whp0
+enddef;
+
+vardef trojsipka(suffix $,$$,@,@@):=
+  sipka_points($,$$);
+  dvojsipka_points($,$$,@,@@);
+  oblu:=f_obl;
+  penlabels(@,@@);
+  bskap7=(x$$,y$d)--z$d;
+  bskap8=z$$l+(z$-z$$r)--z$$l;
+  (bsktim19,bsktim20)=bskap0 intersectiontimes bskap8;
+  subpath(0,rundy(bskap7,infinity).zpet) of bskap7..
+  subpath(rundy(bskap1,0),rundy(bskap1,bsktim11).zpet) of bskap1..
+  subpath(rundy(bskap3,bsktim12),infinity) of bskap3..
+  subpath(0,rundy(bskap4,bsktim14).zpet) of bskap4..
+  subpath(rundy(bskap1,bsktim13),infinity) of bskap1
+  &z$e+(hair*down rotated bskat){dir(bskat+135)}..z$e{dir(bskat-45)}..
+  {dir(bskat-30)}z${dir(bskat-160)}..{dir(bskat-135)}z$b..
+  {dir(bskat+45)}z$b+(hair*up rotated bskat)&
+  subpath(0,rundy(bskap0,bsktim15).zpet) of bskap0..
+  subpath(rundy(bskap5,bsktim16),infinity) of bskap5..
+  subpath(0,rundy(bskap6,bsktim18).zpet) of bskap6..
+  subpath(rundy(bskap0,bsktim17),rundy(bskap0,bsktim19).zpet) of bskap0..
+  subpath(rundy(bskap8,bsktim20),infinity) of bskap8
+enddef;
+
+%%%%%%%%%%Accents
+boolean capital, capital.capital; capital:=false; capital.capital:=true;
+
+def grave(suffix $,$$)suffix modifier:=
+  pos$(stem,10); pos$$(hair,0);
+  x$$-x$=.25w;
+  if unknown y$ : top y$=h; fi
+  if unknown y$$: y$$=if capital.modifier: cap_height + .5u else: 1/4[x_height,y$] fi; fi
+  bskpoints($,$$,hair,hair);
+  filldraw z$$r---z$rr..z$---z$l--z$$l--cycle;
+  penlabels($,$$);labels($rr,$$rr);
+enddef;
+
+def d_grave(suffix $,$$,@,@@)(expr mid)suffix modifier:=
+  y$=y@; y$$=y@@;
+  .5[.5[x$,x$$],.5[x@,x@@]]=mid; x$$-x$=x@@-x@;
+  pos$(stem,10); pos$$(hair,0); pos@(stem,10); pos@@(hair,0);
+  x$$-x$=2u;
+  if unknown y$ : top y$=h; fi
+  if unknown y$$: y$$=if capital.modifier: cap_height + .5u else: 1/4[x_height,y$] fi; fi
+  bskpoints($,$$,hair,hair); bskpoints(@,@@,hair,hair);
+  filldraw z$$r---z$rr..z$---z$l--z$$l--cycle;
+  filldraw z@@r---z@rr..z@---z@l--z@@l--cycle;
+  penlabels($,$$,@,@@);labels($rr,$$rr,@rr,@@rr);
+enddef;
+
+def acute(suffix $,$$)suffix modifier:=
+  pos$(stem,-10); pos$$(hair,0);
+  if (unknown x$) or (unknown x$$):  x$-x$$=.25w; fi
+  if unknown y$ : top y$=h; fi
+  if unknown y$$: y$$=if capital.modifier: cap_height + .5u else: 1/4[x_height,y$] fi; fi
+  bskpoints($,$$,hair,hair);
+  filldraw z$$r---z$rr..z$---z$l{z$$-z$l}..{z$$l-z$}z$$l--cycle;
+  penlabels($,$$);labels($rr,$$rr);
+enddef;
+
+vardef acute_slope(suffix $,$$)(expr slope)suffix modifier:=
+  save w; w:=4slope;
+    acute($,$$).modifier;
+enddef;
+
+def hacek(suffix $,$$,$$$)suffix modifier:=
+  {{ save oblu; oblu:=f_obl;
+    y$=y$$$; .55[x$,x$$$]=x$$;
+    if unknown y$  : top y$=h; fi
+    if unknown y$$l: top y$$l=if capital.modifier: cap_height + .5u else: 1/4[x_height,y$]
+                       fi; fi
+    pos$(hair,10); pos$$$(hair,0); pos$$(stem,90); pos$$'(stem,0); 
+    if unknown x$: x$$$-x$=5.5u; fi;
+    z$$'=z$$+.25tiny*left;
+    filldraw z$$$l---obl($$r,$$$l,$r)---z$r..z$---z$$'l..if not capital.modifier: z$$l.. fi z$$'r---z$$$r--cycle;
+    penlabels($,$$,$$',$$$);
+  }}
+enddef;
+
+def circumflex(suffix $,$$,$$$)suffix modifier:=
+  {{ save oblu; oblu:=f_obl;
+    y$=y$$$; .55[x$,x$$$]=x$$;
+    if unknown y$$l: top y$$l=h; fi
+    if unknown y$l : top y$l=if capital.modifier: cap_height + .75u else: 1/2[x_height,top y$$]
+                       fi; fi
+    pos$(hair,-10); pos$$$(hair,0); pos$$(.2[stem,hair],270); pos$$'(stem,0); 
+    if unknown x$: x$$$-x$=6u; fi; 
+    z$$'=z$$+.25tiny*left;
+    filldraw z$$$l---obl($$r,$$$l,$r)---z$r..z$---z$$'l..z$$l..z$$'r---z$$$r--cycle;
+    penlabels($,$$,$$',$$$);
+  }}
+enddef;
+
+def breve(suffix $,$$,$$$)suffix modifier:=
+  y$=y$$$; .55[x$,x$$$]=x$$;
+  if unknown y$  : top y$=h; fi
+  if unknown y$$l: bot bot y$$l=if capital.modifier: cap_height else: 1/3[x_height, top y$];
+                     fi; fi
+  pos$(hair,10); pos$$$(hair,0); pos$$(.75[hair,stem],90);  
+  if unknown x$$$ or unknown x$: x$$$-x$=w-2u; fi;
+  y$$$r:=y$$$r-.5tiny;
+  filldraw z$l{down}..z$$l..{up}z$$$r--z$$$l{down}..z$$r..{up}z$r--cycle;
+  penlabels($,$$,$$$);
+enddef;
+
+def tieacc(suffix $,$$,$$$)suffix modifier:=
+  y$=y$$$; .55[x$,x$$$]=x$$;
+  if unknown y$$r : top y$$l=h; fi
+  if unknown y$: bot y$=if capital.modifier: cap_height else: 1/3[x_height, top y$$];
+                     fi; fi
+  pos$(hair,-10); pos$$$(hair,0); pos$$(.75[hair,stem],270);  
+  if unknown x$$$ or unknown x$: x$$$-x$=w-2u; fi;
+  y$$$r:=y$$$r-.5tiny;
+  filldraw z$l{up}..z$$l..{down}z$$$r--z$$$l{up}..z$$r..{down}z$r--cycle;
+  penlabels($,$$,$$$);
+enddef;
+
+def macron(suffix $,$$):=
+  y$=y$$;
+  if unknown y$: top y$=h; fi
+  if unknown x$$: x$$-x$=5u; fi
+  if (unknown x$) or (unknown x$$): .5[x$,x$$]=.5w; fi
+  pos$(hair,90); pos$$(hair,90);
+  filldraw bskrule($$,$,hair,hair);
+  penlabels($,$$);
+enddef;
+
+def ring(suffix $,$$)suffix modifier:=
+  numeric ring_stroke; ring_stroke:=2/3[tiny,hair];
+  .5[z$$a,z$$c]=.5[z$$b,z$$d]=z$;
+  x$$b=x$$d; y$$a=y$$c; y$$d-y$$b=(x$$c-x$$a); x$$a.l=x$$;
+  if unknown x$$: lft x$$=1.5u; fi
+  if unknown y$ : y$=if capital.modifier: .5[h,cap_height] else: .5[1/4[x_height,h],h]
+                    fi; fi
+  pos$$a(ring_stroke,0); pos$$b(ring_stroke,90);
+  pos$$c(ring_stroke,180); pos$$d(ring_stroke,270);
+  filldraw z$$a.l{down}..z$$b.l..z$$c.l..z$$d.l..cycle;
+  infill z$$a.r{down}..z$$b.r..z$$c.r..z$$d.r..cycle;
+  penlabels($$a,$$b,$$c,$$d); labels($);
+enddef;
+
+vardef dotabove(suffix $):=
+  save dot_size; dot_size:=stem;
+    if unknown y$: top y$=h; fi
+    y$:=y$-.5dot_size;
+    dot($);
+enddef;
+
+def umlaut(suffix $,$$):=
+  y$=y$$;  
+  if unknown x$ : lft x$ =u  +.5dot_size; fi
+  if unknown x$$: lft x$$=w-u-.5dot_size; fi
+  dotabove($); dotabove($$);
+enddef;
+
+def h_umlaut(suffix $,$$,@,@@)(expr slope)suffix modifier:=
+  y$=y$$; y@=y@@;
+  if unknown x$: lft x$=u+slope; fi
+  if unknown x$$: rt x$$=w-u; fi
+  acute_slope($,@,slope).modifier; acute_slope($$,@@,slope).modifier;
+enddef;
+
+vardef tilde(suffix $,$$)suffix modifier:=
+  save tstem; tstem:=if capital.modifier: .7\\fi stem;
+    y$a.l=y$$; y$$a.r=y$; .5[x$,x$$]=.5[x$a,x$$a]=if known x.tilde: x.tilde else: .5w fi; 
+    if unknown x$ : x$ =u;   fi;
+    if unknown y$$: top y$$=h; fi
+    if unknown y$ : bot y$=if capital.modifier: cap_height else:1/3[x_height,top y$$] 
+                    fi; fi
+    x$$-x$$a=1/4(x$$-x$);
+    pos$(hair,0); pos$$(hair,0); pos$a(tstem,270); pos$$a(tstem,270);
+    filldraw z$r{z$a-z$}..z$a.r..z$$a.r..{z$$-z$$a}z$$r..
+             z$$l{z$$a-z$$}..z$$a.l..z$a.l..{z$-z$a}z$l..cycle;
+    penlabels($,$a,$$,$$a);
+enddef;
+
+def pol_cross(suffix $,$$):=
+  x$$-x$=4u; y$$-y$=stem;
+  if unknown y$: .5[y$,y$$]=.8[bar_height,x_height]; fi
+  pos$(bar,angle(z$$-z$)+90); pos$$(bar,angle(z$$-z$)+90);
+  filldraw bskrule($,$$,bar,bar);
+  penlabels($,$$);
+enddef;
+
+%%%%%%Font making macros (some from cmbase)
+newinternal l,r,shrink_fit; % adjustments to spacing
+
+def charscription(expr width, height, depth)(text t):=
+  def _saved_char := t; enddef;
+  _saved_w:=width; _saved_u:=u; _saved_h:=height; _saved_d:=depth;
+  let bskcharscriptcmd=relax;
+enddef;
+
+def multiply(expr x)(text t) =
+  forsuffixes xx=t:
+    multiply_:= xx; save xx; xx:=multiply_/x;
+   endfor;
+enddef;
+
+def usechar text t=
+{{
+  save t_, WW, HH, DD;
+  WW:=w; HH:=h; DD:=d;
+  if not monospace:
+     save w,h,d; numeric w,h,d;
+     w=(u/_saved_u)*_saved_w; h=_saved_h; d=_saved_d;
+  else: 
+     save h,d; numeric h,d; 
+     h=_saved_h; d=_saved_d;
+  fi;
+  def t_ = transformed currenttransform t enddef;
+  _saved_char;
+}};
+enddef;
+
+def restore_pars = w:=WW; h:=HH; d:=DD; enddef;
+
+def do_expansion(expr expansion_factor) =
+ forsuffixes $=u,jut,cap_jut,beak_jut,apex_corr:
+   $:=$.#*expansion_factor*hppp; endfor
+enddef;
+
+def normal_adjust_fit(expr left_adjustment,right_adjustment) =
+ numeric charwd_in; charwd_in=charwd;
+ l:=-hround(left_adjustment*hppp)-letter_fit;
+ interim xoffset:=-l;
+ charwd:=charwd+2letter_fit#+left_adjustment+right_adjustment;
+ r:=l+hround(charwd*hppp)-shrink_fit;
+ w:=r-hround(right_adjustment*hppp)-letter_fit;
+ do_expansion(w/(charwd_in*hppp));
+ enddef;
+
+def mono_adjust_fit(expr left_adjustment,right_adjustment) =
+ numeric charwd_in; charwd_in=charwd;
+ numeric expansion_factor;
+ mono_charwd#=2letter_fit#
+   +expansion_factor*(charwd+left_adjustment+right_adjustment);
+ l:=-hround(left_adjustment*expansion_factor*hppp)-letter_fit;
+ interim xoffset:=-l;
+ r:=l+mono_charwd-shrink_fit;
+ w:=r-hround(right_adjustment*expansion_factor*hppp)-letter_fit;
+ charwd:=mono_charwd#; charic:=mono_charic#;
+ do_expansion(w/(charwd_in*hppp));
+ enddef;
+
+extra_endchar:=extra_endchar&"r:=r+shrink_fit;w:=r-l;";
+
+def ignore_math_fit(expr left_adjustment,right_adjustment) = enddef;
+def do_math_fit(expr left_adjustment,right_adjustment) =
+ l:=l-hround(left_adjustment*hppp); interim xoffset:=-l;
+ charwd:=charwd+left_adjustment+right_adjustment;
+ r:=l+hround(charwd*hppp)-shrink_fit;
+ charic:=charic-right_adjustment;
+ if charic<0: charic:=0; fi enddef;
+def zero_width = charwd:=0; r:=l-shrink_fit enddef;
+def change_width = if not monospace: % change width by $\pm1$
+ if r+shrink_fit-l=floor(charwd*hppp): w:=w+1; r:=r+1;
+ else: w:=w-1; r:=r-1; fi fi enddef;
+def center_on(expr x) = if not monospace: % change width for symmetric fit
+ r:=r+2x-w; w:=2x; fi enddef;
+def padded expr del_sharp =
+ charht:=charht+del_sharp; chardp:=chardp+del_sharp enddef;
+
+def font_setup =
+ if monospace: let adjust_fit=mono_adjust_fit;
+  def mfudged=fudged enddef;
+  mono_charic#:=body_height#*slant;
+  if mono_charic#<0: mono_charic#:=0; fi
+  mono_charwd#:=9.5u#; define_whole_pixels(mono_charwd);
+ else: let adjust_fit=normal_adjust_fit;
+  def mfudged= enddef; fi
+ if math_fitting: let math_fit=do_math_fit
+ else: let math_fit=ignore_math_fit fi;
+ def medfig := if medieval: x_height# else: fig_height# fi enddef;
+ def medfigd := if medieval: desc_depth# else: 0 fi enddef;
+ def medfigu := if medieval: x_height else: fig_height fi enddef;
+ def medfigdu := if medieval: desc_depth else: 0 fi enddef;
+ def figw(text x) := if monofig: 9u# else: x# fi enddef; 
+ def figwu(text x) := if monofig: 9u else: x fi enddef; 
+ if unknown Acc_height#: Acc_height#:=cap_height#+.3x_height#; fi
+ define_pixels(u,width_adj,serif_fit,cap_serif_fit,jut,cap_jut,beak,
+  bar_height,punct_fit);
+ define_whole_pixels(letter_fit,tiny,ser_boule);
+ define_whole_vertical_pixels(body_height,asc_height,drop_stem,
+  cap_height,fig_height,com_height,x_height,Acc_height,comma_depth,desc_depth,serif_drop);
+ define_whole_blacker_pixels(hair,like_hair,stem,like_stem,curve,like_curve,
+  dot_size,cap_hair,like_cap_hair,alt_cap_hair,cap_stem,like_cap_stem,cap_curve,like_cap_curve);
+ define_whole_vertical_blacker_pixels(vair,bar,cap_bar);
+ define_corrected_pixels(o,apex_o);
+ forsuffixes $=hair,stem,cap_stem:
+  fudged$.#:=fudge*$.#; fudged$:=hround(fudged$.#*hppp+blacker);
+  forever: exitif fudged$>.9fudge*$; fudged$:=fudged$+1; endfor endfor
+ rule_thickness:=ceiling(rule_thickness#*hppp);
+ heavy_rule_thickness:=ceiling(3rule_thickness#*hppp);
+ oo:=vround(.5o#*hppp*o_correction)+eps;
+ apex_oo:=vround(.5apex_o#*hppp*o_correction)+eps;
+ lowres_fix(stem,curve) 1.3;
+ lowres_fix(stem,curve) 1.2;
+ lowres_fix(cap_stem,cap_curve) 1.2;
+ lowres_fix(hair,cap_hair,alt_cap_hair) 1.2;
+ lowres_fix(cap_bar,bar) 1.2;
+ ess:=(ess#/stem#)*stem; cap_ess:=(cap_ess#/cap_stem#)*cap_stem;
+ dw:=(curve#-stem#)*hppp; bold:=curve#*hppp+blacker;
+ serif_bend:=.25o*down;
+ dh#:=.6designsize; define_whole_vertical_pixels(dh);
+ more_super:=max(superness,sqrt .77superness);
+ hein_super:=max(superness,sqrt .81225258superness); % that's $2^{-.3}$
+ clear_pen_memory;
+ if tiny=0: tiny:=1; fi
+%%% fine $ %%%% temporary formatting convention for MFT
+  if tiny>fudged.hair: tiny:=fudged.hair; fi
+  tiny.breadth:=tiny;
+  pickup if tiny=0: nullpen else: pencircle scaled tiny; tiny:=tiny-eps fi;
+  tiny.nib:=savepen; breadth_[tiny.nib]:=tiny;
+  forsuffixes $$=lft,rt,top,bot: shiftdef(tiny.$$,$$ 0); endfor
+%%% @ $ %%%% restore ordinary formatting for $
+ min_Vround:=tiny.breadth;
+ if min_Vround<vround min_Vround: min_Vround:=vround min_Vround; fi
+ forsuffixes $=vair,bar,cap_bar,bold:
+  if $<min_Vround: $:=min_Vround; fi endfor
+ pickup pencircle scaled rule_thickness; rule.nib:=savepen;
+ math_axis:=good.y(math_axis#*hppp);
+ currenttransform:=identity slanted slant
+  yscaled aspect_ratio scaled granularity;
+ if currenttransform=identity: let t_=relax
+ else: def t_ = transformed currenttransform enddef fi;
+ numeric paren_depth#; .5[body_height#,-paren_depth#]=math_axis#;
+ define_whole_vertical_pixels(paren_depth);
+ numeric asc_depth#; .5[asc_height#,-asc_depth#]=math_axis#;
+ body_depth:=desc_depth+body_height-asc_height;
+ shrink_fit:=1+hround(2letter_fit#*hppp)-2letter_fit;
+ if not string mode: if mode<=smoke: shrink_fit:=0; fi fi
+ numeric ser_height, serif_o, dig_stem, ddot, n_str_hair;
+ ser_height:=1.5stem;
+ serif_o:=.5cap_hair;
+ dig_stem := if medieval: stem else: .5[stem,cap_stem] fi;
+ ddot=.5(dot_size-stem);
+ n_str_hair=1.3hair;
+ if not known f_obl#: numeric f_obl#, f_obl; f_obl#:=10/36pt#; define_pixels(f_obl); fi
+ if drop_stem = 1: drop_stem:=0; fi
+ if ser_boule = 1: ser_boule:=0; fi
+ boolean bold_face; bold_face:= if (stem/u > 4/3): true else: false fi;
+ if known bsk_outline#: %Don't work correctly at small resolutions
+    define_whole_pixels(bsk_outline);
+    numeric bskoutsize; bskoutsize:= tiny-bsk_outline; if bskoutsize<1: bskoutsize:=1; fi;
+    pickup pencircle scaled bskoutsize; bskoutlinepen.nib:=savepen;
+    breadth_[bskoutlinepen.nib]:=bskoutsize; forsuffixes $$=lft,rt,top,bot: shiftdef(bskoutlinepen.$$,$$ 0); endfor
+    def bsk_savepen:= pen bsk_pen; bsk_pen:=currentpen; enddef;
+    def bsk_restorepen:= currentpen:=bsk_pen; enddef;
+    let bskfilldraw = filldraw;
+    def infill text t:= bsk_savepen; path _bp; _bp:=t; cullit; 
+      picture bskpict; bskpict:=currentpicture; currentpicture:=nullpicture;
+      draw _bp; cullit; fill _bp; cull currentpicture keeping (2,2); 
+      pickup bskoutlinepen.nib; erase draw _bp;
+      bsk_restorepen; 
+      currentpicture:=currentpicture+bskpict; bskpict:=nullpicture;
+    enddef;
+    def filldraw text t:= bsk_savepen; path _bp; _bp:=t; bskfilldraw _bp; cullit; pickup bskoutlinepen.nib; erase bskfilldraw _bp; cullit; bsk_restorepen; enddef;
+  fi;
+  begingroup interim warningcheck:=0; testdpi:=(pixels_per_inch<=300); endgroup;
+  if unknown bbw: numeric bbw; bbw:=curve; fi %For blackboard-bold letters
+ enddef;
+
+vardef clockwise primary c =
+  if turningcheck>0:
+    interim autorounding:=0;
+    if turningnumber c > 0: reverse fi
+  fi
+  c enddef;
+
+def shiftdef(suffix $)(expr delta) =
+ vardef $ primary x = x+delta enddef enddef;
+
+def makebox(text rule) =
+ for y=0,asc_height,body_height,x_height,bar_height,-desc_depth,-body_depth:
+  rule((l,y)t_,(r,y)t_); endfor % horizontals
+ for x=l,r:   rule((x,-body_depth)t_,(x,body_height)t_); endfor % verticals
+ rule((r,-max(body_depth,d)),(r,body_height));
+ for x=u*(1+floor(l/u)) step u until r-1:
+  rule((x,-body_depth)t_,(x,body_height)t_); endfor % more verticals
+ if charic<>0:
+  rule((r+charic*pt,h.o_),(r+charic*pt,.5h.o_)); 
+  if h=0: rule((r+charic*pt,0),(r+charic*pt,-.5d.o_)); fi
+  fi % italic correction
+for y=math_axis,-d,h: rule((l-3u,y)t_,(r+3u,y)t_); endfor
+ enddef;
+def maketicks(text rule) =
+ for y=0,h.o_,-d.o_:
+  rule((l,y),(l+10,y)); rule((r-10,y),(r,y)); endfor % horizontals
+ for x=l,r:
+  rule((x,10-d.o_),(x,-d.o_)); rule((x,h.o_-10),(x,h.o_)); endfor % verticals
+ if charic<>0:
+  rule((r+charic*pt,h.o_-10),(r+charic*pt,h.o_)); fi % italic correction
+ enddef;
+rulepen:=pensquare;
+
+vardef penpos@#(expr b,d) =
+ if known b: if b<=0: errmessage "bad penpos"; fi fi
+ (x@#r-x@#l,y@#r-y@#l)=(b,0) rotated d;
+ x@#=.5(x@#l+x@#r); y@#=.5(y@#l+y@#r) enddef;
+
+newinternal currentbreadth;
+vardef pos@#(expr b,d) =
+% if known b: if b<=currentbreadth: errmessage "bad pos"; fi fi
+ (x@#r-x@#l,y@#r-y@#l)=(b-currentbreadth,0) rotated d;
+ x@#=.5(x@#l+x@#r); y@#=.5(y@#l+y@#r) enddef;
+def numeric_pickup_ primary q =
+ currentpen:=pen_[q];
+ pen_lft:=pen_lft_[q];  pen_rt:=pen_rt_[q];
+ pen_top:=pen_top_[q];  pen_bot:=pen_bot_[q];
+ currentpen_path:=pen_path_[q];
+ if known breadth_[q]: currentbreadth:=breadth_[q]; fi enddef;
+
+vardef ic# = charic enddef;
+vardef h# = charht enddef;
+vardef w# = charwd enddef;
+vardef d# = chardp enddef;
+
+let {{=begingroup; let }}=endgroup;
+def .... = .. tension atleast .9 .. enddef;
+def less_tense = save ...; let ...=.... enddef;
+def ?? = hide(showvariable x,y) enddef;
+
+let semi_ =;; let colon_ = :; let endchar_ = endchar;
+def iff expr b = if b:let next_=use_it else:let next_=lose_it fi; next_ enddef;
+def use_it = let : = restore_colon; enddef;
+def restore_colon = let : = colon_; enddef;
+def lose_it = let endchar=fi; inner bskchar; let ;=fix_ semi_ if false enddef;
+def fix_=let ;=semi_; let endchar=endchar_; outer bskchar; enddef;
+def always_iff = let : = endgroup; killboolean enddef;
+def killboolean text t = use_it enddef;
+outer bskchar;
+
+endinput

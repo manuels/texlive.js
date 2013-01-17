@@ -1,0 +1,131 @@
+\NeedsTeXFormat{LaTeX2e}[1994/06/01]
+\ProvidesPackage{rotpages}[2002/05/30 R3.0 Rotated Pages (SC)]
+%%
+%% INTERFACE
+%%
+%% Switch on and off the page rotation
+%%   \rotboxpages
+%%   \endrotboxpages
+%%
+%% Setting of the dimensions of the rotated pages or columns (its the
+%% package user responsibility to assure that sensible values are employed)
+%%   \setlenght{\rotboxheight}{...}
+%%   \setlength{\rotboxwidht}{...}
+%% Since the rotated column needs to fit the same space as the non
+%% rotated one, scaling is used to correct the dimensions. If the
+%% initial values are not properly selected, the column may result
+%% distorted. Dimensions larger than usual can be introduced to get 
+%% page scaling.
+%%
+%% Hooks for introducing frames and so on
+%%   \renewcommand{\rotboxAtRotationHook}[1]{...}
+%%   \renewcommand{\rotboxAtShippingHook}[1]{...}
+%% In both command a box containing the page is passed as an
+%% argument. The difference is that in the first case the hook is
+%% invoked at the column preparation time (so that, e.g., the relative number
+%% of the page among the rotated lot is available), while in the
+%% second case the hook is invoked at the shipping time (so that,
+%% e.g., the global page number is known).
+%% Note: make sure the page processing hook returns a box whose global
+%% height is all in the ``height'' height field and not in the
+%% ``depth'' one.
+%%
+%% A command to test if we are rotating the pages or not (this uses
+%% the ifthen package
+%%   \ifthenelse{\boolean{rotboxactive}}{...}{...}
+
+\RequirePackage{graphics}
+\RequirePackage{ifthen} 
+\RequirePackage{calc}
+
+\newlength{\rotboxheight}
+\newlength{\rotboxwidth}
+\newboolean{rotboxactive}
+\newbox\SC@deferredpages
+\newbox\SC@curpage
+
+%% Reasonable defaults for the hooks, the widths and the heights
+%%\newcommand{\rotboxAtRotationHook}[1]{#1}
+\newcommand{\rotboxAtRotationHook}[1]{%
+  \begingroup\fboxsep=3ex\raisebox{\depth}[\height+\depth][0pt]
+  {\fbox{#1}}\endgroup}
+\newcommand{\rotboxAtShippingHook}[1]{#1}
+%%\newcommand{\rotboxAtShippingHook}[1]{%
+%%  \begingroup\fboxsep=3ex\raisebox{\depth}[\height+\depth][0pt]
+%%  {\fbox{#1}}\endgroup}  
+\setboolean{rotboxactive}{false}
+\AtBeginDocument{%
+  \setlength{\rotboxheight}{\vsize-6ex-1pt}
+  \setlength{\rotboxwidth}{\hsize-6ex-1pt}}
+
+\let\SC@makecol=\@makecol
+\let\SC@makefcolumn=\@makefcolumn
+\newlength\SC@pageh
+\newlength\SC@pagev
+%%\newlength\SC@boxw
+%%\newlength\SC@boxh
+%%\newlength\SC@boxd
+
+%% Processing of the column in ``upside-down mode''
+%% Here we simply apply the relevant hook and store the page onto the 
+%% page stack
+\def\SC@processpage{%
+  \message{...deferring page...}%
+  \global\setbox\SC@deferredpages\hbox{\unhbox\SC@deferredpages%
+    \hbox{\rotboxAtRotationHook{%
+        \raisebox{\depth}[\height+\depth][0pt]%
+        {\scalebox{-1}{\copy\@outputbox}}}}}}
+
+%% Shipping of the pages previously pushed onto the stack
+\def\SC@shippagestack{%
+  \global\setbox\SC@deferredpages\hbox{%
+    \unhbox\SC@deferredpages%
+    \global\setbox\SC@curpage\lastbox}%
+  \ifhbox\SC@curpage%
+  %%\settodepth\SC@boxd{\copy\SC@curpage}%
+  %%\settoheight\SC@boxh{\copy\SC@curpage}%
+  %%\typeout{vsize \the\vsize - sizeh \the\SC@boxh - sized \the\SC@boxd}
+  \noindent\rotboxAtShippingHook{\box\SC@curpage}\newpage%
+  {\SC@shippagestack}\fi}
+
+%% Public command to activate the upside-down mode
+\def\rotboxpages{%
+  \newpage
+  \setboolean{rotboxactive}{true}
+  %% save standard page size
+  \setlength\SC@pageh{\hsize}%
+  \setlength\SC@pagev{\vsize}%
+  \begingroup
+  \def\@opcol{\relax}%
+  \def\@startcolumn{\relax}%
+  \def\@makecol{\SC@makecol\SC@processpage}%
+  %%\def\@makefcolumn##1{\SC@makefcolumn{##1}\SC@processpage}%
+  %% Alter page size to guarantee that there is space for the frame
+  %% This is problematic as we have to change a number of measures. Currently 
+  %% this works only if the columns are as high as the whole page.
+  \setlength\hsize{\rotboxwidth} \setlength\vsize{\rotboxheight}
+  \setlength\linewidth{\rotboxwidth}
+  \setlength\columnwidth{\rotboxwidth}
+  \setlength\textwidth{\rotboxwidth}
+  \setlength\textheight{\rotboxheight}
+  \setlength\@colht{\rotboxheight} \setlength\@colroom{\rotboxheight}}
+
+%% Public command to deactivate the upside-down mode
+\def\endrotboxpages{%
+  \newpage
+  \endgroup
+  %% Restore the values that don't get updated by the \endgroup
+  \setlength\hsize{\SC@pageh}
+  \setlength\vsize{\SC@pagev}
+  \SC@shippagestack
+  \setboolean{rotboxactive}{false}}
+%%
+
+%% R3.0
+%% * Note: revision 2 was a major nightmare
+%% * this version is a complete rework
+
+%% R2.0 
+%% * Added: Arbitrary framing command
+%% * Added: Arbitrary scaling of the rotated pages
+%% * Fixed: incorrect global setting of the \fboxsep macro

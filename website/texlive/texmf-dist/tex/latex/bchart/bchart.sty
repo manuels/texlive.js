@@ -1,0 +1,174 @@
+%-------------------------------------------------------------------------------
+% bchart (LaTeX package)
+%-------------------------------------------------------------------------------
+% Version: 0.1.1
+% Date: 16 March 2012
+% Author: Tobias Kuhn
+%-------------------------------------------------------------------------------
+
+\ProvidesPackage{bchart}
+
+\usepackage{ifthen}
+\usepackage{tikz}
+\usetikzlibrary{calc}
+
+
+% Lengths
+
+\newlength{\bcpos}
+\newlength{\bcwidth}
+
+
+% Chart Arguments
+
+\newcommand{\bcunit}{}
+\newcommand{\bcmin}{}
+\newcommand{\bcmax}{}
+\newcommand{\bcstep}{}
+\newcommand{\bcsteps}{}
+\newcommand{\bcscale}{}
+\newcommand{\bcplainchart}{}
+\makeatletter
+\define@key{bchart}{unit}{\renewcommand{\bcunit}{#1}}
+\define@key{bchart}{width}{\setlength{\bcwidth}{#1}}
+\define@key{bchart}{min}{\renewcommand{\bcmin}{#1}}
+\define@key{bchart}{max}{\renewcommand{\bcmax}{#1}}
+\define@key{bchart}{step}{\renewcommand{\bcstep}{#1}}
+\define@key{bchart}{steps}{\renewcommand{\bcsteps}{#1}}
+\define@key{bchart}{scale}{\renewcommand{\bcscale}{#1}}
+\define@key{bchart}{plain}[false]{\renewcommand{\bcplainchart}{true}}
+\makeatother
+
+
+% Bar Arguments
+
+\newcommand{\bcbarcolor}{}
+\newcommand{\bcbartext}{}
+\newcommand{\bcbarlabel}{}
+\newcommand{\bcbarvalue}{}
+\newcommand{\bcplainbar}{}
+\makeatletter
+\define@key{bcbar}{color}{\renewcommand{\bcbarcolor}{#1}}
+\define@key{bcbar}{text}{\renewcommand{\bcbartext}{#1}}
+\define@key{bcbar}{label}{\renewcommand{\bcbarlabel}{#1}}
+\define@key{bcbar}{value}{\renewcommand{\bcbarvalue}{#1}}
+\define@key{bcbar}{plain}[false]{\renewcommand{\bcplainbar}{true}}
+\makeatother
+
+
+% Skip Arguments
+
+\newcommand{\bcskiplabel}{}
+\makeatletter
+\define@key{bcskip}{label}{\renewcommand{\bcskiplabel}{#1}}
+\makeatother
+
+
+% Bar Charts
+
+\newenvironment{bchart}[1][]{%
+  % Bars:
+  \newcommand{\bcbar}[2][]{
+    % Set defaults:
+    \renewcommand{\bcbarcolor}{blue!20}
+    \renewcommand{\bcbartext}{}
+    \renewcommand{\bcbarlabel}{}
+    \renewcommand{\bcbarvalue}{##2\bcunit}
+    \renewcommand{\bcplainbar}{false}
+    % Read parameters:
+    \setkeys{bcbar}{##1}
+    % Draw bar:
+    \fill[color=\bcbarcolor,fill,draw] (0,\bcpos) rectangle ($##2-\bcmin*(\bcwidth/\bcrange,0) + (0,\bcpos-5mm)$);
+    \draw (0,\bcpos) rectangle ($##2-\bcmin*(\bcwidth/\bcrange,0) + (0,\bcpos-5mm)$);
+    \ifthenelse{\equal{\bcplainbar}{true}}{}{
+      % Write value:
+      \node[anchor=west] at ($##2-\bcmin*(\bcwidth/\bcrange,0) + (0,\bcpos-2.5mm)$) {\sf \bcbarvalue};
+    }
+    % Write text:
+    \node[anchor=west] at (0,\bcpos-2.5mm) {\sf \bcbartext};
+    % Write label:
+    \node[anchor=east] at (0,\bcpos-2.5mm) {\sf \bcbarlabel};
+    % Move vertical position downward:
+    \addtolength{\bcpos}{-5mm}
+  }%
+  % Labels:
+  \newcommand{\bclabel}[1]{
+    % Write label:
+    \node[anchor=east] at (0,\bcpos) {\sf ##1};
+  }%
+  % General skips:
+  \newcommand{\bcskip}[2][]{
+    % Set defaults:
+    \renewcommand{\bcskiplabel}{}
+    % Read parameters:
+    \setkeys{bcskip}{##1}
+    % Write label:
+    \node[anchor=east] at ($(0,\bcpos) - 0.5*(0,##2)$) {\sf \bcskiplabel};
+    % Move vertical position downward:
+    \addtolength{\bcpos}{-##2}
+  }%
+  % Small skips:
+  \renewcommand{\smallskip}[1][]{\bcskip[##1]{2.5mm}}%
+  % Medium skips:
+  \renewcommand{\medskip}[1][]{\bcskip[##1]{5.0mm}}%
+  % Large skips:
+  \renewcommand{\bigskip}[1][]{\bcskip[##1]{7.5mm}}%
+  % X-axis label:
+  \newcommand{\getbcxlabel}{}%
+  \newcommand{\bcxlabel}[1]{
+    \renewcommand{\getbcxlabel}{##1}
+  }%
+  \newcommand{\bcrange}{\bcstripunit{\dimexpr\bcmax pt-\bcmin pt\relax}}
+  % Set defaults:
+  \renewcommand{\bcunit}{}%
+  \renewcommand{\bcmin}{0}%
+  \renewcommand{\bcmax}{100}%
+  \renewcommand{\bcstep}{\bcrange}%
+  \renewcommand{\bcsteps}{0,\bcstep,...,\bcrange}%
+  \renewcommand{\bcscale}{1}%
+  \renewcommand{\bcplainchart}{false}%
+  \setlength{\bcpos}{-2.5mm}%
+  \setlength{\bcwidth}{8cm}%
+  % Read parameters:
+  \setkeys{bchart}{#1}%
+  % Draw chart:
+  \begin{tikzpicture}[scale=\bcscale]
+}{
+    % Draw axes:
+    \addtolength{\bcpos}{-2.5mm}
+    \draw (0,\bcpos) -- (\bcwidth,\bcpos);
+    \draw (0,0) -- (0,\bcpos);
+    % Draw scale:
+    \ifthenelse{\equal{\bcplainchart}{true}}
+    { % Scale off
+      % Set position for x-axis label:
+      \coordinate (labelpos) at (0,\bcpos-2mm);
+    }{ % Scale on
+      % Draw start value and set position for x-axis label:
+      \draw (0,\bcpos) -- (0,\bcpos-1mm);
+      \node[anchor=north] (n) at (0,\bcpos-1mm)
+        {\sf \bcstripunit{\dimexpr\bcmin pt\relax}\bcunit};
+      \coordinate (labelpos) at (n.south);
+      % Draw other values:
+      \foreach \x in \bcsteps {
+        \ifthenelse{\equal{\x}{0}}{}{
+          \draw ($\x*(\bcwidth/\bcrange,0) + (0,\bcpos)$) -- ($\x*(\bcwidth/\bcrange,0) + (0,\bcpos-1mm)$);
+          \node[anchor=north] at ($\x*(\bcwidth/\bcrange,0) + (0,\bcpos-1mm)$)
+            {\sf \bcstripunit{\dimexpr\bcmin pt+\x pt\relax}\bcunit};
+        }
+      }
+    }
+    % Write x-axis label:
+    \ifthenelse{\equal{\getbcxlabel}{}}{}{
+      \node[anchor=north,inner sep=0.5mm] at ($0.5*(\bcwidth,0) + (labelpos)$) {\sf \getbcxlabel};
+    }
+  \end{tikzpicture}%
+}
+
+
+% Auxiliary commands:
+
+\makeatletter
+\newcommand*{\bcstripunit}[1]{\strip@pt#1}
+\makeatother
+

@@ -1,0 +1,188 @@
+%% [merge.sty]
+%%
+%%	  MERGE -- A Form Letter Option to the LaTeX Letter Style
+%%
+%%				by
+%%
+%%			Graeme McKinstry
+%%			Computing Services Centre
+%%			University of Otago
+%%			P O Box 56
+%%			Dunedin, New Zealand
+%%
+%%		graeme%otago.ac.nz@relay.cs.net
+%%
+%%  This version has been slightly modified to ignore lines with a % in
+%%  the first column of the address data --- but after the first entry.
+%%  I renamed it 'mergeh.sty'                    Brian Housley, 27/07/09
+%%
+%% A version of these macros appeared in TUGboat 8 #1, April 1987.
+%%
+%% Merge is a substyle [option] under the Latex style 'Letter' which
+%% merges a standard letter with a separate file containing addresses
+%% and opening lines.  Merge will read {address}{opening} pairs from a
+%% specified file and merge them with a form letter by producing a separate
+%% letter environment (containing unique "\begin{letter}{address}" and
+%% "\opening{opening}" commands) for each pair.
+%%
+%% Detailed instructions for preparation of the form letter and the
+%% separate address file appear below, after the macros.
+%%
+%%
+%%	27 July 1988
+%%	Special Thanks go to B. Beeton (BNB@SEED.AMS.COM) for
+%%	-- supplying the raw TeX and documentation from the TUGBoat article;
+%%	-- adding some documentation;
+%%	-- and for placing this file in the <tex.tugboat> archives at score.
+%%
+%%	28 July 1988
+%%	C. Roberson (csrobe@icase.[arpa|edu], csrobe@[wm]cs.wm.edu)
+%%	-- some additional documentation (mostly cleanup for .sty file);
+%%	-- changed ID message to a form more similar to LaTeX's;
+%%	-- changed "Could not open file" to "Could not open address file"
+%%	   so user would better understand for which filename TeX
+%%	   was prompting with the string "\@mergefile=";
+%%	-- tested merge.sty;  It works!  Thanks, Graeme!
+%%	-- submitted file to /public/latex-style archives @ cs.rochester.edu.
+%%
+%%	6 September 1988
+%%	G. McKinstry
+%%	-- enhanced the macros to handle running headlines properly;
+%%	-- fixed some other problems from the original version not addressed
+%%	   fully by C. Roberson;
+%%	-- submitted new file to the latex-style archives.
+%%
+%%  11 August 2011
+%%  B. Housley
+%%  -- a small change to ignore line beginiing with a % AFTER the first address
+%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+% csr - changed next line to conform more to LaTeX greeting.
+\typeout{Letter Sub-Style 'Merge'. Release 6 October 1986 by Graeme McKinstry}
+
+%% The basic algorithm is:
+%%      1. Open the address file.
+%%      2. Read the addresses file getting the address and opening line.
+%%      3. Process the contents of the MERGE environment and store it
+%%         in a box (\@store). This is the standard part of the letter.
+%%      4. Produce the start of the letter (your address (including date),
+%%         their address, and the opening line).
+%%      5. Make a copy of the standard letter (\@store) and unbox this copy.
+%%      6. Repeat steps 2, 4, and 5 (not 3) until there are no more addresses.
+
+
+\newbox\@store
+\long\def\@contents{\global\setbox\@store=\vbox\bgroup}  % store the contents
+\long\def\@endcontents{\egroup}                          % of the letter
+
+\def\@sendaddress{test}
+\def\@openingtext{test}
+\newif\if@firsttime                          % For storing the standard letter
+\@firsttimetrue                              %   the first time through.
+
+\newread\@addrfile                           % allocate an input stream
+
+\def\@openfile{\openin\@addrfile=\@mergefile % open the address file
+\ifeof\@addrfile                             % i.e., didn't open successfully
+  \loop
+     \immediate\write16{Could not open address file \@mergefile}
+     \closein\@addrfile                      % close the input stream
+     \read16 to \@mergefile                  % get another file name
+     \openin\@addrfile=\@mergefile           % open up input stream
+     \ifeof\@addrfile
+  \repeat                                    % repeat until successfully opened
+\fi}
+
+% The merge environment (used as the \begin{merge}. The argument (#1) is
+% the name of the file containing the addresses (a default of .tex extension)
+% This file is opened (\@openfile), read (\@readfile), and then the box
+% containing the contents of the standard letter is started (\@contents).
+
+\def\merge#1{\def\@mergefile{#1 }\@openfile
+                 \@readfile
+                 \@contents}
+
+% Read address file getting the address and opening line. If this is the
+% first through then there is no reason to call \endmerge as this will
+% be called later on (when \end{merge} is used).
+
+\def\@getopeningline{\global\read\@addrfile
+                            to\@openingtext}  % get the opening line
+\def\perc{\%}
+\def\@readfile{\global\read\@addrfile to\@sendaddress   % get the address
+              \ifeof\@addrfile
+                 \let\next=\relax
+              \else
+              \ifcat\perc\@sendaddress \else
+                 \@getopeningline
+                 \if@firsttime
+                    \let\next=\relax
+                 \else
+                    \let\next=\endmerge
+                 \fi\fi
+              \fi\next}
+
+\newbox\@letterbox       % For copy of \@store (the box containing the standard
+                         %   letter.
+\def\endmerge{\if@firsttime\@endcontents\global\@firsttimefalse\fi %
+                                        % end contents if it is the first time
+     \bgroup\let\oldletter=\letter
+     \def\letter##1\@relax{\oldletter{##1}}  % redefines letter
+     \expandafter\letter\@sendaddress\@relax % need to expand \@sendaddress
+%     \opening{\@openingtext\vskip2\parskip} % I do the spacing myself
+     \opening{\@openingtext}
+     \setbox\@letterbox=\copy\@store  % copy the contents of the letter
+     \unvbox\@letterbox
+     \endletter\egroup
+     \ifeof\@addrfile
+        \message{End of file}
+        \let\next=\relax
+     \else
+        \let\next=\@readfile          % loop round yet again
+     \fi\next}
+
+\endinput
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% A letter, say LETTER.TEX, would be set up as follows:
+
+%% \documentstyle[merge]{letter}
+%%
+%% \address{...}		% your address
+%% \signature{...}		% your signature
+%%
+%% \begin{document}
+%% \begin{merge}{myaddresses}	% MYADDRESSES.TEX contains addresses+openings
+%%
+%% With regard to ....		% letter starts
+%%
+%% \closing{...}		% closing
+%% \ps{...}			% \ps, \encl, \cc, etc.
+%%
+%% \end{merge}
+%% \end{document}
+
+%% The address file, MYADDRESSES.TEX, would contain:
+
+%% {Computing Services Centre, \\	% first address
+%%  University of Otago, \\
+%%  Dunedin, \\
+%%  New Zealand}
+%% {Dear Graeme,}		% \opening for first address
+%% {Charles S. Roberson\\	% next address
+%%  Dept. of Computer Science\\
+%%  College of William and Mary\\
+%%  Williamsburg, VA  23185}
+%% {Dear Chip,}			% next \opening
+%% ....				% etc.
+
+%% NOTES:
+%%   Braces are matched, except that if the input is only one line then it
+%%     is not necessary to contain it within braces.
+%%   It is important to leave NO BLANK LINES at the end of the address file.
+%%   Be sure to supply the "\\" for breaking the addresses. -csr
+
+%% [merge.sty]

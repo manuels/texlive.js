@@ -1,0 +1,544 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% This is a helper package with an elementary (full) matrix datastructure,
+% featuring O(1) index access and O(N) creation, deletion, copy.
+%
+% The following macros are supplied:
+%
+% \pgfplotsmatrixnewempty
+% \pgfplotsmatrixresize
+% \pgfplotsmatrixsize
+% \pgfplotsmatrixselect
+% \pgfplotsmatrixset
+% \pgfplotsmatrixletentry
+% \pgfplotsmatrixforeach
+% \pgfplotsmatrixLUdecomp
+% \pgfplotsmatrixLUsolve
+%
+%
+% Copyright 2007/2008 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Creates a new, empty matrix.
+\def\pgfplotsmatrixnewempty#1{%
+	\pgfplotsarray@@def{#1@rows}{0}%
+	\pgfplotsarray@@def{#1@cols}{1}%
+}
+
+% resizes (truncates) matrix #1 to #2 rows and #3 cols.
+%
+% the elements won't be initialised. Use 'set' for each element.
+\def\pgfplotsmatrixresize#1#2#3{%
+	\pgfplotsarray@@edef{#1@rows}{#2}%
+	\pgfplotsarray@@edef{#1@cols}{#3}%
+}
+
+% Invokes code '#2' if the matrix named '#1' exists and '#3' if it does
+% not exist.
+\def\pgfplotsmatrixifdefined#1#2#3{%
+	\pgfutil@ifundefined{#1@rows}{#3}{#2}%
+}%
+
+
+
+% Counts the number of rows/cols in matrix #1, storing it into the count
+% registers #2, #3.
+% Example:
+% \pgfplotsmatrixsize\foo\to{\count0}{\count1}%
+% \the\count0, \the\count1
+\long\def\pgfplotsmatrixsize#1\to#2#3{%
+	#2=\csname\string#1@rows\endcsname\relax
+	#3=\csname\string#1@cols\endcsname\relax
+}
+
+\long\def\pgfplotsmatrixsizetomacro#1\to#2#3{%
+	\expandafter\let\expandafter#2\csname\string#1@rows\endcsname
+	\expandafter\let\expandafter#3\csname\string#1@cols\endcsname
+}
+
+
+% Returns the (#1,#2) element of matrix #3 into macro #4
+% Arguments:
+% #1: a row index 0,...,N-1 where N is rowcount.
+%     #1 must expand to an integer.
+% #2: a col index 0,...,N-1 where N is colcount.
+%     #2 must expand to an integer.
+% #3: a matrix
+% #4: a macro name
+% Example:
+%   Element 0:
+%   \pgfplotsmatrixselect0,1\of\foo\to\elem
+%   \elem
+%   Element \count1:
+%   \pgfplotsmatrixselect\count1,2\of\foo\to\elem
+\def\pgfplotsmatrixselect#1,#2\of#3\to#4{%
+	\expandafter\let\expandafter#4\csname\string#3@#1,#2\endcsname%
+	\ifx#4\relax
+		\pgfplotsthrow{no such element}{#1,#2}{No such element: \string\pgfplotsmatrixselect#1,#2\string\of{\string#3}}\pgfeov%
+	\fi
+}
+
+% Expands to the value (#1,#2) of matrix #3.
+% #1: a row index (not a register)
+% #2: a col index 
+% #3: a matrix
+\def\pgfplotsmatrixvalueofelem#1,#2\of#3{\csname\string#3@#1,#2\endcsname}%
+
+% Sets element '#1,#2' of matrix '#3' to '#4'.
+\def\pgfplotsmatrixset#1,#2\of#3\to#4{%
+	\pgfutil@namedef{\string#3@#1,#2}{#4}%
+}
+\long\def\pgfplotsmatrixletentry#1,#2\of#3=#4{%
+	\expandafter\let\csname\string#3@#1,#2\endcsname=#4\relax
+}
+
+% During the loop, \pgfplotsmatrixforeachrowindex expands to the
+% current row index and \pgfplotsmatrixforeachcolindex to the actual
+% col index. It invokes \pgfplotsmatrixforeachrowend after each
+% complete row.
+%
+% This macro uses
+% \c@pgf@counta,\c@pgf@countb,\c@pgf@countc,\c@pgf@countd
+\long\def\pgfplotsmatrixforeach#1\as#2#3{%
+	\pgfplotsmatrixsize#1\to\c@pgf@countc\c@pgf@countd
+	\long\def\pgfplotsmatrixforeach@{#3}%
+	\def\pgfplotsmatrixforeach@assign##1{\def#2{##1}}%
+	\def\pgfplotsmat@select##1,##2\to{\pgfplotsmatrixselect##1,##2\of#1\to}%
+	\def\pgfplotsmatrixforeachrowindex{\the\c@pgf@counta}%
+	\def\pgfplotsmatrixforeachcolindex{\the\c@pgf@countb}%
+	\c@pgf@counta=0
+	\pgfplotsmatrixforeach@loop
+	\let\pgfplotsmatrixforeachcolindex\relax
+	\let\pgfplotsmatrixforeachrowindex\relax%
+}%
+\let\pgfplotsmatrixforeachrowend=\relax
+\def\pgfplotsmatrixforeach@loop{%
+	\ifnum\c@pgf@counta<\c@pgf@countc
+		\c@pgf@countb=0
+		\pgfplotsmatrixforeach@loop@
+		%
+		\pgfplotsmatrixforeachrowend
+		%
+		\advance\c@pgf@counta by1
+		\expandafter\pgfplotsmatrixforeach@loop
+	\fi
+}%
+\def\pgfplotsmatrixforeach@loop@{%
+	\ifnum\c@pgf@countb<\c@pgf@countd
+		\pgfplotsmat@select\the\c@pgf@counta,\the\c@pgf@countb\to\pgfplotsmat@Aij
+		\expandafter\pgfplotsmatrixforeach@assign\expandafter{\pgfplotsmat@Aij}%
+		\pgfplotsmatrixforeach@
+		%
+		\advance\c@pgf@countb by1
+		\expandafter\pgfplotsmatrixforeach@loop@
+	\fi
+}%
+
+% Defines \pgfplotsretval to be a text-representation of the matrix.
+% It will contain '\n' as newline macro and \t to separate cells.
+%
+\def\pgfplotsmatrixtotext#1{%
+	\begingroup
+	\pgfplotsapplistXnewempty\pgfplotsretval@
+	\def\pgfplotsmatrixforeachrowend{%
+		\pgfplotsapplistXpushback\n\to\pgfplotsretval@
+	}%
+	\pgfplotsmatrixforeach#1\as\entry{%
+		\pgfmathfloatparsenumber\entry
+		\pgfmathfloattosci\pgfmathresult
+		\edef\entry{\pgfmathresult\noexpand\t}%
+		\expandafter\pgfplotsapplistXpushback\entry\to\pgfplotsretval@
+	}%
+	\pgfplotsapplistXlet\pgfplotsretval=\pgfplotsretval@
+	\pgfmath@smuggleone\pgfplotsretval
+	\endgroup
+}
+
+% Takes a matrix #1 and replaces it by its LU decomposition.
+% The LU decomposition uses implicit pivoting; the pivoting
+% information is stored in a permutation array #2 and a sign macro #3.
+%
+% It is to be used together with \pgfplotsmatrixsolveLEQS.
+%
+% #1: the input matrix (square size)
+% #2: a macro name; will be used to store the permutation array for
+% the pivoting.
+% #3: a macro name, will contain the sign of the permutation (either
+% +1 or -1).
+%
+% The algorithm has been converted from Numerical Recipes in C (I did
+% not copy the comments, though). You find the complete reference in
+% Chapter 2 of Numerical Recipes.
+%
+% If the matrix is singular, an exception will be raised.
+% If the matrix is singular up to working precision,
+% \pgfplotsmatrixLUdecompwarnsingular will be invoked and the
+% algorithm continues with a small threshold.
+%
+% All arithmetics is computed with \pgfplotscoordmath{default} (which
+% is float in the initial configuration). Use
+% \pgfplotssetcoordmathfor{default}{pgfbasic} to switch it to standard
+% pgf arithmetics.
+%
+% ATTENTION. This routine re-uses the four counters
+% \c@pgf@counta,...\c@pgf@countd.
+% Furthermore, it does not free any memory.
+% Make sure you use it inside of local scopes.
+\def\pgfplotsmatrixLUdecomp#1\perm#2\sign#3{%
+	\let\pgfplotsmat@i=\c@pgf@counta
+	\let\pgfplotsmat@imax=\c@pgf@countb
+	\let\pgfplotsmat@j=\c@pgf@countc
+	\let\pgfplotsmat@k=\c@pgf@countd
+	\countdef\pgfplotsmat@n=0
+	\let\pgfplotsmat@big=\pgfutil@empty
+	\let\pgfplotsmat@dum=\pgfutil@empty
+	\let\pgfplotsmat@sum=\pgfutil@empty
+	\let\pgfplotsmat@temp=\pgfutil@empty
+	\pgfplotsmatrixsize#1\to\pgfplotsmat@n\c@pgf@countd
+	\ifnum\c@pgf@countd=\pgfplotsmat@n
+	\else
+		\pgfplots@error{Sorry, \string\pgfplotsmatrixLUdecomp\space expected an n x n matrix, but got \the\pgfplotsmat@n\space x \the\c@pgf@countd.}%
+	\fi
+	\pgfplotsarraynewempty\pgfplotsmat@vv
+	\pgfplotsarrayresize\pgfplotsmat@vv\pgfplotsmat@n
+	\pgfplotsarrayresize#2\pgfplotsmat@n
+	\def\pgfplotsmat@parity{1}%
+	\def\pgfplotsmat@select##1,##2\to{\pgfplotsmatrixselect##1,##2\of#1\to}%
+	\def\pgfplotsmat@letentry##1,##2={\pgfplotsmatrixletentry##1,##2\of#1=}%
+	\def\pgfplotsmat@letpermentry##1={\pgfplotsarrayletentry##1\of#2=}%
+	%
+	\pgfplotsmat@i=0
+	\pgfplotsmatrixLUdecomp@scalingloop
+	%
+	\ifnum\pgfplotsmat@n>0 % this is used for error recovery.
+		%
+		\pgfplotsmat@j=0
+		\pgfplotsmatrixLUdecomp@mainloop@j
+		%
+		\let#3=\pgfplotsmat@parity
+	\fi
+}%
+\def\pgfplotsmatrixLUdecomp@scalingloop{%
+	\ifnum\pgfplotsmat@i<\pgfplotsmat@n
+		\pgfplotscoordmath{default}{zero}%
+		\let\pgfplotsmat@big=\pgfmathresult
+		%
+		\pgfplotsmat@j=0
+		\pgfplotsmatrixLUdecomp@scalingloop@
+		%
+		\pgfplotscoordmath{default}{if is}{\pgfplotsmat@big}{0}{%
+			\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{Singular matrix in \string\pgfplotsmatrixLUdecomp}\pgfeov%
+			\pgfplotsmat@n=-1
+		}{%
+			\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfplotsmat@big}}%
+			\pgfplotsarrayletentry\pgfplotsmat@i\of\pgfplotsmat@vv=\pgfmathresult
+		}%
+		%
+		\advance\pgfplotsmat@i by1
+		\expandafter\pgfplotsmatrixLUdecomp@scalingloop
+	\fi
+}%
+\def\pgfplotsmatrixLUdecomp@scalingloop@{%
+	\ifnum\pgfplotsmat@j<\pgfplotsmat@n
+		%
+		\pgfplotsmat@select\the\pgfplotsmat@i,\the\pgfplotsmat@j\to\pgfplotsmat@Aij
+		\pgfplotscoordmath{default}{parsenumber}{\pgfplotsmat@Aij}%
+		\let\pgfplotsmat@Aij=\pgfmathresult
+		\pgfplotsmat@letentry\the\pgfplotsmat@i,\the\pgfplotsmat@j=\pgfplotsmat@Aij
+		%
+		\pgfplotscoordmath{default}{op}{abs}{{\pgfplotsmat@Aij}}%
+		\let\pgfplotsmat@temp=\pgfmathresult
+		\pgfplotscoordmath{default}{max}{\pgfplotsmat@temp}{\pgfplotsmat@big}%
+		\let\pgfplotsmat@big=\pgfmathresult
+		%
+		\advance\pgfplotsmat@j by1
+		\expandafter\pgfplotsmatrixLUdecomp@scalingloop@
+	\fi
+}%
+
+\def\pgfplotsmatrixLUdecomp@mainloop@j{%
+	\ifnum\pgfplotsmat@j<\pgfplotsmat@n
+		%
+		\pgfplotsmat@i=0
+		\pgfplotsmatrixLUdecomp@mainloop@j@i
+		%
+		\pgfplotscoordmath{default}{zero}%
+		\let\pgfplotsmat@big=\pgfmathresult
+		%
+		\pgfplotsmat@i=\pgfplotsmat@j
+		\pgfplotsmatrixLUdecomp@mainloop@j@i@second
+		%
+		\ifnum\pgfplotsmat@j=\pgfplotsmat@imax
+		\else
+			% interchange rows...
+			\pgfplotsmat@k=0
+			\pgfplotsmatrixLUdecomp@mainloop@j@k
+			%
+			\c@pgfplotsarray@tmp=-\pgfplotsmat@parity\relax%
+			\edef\pgfplotsmat@parity{\the\c@pgfplotsarray@tmp}%
+			%
+			% FIXME : this here is DIFFERENT. Seems there is something
+			% missing in Numerical Recipes book
+			\pgfplotsarrayselect\pgfplotsmat@j\of\pgfplotsmat@vv\to\pgfplotsmat@dum
+			%\pgfplotsarrayselect\pgfplotsmat@imax\of\pgfplotsmat@vv\to\pgfplotsmat@temp
+			%\pgfplotsarrayletentry\pgfplotsmat@j\of\pgfplotsmat@vv=\pgfplotsmat@temp
+			\pgfplotsarrayletentry\pgfplotsmat@imax\of\pgfplotsmat@vv=\pgfplotsmat@dum
+		\fi
+		%
+		\edef\pgfplotsmat@dum{\the\pgfplotsmat@imax}%
+		\pgfplotsmat@letpermentry\pgfplotsmat@j=\pgfplotsmat@dum
+		%
+		\pgfplotsmat@select\the\pgfplotsmat@j,\the\pgfplotsmat@j\to\pgfplotsmat@Ajj
+		\pgfplotscoordmath{default}{if is}{\pgfplotsmat@Ajj}{0}{%
+			\pgfplotscoordmath{default}{parsenumber}{1e-15}%
+			\pgfplotsmatrixLUdecompwarnsingular
+			\pgfplotsmat@letentry\the\pgfplotsmat@j,\the\pgfplotsmat@j=\pgfmathresult
+		}{%
+		}%
+		%
+		%
+		\advance\pgfplotsmat@j by1
+		\ifnum\pgfplotsmat@j=\pgfplotsmat@n
+			\advance\pgfplotsmat@j by-1
+		\else
+			\advance\pgfplotsmat@j by-1
+			\pgfplotsmat@select\the\pgfplotsmat@j,\the\pgfplotsmat@j\to\pgfplotsmat@Ajj
+			\pgfplotscoordmath{default}{op}{reciprocal}{{\pgfplotsmat@Ajj}}%
+			\let\pgfplotsmat@dum=\pgfmathresult
+			\pgfplotsmat@i=\pgfplotsmat@j
+			\advance\pgfplotsmat@i by1
+			\pgfplotsmatrixLUdecomp@mainloop@j@i@final
+		\fi
+		\advance\pgfplotsmat@j by1
+		\expandafter\pgfplotsmatrixLUdecomp@mainloop@j
+	\fi
+}%
+\def\pgfplotsmatrixLUdecompwarnsingular{%
+	\pgfplots@warning{Linear system is singular up to machine precision! Continuing with small threshold.}%
+}%
+\def\pgfplotsmatrixLUdecomp@mainloop@j@i{%
+	\ifnum\pgfplotsmat@i<\pgfplotsmat@j
+		%
+		\pgfplotsmat@select\the\pgfplotsmat@i,\the\pgfplotsmat@j\to\pgfplotsmat@sum
+		\pgfplotsmat@k=0
+		\pgfplotsmatrixLUdecomp@mainloop@j@i@k
+		\pgfplotsmat@letentry\the\pgfplotsmat@i,\the\pgfplotsmat@j=\pgfplotsmat@sum
+		%
+		\advance\pgfplotsmat@i by1
+		\expandafter\pgfplotsmatrixLUdecomp@mainloop@j@i
+	\fi
+}%
+\def\pgfplotsmatrixLUdecomp@mainloop@j@i@k{%
+	\ifnum\pgfplotsmat@k<\pgfplotsmat@i
+		%
+		\pgfplotsmat@select\the\pgfplotsmat@i,\the\pgfplotsmat@k\to\pgfplotsmat@Aik
+		\pgfplotsmat@select\the\pgfplotsmat@k,\the\pgfplotsmat@j\to\pgfplotsmat@Akj
+		\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsmat@Aik}{\pgfplotsmat@Akj}}%
+		\pgfplotscoordmath{default}{op}{subtract}{{\pgfplotsmat@sum}{\pgfmathresult}}%
+		\let\pgfplotsmat@sum=\pgfmathresult
+		%
+		\advance\pgfplotsmat@k by1
+		\expandafter\pgfplotsmatrixLUdecomp@mainloop@j@i@k
+	\fi
+}
+\def\pgfplotsmatrixLUdecomp@mainloop@j@i@second{%
+	\ifnum\pgfplotsmat@i<\pgfplotsmat@n
+		%
+		\pgfplotsmat@select\the\pgfplotsmat@i,\the\pgfplotsmat@j\to\pgfplotsmat@sum
+		%
+		\pgfplotsmat@k=0
+		\pgfplotsmatrixLUdecomp@mainloop@j@i@second@k
+		\pgfplotsmat@letentry\the\pgfplotsmat@i,\the\pgfplotsmat@j=\pgfplotsmat@sum
+		%
+		\pgfplotscoordmath{default}{op}{abs}{{\pgfplotsmat@sum}}%
+		\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\pgfplotsarrayvalueofelem\the\pgfplotsmat@i\of\pgfplotsmat@vv}}%
+		\let\pgfplotsmat@dum=\pgfmathresult
+		\pgfplotscoordmath{default}{if less than}{\pgfplotsmat@dum}{\pgfplotsmat@big}{%
+		}{%
+			\let\pgfplotsmat@big=\pgfplotsmat@dum
+			\pgfplotsmat@imax=\pgfplotsmat@i
+		}%
+		%
+		\advance\pgfplotsmat@i by1
+		\expandafter\pgfplotsmatrixLUdecomp@mainloop@j@i@second
+	\fi
+}%
+\def\pgfplotsmatrixLUdecomp@mainloop@j@i@second@k{%
+	\ifnum\pgfplotsmat@k<\pgfplotsmat@j
+		%
+		\pgfplotsmat@select\the\pgfplotsmat@i,\the\pgfplotsmat@k\to\pgfplotsmat@Aik
+		\pgfplotsmat@select\the\pgfplotsmat@k,\the\pgfplotsmat@j\to\pgfplotsmat@Akj
+		\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsmat@Aik}{\pgfplotsmat@Akj}}%
+		\pgfplotscoordmath{default}{op}{subtract}{{\pgfplotsmat@sum}{\pgfmathresult}}%
+		\let\pgfplotsmat@sum=\pgfmathresult
+		%
+		\advance\pgfplotsmat@k by1
+		\expandafter\pgfplotsmatrixLUdecomp@mainloop@j@i@second@k
+	\fi
+}%
+
+\def\pgfplotsmatrixLUdecomp@mainloop@j@k{%
+	\ifnum\pgfplotsmat@k<\pgfplotsmat@n
+		%
+		\pgfplotsmat@select\the\pgfplotsmat@imax,\the\pgfplotsmat@k\to\pgfplotsmat@dum
+		\pgfplotsmat@select\the\pgfplotsmat@j,\the\pgfplotsmat@k\to\pgfplotsmat@Ajk
+		\pgfplotsmat@letentry\the\pgfplotsmat@imax,\the\pgfplotsmat@k=\pgfplotsmat@Ajk
+		\pgfplotsmat@letentry\the\pgfplotsmat@j,\the\pgfplotsmat@k=\pgfplotsmat@dum
+		%
+		\advance\pgfplotsmat@k by1
+		\expandafter\pgfplotsmatrixLUdecomp@mainloop@j@k
+	\fi
+}
+\def\pgfplotsmatrixLUdecomp@mainloop@j@i@final{%
+	\ifnum\pgfplotsmat@i<\pgfplotsmat@n
+		%
+		\pgfplotsmat@select\the\pgfplotsmat@i,\the\pgfplotsmat@j\to\pgfplotsmat@Aij
+		\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsmat@Aij}{\pgfplotsmat@dum}}%
+		\pgfplotsmat@letentry\the\pgfplotsmat@i,\the\pgfplotsmat@j=\pgfmathresult
+		%
+		\advance\pgfplotsmat@i by1
+		\expandafter\pgfplotsmatrixLUdecomp@mainloop@j@i@final
+	\fi
+}
+
+
+
+% Solves the set of n linear equations Ax = b where A = LU is given in
+% (#1,#2) and b = #3.
+%
+% #1: is a result of \pgfplotsmatrixLUdecomp
+% #2: is the permutation vector returned by \pgfplotsmatrixLUdecomp
+% #3: the right hand side. On output, it will be *overwritten* with
+% the solution.
+%
+% The algorithm has been converted from Numerical Recipes in C (I did
+% not copy the comments, though). You find the complete reference in
+% Chapter 2 of Numerical Recipes.
+\def\pgfplotsmatrixLUbacksubst#1\perm#2\inout#3{%
+	\let\pgfplotsmat@i=\c@pgf@counta
+	\let\pgfplotsmat@ii=\c@pgf@countb
+	\let\pgfplotsmat@j=\c@pgf@countc
+	\let\pgfplotsmat@n=\c@pgf@countd
+	\let\pgfplotsmat@sum=\pgfutil@empty
+	\pgfplotsmatrixsize#1\to\pgfplotsmat@n\c@pgf@counta
+	\pgfplotsarraysize#3\to\c@pgf@counta
+	\ifnum\c@pgf@counta=\pgfplotsmat@n
+		\def\pgfplotsmat@select##1,##2\to{\pgfplotsmatrixselect##1,##2\of#1\to}%
+		\def\pgfplotsmat@selectperm##1\to{\pgfplotsarrayselect##1\of#2\to}%
+		\def\pgfplotsmat@selectb##1\to{\pgfplotsarrayselect##1\of#3\to}%
+		\def\pgfplotsmat@letresult##1={\pgfplotsarrayletentry##1\of#3=}%
+		%
+		\pgfplotsmat@ii=-1
+		\pgfplotsmat@i=0
+		\pgfplotsmatrixLUbacksubst@loop@i
+		%
+		\pgfplotsmat@i=\pgfplotsmat@n
+		\advance\pgfplotsmat@i by-1
+		\pgfplotsmatrixLUbacksubst@loop@i@backw
+	\else
+		\pgfplots@error{Sorry, \string\pgfplotsmatrixLUbacksubst\space expected a vector of length \the\pgfplotsmat@n\space, not \the\c@pgf@counta}%
+	\fi
+}%
+\def\pgfplotsmatrixLUbacksubst@loop@i{%
+	\ifnum\pgfplotsmat@i<\pgfplotsmat@n
+		%
+		\pgfplotsmat@selectperm\pgfplotsmat@i\to\pgfplotsmat@ip
+		\pgfplotsmat@selectb\pgfplotsmat@ip\to\pgfplotsmat@sum
+		\pgfplotsmat@selectb\pgfplotsmat@i\to\pgfplotsmat@temp
+		%
+		\pgfplotscoordmath{default}{parsenumber}{\pgfplotsmat@sum}%
+		\let\pgfplotsmat@sum=\pgfmathresult
+		\pgfplotscoordmath{default}{parsenumber}{\pgfplotsmat@temp}%
+		\let\pgfplotsmat@temp=\pgfmathresult
+		%
+		\pgfplotsmat@letresult\pgfplotsmat@ip=\pgfplotsmat@temp
+		%
+		\ifnum\pgfplotsmat@ii<0
+			\pgfplotscoordmath{default}{if is}{\pgfplotsmat@sum}{0}{%
+			}{%
+				\pgfplotsmat@ii=\pgfplotsmat@i
+			}%
+		\else
+			\pgfplotsmat@j=\pgfplotsmat@ii
+			\pgfplotsmatrixLUbacksubst@loop@i@j
+		\fi
+		\pgfplotsmat@letresult\pgfplotsmat@i=\pgfplotsmat@sum
+		%
+		\advance\pgfplotsmat@i by1
+		\expandafter\pgfplotsmatrixLUbacksubst@loop@i
+	\fi
+}%
+\def\pgfplotsmatrixLUbacksubst@loop@i@j{%
+	\ifnum\pgfplotsmat@j<\pgfplotsmat@i
+		%
+		\pgfplotsmat@select\the\pgfplotsmat@i,\the\pgfplotsmat@j\to\pgfplotsmat@Aij
+		\pgfplotsmat@selectb\pgfplotsmat@j\to\pgfplotsmat@temp
+		\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsmat@temp}{\pgfplotsmat@Aij}}%
+		\pgfplotscoordmath{default}{op}{subtract}{{\pgfplotsmat@sum}{\pgfmathresult}}%
+		\let\pgfplotsmat@sum=\pgfmathresult
+		%
+		\advance\pgfplotsmat@j by1
+		\expandafter\pgfplotsmatrixLUbacksubst@loop@i@j
+	\fi
+}%
+
+\def\pgfplotsmatrixLUbacksubst@loop@i@backw{%
+	\ifnum\pgfplotsmat@i<0
+	\else
+		%
+		\pgfplotsmat@selectb\pgfplotsmat@i\to\pgfplotsmat@sum
+		\pgfplotsmat@j=\pgfplotsmat@i
+		\advance\pgfplotsmat@j by1
+		\pgfplotsmatrixLUbacksubst@loop@i@backw@j
+		%
+		\pgfplotsmat@select\the\pgfplotsmat@i,\the\pgfplotsmat@i\to\pgfplotsmat@Aii
+		\pgfplotscoordmath{default}{op}{divide}{{\pgfplotsmat@sum}{\pgfplotsmat@Aii}}%
+		\pgfplotsmat@letresult\pgfplotsmat@i=\pgfmathresult
+		%
+		\advance\pgfplotsmat@i by-1
+		\expandafter\pgfplotsmatrixLUbacksubst@loop@i@backw
+	\fi
+}%
+\def\pgfplotsmatrixLUbacksubst@loop@i@backw@j{%
+	\ifnum\pgfplotsmat@j<\pgfplotsmat@n
+		%
+		\pgfplotsmat@select\the\pgfplotsmat@i,\the\pgfplotsmat@j\to\pgfplotsmat@Aij
+		\pgfplotsmat@selectb\pgfplotsmat@j\to\pgfplotsmat@temp
+		\pgfplotscoordmath{default}{op}{multiply}{{\pgfplotsmat@temp}{\pgfplotsmat@Aij}}%
+		\pgfplotscoordmath{default}{op}{subtract}{{\pgfplotsmat@sum}{\pgfmathresult}}%
+		\let\pgfplotsmat@sum=\pgfmathresult
+		%
+		\advance\pgfplotsmat@j by1
+		\expandafter\pgfplotsmatrixLUbacksubst@loop@i@backw@j
+	\fi
+}%
+
+% Solves the linear equation system Ax = b.
+% #1: the matrix A
+% #2: the right-hand-side b. On output, #2 will contain the solution
+% and A will be overwritten.
+%
+% ATTENTION. This routine re-uses the four counters
+% \c@pgf@counta,...\c@pgf@countd.
+% Furthermore, it does not free any memory.
+% Make sure you use it inside of local scopes.
+\def\pgfplotsmatrixsolveLEQS#1=#2{%
+	\pgfplotsmatrixLUdecomp#1\perm\pgfplotsmatrix@perm\sign\pgfplotsmatrix@sign
+	\pgfplotsmatrixLUbacksubst#1\perm\pgfplotsmatrix@perm\inout#2%
+}%

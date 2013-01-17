@@ -1,0 +1,58 @@
+# -*- CPERL -*-
+package LaTeXML::Package::Pool;
+use strict;
+use LaTeXML::Package;
+use LaTeXML::Util::Pathname;
+use Cwd qw(cwd abs_path);
+DeclareOption('report',sub {PassOptions('omdoc','sty',ToString(Digest(T_CS('\CurrentOption')))); });
+DeclareOption('book',sub {PassOptions('omdoc','sty',ToString(Digest(T_CS('\CurrentOption')))); });
+DeclareOption('chapter',sub {PassOptions('omdoc','sty',ToString(Digest(T_CS('\CurrentOption')))); });
+DeclareOption('part',sub {PassOptions('omdoc','sty',ToString(Digest(T_CS('\CurrentOption')))); });
+DeclareOption('showignores',sub {PassOptions('omdoc','sty',ToString(Digest(T_CS('\CurrentOption')))); });
+DeclareOption('extrefs',sub {PassOptions('sref','sty',ToString(Digest(T_CS('\CurrentOption')))); });
+DeclareOption(undef,sub {PassOptions('article','cls',ToString(Digest(T_CS('\CurrentOption')))); });
+ProcessOptions();
+LoadClass('article');
+RequirePackage('sref');
+RegisterNamespace('omdoc'=>"http://omdoc.org/ns");
+RegisterNamespace('om'=>"http://www.openmath.org/OpenMath");
+RegisterNamespace('m'=>"http://www.w3.org/1998/Math/MathML");
+RegisterNamespace('dc'=>"http://purl.org/dc/elements/1.1/");
+RegisterNamespace('cc'=>"http://creativecommons.org/ns");
+RegisterNamespace('stex'=>"http://kwarc.info/ns/sTeX");
+RegisterNamespace('ltx'=>"http://dlmf.nist.gov/LaTeXML");
+RelaxNGSchema('omdoc+ltxml',
+        '#default'=>"http://omdoc.org/ns",
+        'om'=>"http://www.openmath.org/OpenMath",
+        'm'=>"http://www.w3.org/1998/Math/MathML",
+        'dc'=>"http://purl.org/dc/elements/1.1/",
+        'cc'=>"http://creativecommons.org/ns",
+       'stex'=>"http://kwarc.info/ns/sTeX",
+       'ltx'=>"http://dlmf.nist.gov/LaTeXML");
+RequirePackage('omdoc');
+sub xmlBase {
+  my $baseuri = LookupValue('baseuri');
+  my $baselocal = LookupValue('baselocal');
+  my $cdir = abs_path(cwd());
+  $cdir =~ s/^$baselocal// if $baselocal;
+  #DG: Make this more robust!
+  my ($d,$f,$t);
+  my $srcf = LookupValue('SOURCEFILE');
+  if ( $srcf =~ /^(\w+):\/\//) {
+    $srcf =~ s/^(\w+):\///;
+  } # TODO: Hacky, do something better
+  ($d, $f,$t) = pathname_split(LookupValue('SOURCEFILE'));
+  $t = '' if LookupValue('cooluri');
+  Tokenize($baseuri.$cdir.'/'.$f.$t); }
+DefEnvironment('{document} OptionalKeyVals:omdoc',
+       "<omdoc:omdoc "
+      .    "?&KeyVal(#1,'id')(xml:id='&KeyVal(#1,'id')')"
+      .     "(?&Tokenize(&LookupValue('SOURCEBASE'))"
+      .      "(xml:id='&Tokenize(&LookupValue('SOURCEBASE')).omdoc')()) "
+      .    "?&Tokenize(&LookupValue('baseuri'))"
+      .    "(xml:base='&xmlBase()')()>"
+     .  "#body"
+      ."</omdoc:omdoc>",
+  beforeDigest=> sub { AssignValue(inPreamble=>0); },
+  afterDigest=> sub { $_[0]->getGullet->flush; return; });#$
+1;

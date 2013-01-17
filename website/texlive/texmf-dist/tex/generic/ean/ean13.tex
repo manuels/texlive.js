@@ -1,0 +1,130 @@
+%%%%%%%%%%%% The macro EAN generates EAN-13 barcodes. %%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% May 8, 1995                                 Petr Olsak (Ol\v{s}\'ak)
+
+% Don't change the (C) message.
+% You can use the macro on your own risk.
+% There is no warranty that the macro works OK.
+% For more detail about algorithm see the article in TUGboat.
+
+% Usage: For example \EAN 978-80-901950-0-4 generates the \vbox with barcodes
+% in TeX hight accuracy using \rule primitive.
+% The EAN number is appended downwards in OCR-b font (9pt).
+
+% If the macro \ISBN is used before the \EAN macro call, the ISBN is
+% appended upwards in OCR-b font (7pt) and the hight of barcodes is reduced.
+% Example: \ISBN 80-901950-0-8  \EAN 978-80-901950-0-4
+% Don't use brackets in parameters!
+% The macro checks the checkdigit in EAN; it does not in ISBN.
+
+% The bar correction is defined by \bcorr.
+% Each bar width will be reduced by \bcorr amount and
+% each space between bars will be enlarged by the same amount.
+% Recommendation: If you plan the print by offset process, use the barcode
+% correction 20 for your phototypesetter. This is the implicit value of
+% \bcorr=.020mm (see bellow).
+
+% You can overwrite some parameters at user level. For example:
+% \input ean13
+% \X=0.396mm                         % the module size is 120% of standard
+% \font\ocrb=ocrb9 scaled 1200       % re-load font to the new size
+% \font\ocrbsmall=ocrb7 scaled 1200  % re-load font to the new size
+% \bcorr=0.015mm                     % new bar correction
+% \ISBN 80-901950-0-8
+% \barheight=1.5cm                   % this must be after \ISBN call
+% \EAN 978-80-901950-0-8             % produces barcode with ISBN
+% \end                               % at 120% with height of bars 1.5cm
+
+% The tolerance of dimensions for basic size (100%, module size .33mm)
+% is 0.101 mm, 0.049 mm and 0.096 mm for various parameters.
+% You can compare: The TeX accuracy is 0.0000054 mm.
+% If you use the phototypesetter 2400 dpi then the accuracy is 0.01 mm.
+
+
+\message{The EAN-13 barcodes macro. Copyright (C) Petr Olsak, 1995}
+\font\ocrb=ocrb9       % for EAN in ``number form''
+\font\ocrbsmall=ocrb7  % for ISBN
+\newcount\numlines \newcount\nummodules  % number of bars and of modules.
+\newcount\numdigit \newcount\evensum \newcount\oddsum  % internal variables
+\newdimen\X            % the module size X,
+\newdimen\bcorr        % the bar correction (see bellow).
+\newdimen\workdimen \newdimen\barheight   % internal variables
+\def\internalcode{0111}             % Begin mark at start
+\def\frontdigits{}                  % 12--7 digit of EAN
+\def\EAN{\begingroup\EANscan}
+\def\EANscan#1{\if#1-\let\next=\EANscan \else
+    \advance\numdigit by1
+    \ifnum\numdigit<13
+      \ifodd\numdigit \advance\oddsum by #1 \else \advance\evensum by #1 \fi
+      \let\next=\EANscan
+      \ifnum\numdigit=1 \settables#1\def\firstdigit{#1}\else
+      \ifnum\numdigit<8 \usetabAB#1\edef\frontdigits{\frontdigits#1}\else
+      \ifnum\numdigit=8 \insertseparator \A \usetabC #1\def\enddigits{#1}%
+      \else             \usetabC#1\edef\enddigits{\enddigits#1}%
+      \fi\fi\fi
+    \else \testchecksum#1\usetabC#1\edef\enddigits{\enddigits#1}%
+      \let\next=\EANclose
+    \fi\fi \next}
+\def\testchecksum#1{\multiply\evensum by3 \advance\evensum by\oddsum
+    \oddsum=\evensum
+    \divide\oddsum by10 \multiply\oddsum by10 \advance\oddsum by10
+    \advance\oddsum by-\evensum \ifnum\oddsum=10 \oddsum=0 \fi
+    \ifnum#1=\oddsum \else
+    \errmessage{The checksum digit has to be \the\oddsum, no #1 !}\fi}
+\def\EANclose{\insertendmark
+    \wlog{EAN: \firstdigit\space\frontdigits\space\enddigits}%
+    \wlog{EANinternal: \internalcode}%
+    \expandafter\EANbox\internalcode..\endgroup}
+\def\A{\def\0{3211}\def\1{2221}\def\2{2122}\def\3{1411}\def\4{1132}%
+  \def\5{1231}\def\6{1114}\def\7{1312}\def\8{1213}\def\9{3112}}
+\def\B{\def\0{1123}\def\1{1222}\def\2{2212}\def\3{1141}\def\4{2311}%
+  \def\5{1321}\def\6{4111}\def\7{2131}\def\8{3121}\def\9{2113}}
+\def\settables#1{\ifnum#1=0 \def\tabs{\A\A\A\A\A\A}\fi
+                 \ifnum#1=1 \def\tabs{\A\A\B\A\B\B}\fi
+                 \ifnum#1=2 \def\tabs{\A\A\B\B\A\B}\fi
+                 \ifnum#1=3 \def\tabs{\A\A\B\B\B\A}\fi
+                 \ifnum#1=4 \def\tabs{\A\B\A\A\B\B}\fi
+                 \ifnum#1=5 \def\tabs{\A\B\B\A\A\B}\fi
+                 \ifnum#1=6 \def\tabs{\A\B\B\B\A\A}\fi
+                 \ifnum#1=7 \def\tabs{\A\B\A\B\A\B}\fi
+                 \ifnum#1=8 \def\tabs{\A\B\A\B\B\A}\fi
+                 \ifnum#1=9 \def\tabs{\A\B\B\A\B\A}\fi}
+\def\usetabAB#1{\expandafter\scantab\tabs\end \usetabC #1}
+\def\scantab#1#2\end{#1\def\tabs{#2}} % The tab #1 is activated and removed
+\def\usetabC#1{\edef\internalcode{\internalcode\csname#1\endcsname}}
+\def\insertseparator{\edef\internalcode{\internalcode 11111}}
+\def\insertendmark{\edef\internalcode{\internalcode 111}}
+\def\EANbox{\vbox\bgroup\offinterlineskip
+  \setbox0=\hbox\bgroup \kern11\X\EANrepeat}
+\def\EANrepeat#1#2{\if#1.\let\next=\EANfinal \else\let\next=\EANrepeat
+  \advance\numlines by1
+  \advance\nummodules by#1 \advance\nummodules by#2
+  \workdimen=#1\X \advance\workdimen by \bcorr \kern\workdimen
+  \workdimen=#2\X \advance\workdimen by-\bcorr \vrule width\workdimen
+     \ifdim\barheight=0pt height 69.24242424\X \else height\barheight \fi
+     \ifnum\numlines=1    depth5\X\else  % the start mark
+     \ifnum\numlines=2    depth5\X\else
+     \ifnum\numlines=15   depth5\X\else  % the separator mark
+     \ifnum\numlines=16   depth5\X\else
+     \ifnum\numlines=29   depth5\X\else  % the end mark
+     \ifnum\numlines=30   depth5\X\else depth0pt \fi\fi\fi\fi\fi\fi
+  \fi\next}
+\def\EANfinal{\testconsistence
+  \kern7\X\egroup
+  \hbox{\ocrbsmall \kern10\X \ISBNnum}\kern1\X
+  \dp0=0pt \box0 \kern-1\X
+  \hbox{\ocrb\kern2\X\firstdigit\kern5\X \frontdigits\kern5\X \enddigits}
+  \egroup \global\barheight=0pt \gdef\ISBNnum{}}
+\def\testconsistence{\ifnum\numlines=30\else\internalerr\fi
+  \ifnum\nummodules=95\else\internalerr\fi}
+\def\internalerr{\errmassage{Sorry, my internal tables are wrong, may be.}}
+\barheight=0pt
+\def\ISBNnum{}
+\def\ISBN #1 {\def\ISBNnum{ISBN #1}\barheight=45.151515\X\relax}
+\X=.33mm       % Basic size 100%, SC2 code
+\bcorr=.020mm  % Bar-correction for offset process
+\endinput
+
+
+
+

@@ -1,0 +1,364 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{hvfloat}[2012/03/04 rotating of floating objects]
+%%
+%% IMPORTANT NOTICE:
+%%
+%% This is file `hvfloat.sty',
+%%
+%% Herbert Voss <voss@perce.de>
+%% march 04, 2012
+%%
+%% This program can be redistributed and/or modified under the terms
+%% of the LaTeX Project Public License Distributed from CTAN archives
+%% in directory macros/latex/base/lppl.txt.
+%%
+%% DESCRIPTION:
+%%   `hvfloat' offers rotating of captions and objects for floats
+%%
+\def\fileversion{1.1}
+\def\filedate{2012/03/04}
+\message{`hvfloat' v\fileversion, \filedate\space (Herbert Voss)}
+%
+\newif\ifhv@fbox \hv@fboxfalse
+\DeclareOption{fbox}{\hv@fboxtrue\setlength{\fboxsep}{1pt}}
+\ProcessOptions
+%
+\RequirePackage{graphicx}
+\RequirePackage{keyval}
+%\RequirePackage{ifthen}
+\RequirePackage{caption}
+%
+\newlength\hvObjectWidth
+\newlength\hvCapWidth
+\newlength\hvMaxCapWidth
+\newsavebox\hvObjectBox
+\newsavebox\hvCaptionBox
+\newsavebox\hvOBox
+%
+\newif\ifhv@useOBox
+\newif\ifhv@nonFloat
+\newif\ifhv@onlyText
+
+\def\hv@figure{figure}
+%
+\def\hvSet@boolkey#1#2{\csname hv@#2\ifx\relax#1\relax true\else#1\fi\endcsname}
+%
+\define@key{hvSet}{floatPos}[htbp]{	%		LaTeX's position parameters htbp
+	\def\hvSet@floatPos{#1}%
+}
+\define@key{hvSet}{rotAngle}[0]{	%		rotates caption AND image together
+	\def\hvSet@rotAngle{#1}%
+}
+\define@key{hvSet}{capWidth}[.8]{	%		object (w)idth)|object (h)eight|<scale of \columnwidth>
+	\def\hvSet@capWidth{#1}%
+}
+\define@key{hvSet}{capAngle}[0]{	%		-360..+360
+	\def\hvSet@capAngle{#1}%
+}
+\define@key{hvSet}{capPos}[b]{		%		(l)eft|(b)ottom|(t)op|(r)ight
+	\def\hvSet@capPos{#1}%					it is relativ to the object
+}
+\define@key{hvSet}{capVPos}[c]{		%		(b)ottom|(c)enter|(t)op
+	\def\hvSet@capVPos{#1}%					it is relativ to the object
+}
+\define@key{hvSet}{objectPos}[c]{	%		(l)eft|(c)enter|(r)ight
+	\def\hvSet@objectPos{#1}%				it is relativ to the document
+}
+\define@key{hvSet}{objectAngle}[0]{	%		-360..+360
+	\def\hvSet@objectAngle{#1}%
+}
+\define@key{hvSet}{floatCapSep}[5]{	%		a width with the unit pt
+	\def\hvSet@floatCapSep{#1}%
+}
+\define@key{hvSet}{useOBox}[false]{	%		use of the hvOBox contents
+	\lowercase{\hvSet@boolkey{#1}}{useOBox}%
+}
+\define@key{hvSet}{nonFloat}[false]{%		Do not use float environment
+	\lowercase{\hvSet@boolkey{#1}}{nonFloat}%
+}
+\define@key{hvSet}{onlyText}[false]{%		Write the caption only as text
+	\lowercase{\hvSet@boolkey{#1}}{onlyText}%
+}
+%
+\newcommand{\setDefaults}{%
+\setkeys{hvSet}{%
+	floatPos=htbp, rotAngle=0, capWidth=.8, capAngle=0,%
+	capPos=b, capVPos=c, objectPos=c, objectAngle=0,%
+	floatCapSep=5, useOBox=false, nonFloat=false,%
+	onlyText=false}%
+}
+%
+\def\hv@Top{t}
+\def\hv@Bottom{b}
+\def\hv@Right{r}
+\def\hv@Left{l}
+\def\hv@Center{c}
+\def\hv@Width{w}
+\def\hv@Height{h}
+\def\hv@Zero{0}
+%
+\newlength{\hvAboveCaptionSkip}
+\newlength{\hvBelowCaptionSkip}
+\setlength{\belowcaptionskip}{\abovecaptionskip}% it is in latex.ltx = 0pt
+\newcommand{\saveCaptionSkip}{%
+	\setlength{\hvAboveCaptionSkip}{\abovecaptionskip}
+	\setlength{\hvBelowCaptionSkip}{\belowcaptionskip}
+	\setlength{\abovecaptionskip}{0pt}
+	\setlength{\belowcaptionskip}{0pt}
+}
+\newcommand{\restoreCaptionSkip}{%
+  \setlength\abovecaptionskip{\hvAboveCaptionSkip}
+  \setlength\belowcaptionskip{\hvBelowCaptionSkip}
+}
+%
+%
+\newcommand{\figcaption}[2][]{\def\@captype{figure}%
+  \ifx\relax#1\relax \caption{#2}\else\caption[#1]{#2}\fi}
+\newcommand{\tabcaption}[2][]{\def\@captype{table}%
+  \ifx\relax#1\relax \caption{#2}\else\caption[#1]{#2}\fi}
+%
+%
+%
+\def\hvFloat{\@ifnextchar[{\do@hvFloat}{\do@hvFloat[]}}
+\def\do@hvFloat[#1]#2#3{%
+  \setDefaults%
+  \ifx\relax#1\relax\else\setkeys{hvSet}{#1}\fi%
+  \gdef\hv@floatType{#2}%
+  \ifx\relax#2\relax \setkeys{hvSet}{nonFloat=true}\fi%
+  \gdef\hv@floatObject{#3}%
+  \@ifnextchar[{\do@@hvFloat}{\do@@hvFloat[]}%
+}
+\def\do@@hvFloat[#1]#2#3{%
+	\def\hv@shortCap{#1}
+	\def\hv@longCap{#2}
+	\def\hv@label{#3}
+%\newcommand*{\hvFloat}[5][]{%
+% [#1}: keyvalues
+% #2: type  figure | table | ...
+% #3: float contents
+% [#4]: short caption
+% #5: caption
+% #6: label
+% \setDefaults%
+% \def\@tempa{#1}%
+% \ifx\@tempa\empty\else\setkeys{hvSet}{#1}\fi% set options, only when not empty
+  \def\@tempa{90}%
+  \ifx\hvSet@rotAngle\@tempa \setlength{\hvMaxCapWidth}{\textheight}
+  \else                      \setlength{\hvMaxCapWidth}{\linewidth}
+  \fi
+%
+% First we save the object in \hvObjectBox
+%
+  \ifx\hvSet@objectAngle\hv@Zero % rotate the object?
+    \savebox{\hvObjectBox}{\ifhv@useOBox\usebox{\hvOBox}\else\hv@floatObject\fi}
+  \else
+    \savebox{\hvObjectBox}{%
+    \rotatebox{\hvSet@objectAngle}{%
+    \ifhv@useOBox\usebox{\hvOBox}\else\hv@floatObject\fi}}
+  \fi
+  \setlength{\hvObjectWidth}{\wd\hvObjectBox}
+%
+% Now we save the caption with its defined \hvCapWidth
+%
+  \ifx\hvSet@capWidth\hv@Width\setlength{\hvCapWidth}{\hvObjectWidth}
+  \else
+    \ifx\hvSet@capWidth\hv@Height\setlength{\hvCapWidth}{\ht\hvObjectBox}
+    \else
+      \setlength{\hvCapWidth}{\hvObjectWidth}
+      \ifx\hvSet@capPos\hv@Left\addtolength{\hvMaxCapWidth}{-\hvObjectWidth}\fi
+      \ifx\hvSet@capPos\hv@Right\addtolength{\hvMaxCapWidth}{-\hvObjectWidth}\fi
+      \ifdim\hvSet@capWidth\columnwidth<\hvMaxCapWidth
+	\setlength{\hvCapWidth}{\hvSet@capWidth\columnwidth}
+      \else
+	\setlength{\hvCapWidth}{\hvMaxCapWidth}
+      \fi
+    \fi
+  \fi
+%
+% now we have the object and the caption with the right
+% rotated angles saved in boxes
+%
+  \def\fps@figure{\hvSet@floatPos}
+  \ifhv@nonFloat\begingroup%	Start the nonfloat part
+  \else         \begin{\hv@floatType}%		Start the floating environment
+  \fi%
+  \saveCaptionSkip% we put this space ourselve
+  \ifx\hvSet@capAngle\hv@Width % need rotation?
+    \sbox{\hvCaptionBox}{%
+      \begin{minipage}[b]{\hvCapWidth}% minipage, to get hyphenation
+        \ifhv@nonFloat%
+	  \ifhv@onlyText#2%
+  	  \else%
+	    \ifx\hv@floatType\hv@figure
+	      \ifx\relax#1\relax \figcaption{#2}\else\figcaption[#1]{#2}\fi
+	    \else
+	      \ifx\relax#1\relax \tabcaption{#2}\else\tabcaption[#1]{#2}\fi%
+	    \fi
+	  \fi
+	\else\ifx\relax\hv@shortCap\relax\caption{#2}\else\caption[#1]{#2}\fi%
+	\fi%
+	\label{#3}%
+      \end{minipage}%
+    }%
+  \else%
+    \sbox{\hvCaptionBox}{%
+      \rotatebox{\hvSet@capAngle}{%
+      \begin{minipage}[b]{\hvCapWidth}% minipage, to get hyphenation
+	\ifhv@nonFloat%
+  	  \ifhv@onlyText#2%
+  	  \else%
+	    \ifx\hv@floatType\hv@figure 
+	      \ifx\relax#1\relax \figcaption{#2}\else\figcaption[#1]{#2}\fi
+	    \else
+	      \ifx\relax#1\relax \tabcaption{#2}\else\tabcaption[#1]{#2}\fi%
+	    \fi
+	  \fi
+	\else\ifx\relax\hv@shortCap\relax\caption{#2}\else\caption[#1]{#2}\fi%
+        \fi%
+        \label{#3}%
+      \end{minipage}%
+      }%
+    }%
+  \fi%
+%%
+  \restoreCaptionSkip% save old values
+  \ifx\hvSet@objectPos\hv@Right\raggedleft%
+  \else%
+    \ifx\hvSet@objectPos\hv@Center
+      \ifhv@nonFloat\hspace*{\fill}\else\centering\fi%
+    \fi%
+  \fi%
+%
+% to rotate object and caption together, we save all in another box
+% the caption comes first, if its on the left or the top
+%
+  \savebox{\@tempboxa}{%
+  \ifx\hvSet@capPos\hv@Left  %  caption on left side
+    \ifx\hvSet@capVPos\hv@Center%
+      \ifhv@fbox\fbox{\parbox{\wd\hvCaptionBox}{\usebox{\hvCaptionBox}}}%
+      \else     \parbox{\wd\hvCaptionBox}{\usebox{\hvCaptionBox}}%
+      \fi%
+    \hspace{\hvSet@floatCapSep pt}% capfloatsep
+    \ifhv@fbox\fbox{\parbox{\wd\hvObjectBox}{\usebox{\hvObjectBox}}}
+    \else     \parbox{\wd\hvObjectBox}{\usebox{\hvObjectBox}}
+    \fi%
+  \else%
+    \ifx\hvSet@capVPos\hv@Top % caption at top
+      \ifhv@fbox\fbox{\raisebox{-\height}{\usebox{\hvCaptionBox}}}%
+      \else     \raisebox{-\height}{\usebox{\hvCaptionBox}}%
+      \fi
+      \hspace{\hvSet@floatCapSep pt}% capfloatsep
+      \ifhv@fbox\fbox{\raisebox{-\height}{\usebox{\hvObjectBox}}}%
+      \else     \raisebox{-\height}{\usebox{\hvObjectBox}}%
+      \fi%
+    \else% caption on bottom
+      \ifhv@fbox\fbox{\usebox{\hvCaptionBox}}
+                \else\usebox{\hvCaptionBox}
+      \fi%
+      \hspace{\hvSet@floatCapSep pt}%
+      \ifhv@fbox\fbox{\usebox{\hvObjectBox}}
+      \else     \usebox{\hvObjectBox}
+      \fi%
+    \fi%
+  \fi%
+  \else
+				\ifx\hvSet@capPos\hv@Top
+					\ifdim\wd\hvCaptionBox>\wd\hvObjectBox
+						\begin{minipage}{\wd\hvCaptionBox}
+					\else
+						\begin{minipage}{\wd\hvObjectBox}
+					\fi
+					\centering
+					\ifhv@fbox
+						\fbox{\usebox{\hvCaptionBox}}\\[\hvBelowCaptionSkip]
+						\fbox{\usebox{\hvObjectBox}}
+					\else
+						\usebox{\hvCaptionBox}\\[\hvBelowCaptionSkip]
+						\usebox{\hvObjectBox}
+					\fi%
+					\end{minipage}
+				\else
+					\ifx\hvSet@capPos\hv@Bottom
+						\ifdim\wd\hvCaptionBox>\wd\hvObjectBox
+							\begin{minipage}{\wd\hvCaptionBox}
+						\else
+							\begin{minipage}{\wd\hvObjectBox}
+						\fi
+						\centering
+						\ifhv@fbox
+							\fbox{\usebox{\hvObjectBox}}\\[\hvAboveCaptionSkip]
+							\fbox{\usebox{\hvCaptionBox}}
+						\else
+							\usebox{\hvObjectBox}\\[\hvAboveCaptionSkip]
+							\usebox{\hvCaptionBox}
+						\fi%
+						\end{minipage}
+					\else% the last option: put the caption on the right
+						\ifx\hvSet@capVPos\hv@Center%
+							\ifhv@fbox
+								\fbox{\parbox{\wd\hvObjectBox}{\usebox{\hvObjectBox}}}
+							\else
+								\parbox{\wd\hvObjectBox}{\usebox{\hvObjectBox}}
+							\fi%
+							\hspace{\hvSet@floatCapSep pt}%
+							\ifhv@fbox
+								\fbox{\parbox{\wd\hvCaptionBox}{\usebox{\hvCaptionBox}}}%
+							\else
+								\parbox{\wd\hvCaptionBox}{\usebox{\hvCaptionBox}}
+							\fi%
+						\else%
+							\ifx\hvSet@capVPos\hv@Top
+								\ifhv@fbox
+									\fbox{\raisebox{-\height}{\usebox{\hvObjectBox}}}%
+								\else
+									\raisebox{-\height}{\usebox{\hvObjectBox}}%
+								\fi%
+								\hspace{\hvSet@floatCapSep pt}%
+								\ifhv@fbox
+									\fbox{\raisebox{-\height}{\usebox{\hvCaptionBox}}}%
+								\else
+									\raisebox{-\height}{\usebox{\hvCaptionBox}}%
+								\fi
+							\else
+								\ifhv@fbox
+									\fbox{\usebox{\hvObjectBox}}%
+								\else
+									\usebox{\hvObjectBox}%
+								\fi
+								\hspace{\hvSet@floatCapSep pt}%
+								\ifhv@fbox
+									\fbox{\usebox{\hvCaptionBox}}%
+								\else
+									\usebox{\hvCaptionBox}%
+								\fi%
+							\fi%
+						\fi
+					\fi
+				\fi
+			\fi
+		}% End savebox Object and caption
+%
+% now we rotate the object and caption, if needed
+%
+		\ifx\hvSet@rotAngle\hv@Zero
+			\usebox{\@tempboxa}
+		\else
+			\rotatebox{\hvSet@rotAngle}{\usebox{\@tempboxa}}
+		\fi
+	\ifhv@nonFloat
+		\ifx\hvSet@objectPos\hv@Center
+			\ifhv@nonFloat
+				\hspace{\fill}
+			\fi
+		\fi
+		\endgroup%	End the nonfloat part
+	\else
+		\end{\hv@floatType}%	End the floating environment
+	\fi
+}
+%
+\newenvironment{hvFloatEnv}[1][\textwidth]
+  {\minipage{#1}\center}
+  {\endcenter\endminipage}
+%
+\endinput

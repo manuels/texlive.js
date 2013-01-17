@@ -1,0 +1,441 @@
+% \AddToCheckSum{441}
+%
+% \subsection{Writing to \cname{@auxout}}
+%
+% \todo{
+%   Might I need to do \code{\let\protect\@unexpandable@protect} instead of
+%   \cs\noexpand, in the def of \cname{\protected@writeaux}?
+% }
+%
+% \begin{macro}{\nc@writeaux@main}
+% \begin{macro}{\nc@protected@writeaux@main}
+% The |main| versions are exactly the same as what they replaced.
+%    \begin{macrocode}
+\newcommand\nc@writeaux@main {%
+  \immediate\write\@auxout
+}
+\newcommand\nc@protected@writeaux@main {%
+  \protected@write\@auxout
+}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+% \begin{macro}{\nc@writeaux@aux}
+% \begin{macro}{\nc@protected@writeaux@aux}
+% When you remove the \cs\immediate, you have to expand whatever's in the
+% argument at the time you invoke \cs\write.  \cs\IncludeName and
+% \cname{@percentchar}, and other exandables in |#2| will get expanded now.
+% The \cname{@percentchar} and the |^^J|s are there because lines written to
+% \cname{@auxout} must be on lines by themselves to satisfy \BibTeX.  The
+% |^^J|s write newlines, and the \cname{@percentchar} eliminates a newline when
+% the \ext{aux} file is read in again later. Accommodating \BibTeX{} requires
+% special consideration several times below as well.
+%    \begin{macrocode}
+\newcommand\nc@writeaux@aux [1] {% args: write-text
+  \eExecute {%
+    \write\@auxout{\string\@auxtag{\IncludeName}{\@percentchar^^J#1^^J}}%
+  }%
+}
+\newcommand\nc@protected@writeaux@aux [2] {% args: init-hook write-text
+  \protected@write\@auxout{#1}{\string\@auxtag{\IncludeName}{\@percentchar^^J#2^^J}}%
+}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+% \begin{macro}{\@writeaux}
+% \begin{macro}{\@protected@writeaux}
+% We start with the |main| versions.  We don't reserve the control sequences
+% \cname{@writeaux} and \cname{protected@writeaux} because the hack to adapt
+% other packages might have already defined it with \cs\providecommand.
+%    \begin{macrocode}
+\let\@writeaux\nc@writeaux@main
+\let\protected@writeaux\nc@protected@writeaux@main
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+% \subsection{Kernel redefinitions}
+%
+% \begin{macro}{\@bibitem}
+% \begin{macro}{\@lbibitem}
+% \begin{macro}{\label}
+% \begin{macro}{\@citex}
+% \begin{macro}{\bibliography}
+% \begin{macro}{\nocite}
+% \begin{macro}{\addtocontents}
+% These are simple redefinitions of kernel functions.  The changes are the
+% substitutions for the writing commands described above.
+%    \begin{macrocode}
+\defcommand*\@bibitem [1] {%
+  \item
+  \if@filesw
+    \@writeaux{\string\bibcite{#1}{\the\value{\@listctr}}}%
+  \fi
+  \ignorespaces
+}
+\DefName*{@lbibitem} {[#1]#2} {%
+  \item[\@biblabel{#1}\hfill]%
+  \if@filesw
+    \begingroup
+      \let\protect\noexpand
+      \@writeaux{\string\bibcite{#2}{#1}}%
+    \endgroup
+  \fi
+  \ignorespaces
+}
+\defcommand*\label [1] {%
+  \@bsphack
+  \protected@writeaux{}{\string\newlabel{#1}{{\@currentlabel}{\thepage}}}%
+  \@esphack
+}
+\defcommand\addtocontents [2] {%
+  \protected@writeaux
+      {
+       \let\label\Gobble
+       \let\index\Gobble
+       \let\glossary\Gobble
+      }
+      {\string\@writefile{#1}{#2}}%
+}
+\DefName*{@citex} {[#1]#2} {%
+  \let\@citea\@empty
+  \@cite {%
+    \@for\@citeb:=#2\do {%
+      \@citea
+      \def\@citea{,\penalty\@m\ }%
+      \edef\@citeb{\expandafter\@firstofone\@citeb}%
+      \if@filesw
+        \@writeaux{\string\citation{\@citeb}}%
+      \fi
+      \@ifundefined{b@\@citeb} {%
+	  \mbox{\reset@font\bfseries ?}%
+	  \G@refundefinedtrue
+	  \@latex@warning
+	    {Citation `\@citeb' on page \thepage \space undefined}%
+	}{% ELSE
+        \hbox{\csname b@\@citeb\endcsname}%
+      }%
+    }%
+  }{#1}% second arg to \@cite
+}
+\defcommand*\bibliography [1] {%
+  \if@filesw
+    \@writeaux{\string\bibdata{#1}}%
+  \fi
+  \@input@{\jobname.bbl}%
+}
+  \defcommand*\bibliographystyle [1] {%
+  \ifx\@begindocumenthook\@undefined\else
+    \expandafter\AtBeginDocument
+  \fi
+  {\if@filesw
+    \@writeaux{\string\bibstyle{#1}}%
+  \fi}%
+}
+\defcommand*\nocite [1] {%
+  \@bsphack
+  \@for\@citeb:=#1\do {%
+    \edef\@citeb{\expandafter\@firstofone\@citeb}%
+    \if@filesw
+      \@writeaux{\string\citation{\@citeb}}%
+    \fi
+    \@ifundefined{b@\@citeb} {%
+	\G@refundefinedtrue
+        \@latex@warning{Citation `\@citeb' undefined}%
+      }{}%
+    }%
+  \@esphack
+}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+%
+% \subsection{Checkpoints}
+%
+% \begin{macro}{\@writeckpt}
+% \begin{macro}{\@wckptelt}
+% The \cname{@charlb}, \cname{@charrb}, and \cname{@percentchar} stuff is to
+% satisfy \BibTeX{} (see above).
+%    \begin{macrocode}
+\defcommand*\@writeckpt [1] {%
+  \if@filesw
+    \write\@auxout{\string\@setckpt{#1}\@charlb\@percentchar}%
+    {\let\@elt\@wckptelt
+     \cl@@ckpt}%
+    \write\@auxout{\@charrb}%
+  \fi
+}
+\defcommand\@wckptelt [1] {%
+  \write\@auxout{\string\setcounter{#1}{\the\@nameuse{c@#1}}}%
+}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+% \subsection{Including}
+%
+% \begin{macro}{\IncludeName}
+% \begin{macro}{\ParentName}
+% \begin{macro}{\nc@includename@<N>}
+%   \mbox{}
+%    \begin{macrocode}
+\newcommand\IncludeName {%
+  \@nameuse{nc@includename@\theIncludeDepth}%
+}
+\newcommand\ParentName {%
+  \ifnum\value{IncludeDepth}= 0
+    \jobname
+    \FrankenWarning{newclude}{Requested name of parent of principle source}%
+  \else
+%    \end{macrocode}
+% The incrementation of the \cs{IncludeDepth} counter is local to the group.
+%    \begin{macrocode}
+    \begingroup
+      \advance\c@IncludeDepth by \m@one
+      \@nameuse{nc@includename@\theIncludeDepth}%
+    \endgroup
+  \fi
+}
+\NewName {nc@includename@0} {} {\jobname}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+%
+% \begin{macro}{\nc@include}
+% \begin{macro}{\nc@@include}
+%   \todo{dox}
+%    \begin{macrocode}
+\newcommand\nc@include [2][] {% args: hook filename
+  \@ifnextchar [ {%]
+      \nc@@include{#1}{#2}%
+    }{% ELSE
+    \nc@@include{#1}{#2}[]%
+  }%
+}
+\NewName{nc@@include}{#1#2[#3]} {% args: prehook filename posthook
+  \IfAllowed{#2} {%
+      \nc@t@b           % surround the \include with something
+      \stepcounter{IncludeDepth}%
+      \DefName*{nc@includename@\theIncludeDepth} {} {#2}%
+      \let\@writeaux\nc@writeaux@aux
+      \let\protected@writeaux\nc@protected@writeaux@aux
+%    \end{macrocode}
+% Now execute the text of the optional argument to \cs\include.  
+%    \begin{macrocode}
+      #1%
+      \@input@{#2.tex}%
+      #3%
+      \@writeckpt{#2}%
+      \let\@writeaux\nc@writeaux@main
+      \let\protected@writeaux\nc@protected@writeaux@main
+%    \end{macrocode}
+% We mustn't restore the counter before we have finished using it.
+%    \begin{macrocode}
+      \addtocounter{IncludeDepth}{\m@ne}%
+      \nc@t@b           % surround the \include with something
+     }{% ELSE
+%    \end{macrocode}
+% If the file is not allowed, we don't load it and do two things instead.  We
+% execute the part's checkpoint, then we write out the part's auxcommands and
+% checkpoint again.  We must handle the case when the auxcommands isn't
+% defined; but the checkpoint will always be defined.
+%    \begin{macrocode}
+    \@ifundefined{cp@#2} {%
+%        \DTypeout{No information on part [#2]!}%
+      }{% ELSE
+      \@nameuse{cp@#2}%
+      \if@filesw%
+        \nc@write@auxcommands{#2}%
+        \nc@write@ckpt{#2}%
+      \fi%                                                  if@filesw
+    }%                                                      if@undefined
+  }%                                                        IfAllowed
+}%
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+% \begin{macro}{\nc@write@auxcommands}
+% \begin{macro}{\nc@write@ckpt}
+% \todo{dox}
+% 
+% \cs\meaning produces catcode 12's for all chars except spaces which are 10.
+% Begin making definitions with |\catcode`\^^M=12| (other).
+%    \begin{macrocode}
+\begingroup
+\catcode`\^^M=12 %% double percents mean they're there only because of the catcode
+%%
+\Global\DefName*{nc@write@auxcommands} {#1} {% args: partname
+  \@ifundefined{nc@auxcommands@#1} {%
+    }{% ELSE
+    \write\@auxout{\string\@auxtag{#1}\@charlb\@percentchar}%
+    \EExpand*\csname nc@auxcommands@#1\endcsname\In {%
+      \edef\nc@t@a {%
+        \expandafter\strip@prefix\meaning ##1%
+      }%
+    }%
+    \edef\nc@t@a {\expandafter\nc@strip@M\nc@t@a\@nil}%
+%    \DTypeout{The auxcommands: \meaning\nc@t@a}%
+    \begingroup %%
+      \catcode`\^^M=12 % other
+      \nc@for\nc@t@b:=\nc@t@a\do {%
+%	 \DTypeout{auxcommand ITEM: \meaning\nc@t@b}%
+	\EExpand\nc@t@b\In {%
+	  \write\@auxout{##1}%
+	}%
+      }%
+    \endgroup %%
+    \write\@auxout{\@charrb}%
+  }%
+}%%
+\Global\DefName*{nc@write@ckpt} {#1} {% args: partname
+  \write\@auxout{\string\@setckpt{#1}\@charlb\@percentchar}%
+  \EExpand*\csname cp@#1\endcsname\In {%
+    \edef\nc@t@a {%
+       \expandafter\strip@prefix\meaning ##1%
+     }%
+  }%
+  \edef\nc@t@a {\expandafter\nc@strip@M\nc@t@a\@nil}%
+  \begingroup %%
+    \catcode`\^^M=12 % other
+    \nc@for\nc@t@b:=\nc@t@a\do {%
+%      \DTypeout{checkpoint ITEM: \meaning\nc@t@b}%
+      \EExpand\nc@t@b\In {%
+	\write\@auxout{##1}%
+      }%
+    }%
+  \endgroup %%
+  \write\@auxout{\@charrb}%
+}%%
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+% \begin{macro}{\nc@for}
+% \begin{macro}{\nc@forloop}
+% \begin{macro}{\nc@iforloop}
+%   \cname{nc@for} is like the kernel's \cname{@for} but divides its list at
+%   |^^M|$_{12}$ instead of |,|.
+%    \begin{macrocode}
+\Global\NewName{nc@for} {#1:=#2\do#3} {% FIX (what?)
+  \expandafter   \def %%
+    \expandafter \@fortmp %%
+    \expandafter {#2}%
+  \ifx\@fortmp\@empty \else %%
+    \expandafter\nc@forloop#2^^M\@nil^^M\@nil\@@#1{#3}%
+  \fi %%
+}%%
+\Global\NewName{nc@forloop} {#1^^M#2^^M#3\@@#4#5} {%
+  \def#4{#1}%
+  \ifx #4\@nnil \else %%
+    #5%
+    \def#4{#2}%
+    \ifx #4\@nnil \else %%
+      #5%
+      \nc@iforloop #3\@@#4{#5}%
+    \fi %%
+  \fi %%
+}%%
+\Global\NewName{nc@iforloop} {#1^^M#2\@@#3#4} {%
+  \def#3{#1}%
+  \ifx #3\@nnil %%
+    \expandafter\@fornoop %%
+  \else %%
+    #4%
+    \relax %%
+    \expandafter\nc@iforloop %%
+  \fi %%
+  #2\@@#3{#4}%
+}%%
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+%
+% \begin{macro}{\nc@strip@M}
+%   This strips a final |^^M|$_{12}$ from its argument. \todo{I think this could be
+%   built in to \cname{nc@for}.}
+%    \begin{macrocode}
+\Global\NewName{nc@strip@M} {#1^^M\@nil} {#1}%%
+%    \end{macrocode}
+% Finish making definitions with |\catcode`\^^M=12|.
+%    \begin{macrocode}
+\endgroup
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\@auxtag}
+% \begin{macro}{\@@auxtag}
+%   We both execute and save.  \todo{efficiency? check only once, then redefine
+%   auxtag?} \todo{dox}.
+%
+% I could use |\EExpand\In| for clarity, but I go for efficiency on this
+% crucial macro.
+%
+% Begin making definitions with |\catcode`\^^M=12| (other).
+%    \begin{macrocode}
+\begingroup
+\catcode`\^^M\active %% double percents mean they're there only because of the catcode
+%%
+\Global\NewName*{@auxtag} {#1} {% args: partname
+  \begingroup %%
+    \catcode`\^^M\active %%
+    \@@auxtag{#1}%
+}%%
+\Global\NewName*{@@auxtag} {#1#2} {% args: partname auxcommands
+    \@ifundefined {nc@auxcommands@#1} {%
+	\nc@toks@a={#2}%
+      }{% ELSE
+      \expandafter   \nc@toks@a %%
+	\expandafter \expandafter %%
+	\expandafter {\csname nc@auxcommands@#1\endcsname#2}%
+    }%
+    \expandafter\xdef\csname nc@auxcommands@#1\endcsname{\the\nc@toks@a}%
+    #2%
+  \endgroup %%
+}%%
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+% \begin{macro}{\@setckpt}
+% \begin{macro}{\@@setckpt}
+% \todo{dox}
+%    \begin{macrocode}
+\Global\DefName*{@setckpt} {#1} {% args: partname
+  \begingroup %%
+    \catcode`\^^M\active %%
+    \@@setckpt{#1}%
+}%%
+%    \end{macrocode}
+% Finish making definitions with |\catcode`\^^M=12|.
+%    \begin{macrocode}
+\endgroup
+%    \end{macrocode}
+% The \cs\endgroup terminates the change in catcode.
+%    \begin{macrocode}
+\newcommand*\@@setckpt [2] {% args: partname checkpoint
+    \expandafter\gdef\csname cp@#1\endcsname{#2}%
+  \endgroup
+}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+% What this does is effectively remove all the tags.  The end of document hook
+% is processed before the closing processing of the \ext{aux} files, during
+% which checking for things like undefined references is done.    At this point
+% we do not need the tags.
+%    \begin{macrocode}
+\AtEndDocument {%
+  \let\@auxtag\@secondoftwo
+}
+%    \end{macrocode}

@@ -1,0 +1,964 @@
+% This is the texapi package.
+% Relevant information can be found in texapi-doc.pdf
+%
+% Author: Paul Isambert.
+% E-mail: zappathustra AT free DOT fr
+% Comments and suggestions are welcome.
+% Date: October 2011.
+%
+\ifx\texapialreadyloaded\somethingtotallyundefined
+\else
+  \expandafter\endinput
+\fi
+\let\texapialreadyloaded\relax
+\ifx\eTeXversion\somethingtotallyundefined
+  \errmessage{texapi error: You need eTeX to run this. I quit}
+  \expandafter\endinput
+\fi
+%
+\def\texapiversion{1.04}
+\expandafter\edef\csname pi@restorecatcodes\endcsname{%
+  \catcode`\noexpand\@=\the\catcode`@\relax
+  \catcode`\noexpand\_=\the\catcode`_\relax
+  }
+\catcode`\@=11 \catcode`\_=11
+%
+%
+%
+%
+%
+% ENGINES
+% 
+\chardef\texenginenumber=0
+\ifdefined\XeTeXinterchartoks
+  \chardef\texenginenumber=1
+\else
+% LuaTeX doesn't have \pdfstrcmp anymore.
+  \ifdefined\directlua
+    \chardef\texenginenumber=3
+  \else
+    \ifdefined\pdfstrcmp
+      \chardef\texenginenumber=2
+    \fi
+  \fi
+\fi
+%
+%
+%
+%
+% FORMATS
+%
+% It'd be safer if \formatnumber was already
+% defined in a wrapper file for ConTeXt and LaTeX.
+% 
+\unless\ifdefined\formatnumber
+  \chardef\formatnumber=0
+  \def\pi@temp{plain}
+  \ifx\fmtname\pi@temp
+    \chardef\formatnumber=1
+  \else
+    \def\pi@temp{eplain}
+    \ifx\fmtname\pi@temp
+      \chardef\formatnumber=2
+    \else
+      % I'm not sure what ConTeXt's doing with \fmtname,
+      % so I make do with this lovely control sequence.
+      \ifdefined\inspectnextoptionalcharacter
+        \chardef\formatnumber=3
+      \else
+        \def\pi@temp{LaTeX2e}
+        \ifx\fmtname\pi@temp
+          \chardef\formatnumber=4
+          \ifdefined\ExplSyntaxOn
+            \chardef\formatnumber=5
+          \fi
+        \fi
+      \fi
+    \fi
+  \fi
+\fi
+%
+% We need to get some primitives back.
+% More should be done, probably.
+%
+\ifnum\formatnumber=3
+  % ConTeXt
+  \let\priminput\normalinput
+  \let\primunexpanded\normalunexpanded
+  \def\loadmacrofile#1{\usemodule[#1]}
+  \def\senderror#1#2{%
+    \writestatus{#1 error}{#2}%
+    }
+\else
+  \ifnum\formatnumber=4
+    % LaTeX2e
+    \let\priminput\@@input
+    \let\primunexpanded\unexpanded
+    \let\loadmacrofile\RequirePackage
+    \def\senderror#1#2{%
+      \PackageError{#1}{#2}{}%
+      }
+  \else
+    \ifnum\formatnumber=5
+      % LaTeX3
+      % I don't know if this is of any good.
+      % LaTeX3 will either not rename those primitives,
+      % or turn all primitives to error messages (nightmare),
+      % as far as I can see.
+      \expandafter\let\expandafter\priminput\csname tex_input:D\endcsname
+      \expandafter\let\expandafter\primunexpanded\csname etex_unexpanded:D\endcsname
+      \let\loadmacrofile\RequirePackage
+      \def\senderror#1#2{%
+        \PackageError{#1}{#2}{}%
+        }
+    \else
+      % Plain and eplain, or an unknown format.
+      \let\priminput\input
+      \let\primunexpanded\unexpanded
+      \def\loadmacrofile#1{\priminput#1 }
+      \def\senderror#1#2{%
+        \errmessage{#1 error: #2}%
+        }
+    \fi
+  \fi
+\fi
+%
+%
+%
+%
+% INTERNAL UTILITIES
+%
+\def\pdef{\protected\def}
+\def\pi@terminator{\senderror{texapi}{This shouldn't be happening}}
+\long\def\pi@gobbletoterminator#1#2\pi@terminator{#1} % I generally want something to happen after a terminator.
+%
+%
+%
+% 
+% ARGUMENTS MANIPULATION
+%
+\long\def\gobbleone#1{}               \long\def\gobbletwo#1#2{}               \long\def\gobblethree#1#2#3{}
+\long\def\gobblefour#1#2#3#4{}        \long\def\gobblefive#1#2#3#4#5{}        \long\def\gobblesix#1#2#3#4#5#6{}
+\long\def\gobbleseven#1#2#3#4#5#6#7{} \long\def\gobbleeight#1#2#3#4#5#6#7#8{} \long\def\gobblenine#1#2#3#4#5#6#7#8#9{}
+%
+\long\def\gobbleoneand#1#2{#1}               \long\def\gobbletwoand#1#2#3{#1}               \long\def\gobblethreeand#1#2#3#4{#1}
+\long\def\gobblefourand#1#2#3#4#5{#1}        \long\def\gobblefiveand#1#2#3#4#5#6{#1}        \long\def\gobblesixand#1#2#3#4#5#6#7{#1}
+\long\def\gobblesevenand#1#2#3#4#5#6#7#8{#1} \long\def\gobbleeightand#1#2#3#4#5#6#7#8#9{#1}
+\long\def\gobblenineand#1#2#3#4#5#6#7#8#9{\gobbleoneand{#1}}
+%
+\long\def\unbrace#1{#1} \long\def\firstoftwo#1#2{#1} \long\def\secondoftwo#1#2{#2}
+%
+\long\def\swapargs#1#2{#2#1}         \long\def\swapbraced#1#2{{#2}{#1}}
+\long\def\swapleftbraced#1#2{{#2}#1} \long\def\swaprightbraced#1#2{#2{#1}}
+%
+\long\def\passexpanded#1#2{\expandafter\swaprightbraced\expandafter{#2}{#1}}
+\long\def\passexpandednobraces#1#2{\expandafter\swapargs\expandafter{#2}{#1}}
+%
+\def\emptycs{} \def\spacecs{ }
+\bgroup
+\def\:{\global\let\spacechar= }\: %
+\egroup
+%
+%
+%
+%
+% COMMAND DEFINITIONS
+%
+% All the \...cs stuff must be \long, because
+% even though \par is (generally) unexpandable
+% it can be \string'ed.
+\long\def\usecs#1{\csname#1\endcsname} 
+\long\def\usecsafter#1{\expandafter\expandafter\csname#1\endcsname}
+\long\def\noexpandcs#1{\expandafter\noexpand\csname#1\endcsname}
+\long\def\unexpandedcs#1{\primunexpanded\expandafter\expandafter\expandafter{\csname#1\endcsname}}
+\long\def\passcs#1#2{\expandafter\swapargs\csname#2\endcsname{#1}}
+\long\def\passexpandedcs#1#2{\passcs{\passexpanded{#1}}{#2}}
+\long\def\commandtoname#1{\expandafter\gobbleone\string#1}
+%
+\long\pdef\defcs#1{\expandafter\def  \csname#1\endcsname}
+\long\pdef\edefcs#1{\expandafter\edef \csname#1\endcsname}
+\long\pdef\gdefcs#1{\expandafter\gdef \csname#1\endcsname}
+\long\pdef\xdefcs#1{\expandafter\xdef \csname#1\endcsname}
+\long\pdef\letcs#1{\expandafter\let  \csname#1\endcsname}
+% If \csname#2\endcsname is undefined,
+% we don't want to set it to \relax.
+\long\pdef\lettocs   #1#2{\ifcs{#2}{\expandafter\let\expandafter#1\csname#2\endcsname}{\let#1\somethingtottallyundefined}}
+\long\pdef\letcstocs #1#2{%
+  \ifcs{#2}
+       {\expandafter\expandafter\expandafter\let\expandafter\expandafter\csname#1\endcsname\csname#2\endcsname}
+       {\expandafter\let\csname#1\endcsname\somethingtotallyundefined}%
+  }
+%
+\long\pdef\addleft#1#2{%
+  \edef#1{\primunexpanded{#2}\primunexpanded\expandafter{#1}}%
+  }
+\long\pdef\eaddleft#1#2{%
+  \edef#1{#2\primunexpanded\expandafter{#1}}%
+  }
+\long\pdef\addleftcs#1#2{%
+  \edefcs{#1}{\primunexpanded{#2}\unexpandedcs{#1}}%
+  }
+\long\pdef\eaddleftcs#1#2{%
+  \edefcs{#1}{#2\unexpandedcs{#1}}%
+  }
+\long\pdef\addright#1#2{%
+  \edef#1{\primunexpanded\expandafter{#1}\primunexpanded{#2}}%
+  }
+\long\pdef\eaddright#1#2{%
+  \edef#1{\primunexpanded\expandafter{#1}#2}%
+  }
+\long\pdef\addrightcs#1#2{%
+  \edefcs{#1}{\unexpandedcs{#1}\primunexpanded{#2}}%
+  }
+\long\pdef\eaddrightcs#1#2{%
+  \edefcs{#1}{\unexpandedcs{#1}#2}%
+  }
+%
+%
+%
+% COMMAND TESTING 
+%
+%
+\def\reverse#1{%
+  \ifcs{pi@reverse_\commandtoname#1}
+    {\usecs{pi@reverse_\commandtoname#1}}
+    {\unless#1}%
+  }
+%
+\def\pi@ifdef_simple#1#2{%
+  \long\def#1##1{%
+    #2%
+      \expandafter\firstoftwo
+    \else
+      \expandafter\secondoftwo
+    \fi
+  }%
+  \defcs{pi@reverse_\commandtoname#1}{\expandafter\unless#1}%
+  % \iff... version
+  \long\defcs{if\expandafter\gobbletwo\string#1}##1{%
+    #2%
+      \expandafter\unbrace
+    \else
+      \expandafter\gobbleone
+    \fi
+    }%
+  \defcs{pi@reverse_if\expandafter\gobbletwo\string#1}{\passcs{\expandafter\unless}{if\expandafter\gobbletwo\string#1}}%
+  }
+%
+\pi@ifdef_simple\ifcommand{\ifdefined#1}
+\pi@ifdef_simple\ifcs{\ifcsname#1\endcsname}
+\pi@ifdef_simple\ifemptycommand{\ifx#1\emptycs}
+%
+\def\pi@ifdef_onearg#1{%
+  \long\defcs{pi@reverse_\commandtoname#1}##1##2##3{#1{##1}{##3}{##2}}%
+  % This is the \iff... version
+  \long\defcs{if\expandafter\gobbletwo\string#1}##1##2{#1{##1}{##2}{}}%
+  \long\defcs{pi@reverse_if\expandafter\gobbletwo\string#1}##1##2{#1{##1}{}{##2}}%
+  % In many cases, \long is better, otherwise it does no real harm.
+  \long\def#1##1%
+  }
+\pi@ifdef_onearg\ifemptycs{%
+  \ifcs{#1}
+% No point using \ifxcs, that would run useless tests.
+       {\expandafter\ifx\csname#1\endcsname\emptycs
+          \expandafter\firstoftwo
+        \else
+          \expandafter\secondoftwo
+        \fi}
+       \secondoftwo
+  }
+\def\pi@ifdef_twoarg#1{%
+  \long\defcs{pi@reverse_\commandtoname#1}##1##2##3##4{#1{##1}{##2}{##4}{##3}}%
+  \long\defcs{if\expandafter\gobbletwo\string#1}##1##2##3{#1{##1}{##2}{##3}{}}%
+  \long\defcs{pi@reverse_if\expandafter\gobbletwo\string#1}##1##2##3{#1{##1}{##2}{}{##3}}%
+  \long\def#1##1##2%
+  }
+%
+\pi@ifdef_twoarg\ifxcs{%
+  \ifcs{#1}
+       {\expandafter\ifx\csname#1\endcsname#2%
+          \expandafter\firstoftwo
+        \else
+          \expandafter\secondoftwo
+        \fi}
+       {\ifcommand#2\secondoftwo\firstoftwo}
+  }
+%
+\pi@ifdef_twoarg\ifxcscs{%
+  \ifcs{#1}
+       {\ifcs{#2}
+             {\passcs{\expandafter\ifx\csname#1\endcsname}{#2}%
+                \expandafter\firstoftwo\else\expandafter\secondoftwo\fi}
+             {\secondoftwo}}
+       {\ifcs{#2}
+             {\secondoftwo}
+             {\firstoftwo}}
+  }
+%
+%
+%
+%
+% CUSTOM \IF'S
+%
+\pdef\newife#1{%
+  \expandafter\passexpandednobraces\expandafter\pi@newif_strip\expandafter{\expandafter\gobbleone\string#1\pi@terminator}
+  }
+\bgroup
+\uccode`2=`i \uccode`3=`f
+\uppercase{
+  \gdef\pi@newif_strip23#1\pi@terminator{%
+    \pi@newif_def{#1}%
+    }
+  }
+\egroup
+%
+\def\pi@newif_def#1{%
+  \letcs{if#1}\secondoftwo
+  \long\edefcs{pi@reverse_if#1}##1##2{\noexpandcs{if#1}{##2}{##1}}%
+  \edefcs{iff#1}{\noexpandcs{if#1}\noexpand\unbrace\noexpand\gobbleone}%
+  \edefcs{pi@reverse_iff#1}{\noexpandcs{if#1}\noexpand\gobbleone\noexpand\unbrace}%
+  \defcs{#1true}{%
+    \letcs{if#1}\firstoftwo
+    }%
+  \defcs{#1false}{%
+    \letcs{if#1}\secondoftwo
+    }%
+  }
+%
+\long\def\straightenif#1#2{%
+  \usecs{#1}#2%
+    \expandafter\firstoftwo
+  \else
+    \expandafter\secondoftwo
+  \fi
+  }
+\long\def\straighteniff#1#2{%
+  \usecs{#1}#2%
+    \expandafter\unbrace
+  \else
+    \expandafter\gobbleone
+  \fi
+  }
+\long\def\pi@reverse_straightenif#1#2{%
+  \usecs{#1}#2%
+    \expandafter\secondoftwo
+  \else
+    \expandafter\firstoftwo
+  \fi
+  }
+\long\def\pi@reverse_straighteniff#1#2{%
+  \usecs{#1}#2%
+    \expandafter\gobbleone
+  \else
+    \expandafter\unbrace
+  \fi
+  }
+%
+\pi@ifdef_onearg\ifwhatever{%
+  #1%
+    \ifx\pi@ifwhatever_false aa%
+      \pi@ifwhatever_true
+    \else
+      \expandafter\expandafter\expandafter\firstoftwo
+    \fi
+  \else
+    \expandafter\secondoftwo
+  \fi
+  }
+\def\pi@ifwhatever_false#1\fi#2\fi{\secondoftwo}
+\def\pi@ifwhatever_true#1\fi#2\fi{\fi\firstoftwo}
+%
+\pi@ifdef_onearg\ifexpression{%
+  \pi@ifexpression_or#1|\pi@terminator
+  }
+\def\pi@ifexpression_or#1|#2\pi@terminator{%
+  \ifemptystring{#2}
+    {\pi@ifexpression_and#1&\pi@terminator}
+    {\ifexpression{#1}{\firstoftwo}{\pi@ifexpression_removeor#2\pi@terminator}}%
+  }
+\def\pi@ifexpression_and#1&#2\pi@terminator{%
+  \ifemptystring{#2}
+    {\passtrimleft{#1}\pi@ifexpression_not}
+    {\ifexpression{#1}{\pi@ifexpression_removeand#2\pi@terminator}{\secondoftwo}}%
+  }
+\def\pi@ifexpression_removeor#1|\pi@terminator{%
+  \pi@ifexpression_or#1|\pi@terminator
+  }
+\def\pi@ifexpression_removeand#1&\pi@terminator{%
+  \pi@ifexpression_or#1|\pi@terminator
+  }
+\def\pi@ifexpression_not#1{%
+  \ifprefix-{#1}% See line 858, where \newstring{-} is declared, so this remains expandable.
+    {\expandafter\pi@ifexpression_braces\gobbleone#1{}\pi@terminator
+       % Trimming will also remove braces.
+       {\expandafter\passtrimright\expandafter{\gobbleone#1}\ifexpression}
+       {\expandafter\ifwhatever\expandafter{\gobbleone#1}}
+       \secondoftwo\firstoftwo}
+    {\pi@ifexpression_braces#1{}\pi@terminator
+       {\passtrimright{#1}\ifexpression}
+       {\ifwhatever{#1}}}%
+  }
+\def\pi@ifexpression_braces#1#{%
+  \pi@gobbletoterminator{%
+    \ifemptystring{#1}}
+  }
+%
+\long\def\ifelseif#1{%
+  \pi@ifelseif{}#1\iftrue{}\pi@terminator
+  }
+\long\def\pi@reverse_ifelseif#1{%
+  \pi@ifelseif\reverse#1\iffalse{}\pi@terminator
+  }
+\long\def\pi@ifelseif#1#2#3{%
+  #1\ifwhatever{#2}
+     {\pi@gobbletoterminator{#3}}
+     {\pi@ifelseif{#1}}%
+  }
+%
+%
+%
+%
+% This is dangerous. But useful to get 
+% material across a conditional.
+%
+\long\def\afterfi#1#2\fi{\fi#1}
+\long\def\afterdummyfi#1#2\fi{#1}
+%
+%
+%
+%
+% WHAT COMES NEXT
+%
+\newtoks\pi@temp_tokenA
+\newtoks\pi@temp_tokenB
+\long\pdef\skipspace#1{%
+  \pi@temp_tokenA={#1}%
+  \def\pi@nospace_repeat{%
+    \expandafter\skipspace\expandafter{\the\pi@temp_tokenA}%
+    }%
+  \futurelet\pi@temp\pi@nospace_check
+  }
+\def\pi@nospace_check{%
+  \ifx\pi@temp\spacechar
+    \afterfi{%
+      \afterassignment\pi@nospace_repeat
+      \let\pi@temp= }%
+  \else
+    \expandafter\the\expandafter\pi@temp_tokenA
+  \fi
+  }
+%
+\def\pi@ifdef_next#1#2#3{%
+  \pdef#1{\pi@ifnext_any#2}%
+  \protected\defcs{\commandtoname#1nospace}{\pi@ifnext_nospace#2}%
+  \protected\defcs{if\expandafter\gobbletwo\string#1}{\pi@iffnext_any#2}%
+  \protected\defcs{if\expandafter\gobbletwo\string#1nospace}{\pi@iffnext_nospace#2}%
+% \reverse version
+  \protected\defcs{pi@reverse_\commandtoname#1}{\pi@ifnext_any#3}%
+  \protected\defcs{pi@reverse_\commandtoname#1nospace}{\pi@ifnext_nospace#3}%
+  \protected\defcs{pi@reverse_if\expandafter\gobbletwo\string#1}{\pi@iffnext_any#3}%
+  \protected\defcs{pi@reverse_if\expandafter\gobbletwo\string#1nospace}{\pi@iffnext_nospace#3}%
+  }
+%
+\def\pi@unlessif{\unless\if}
+\pi@ifdef_next\ifnext\if\pi@unlessif
+\def\pi@unlessifcat{\unless\ifcat}
+\pi@ifdef_next\ifcatnext\ifcat\pi@unlessifcat
+\def\pi@unlessifx{\expandafter\unless\pi@ifx}
+\pi@ifdef_next\ifxnext\pi@ifx\pi@unlessifx
+% We remove the \noexpand's.
+\long\def\pi@ifx#1#2#3#4{\ifx#2#4}
+% Would the following be faster?
+% \long\def\pi@ifx\noexpand#1\noexpand#2{\ifx#1#2}
+% I wonder.
+\long\def\pi@ifnext_any#1#2#3#4{%
+  \let\pi@ifnext_test=#1%
+  \let\pi@ifnext_token= #2%
+  \pi@temp_tokenA={#3}%
+  \pi@temp_tokenB={#4}%
+  \futurelet\pi@temp\pi@ifnext_do
+  }
+\long\def\pi@ifnext_nospace#1#2#3#4{%
+  \skipspace{\pi@ifnext_any#1#2{#3}{#4}}%
+  }
+\long\def\pi@iffnext_any#1#2#3{%
+  \pi@ifnext_any#1#2{#3}{}%
+  }
+\long\def\pi@iffnext_nospace#1#2#3{%
+  \skipspace{\pi@ifnext_any#1#2{#3}{}}%
+  }
+\def\pi@ifnext_do{%
+  \pi@ifnext_test\noexpand\pi@temp\noexpand\pi@ifnext_token
+    \expandafter\the\expandafter\pi@temp_tokenA
+  \else
+    \expandafter\the\expandafter\pi@temp_tokenB
+  \fi
+  }
+%
+%
+%
+%
+% FOR LOOPS
+%
+\newcount\pi@dofor_count
+\newife\ifpi@dofor_noempty
+\pdef\dofor{%
+  \pi@dofor_noemptyfalse\pi@dofor_getlist
+  }
+\pdef\dofornoempty{%
+  \pi@dofor_noemptytrue\pi@dofor_getlist
+  }
+\long\def\pi@dofor_getlist#1{%
+  \skipspace{\pi@dofor_getparameter{#1}}%
+  }
+\long\def\pi@dofor_getparameter#1#2#{%
+  \pi@dofor_dolist{#1}{#2}%
+  }
+\long\def\pi@dofor_dolist#1#2#3{%
+% We keep count so loops can be nested.
+  \global\advance\pi@dofor_count1
+  \ifpi@dofor_noempty
+    {\long\defcs{pi@dofor_loop\the\pi@dofor_count}#2{%
+      \ifemptystring{##1}
+                    {\pi@dofor_control}
+                    {#3\pi@newfor_markloop{pi@dofor_control}}}}%
+    {\long\defcs{pi@dofor_loop\the\pi@dofor_count}#2{#3\pi@newfor_markloop{pi@dofor_control}}}%
+  \pi@dofor_control#1\pi@terminator
+  }
+\def\pi@dofor_control{%
+  \ifxnext\pi@terminator
+          {\global\advance\pi@dofor_count-1
+%          Unbrace the fourth argument.
+           \pi@gobbletoterminator\unbrace}
+          {\usecs{pi@dofor_loop\the\pi@dofor_count}}%
+  }
+\let\pi@dofor_originalcontrol\pi@dofor_control
+\let\resumedofor\pi@dofor_control
+\long\pdef\breakdofor#1#2\pi@dofor_control#3\pi@terminator{%
+  \global\advance\pi@dofor_count-1
+  %   Gobble the fourth argument (executed if the loop lives to its own natural end).
+  \gobbleoneand{#1}%
+  }
+\def\pi@dofor_retrieverest#1#2\pi@terminator{%
+  \global\advance\pi@dofor_count-1
+  \gobbleoneand{#1{#2}}%
+  }%
+\long\pdef\pausedofor#1#2\pi@dofor_control{#1}
+%
+%
+%
+%
+% CUSTOM FOR LOOPS
+% And here's the big one.
+%
+\pdef\newfor#1{%
+  \pi@dofor_noemptyfalse
+  \ifcatnext\bgroup{\pi@newfor_pass{#1}}
+                   {\pi@newfor_pass{#1}{0}}%
+  }
+\pdef\newfornoempty#1{%
+  \pi@dofor_noemptytrue
+  \ifcatnext\bgroup{\skipspace{\pi@newfor_pass{#1}}}
+                   {\skipspace{\pi@newfor_pass{#1}{0}}}%
+  }
+\long\def\pi@newfor_pass#1#2#3#{%
+  \pi@newfor_getcoda{#1}{#2}{#3}
+  }
+\long\def\pi@newfor_getcoda#1#2#3#4{%
+  \ifnextnospace[{\pi@newfor_create{#1}{#2}{#3}{#4}}
+                 {\pi@newfor_create{#1}{#2}{#3}{#4}[]}%
+  }
+\letcs{pi@newfor_\detokenize{\pi@nf_tm}_}\relax
+\let\pi@nf_tm\pi@terminator
+\let\pi@newfor_preloop\emptycs
+\long\def\pi@newfor_create#1#2#3#4[#5]{%
+  \def\pi@temp##1##2##3##4##5##6##7##8##9{#3}%
+  \pi@temp_tokenA={\pi@newfor_define#1{#3}{#4}{#5}}%
+  \ifcase#2\relax
+      \the\pi@temp_tokenA 1{}{}{\pi@nf_tm\pi@nf_tm\pi@nf_tm\pi@nf_tm\pi@nf_tm\pi@nf_tm\pi@nf_tm\pi@nf_tm\pi@nf_tm}\unbrace
+  \or \the\pi@temp_tokenA 2{##1}{{##1}}{{}\pi@nf_tm\pi@nf_tm\pi@nf_tm\pi@nf_tm\pi@nf_tm\pi@nf_tm\pi@nf_tm\pi@nf_tm}\gobbleoneand
+  \or \the\pi@temp_tokenA 3{##1##2}{{##1}{##2}}{{}{}\pi@nf_tm\pi@nf_tm\pi@nf_tm\pi@nf_tm\pi@nf_tm\pi@nf_tm\pi@nf_tm}\gobbletwoand
+  \or \the\pi@temp_tokenA 4{##1##2##3}{{##1}{##2}{##3}}{{}{}{}\pi@nf_tm\pi@nf_tm\pi@nf_tm\pi@nf_tm\pi@nf_tm\pi@nf_tm}\gobblethreeand
+  \or \the\pi@temp_tokenA 5{##1##2##3##4}{{##1}{##2}{##3}{##4}}{{}{}{}{}\pi@nf_tm\pi@nf_tm\pi@nf_tm\pi@nf_tm\pi@nf_tm}\gobblefourand
+  \or \the\pi@temp_tokenA 6{##1##2##3##4##5}{{##1}{##2}{##3}{##4}{##5}}{{}{}{}{}{}\pi@nf_tm\pi@nf_tm\pi@nf_tm\pi@nf_tm}\gobblefiveand
+  \or \the\pi@temp_tokenA 7{##1##2##3##4##5##6}{{##1}{##2}{##3}{##4}{##5}{##6}}{{}{}{}{}{}{}\pi@nf_tm\pi@nf_tm\pi@nf_tm}\gobblesixand
+  \or \the\pi@temp_tokenA 8{##1##2##3##4##5##6##7}{{##1}{##2}{##3}{##4}{##5}{##6}{##7}}{{}{}{}{}{}{}{}\pi@nf_tm\pi@nf_tm}\gobblesevenand
+  \or \the\pi@temp_tokenA 9{##1##2##3##4##5##6##7##8}{{##1}{##2}{##3}{##4}{##5}{##6}{##7}{##8}}{{}{}{}{}{}{}{}{}\pi@nf_tm}\gobbleeightand
+  \else \senderror{texapi}{You can't have more than 8 passed arguments. Definition aborted}%
+  \fi
+  }
+%
+% \newfor\foo{<n>}<parameters>{<definition>}{<coda>}
+%        |#1      |#2         |#3           |#4
+% #5 = <n>+1
+% #6 = ##1##2...##n
+% #7 = {##1}{##2}...{##n}
+% #8 = <parameters> with terminators as arguments, to mark the end of the loop.
+% #9 = \gobble<n>and
+% 
+% So, for instance, something like \edef#1#6###5 means
+% (without the double hashes):
+% \edef\foo#1#2...#n#<n+1>, e.g. with n=3
+% \edef\foo#1#2#3#4
+% hence \foo{<first>}{<second>}{<third>}{<list>}
+%           |_________ passed _________|
+%
+% and this calls:
+% \pi@newfor_userdefined:foo#7###5
+% => \pi@newfor_userdefined:foo{#1}{#2}{#3}#4<terminators>
+% => \pi@newfor_userdefined:foo{<first>}{<second>}{<third>}<list><terminators>
+% and of course \pi@newfor_userdefined:foo sees only the head of <list>.
+% 
+% The first argument of <list> is tested to check whether it's a terminator
+% (and whether it's empty in the noempty case) in which case the <coda>,
+% i.e. #4, is executed. Otherwise <definition>, i.e. #3, is launched.
+%
+% \pi@newfor_markloop is just \usecs; but it's also a delimiter for
+% \breakfor, \passarguments, etc., i.e. it delimits the code to be gobbled.
+% \pi@newdor_preloop is a dummy macro that expands to nothing but which
+% is useful in one special case: viz. \passarguments{<arg>} with only one
+% argument passed, and at the end of a loop so that there's no intervening
+% code; \passarguments calls \getargs@pi@newfor_userdefined:foo on its
+% arguments, which should be properly braced; but because TeX removes
+% braces around delimited arguments that fit exactly into the delimiters,
+% \passarguments as just described would pass an unbraced argument, hence kertwang.
+% \pi@newfor_preloop ensures that <arg> is never the sole properly fitted
+% and hence unbracing-prone argument. It is then used by \getargs@pi@newfor_userdefined:foo
+% to remove remaining code, if any.
+% 
+%
+%
+% The definition is pretty ugly, but it works, and
+% you should've seen what it looked like when I started.
+%
+\long\def\pi@newfor_define#1#2#3#4#5#6#7#8#9{%
+  \long\edef#1#6###5{%
+    \noexpandcs{pi@newfor_userdefined:\commandtoname#1}%
+    #7###5\primunexpanded\expandafter{\pi@temp#8\pi@terminator}%
+    }%
+  \ifpi@dofor_noempty
+    {\long\defcs{pi@newfor_userdefined:\commandtoname#1}#6#2{%
+      \ifcs{pi@newfor_\detokenize{###5}_}
+           {\pi@gobbletoterminator{#4}}%
+           {\ifemptystring{###5}
+                          {\usecs{pi@newfor_userdefined:\commandtoname#1}#7}
+                          {#3\pi@newfor_preloop\pi@newfor_markloop{pi@newfor_userdefined:\commandtoname#1}#7}}}}%
+    {\long\defcs{pi@newfor_userdefined:\commandtoname#1}#6#2{%
+        \ifcs{pi@newfor_\detokenize{###5}_}
+             {\pi@gobbletoterminator{#4}}
+             {#3\pi@newfor_preloop\pi@newfor_markloop{pi@newfor_userdefined:\commandtoname#1}#7}%
+        }}%
+  \long\defcs{getargs@pi@newfor_userdefined:\commandtoname#1}#6###5\pi@newfor_preloop{%
+    #9{\usecs{pi@newfor_userdefined:\commandtoname#1}#7}%
+    }%
+  \long\defcs{removeargs@pi@newfor_userdefined:\commandtoname#1}#6###5{%
+    ##1%
+    }%
+  \passexpandednobraces{\long\defcs{retrievefor@pi@newfor_userdefined:\commandtoname#1}##1##2}%
+                       {\pi@temp#8\pi@terminator}%
+                       {\passexpanded{##1}{#9{}##2}}%
+  }
+%
+\long\def\pi@newfor_markloop#1{\usecs{#1}}
+\long\def\passarguments#1\pi@newfor_markloop#2{%
+  \usecs{getargs@#2}#1%
+  }
+\long\def\breakfor#1#2\pi@newfor_markloop#3#4\pi@terminator{%
+  \ifstring{#3}{pi@dofor_control}%
+    {\gobbleoneand{#1}}
+    {#1}%
+  }
+\long\def\pausefor#1#2\pi@newfor_markloop#3{%
+  \ifstring{#3}{pi@dofor_control}
+    {#1}
+    {\usecs{removeargs@#3}{#1}}%
+  }
+\long\def\resumefor#1{%
+  \ifstring{#1}{\dofor}
+    {\pi@dofor_control}
+    {\usecs{pi@newfor_userdefined:\commandtoname#1}}%
+  }
+\long\def\retrieverest#1#2\pi@newfor_markloop#3{%
+  \ifstring{#3}{pi@dofor_control}%
+    {\pi@dofor_retrieverest{#1}}
+    {\usecs{retrievefor@#3}{#1}}%
+  }
+%
+%
+%
+%
+% WHILE LOOPS
+%
+\long\def\repeatuntil#1{%
+  \pi@repeatuntil_loop{\numexpr(0)}{#1}%
+  }
+\long\def\pi@repeatuntil_loop#1#2#3{%
+  \ifnum#2>#1\relax
+    \expandafter\unbrace
+  \else
+    \expandafter\gobbleone
+  \fi
+  {#3\pi@repeatuntil_loop{\numexpr(#1+1)}{#2}{#3}}%
+  }
+%
+\long\def\dowhile#1#2{%
+  #1{#2\dowhile{#1}{#2}}{}%
+  }
+%
+%
+%
+%
+% CUSTOM WHILE LOOPS
+%
+% \newdowhile\foo<nb of args><trarg_1>...<trarg_n><body>
+% where <trarg_1>...<trarg_n> are the transformations of <arg_1>...<arg_n>
+% from one iteration to the next.
+%
+% The \newhile is basically a simple version of \newfor.
+%
+\long\pdef\newwhile#1#2{%
+  \def\pi@temp{#1}%
+  \ifcase#2
+  \expandafter\pi@newwhile_getzero
+  \or\expandafter\pi@newwhile_getone
+  \or\expandafter\pi@newwhile_gettwo
+  \or\expandafter\pi@newwhile_getthree
+  \or\expandafter\pi@newwhile_getfour
+  \or\expandafter\pi@newwhile_getfive
+  \or\expandafter\pi@newwhile_getsix
+  \or\expandafter\pi@newwhile_getseven
+  \or\expandafter\pi@newwhile_geteight
+  \or\expandafter\pi@newwhile_getnine
+  \fi
+  }
+\long\def\pi@newwhile_getzero{%
+  \expandafter\pi@newwhile_create\pi@temp{}{}{}\unbrace}
+\long\def\pi@newwhile_getone#1{%
+  \expandafter\pi@newwhile_create
+    \pi@temp{##1}{{##1}}{{#1}}\gobbleoneand}
+\long\def\pi@newwhile_gettwo#1#2{%
+  \expandafter\pi@newwhile_create
+    \pi@temp{##1##2}{{##1}{##2}}{{#1}{#2}}\gobbletwoand}
+\long\def\pi@newwhile_getthree#1#2#3{%
+  \expandafter\pi@newwhile_create
+    \pi@temp{##1##2##3}{{##1}{##2}{##3}}{{#1}{#2}{#3}}\gobblethreeand}
+\long\def\pi@newwhile_getfour#1#2#3#4{%
+  \expandafter\pi@newwhile_create
+    \pi@temp{##1##2##3##4}{{##1}{##2}{##3}{##4}}{{#1}{#2}{#3}{#4}}\gobblefourand}
+\long\def\pi@newwhile_getfive#1#2#3#4#5{%
+  \expandafter\pi@newwhile_create
+    \pi@temp{##1##2##3##4##5}{{##1}{##2}{##3}{##4}{##5}}{{#1}{#2}{#3}{#4}{#5}}\gobblefiveand}
+\long\def\pi@newwhile_getsix#1#2#3#4#5#6{%
+  \expandafter\pi@newwhile_create
+    \pi@temp{##1##2##3##4##5##6}{{##1}{##2}{##3}{##4}{##5}{##6}}{{#1}{#2}{#3}{#4}{#5}{#6}}\gobblesixand}
+\long\def\pi@newwhile_getseven#1#2#3#4#5#6#7{%
+  \expandafter\pi@newwhile_create
+    \pi@temp{##1##2##3##4##5##6##7}{{##1}{##2}{##3}{##4}{##5}{##6}{##7}}{{#1}{#2}{#3}{#4}{#5}{#6}{#7}}\gobblesevenand}
+\long\def\pi@newwhile_geteight#1#2#3#4#5#6#7#8{%
+  \expandafter\pi@newwhile_create
+    \pi@temp{##1##2##3##4##5##6##7##8}{{##1}{##2}{##3}{##4}{##5}{##6}{##7}{##8}}{{#1}{#2}{#3}{#4}{#5}{#6}{#7}{#8}}\gobbleeightand}
+\long\def\pi@newwhile_getnine#1#2#3#4#5#6#7#8#9{%
+  \expandafter\pi@newwhile_create
+    \pi@temp{##1##2##3##4##5##6##7##8##9}{{##1}{##2}{##3}{##4}{##5}{##6}{##7}{##8}{##9}}{{#1}{#2}{#3}{#4}{#5}{#6}{#7}{#8}{#9}}\gobblenineand}
+%
+% 
+% \newwhile\foo<n><trans_1><trans_2>...<trans_n><body>
+% 
+% Below:
+% #1 = \foo
+% #2 = ##1##2...##n
+% #3 = {##1}{##2}...{##n}
+% #4 = <trans_1><trans_2>...<trans_n>
+% #5 = \gobble<n>and
+% #6 = <body>
+%
+% ... so that \foo (#1) takes <n> arguments (#2), executes <body> (#6),
+% and runs its internal version (...newhile_userdefined...) on these same arguments
+% properly braced (#3). This internal version takes of course <n> arguments
+% and returns \foo with the arguments transformed (#4).
+% ..._preloop and ..._markloop are just markers, although the is equivalent to \usecs
+% so as to launch the following macro.
+%
+\long\def\pi@newwhile_create#1#2#3#4#5#6{%
+  \long\def#1#2{%
+    #6\pi@newwhile_preloop\pi@newwhile_markloop{pi@newwhile_userdefined:\commandtoname#1}#3%
+    }%
+  \long\defcs{pi@newwhile_userdefined:\commandtoname#1}#2{#1#4}%
+  \long\defcs{changewhile@pi@newwhile_userdefined:\commandtoname#1}#2{\pi@gobbletoterminator{#5{#1#3}}}%
+  \letcs{breakwhile@pi@newwhile_userdefined:\commandtoname#1}#5%
+  }
+%
+\let\pi@newwhile_preloop\emptycs
+\let\pi@newwhile_markloop\usecs
+\long\def\changewhile#1\pi@newwhile_markloop#2{%
+  \usecs{changewhile@#2}#1\pi@terminator
+  }
+\long\def\breakwhile#1#2\pi@newwhile_markloop#3{%
+  \usecs{breakwhile@#3}{#1}%
+  }
+%
+%
+%
+%
+% CATCODE SETTINGS
+%
+\pdef\setcatcodes#1{%
+  \ifsuffix,{#1}{\pi@setcatcodes_loop{#1}}
+                {\pi@setcatcodes_loop{#1,}}%
+  }
+\def\restorecatcodes{%
+  \def\restorecatcodes{}%
+  }
+\def\pi@setcatcodes_loop#1{%
+  \dofor{#1}##1=##2,{%
+    \dofor{##1}####1{%
+      \ifemptycommand\restorecatcodes
+              {\def\restorecatcodes{\def\restorecatcodes{}}}%
+              {}%
+      \eaddright\restorecatcodes{%
+        \catcode`\noexpand####1=\the\catcode`####1\relax}%
+      \catcode`####1=##2\relax}{}}{}%
+  }
+%
+%
+%
+%
+% STRINGS
+%
+\let\pi@thisisjustanemptystring_donottouchit\relax
+\pi@ifdef_simple\ifemptystring{\ifcsname pi@thisisjustanemptystring_donottouchit\detokenize{#1}\endcsname}
+%
+\pi@ifdef_twoarg\ifstring{%
+  \passcs\gobbleone{pi@ifstring_string\detokenize{#1:#1}}%
+  \ifcs{pi@ifstring_string\detokenize{#1:#2}}
+  }
+%
+\long\pdef\newstring#1{%
+  \long\gdefcs{pi@strings_ifprefix:\detokenize{#1}}##1#1##2\pi@terminator{%
+    \ifemptystring{##1}\firstoftwo\secondoftwo}%
+  \long\gdefcs{pi@strings_removeprefix:\detokenize{#1}}#1##1\pi@terminator{##1}%
+  \long\gdefcs{pi@strings_removeprefixand:\detokenize{#1}}#1##1\pi@terminator##2{##2{##1}}%
+%
+  \long\gdefcs{pi@strings_ifsuffix:\detokenize{#1}}##1#1\pi@terminator##2\pi@terminator{%
+    \ifemptystring{##2}\secondoftwo{\pi@gobbletoterminator\firstoftwo}}%
+  \long\gdefcs{pi@strings_removesuffix:\detokenize{#1}}##1#1\pi@terminator{##1}%
+  \long\gdefcs{pi@strings_removesuffixand:\detokenize{#1}}##1#1\pi@terminator##2{##2{##1}}%
+%
+  \long\gdefcs{pi@strings_ifcontains:\detokenize{#1}}##1#1##2\pi@terminator{%
+    \ifemptystring{##2}\secondoftwo\firstoftwo}%
+  \long\gdefcs{pi@strings_splitstringat:\detokenize{#1}}##1#1##2\pi@terminator##3{%
+    ##3{##1}{##2}}%
+  }
+%
+\newstring{-}% This is for \ifprefix on line 391 above.
+%
+\pi@ifdef_twoarg\ifprefix{%
+  \ifemptystring{#1}\firstoftwo
+                    {\ifcs{pi@strings_ifprefix:\detokenize{#1}}
+                          {\usecs{pi@strings_ifprefix:\detokenize{#1}}#2#1\pi@terminator}
+                          {\long\def\pi@temp##1#1##2\pi@terminator{\ifemptystring{##1}\firstoftwo\secondoftwo}%
+                           \pi@temp#2#1\pi@terminator}}
+  }
+%
+\pi@ifdef_twoarg\ifsuffix{%
+  \ifemptystring{#1}\firstoftwo % An empty string is always a suffix. And it'd ruin the test.
+                    {\ifcs{pi@strings_ifsuffix:\detokenize{#1}}
+                          {\usecs{pi@strings_ifsuffix:\detokenize{#1}}#2\pi@terminator#1\pi@terminator\pi@terminator}
+                          {\long\def\pi@temp##1#1\pi@terminator##2\pi@terminator{\ifemptystring{##2}\secondoftwo{\pi@gobbletoterminator\firstoftwo}}%
+                           \pi@temp#2\pi@terminator#1\pi@terminator\pi@terminator}}
+  }
+%
+\pi@ifdef_twoarg\ifcontains{%
+  \ifemptystring{#1}\firstoftwo
+                    {\ifcs{pi@strings_ifcontains:\detokenize{#1}}
+                          {\usecs{pi@strings_ifcontains:\detokenize{#1}}#2#1\pi@terminator}
+                          {\long\def\pi@temp##1#1##2\pi@terminator{\ifemptystring{##2}\secondoftwo\firstoftwo}%
+                           \pi@temp#2#1\pi@terminator}}
+  }
+%
+\long\def\removeprefix#1#2{%
+  \ifcs{pi@strings_removeprefix:\detokenize{#1}}
+       {\usecs{pi@strings_removeprefix:\detokenize{#1}}#2\pi@terminator}
+       {\long\def\pi@temp#1##1\pi@terminator{##1}%
+        \pi@temp#2\pi@terminator}%
+  }
+\long\def\removeprefixand#1#2#3{%
+  \ifcs{pi@strings_removeprefixand:\detokenize{#1}}
+       {\usecs{pi@strings_removeprefixand:\detokenize{#1}}#2\pi@terminator{#3}}
+       {\long\def\pi@temp#1##1\pi@terminator{#3{##1}}%
+        \pi@temp#2\pi@terminator}%
+  }
+\long\pdef\removeprefixin#1#2#3{%
+  \long\def\pi@temp#1##1\pi@terminator{\def#3{##1}}%
+  \pi@temp#2\pi@terminator
+  }
+%
+\long\def\removesuffix#1#2{%
+  \ifcs{pi@strings_removesuffix:\detokenize{#1}}
+       {\usecs{pi@strings_removesuffix:\detokenize{#1}}#2\pi@terminator}
+       {\long\def\pi@temp##1#1\pi@terminator{##1}%
+        \pi@temp#2\pi@terminator}%
+  }
+\long\def\removesuffixand#1#2#3{%
+  \ifcs{pi@strings_removesuffixand:\detokenize{#1}}
+       {\usecs{pi@strings_removesuffixand:\detokenize{#1}}#2\pi@terminator{#3}}
+       {\long\def\pi@temp##1#1\pi@terminator{#3{##1}}%
+        \pi@temp#2\pi@terminator}%
+  }
+\long\pdef\removesuffixin#1#2#3{%
+  \long\def\pi@temp##1#1\pi@terminator{\def#3{##1}}%
+  \pi@temp#2\pi@terminator
+  }
+%
+\long\def\splitstringat#1#2#3{%
+  \ifcs{pi@strings_splitstringat:\detokenize{#1}}
+       {\usecs{pi@strings_splitstringat:\detokenize{#1}}#2\pi@terminator{#3}}
+       {\long\def\pi@temp##1#1##2\pi@terminator{#3{##1}{##2}}%
+        \pi@temp#2\pi@terminator}%
+  }
+%
+%
+%
+%
+% TRIMMING 
+% (adapted from Will Robertson's trimspace)
+%
+\long\def\passtrimleft#1#2{%
+  \expandafter\swaprightbraced\expandafter{\romannumeral-`\.\noexpand#1}{#2}%
+  }
+\long\def\trimleft#1{%
+  \passtrimleft{#1}\unbrace
+  }
+\bgroup
+\catcode`\Q=3
+\long\gdef\passtrimright#1{%
+  \pi@passtrimright_first#1Q Q%
+  }%
+\long\gdef\pi@passtrimright_first#1 Q{%
+  \pi@passtrimright_second#1Q%
+  }
+\long\gdef\pi@passtrimright_second#1Q#2#3{%
+  #3{#1}%
+  }
+\egroup
+\long\def\trimright#1{%
+  \passtrimright{#1}\unbrace
+  }
+\long\def\passtrim#1{%
+  \passtrimleft{#1}\passtrimright
+  }
+\long\def\trim#1{%
+  \passtrim{#1}\unbrace
+  }
+\long\pdef\deftrimleft#1#2{%
+  \passtrimleft{#2}{\def#1}
+  }
+\long\pdef\deftrimright#1#2{%
+  \passtrimright{#2}{\def#1}
+  }
+\long\pdef\deftrim#1#2{%
+  \passtrim{#2}{\def#1}%
+  }
+
+\pi@restorecatcodes
+\endinput

@@ -1,0 +1,417 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%       ****************************************
+%       *              ENDNOTES                *
+%       ****************************************
+%
+%  Date of this version: 15 January 2003.
+%
+%% Copyright 2002 John Lavagnino
+%%
+%% This file may be distributed and/or modified under the
+%% conditions of the LaTeX Project Public License, either version 1.2
+%% of this license or (at your option) any later version.
+%% The latest version of this license is in
+%%    http://www.latex-project.org/lppl.txt
+%% and version 1.2 or later is part of all distributions of LaTeX
+%% version 1999/12/01 or later.
+%
+%  Based on the FOOTNOTES section of
+%  LATEX.TEX (VERSION 2.09 - RELEASE OF 19 April 1986), with
+%  "footnote" changed to "endnote" and "fn" changed to "en" (where
+%  appropriate), with all the minipage stuff pulled out, and with
+%  some small changes for the different operation of endnotes.
+%  Subsequently updated to follow the code for
+%  LaTeX2e <2000/06/01>.
+%
+%  Uses an extra external file, with .ent extension, to hold the
+%  text of the endnotes.  This may be deleted after the run; a new
+%  version is generated each time--it doesn't require information
+%  collected from the previous run.
+%
+%  This code does not obey \nofiles.  Perhaps it should.
+%
+%   John Lavagnino (John.Lavagnino@kcl.ac.uk)
+%   Centre for Computing in the Humanities, King's College London
+%
+%  To turn all the footnotes in your documents into endnotes, say
+%
+%     \let\footnote=\endnote
+%
+%  in your preamble, and then add something like
+%
+%     \newpage
+%     \begingroup
+%     \parindent 0pt
+%     \parskip 2ex
+%     \def\enotesize{\normalsize}
+%     \theendnotes
+%     \endgroup
+%
+% as the last thing in your document.  (But \theendnotes all
+% by itself will work.)
+%
+%       ****************************************
+%       *            CHANGE LOG                *
+%       ****************************************
+%
+% JL  Modified to include \addtoendnotes.  JL, 10/22/89.
+%
+% JK  Modification by J"org Knappen 25. 2. 1991:
+% JK
+% JK  Introduced \notesname in the spirit of international \LaTeX.
+% JK  \notesname is set per default to be {Notes}, but can easily
+% JK  be redifined, e.g. for german language
+% JK  \renewcommand{\notesname}{Anmerkungen}
+%
+% DW Modification by Dominik Wujastyk, London, 19 September 1991:
+% DW
+% DW Moved the line
+% DW         \edef\@currentlabel{\csname p@endnote\endcsname\@theenmark}
+% DW out of the definition of \@endnotetext and into the definition
+% DW of \@doanenote so that \label and \ref commands work correctly in
+% DW endnotes.  Otherwise, the \label just pointed to the last section
+% DW heading (or whatever) preceding the \theendnotes command.
+%
+% JL Revised documentation and macros.  24 Sept 1991.
+%
+% modified by --bg (B.Gaulle) 09/14/94 for:
+%               1) replace » (why a 8bit char here?) by ^ as a default.
+%               2) force \catcode of > to be 12 (implied by \@doanenote).
+%          by --bg again 03/22/95 for:
+%               3) reseting appropriate catcode of > in case it were
+%                  used as an active char before \@endanenote (was
+%                  pointed by Ch. Pallier).
+%
+% John Lavagnino, 12 January 2003: a number of small updates:
+%
+% JL Incorporate change suggested by Frank Mittelbach to
+% JL \enoteheading, so that first note has paragraph indentation.
+% JL Frank's note:
+%      the idea of this code is to fix the problem that without it
+%      the first endnote after the heading will not be indented thus looking
+%      somewhat strange. Problem however is that since there is no
+%      indentation \leavemode\par will make an absolutely empty pargraph so
+%      that no baseline calculation is done. therefore \vskip-\baselineskip
+%      will put the first endnote directly below the heading without the
+%      usual spaccing. using \mbox insead will cure this defect.
+%
+% JL Also incorporated Frank's suggestion to define
+% JL \makeenmark and \theenmark, so that users can change more of the
+% JL layout without using \makeatletter.  \makeenmark defaults to
+% JL \@makeenmark, so old code is still supported; and \theenmark is
+% JL just syntactic sugar for \@theenmark, which is still the real
+% JL value (and shouldn't be directly modified by user code).
+%
+% JL Definition of \ETC. also dropped: surely nobody is still
+% JL using TeX 2.992.  (If you are, you need to upgrade it or
+% JL endnotes longer than 1000 characters will be truncated.)
+%
+% JL Update much of the code to track the current LaTeX2e code more
+% JL closely. Clean up \theendnotes.
+%
+% John Lavagnino, 15 January 2003: fix my garbled version of
+% Frank's updates.
+%
+%
+%       ****************************************
+%       *        ENDNOTE COMMANDS              *
+%       ****************************************
+%
+%
+%   \endnote{NOTE}       : User command to insert a endnote.
+%
+%   \endnote[NUM]{NOTE}  : User command to insert a endnote numbered
+%                           NUM, where NUM is a number -- 1, 2,
+%                           etc.  For example, if endnotes are numbered
+%                           *, **, etc. within pages, then  \endnote[2]{...}
+%                           produces endnote '**'.  This command does  not
+%                           step the endnote counter.
+%
+%   \endnotemark[NUM]    : Command to produce just the endnote mark in
+%                           the text, but no endnote.  With no argument,
+%                           it steps the endnote counter before  generating
+%                           the mark.
+%
+%   \endnotetext[NUM]{TEXT} : Command to produce the endnote but no
+%                              mark.  \endnote is equivalent to
+%                              \endnotemark \endnotetext .
+%
+%   \addtoendnotes{TEXT} : Command to add text or commands to current
+%                              endnotes file: for inserting headings,
+%                              pagebreaks, and the like into endnotes
+%                              sections.  TEXT a moving argument:
+%                              \protect required for fragile commands.
+%
+%       ****************************************
+%       *        ENDNOTE USER COMMANDS         *
+%       ****************************************
+%
+%   Endnotes use the following parameters, similar to those relating
+%   to footnotes:
+%
+%   \enotesize   : Size-changing command for endnotes.
+%
+%   \theendnote : In usual LaTeX style, produces the endnote number.
+%
+%   \theenmark : Holds the current endnote's mark--e.g., \dag or '1' or 'a'.
+%                 (You don't want to set this yourself, as it comes
+%                 either from the autonumbering of notes or from
+%                 the optional argument to \endnote. But you'll need
+%                 to use it if you define your own \makeenmark.)
+%
+%   \makeenmark : A macro to generate the endnote marker from  \theenmark
+%                  The default definition is \hbox{$^\theenmark$}.
+%
+%   \@makeentext{NOTE} :
+%        Must produce the actual endnote, using \theenmark as the mark
+%        of the endnote and NOTE as the text.  It is called when effectively
+%        inside a \parbox, with \hsize = \columnwidth.  For example, it might
+%        be as simple as
+%               $^{\theenmark}$ NOTE
+%
+%
+%       ****************************************
+%       *        ENDNOTE PSEUDOCODE            *
+%       ****************************************
+%
+% \endnote{NOTE}  ==
+%  BEGIN
+%    \stepcounter{endnote}
+%    \@theenmark :=G eval (\theendnote)
+%    \@endnotemark
+%    \@endnotetext{NOTE}
+%  END
+%
+% \endnote[NUM]{NOTE} ==
+%  BEGIN
+%    begingroup
+%       counter endnote :=L NUM
+%       \@theenmark :=G eval (\theendnote)
+%    endgroup
+%    \@endnotemark
+%    \@endnotetext{NOTE}
+%  END
+%
+% \@endnotetext{NOTE} ==
+%  BEGIN
+%    write to \@enotes file: "\@doanenote{ENDNOTE MARK}"
+%    begingroup
+%       \next := NOTE
+%       set \newlinechar for \write to \space
+%       write to \@enotes file: \meaning\next
+%               (that is, "macro:->NOTE)
+%    endgroup
+%  END
+%
+% \addtoendnotes{TEXT} ==
+%  BEGIN
+%    open endnotes file if not already open
+%    begingroup
+%       let \protect to \string
+%       set \newlinechar for \write to \space
+%       write TEXT to \@enotes file
+%    endgroup
+%  END
+%
+% \endnotemark      ==
+%  BEGIN \stepcounter{endnote}
+%        \@theenmark :=G eval(\theendnote)
+%        \@endnotemark
+%  END
+%
+% \endnotemark[NUM] ==
+%   BEGIN
+%       begingroup
+%         endnote counter :=L NUM
+%        \@theenmark :=G eval(\theendnote)
+%       endgroup
+%       \@endnotemark
+%   END
+%
+% \@endnotemark ==
+%   BEGIN
+%    \leavevmode
+%    IF hmode THEN \@x@sf := \the\spacefactor FI
+%    \makeenmark          % put number in main text
+%    IF hmode THEN \spacefactor := \@x@sf FI
+%   END
+%
+% \endnotetext      ==
+%    BEGIN \@theenmark :=G eval (\theendnote)
+%          \@endnotetext
+%    END
+%
+% \endnotetext[NUM] ==
+%    BEGIN begingroup  counter endnote :=L NUM
+%                      \@theenmark :=G eval (\theendnote)
+%          endgroup
+%          \@endnotetext
+%    END
+%
+%       ****************************************
+%       *           ENDNOTE MACROS             *
+%       ****************************************
+%
+
+\@definecounter{endnote}
+\def\theendnote{\@arabic\c@endnote}
+
+\def\@makeenmark{\hbox{\@textsuperscript{\normalfont\@theenmark}}}
+\def\makeenmark{\@makeenmark}
+
+\def\theenmark{\@theenmark}
+
+\newdimen\endnotesep
+
+\def\endnote{\@ifnextchar[\@xendnote{\stepcounter{endnote}%
+     \protected@xdef\@theenmark{\theendnote}%
+     \@endnotemark\@endnotetext}}
+
+\def\@xendnote[#1]{%
+   \begingroup
+     \c@endnote=#1\relax
+     \unrestored@protected@xdef\@theenmark{\theendnote}%
+   \endgroup
+   \@endnotemark\@endnotetext}
+
+%  Here begins a section of endnote code that's really different from
+% the footnote code of LaTeX.
+
+\let\@doanenote=0
+\let\@endanenote=0
+
+\newwrite\@enotes
+\newif\if@enotesopen \global\@enotesopenfalse
+
+\def\@openenotes{\immediate\openout\@enotes=\jobname.ent\relax
+      \global\@enotesopentrue}
+
+%  The stuff with \next and \meaning is a trick from the TeXbook, 382,
+% there intended for setting verbatim text, but here used to avoid
+% macro expansion when the footnote text is written.  \next will have
+% the entire text of the footnote as one long line, which might well
+% overflow limits on output line length; the business with \newlinechar
+% makes every space become a newline in the \@enotes file, so that all
+% of the lines wind up being quite short.
+
+\long\def\@endnotetext#1{%
+     \if@enotesopen \else \@openenotes \fi
+     \immediate\write\@enotes{\@doanenote{\@theenmark}}%
+     \begingroup
+        \def\next{#1}%
+        \newlinechar='40
+        \immediate\write\@enotes{\meaning\next}%
+     \endgroup
+     \immediate\write\@enotes{\@endanenote}}
+
+% \addtoendnotes works the way the other endnote macros probably should
+% have, requiring the use of \protect for fragile commands.
+
+\long\def\addtoendnotes#1{%
+     \if@enotesopen \else \@openenotes \fi
+     \begingroup
+        \newlinechar='40
+        \let\protect\string
+        \immediate\write\@enotes{#1}%
+     \endgroup}
+
+%  End of unique endnote code
+
+\def\endnotemark{%
+   \@ifnextchar[\@xendnotemark
+     {\stepcounter{endnote}%
+      \protected@xdef\@theenmark{\theendnote}%
+      \@endnotemark}}
+
+\def\@xendnotemark[#1]{%
+   \begingroup
+      \c@endnote #1\relax
+      \unrestored@protected@xdef\@theenmark{\theendnote}%
+   \endgroup
+   \@endnotemark}
+
+\def\@endnotemark{%
+  \leavevmode
+  \ifhmode\edef\@x@sf{\the\spacefactor}\nobreak\fi
+  \makeenmark
+  \ifhmode\spacefactor\@x@sf\fi
+  \relax}
+
+\def\endnotetext{%
+     \@ifnextchar [\@xendnotenext
+       {\protected@xdef\@theenmark{\theendnote}%
+    \@endnotetext}}
+
+\def\@xendnotenext[#1]{\begingroup \c@endnote=#1\relax
+   \xdef\@theenmark{\theendnote}\endgroup \@endnotetext}
+
+\def\@xendnotenext[#1]{%
+  \begingroup
+     \c@endnote=#1\relax
+     \unrestored@protected@xdef\@theenmark{\theendnote}%
+  \endgroup
+  \@endnotetext}
+
+
+%  \theendnotes actually prints out the endnotes.
+
+%  The user may want separate endnotes for each chapter, or a big
+% block of them at the end of the whole document.  As it stands,
+% either will work; you just say \theendnotes wherever you want the
+% endnotes so far to be inserted.  However, you must add
+% \setcounter{endnote}{0} after that if you want subsequent endnotes
+% to start numbering at 1 again.
+
+%  \enoteformat is provided so user can specify some special formatting
+% for the endnotes.  It needs to set up the paragraph parameters, start
+% the paragraph, and print the label.  The \mbox stuff in \enoteheading
+% is to make and undo a dummy paragraph, to get around the games \section*
+% plays with paragraph indenting and instead give us uniform
+% indenting for all notes.
+
+\def\notesname{Notes}%
+\def\enoteheading{\section*{\notesname
+  \@mkboth{\MakeUppercase{\notesname}}{\MakeUppercase{\notesname}}}%
+  \mbox{}\par\vskip-\baselineskip}
+
+\def\enoteformat{\rightskip\z@ \leftskip\z@ \parindent=1.8em
+  \leavevmode\llap{\makeenmark}}
+
+\def\enotesize{\footnotesize}
+
+\def\theendnotes{\immediate\closeout\@enotes \global\@enotesopenfalse
+  \begingroup
+    \makeatletter
+    %
+    % The machinery with \@ResetGT and > here ensures that
+    % \@doanenote works properly even if > is an active character
+    % at the point where \theendnotes is invoked. > needs to have
+    % catcode 12 when the arguments of \@doanenote are scanned, so
+    % that the > in the string "macro:->" is matched.  The actual
+    % footnote text is not an argument to \@doanenote, but just
+    % follows it in the .ent file; so \@ResetGT can reset the
+    % category code for > that should be used when processing
+    % that text.  That resetting takes place within a
+    % \begingroup-\endgroup block set up by \@doanenote and
+    % \@endanenote, so the catcode for > is back to 12 for the
+    % next note.
+    %
+    \edef\@tempa{`\string >}%
+    \ifnum\catcode\@tempa=12%
+      \let\@ResetGT\relax
+    \else
+      \edef\@ResetGT{\noexpand\catcode\@tempa=\the\catcode\@tempa}%
+      \@makeother\>%
+    \fi
+    \def\@doanenote##1##2>{\def\@theenmark{##1}\par\begingroup
+        \@ResetGT
+        \edef\@currentlabel{\csname p@endnote\endcsname\@theenmark}%
+        \enoteformat}
+    \def\@endanenote{\par\endgroup}%
+    \enoteheading
+    \enotesize
+    \input{\jobname.ent}%
+  \endgroup}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

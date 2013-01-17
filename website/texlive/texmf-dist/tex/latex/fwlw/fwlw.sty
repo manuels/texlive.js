@@ -1,0 +1,155 @@
+%  F W L W . S T Y  ( First Word, Last Word )
+%
+%  Donald Arseneau  (1993, 1995)
+%
+%  The fwlw package provides a mechanism to determine the first and
+%  last words on the current page, plus the first word on the *next*
+%  page.  These can be used in head-lines or foot-lines.  The `words'
+%  you see may not be real words, but any unbreakable object.
+%
+%  Two pagestyles are defined to print these words: \pagestyle{NextWordFoot}
+%  which helps you read ahead to the word on the next page; and \pagestyle
+%  {fwlwhead} which is like the headers in a lexicon.  Or you can use the
+%  words in your own page-style. The words are made available in the box
+%  registers:
+%       \FirstWordBox   -  first word on this page
+%       \NextWordBox    -  first word on next page
+%       \LastWordBox    -  last word on this page
+%  Use them in your header lines like: \usebox\LastWordBox.
+%
+%  Such labelling does not make much sense when \chapter generates a page
+%  break, so the last page before a \chapter (or any \clearpage) gets 
+%  a blank "next word", and the first page of the chapter gets a blank
+%  "first word". 
+%
+%  Note that `words' may unfortunately be things like:
+%    - two~words
+%    - [ ]Word  ( [ ] represents a parindent box)
+%    - a whole displayed equation
+%    - the first column of an aligned equation
+%    - anomalously blank, if there are \writes or split footnotes etc.
+%    - partial words like  par-  or  -tial due to hyphenation.
+%
+%  (Major digression...)
+%  An entirely different approach is possible using \mark and \obeyspaces,
+%  and would have different problems.  The problems with catcode changes
+%  may be more or less serious for your particular application.  (You are
+%  invited to write a package using that method!)  The best solution would 
+%  involve \mark and an input filter program to 
+%  `\w{tag} \w{each} \w{word}, \w{in} \w{some} \w{way}.'
+%  TeX has no \everyword hook to insert such tagging.
+%
+%     Copyright (C) 1993,1995 by Donald Arseneau
+%     Vancouver, Canada, email asnd@triumf.ca
+%     This software package may be freely used, transmitted, reproduced,
+%     or modified provided that this notice is left intact.
+%
+% Declare a "unique" penalty value as flag
+\mathchardef\LW@pen 12345
+
+% allocate box registers
+\newbox\FirstWordBox     \global\setbox\FirstWordBox\hbox{}
+\newbox\NextWordBox      \global\setbox\NextWordBox\hbox{}
+\newbox\LastWordBox      \global\setbox\LastWordBox\hbox{}
+\newbox\LW@box           \global\setbox\LW@box\hbox{}
+\newbox\LW@saved
+
+% pagestyle fwlwhead: header line hsa first word and last word
+\def\ps@fwlwhead{\let\@mkboth\@gobbletwo
+ \def\@oddhead{\if@fcolmade\else % no word-heads on float pages.
+   \usebox\FirstWordBox\hfil\usebox\LastWordBox\fi}%
+ \let\@evenhead\@oddhead 
+ \let\@oddfoot\@empty\let\@evenfoot\@oddfoot
+ \let\chaptermark\@gobble\let\sectionmark\@gobble\let\subsectionmark\@gobble
+ }
+
+% pagestyle NextWordFoot: foot line has page number and next-page first word,
+% but only on odd pages
+\def\ps@NextWordFoot{\let\@mkboth\@gobbletwo
+ \let\@oddhead\@empty\let\@evenhead\@oddhead
+ \def\@oddfoot{\hfil\thepage\hfil\llap{\usebox\NextWordBox}}%
+ \let\@evenfoot\@empty
+ \let\chaptermark\@gobble\let\sectionmark\@gobble\let\subsectionmark\@gobble
+ }
+
+%  Shell around old output routine.  Gets first word from next page by
+%  letting TeX continue with \vsize=0 to get a look at the next line.
+%  Values of \outputpenalty for \specialoutput ( -10001 to -19999 ) are
+%  simply run through the output routine.
+%  \supereject and \clearpage give a blank "next word".
+%  When called after making a stub-page the stub is returned to the
+%  vertical list, the previous page is restored and shipped out normally,
+%  but knowing what the next word will be.
+
+\edef\FWLWnorm@L@output{\the\output}
+
+\output{\@tempswafalse
+\ifnum \outputpenalty>-\@MM \ifnum\outputpenalty<-\@M \@tempswatrue\fi\fi
+\if@tempswa % special (float) output
+%  \message{Float handler: penalty=\the\outputpenalty}%
+   \FWLWnorm@L@output
+\else
+  \ifvoid\LW@saved % end of real page
+%    \message{End of real page}%
+     \global\setbox\LW@saved\copy\@cclv % save page
+     \setbox\@tempboxa\vbox{\unvbox\@cclv \unskip\unkern\unpenalty
+       \unskip\unkern\unpenalty \unskip\unkern\unpenalty
+       \setbox\@tempboxa\lastbox
+       \LW@getlast@word\@tempboxa\LastWordBox
+     }\ifnum\outputpenalty>-\@MM % not \supereject
+       \xdef\LW@vsize{\global\vsize\the\vsize 
+          \global\holdinginserts\the\holdinginserts}%
+       \global\vsize\z@ \global\holdinginserts\@ne 
+     \else % \supereject, just output, don't look for word on next page
+%      \message{caused by super-eject.}
+       \global\setbox\@cclv\box\LW@saved
+       \global\setbox\NextWordBox\hbox{}%
+       \FWLWnorm@L@output
+       \global\setbox\FirstWordBox\box\NextWordBox
+     \fi
+  \else % saved page => just did tiny page to get next word
+%    \message{Just got next line:}{\tracingall\showboxdepth2 \showbox\@cclv}%
+     \setbox\@tempboxa\vbox{\penalty\LW@pen\unvcopy\@cclv \LW@getall@boxes
+       \ifvbox\LW@box \penalty\LW@pen\unvbox\LW@box \LW@getall@boxes\fi
+       \ifvbox\LW@box \global\setbox\NextWordBox\hbox{}\else
+         \LW@getfirst@word\LW@box\NextWordBox
+       \fi}%  Return tiny page to page list:
+     \unvbox\@cclv \ifnum\outputpenalty<\@M \penalty\outputpenalty\fi
+     \LW@vsize\relax
+     \global\setbox\@cclv\box\LW@saved
+     \FWLWnorm@L@output
+     \global\setbox\FirstWordBox\box\NextWordBox
+\fi\fi}
+
+% globally get last "word" from a box (#1) into another box (#2)
+\def\LW@getlast@word#1#2{\setbox\@tempboxa\vbox{\hsize\maxdimen \@parboxrestore
+  \hyphenpenalty\@M \exhyphenpenalty\@M 
+  \rightskip\fill \looseness\@M \linepenalty\z@
+  \noindent\unhbox#1\endgraf
+  \unskip\unkern\unpenalty \global\setbox\LW@box\lastbox
+  }\LW@repack{#2}}
+
+% globally get first "word" from a box (#1) into another box (#2)
+\def\LW@getfirst@word#1#2{\setbox\@tempboxa\vbox{\@parboxrestore
+  \parshape\thr@@ \z@\z@ \z@\z@ \z@\maxdimen \parfillskip\fill
+  \hyphenpenalty\@M \exhyphenpenalty\@M 
+  \hbadness\@MM \overfullrule\z@ \hfuzz\maxdimen
+  \ifhbox#1\noindent
+   \vadjust{\penalty\LW@pen}\penalty-\@M\unhbox#1% eliminate previous \leftskip
+  \else\ifvbox#1\penalty\LW@pen\unvbox#1\fi\fi
+  \endgraf
+  \@tempcnta\z@  \LW@getall@boxes}\LW@repack{#2}}
+
+% Go through a vertical list that starts with special penalty
+\def\LW@getall@boxes{\global\setbox\LW@box\lastbox \unskip\unkern \unskip\unkern
+  \let\@tempa\relax
+  \ifvoid \LW@box \advance\@tempcnta\@ne \else \@tempcnta\z@ \fi
+  \ifnum\lastpenalty=\LW@pen \else \unpenalty\fi
+  \ifnum\lastpenalty=\LW@pen \else \unpenalty\fi
+  \ifnum\lastpenalty=\LW@pen \else \ifnum\@tempcnta<5
+    \let\@tempa\LW@getall@boxes \fi \fi \unpenalty \@tempa}
+
+% Put contents of \LW@box into hbox #1
+\def\LW@repack#1{\global\setbox#1\hbox{\ifhbox\LW@box
+   \unhbox\LW@box\unskip\unskip\unpenalty\unskip
+  \else\ifvbox\LW@box\box\LW@box\fi\fi}}

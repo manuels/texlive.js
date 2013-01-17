@@ -1,0 +1,724 @@
+%% lpic.sty
+%% Copyright 2010 R. Matveyev
+%
+% This work may be distributed and/or modified under the
+% conditions of the LaTeX Project Public License, either version 1.3
+% of this license or (at your option) any later version.
+% The latest version of this license is in
+%   http://www.latex-project.org/lppl.txt
+% and version 1.3 or later is part of all distributions of LaTeX
+% version 2005/12/01 or later.
+%
+% This work has the LPPL maintenance status `maintained'.
+% 
+% The Current Maintainer of this work is R. Matveyev.
+%
+% This work consists of the files: 
+%       lpic.sty  instructions.tex
+%       instructions.pdf instructions-differential.eps 
+%       instructions-differential.pdf README 
+
+% lpic.sty V0.8, 23.12.2010
+% 
+
+\ProvidesPackage{lpic}
+    [2010/12/23, version 0.8]
+
+\NeedsTeXFormat{LaTeX2e}
+\RequirePackage{epsfig}
+\RequirePackage{rotating}
+\RequirePackage{calc}
+\RequirePackage{ifthen}
+\RequirePackage{color}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% debugging stuff
+%
+
+\newcommand{\lp@skipthis}[1]{\relax}
+\newcommand{\lp@msg}[1]{\message{^^J! lpic message: #1^^J}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Counters, lengths, boxes
+%
+
+% Adjustable parameters
+\newlength{\lpunitlength}\setlength{\lpunitlength}{1mm}
+
+\newlength{\lpmarginright}\setlength{\lpmarginright}{0mm}
+\newlength{\lpmarginleft}\setlength{\lpmarginleft}{0mm}
+\newlength{\lpmargintop}\setlength{\lpmargintop}{0mm}
+\newlength{\lpmarginbottom}\setlength{\lpmarginbottom}{0mm}
+
+\newlength{\lpbgboxsep}\setlength{\lpbgboxsep}{\fboxsep}
+
+\newlength{\lpgridthickness}\setlength{\lpgridthickness}{0.01mm}
+\newlength{\lpframethickness}\setlength{\lpframethickness}{0.7mm}
+\newlength{\lplblframethickness}\setlength{\lplblframethickness}{0.01mm}
+\newlength{\lpfigframethickness}\setlength{\lpfigframethickness}{0.2mm}
+
+\newcounter{lpgridstep}\setcounter{lpgridstep}{5}
+\newcounter{lpcoordstep}\setcounter{lpcoordstep}{10}
+
+% Internal parameters
+\newlength{\lp@marginright}
+\newlength{\lp@marginleft}
+\newlength{\lp@margintop}
+\newlength{\lp@marginbottom}
+\newlength{\lp@xsizeorig}
+\newlength{\lp@ysizeorig}
+\newlength{\lp@xtotalsizeorig}
+\newlength{\lp@ytotalsizeorig}
+\newlength{\lp@gridstep}
+\newlength{\lp@coordstep}
+\newlength{\lp@coordx}
+\newlength{\lp@coordy}
+
+\newcounter{lp@xtotalsize}
+\newcounter{lp@ytotalsize}
+\newcounter{lp@xorigin}
+\newcounter{lp@yorigin}
+\newcounter{lp@coordx}
+\newcounter{lp@coordy}
+
+\newsavebox{\lp@pictbox}		%box to save (ps or pdf)-figure
+
+% Temp stuff
+\newlength{\lp@tmpa}
+\newlength{\lp@tmpb}
+\newlength{\lp@tmpc}
+\newlength{\lp@tmpd}
+\newlength{\lp@tmpx}
+\newlength{\lp@tmpy}
+\newlength{\lp@tmpdx}
+\newlength{\lp@tmpdy}
+
+\newcounter{lp@tmpa}
+\newcounter{lp@tmpb}
+\newcounter{lp@tmpc}
+\newcounter{lp@tmpd}
+\newcounter{lp@tmpe}
+\newcounter{lp@tmpf}
+\newcounter{lp@tmpx}
+\newcounter{lp@tmpy}
+\newcounter{lp@tmpdx}
+\newcounter{lp@tmpdy}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Procedure to check whether argument is a number or length
+% we need a way to check whether given argument is a number or 
+% length \lp@ifnumber{arg}{true cmds}{false cmds}
+
+\def\lp@substring#1 in #2;%
+   {%
+     \def\lp@check##1#1##2ENDOFTHEARGS%
+		  {\edef\lp@foundsubstring{\lp@foundsubstring##2}}%
+     \expandafter\lp@check#2#1ENDOFTHEARGS%
+   }
+
+\def\lp@ifsubstring#1 in #2;#3#4%
+   {%
+     \edef\lp@foundsubstring{}%
+     \lp@substring #1 in #2;%
+     \ifthenelse{\equal{x}{x\lp@foundsubstring}}{#4}{#3}%
+   }
+
+\newcommand{\lp@ifnumber}[3]%
+   {%
+     \edef\lp@foundsubstring{}%
+     \lp@substring pt in #1;%
+     \lp@substring pc in #1;%
+     \lp@substring in in #1;%
+     \lp@substring bp in #1;%
+     \lp@substring cm in #1;%
+     \lp@substring mm in #1;%
+     \lp@substring dd in #1;%
+     \lp@substring cc in #1;%
+     \lp@substring sp in #1;%
+     \lp@substring em in #1;%
+     \lp@substring ex in #1;%
+     \ifthenelse{\equal{\lp@foundsubstring}{}}{#2}{#3}%
+   }
+
+%
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Save scaled picture in \lp@pictbox, calculate its sizes, calculate
+% sizes and the origin of the whole picture box and define procedure
+% for calculating coordinates
+% \lp@dimens defines \lp@xtotalsize!, \lp@ytotalsize!, \lp@xorig!,
+% \lp@yorig!, \lp@xcoord{original_length_in_\lp@units},
+% \lp@ycoord{original_length_in_\lp@units} 
+%
+
+\newcommand{\lp@dimens}
+{%
+  % Save unscaled pict and calculate sizes
+  \sbox{\lp@pictbox}{\epsfig{figure=\lp@epsfile}}%
+  \settowidth{\lp@xsizeorig}{\usebox{\lp@pictbox}}% Original x-size
+  \settoheight{\lp@ysizeorig}{\usebox{\lp@pictbox}}% Original y-size
+  %
+  % Are we given absolute dimensions or scale coefficients?
+  \ifthenelse{\equal{\lp@xscale}{}}%
+      % x scale is not given
+      {%
+	%\lp@msg{x=\lp@xscale, y=\lp@yscale}
+	\ifthenelse{\equal{\lp@yscale}{}}
+	    % x - no, y - no
+	    {%
+	      \edef\lp@xnum{1cm}\edef\lp@xdenom{1cm}%
+	      \edef\lp@ynum{1cm}\edef\lp@ydenom{1cm}%
+	    }%
+	    % x - no, y - yes
+	    {%
+	      \lp@ifnumber{\lp@yscale}
+		 {%
+		   \edef\lp@ynum{\lp@yscale cm}\edef\lp@ydenom{1cm}% 
+		   \edef\lp@xnum{\lp@yscale cm}\edef\lp@xdenom{1cm}%
+		 }%
+		 {%
+		   \edef\lp@ynum{\lp@yscale}\def\lp@ydenom{\lp@ysizeorig}%
+		   \edef\lp@xnum{\lp@yscale}\def\lp@xdenom{\lp@ysizeorig}% 
+		 }%
+	    }%
+      }%
+      % x is given
+      {%
+	\ifthenelse{\equal{\lp@yscale}{}}
+	    % x - yes, y - no
+	    {%
+	      \lp@ifnumber{\lp@xscale}
+		 {%
+		   \edef\lp@ynum{\lp@xscale cm}\edef\lp@ydenom{1cm}%
+		   \edef\lp@xnum{\lp@xscale cm}\edef\lp@xdenom{1cm}%
+		 }%
+		 {%
+		   \edef\lp@ynum{\lp@xscale}\def\lp@ydenom{\lp@xsizeorig}%
+		   \edef\lp@xnum{\lp@xscale}\def\lp@xdenom{\lp@xsizeorig}%
+		 }%
+	    }%
+	    % x - yes, y - yes
+	    {%
+	      \lp@ifnumber{\lp@xscale}
+	         {%
+		   \edef\lp@xnum{\lp@xscale cm}\edef\lp@xdenom{1cm}%
+		 }
+		 {%
+		   \edef\lp@xnum{\lp@xscale}\def\lp@xdenom{\lp@xsizeorig}%
+		 }
+	      \lp@ifnumber{\lp@yscale}
+	         {%
+		   \edef\lp@ynum{\lp@yscale cm}\edef\lp@ydenom{1cm}%
+		 }
+		 {%
+		   \edef\lp@ynum{\lp@yscale}\def\lp@ydenom{\lp@ysizeorig}%
+		 }%
+		 
+	    }%
+      }%
+  %\lp@msg{xscale=\lp@xnum/\lp@xdenom, yscale=\lp@ynum/\lp@ydenom}
+  \setlength{\lp@tmpx}{\lp@xsizeorig * \ratio{\lp@xnum}{\lp@xdenom}}% x-size in the doc
+  \setlength{\lp@tmpy}{\lp@ysizeorig * \ratio{\lp@ynum}{\lp@ydenom}}% y-size in the doc
+  % Save scaled picture  
+  \sbox{\lp@pictbox}% 
+       {\epsfig{figure=\lp@epsfile, width=\lp@tmpx, height=\lp@tmpy}}%
+  % Calculate sizes and coordinates of the origin of the whole pict 
+  \setlength{\lp@tmpa}{\lp@tmpx + \lpmarginleft + \lpmarginright}%
+  \setcounter{lp@xtotalsize}{\lp@tmpa / \unitlength}%
+  \def\lp@xtotalsize{\value{lp@xtotalsize}}%
+  \setlength{\lp@tmpa}{\lp@tmpy + \lpmargintop + \lpmarginbottom}%
+  \setcounter{lp@ytotalsize}{\lp@tmpa / \unitlength}%
+  \def\lp@ytotalsize{\value{lp@ytotalsize}}%
+  \setcounter{lp@xorigin}{-\lpmarginleft / \unitlength}%
+  \def\lp@xorigin{\value{lp@xorigin}}%
+  \setcounter{lp@yorigin}{-\lpmarginbottom / \unitlength}%
+  \def\lp@yorigin{\value{lp@yorigin}}%
+  % Redefine margins in units of the original
+  \setlength{\lp@marginleft}{\lpmarginleft / \ratio{\lp@xnum}{\lp@xdenom}}%
+  \setlength{\lp@marginright}{\lpmarginright / \ratio{\lp@xnum}{\lp@xdenom}}%
+  \setlength{\lp@margintop}{\lpmargintop / \ratio{\lp@ynum}{\lp@ydenom}}%
+  \setlength{\lp@marginbottom}{\lpmarginbottom / \ratio{\lp@ynum}{\lp@ydenom}}%
+  \setlength{\lp@xtotalsizeorig}%
+	    {\lp@xsizeorig + \lp@marginleft + \lp@marginright}%
+  \setlength{\lp@ytotalsizeorig}%
+	    {\lp@ysizeorig + \lp@margintop + \lp@marginbottom}%
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Define \lp@put(x,y)[position]{object}
+% \lp@multiput(x,y)(deltax,deltay)[position]{count}{object} 
+% where (x,y)(deltax,deltay) are lengths in the original unscaled eps
+% picture.
+% 
+\def\lp@put(#1,#2)[#3]#4%
+{{%
+  \setlength{\lp@tmpx}{( #1 ) * \ratio{\lp@xnum}{\lp@xdenom}}%
+  \setlength{\lp@tmpy}{( #2 ) * \ratio{\lp@ynum}{\lp@ydenom}}%
+  \setcounter{lp@tmpx}{\lp@tmpx / \unitlength}%
+  \setcounter{lp@tmpy}{\lp@tmpy / \unitlength}%
+  \put(\value{lp@tmpx},\value{lp@tmpy})%
+      {\makebox(0,0)[#3]{#4}}%
+}}
+ 
+\def\lp@multiput(#1,#2)(#3,#4)(#5)[#6]#7%
+{{%
+  \setlength{\lp@tmpx}{( #1 ) * \ratio{\lp@xnum}{\lp@xdenom}}%
+  \setlength{\lp@tmpy}{( #2 ) * \ratio{\lp@ynum}{\lp@ydenom}}%
+  \setcounter{lp@tmpx}{\lp@tmpx / \unitlength}%
+  \setcounter{lp@tmpy}{\lp@tmpy / \unitlength}%
+  \setlength{\lp@tmpdx}{( #3 ) * \ratio{\lp@xnum}{\lp@xdenom}}%
+  \setlength{\lp@tmpdy}{( #4 ) * \ratio{\lp@ynum}{\lp@ydenom}}%
+  \setcounter{lp@tmpdx}{\lp@tmpdx / \unitlength}%
+  \setcounter{lp@tmpdy}{\lp@tmpdy / \unitlength}%
+  \multiput(\value{lp@tmpx},\value{lp@tmpy})%
+           (\value{lp@tmpdx},\value{lp@tmpdy})%
+           {#5}%
+	   {\makebox(0,0)[#6]{#7}}%
+}}
+
+\def\lp@hline#1%
+{{%
+  \setlength{\lp@tmpa}{#1}%
+  \setlength{\lp@tmpa}{\lp@tmpa * \ratio{\lp@xnum}{\lp@xdenom}}%
+  \setcounter{lp@tmpa}{\lp@tmpa / \unitlength}%
+  \line(1,0){\value{lp@tmpa}}%
+}}
+
+\def\lp@vline#1%
+{{%
+  \setlength{\lp@tmpa}{#1}%
+  \setlength{\lp@tmpa}{\lp@tmpa * \ratio{\lp@ynum}{\lp@ydenom}}%
+  \setcounter{lp@tmpa}{\lp@tmpa / \unitlength}%
+  \line(0,1){\value{lp@tmpa}}%
+}}
+
+% \lp@put.....
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Drawing commands
+%
+
+% \lp@pictframecmd draws a frame around all of the picture including
+% margins. \lpframethickness -- thickness of the lines
+\newcommand{\lp@pictframecmd}
+{\begingroup%
+  \linethickness{\lpframethickness}%
+  \lp@put(-\lp@marginleft,-\lp@marginbottom)[l]
+	 {\lp@hline{\lp@xsizeorig+\lp@marginleft+\lp@marginright}}%
+  \lp@put(-\lp@marginleft,-\lp@marginbottom)[b]
+	 {\lp@vline{\lp@ysizeorig+\lp@margintop+\lp@marginbottom}}%
+  \lp@put(\lp@xsizeorig+\lp@marginright,\lp@ysizeorig+\lp@margintop)[r]
+	 {\lp@hline{\lp@xsizeorig+\lp@marginleft+\lp@marginright}}%
+  \lp@put(\lp@xsizeorig+\lp@marginright,\lp@ysizeorig+\lp@margintop)[t]
+	 {\lp@vline{\lp@ysizeorig+\lp@margintop+\lp@marginbottom}}%
+\endgroup}
+
+% \lp@gridcmd draws a grid with the step \value{lpgridstep} x
+% \lpunitlength wrt original and lines \lpgridthickness thick
+\newcommand{\lp@gridcmd}
+{%
+\begingroup%
+  \linethickness{\lpgridthickness} % 
+  \setlength{\lp@gridstep}{\lpunitlength * \value{lpgridstep}}%
+  \setcounter{lp@tmpa}{\lp@marginleft / \lp@gridstep}%
+  \setlength{\lp@tmpa}{-\lp@gridstep * \value{lp@tmpa}}%
+  \setcounter{lp@tmpb}
+	     {(\lp@xsizeorig-\lp@tmpa+\lp@marginright ) / %
+	       \lp@gridstep + 1}%
+  \lp@multiput(\lp@tmpa,-\lp@marginbottom)%
+              (\lp@gridstep,0mm)%
+              (\value{lp@tmpb})%
+              [b]%
+              {\lp@vline{\lp@ysizeorig+\lp@margintop+\lp@marginbottom}}%
+  \setcounter{lp@tmpa}{\lp@marginbottom / \lp@gridstep}%
+  \setlength{\lp@tmpa}{-\lp@gridstep * \value{lp@tmpa}}%
+  \setcounter{lp@tmpb}
+	     {(\lp@ysizeorig-\lp@tmpa+\lp@margintop ) / %
+	       \lp@gridstep + 1}%
+  \lp@multiput(-\lp@marginleft,\lp@tmpa)%
+              (0mm,\lp@gridstep)%
+              (\value{lp@tmpb})%
+              [l]%
+              {\lp@hline{\lp@xsizeorig+\lp@marginleft+\lp@marginright}}%
+\endgroup%
+}
+
+% \lp@coordscmd draws coordinates on all four sides of the picture
+% with the step \lpunitlength * \value{lpcoordstep}
+\newcommand{\lp@coordscmd}
+{\begingroup%
+  \setlength{\lp@coordstep}{\lpunitlength * \value{lpcoordstep}}%
+  \setcounter{lp@tmpa}{\lp@marginleft / \lp@coordstep}
+  \setlength{\lp@tmpa}{-\lp@coordstep * \value{lp@tmpa}}
+  \setcounter{lp@tmpb}
+	     {(\lp@xsizeorig-\lp@tmpa+\lp@marginright) / \lp@coordstep+1}
+  \setcounter{lp@tmpc}{\lp@tmpa / \lpunitlength}
+  \lp@multiput(\lp@tmpa,-\lp@marginbottom-\lpframethickness-0.1mm)%
+              (\lp@coordstep,0mm)%
+              (\value{lp@tmpb})%
+              [t]%
+              {%
+		{\tiny\bf\arabic{lp@tmpc}}%
+		\addtocounter{lp@tmpc}{\value{lpcoordstep}}%
+	      }%
+  \setcounter{lp@tmpc}{\lp@tmpa / \lpunitlength}
+  \lp@multiput(\lp@tmpa,\lp@ysizeorig+\lp@margintop+\lpframethickness)%
+              (\lp@coordstep,0mm)%
+              (\value{lp@tmpb})%
+              [b]%
+              {%
+		{\tiny\bf\arabic{lp@tmpc}}%
+		\addtocounter{lp@tmpc}{\value{lpcoordstep}}%
+	      }%
+  \setcounter{lp@tmpa}{\lp@marginbottom / \lp@coordstep}
+  \setlength{\lp@tmpa}{-\lp@coordstep * \value{lp@tmpa}}
+  \setcounter{lp@tmpb}
+	     {(\lp@ysizeorig-\lp@tmpa+\lp@margintop)/\lp@coordstep+1}
+  \setcounter{lp@tmpc}{\lp@tmpa / \lpunitlength}
+  \lp@multiput(-\lp@marginleft-\lpframethickness,\lp@tmpa)%
+              (0mm,\lp@coordstep)%
+              (\value{lp@tmpb})%
+              [r]%
+              {%
+		{\tiny\bf\arabic{lp@tmpc}}%
+		\addtocounter{lp@tmpc}{\value{lpcoordstep}}%
+	      }%
+  \setcounter{lp@tmpc}{\lp@tmpa / \lpunitlength}
+  \lp@multiput(\lp@xsizeorig+\lp@marginright+\lpframethickness,\lp@tmpa)%
+              (0mm,\lp@coordstep)%
+              (\value{lp@tmpb})%
+              [l]%
+              {%
+		{\tiny\bf\arabic{lp@tmpc}}%
+		\addtocounter{lp@tmpc}{\value{lpcoordstep}}%
+	      }%
+\endgroup}
+
+
+% \lp@lblframecmd draws a frame around each label \lplblframethickness
+% thick 
+\newcommand{\lp@lblframecmd}[1]
+{\begingroup%
+  \setlength{\linethickness}{\lplblframethickness}%
+  \frame{#1}%
+\endgroup}
+
+% \lp@figframecmd draws a frame around eps figure \lpfigframethickness 
+% thick 
+\newcommand{\lp@figframecmd}[1]
+{\begingroup%
+  \setlength{\linethickness}{\lpfigframethickness}%
+  \frame{#1}%
+\endgroup}
+
+%
+\newcommand{\lp@putepsfigurecmd}
+{%
+  \put(0,0){\makebox(0,0)[bl]{\lp@figframe{\usebox{\lp@pictbox}}}}
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% options
+
+% Print nothing but the picture and labels
+\def\lpopt@clean
+{%
+  \let\lp@lblframe=\relax%
+  \let\lp@figframe=\relax%
+  \let\lp@pictframe=\relax%
+  \let\lp@coords=\relax%
+  \let\lp@grid=\relax%
+  \let\lbl=\lbl@cmd%
+  \let\lp@putepsfigure=\lp@putepsfigurecmd%
+}
+
+% Set margins
+\def\lpopt@l#1%
+{%
+  \ifthenelse{\not\equal{#1}{}}
+             {\setlength{\lpmarginleft}{#1}}
+	     {}%
+}
+\def\lpopt@r#1%
+{%
+  \ifthenelse{\not\equal{#1}{}}
+             {\setlength{\lpmarginright}{#1}}
+	     {}%
+}
+\def\lpopt@t#1%
+{%
+  \ifthenelse{\not\equal{#1}{}}
+             {\setlength{\lpmargintop}{#1}}
+	     {}%
+}
+\def\lpopt@b#1%
+{%
+  \ifthenelse{\not\equal{#1}{}}
+             {\setlength{\lpmarginbottom}{#1}}
+	     {}%
+}
+
+% Print frame around whole picture margins included
+\def\lpopt@frame#1%
+{%
+  \ifthenelse{\not\equal{#1}{}}
+             {\setlength{\lpframethickness}{#1}}{}%
+\let\lp@pictframe=\lp@pictframecmd%
+}
+
+% Print frame around eps figure
+\def\lpopt@figframe#1%
+{%
+  \ifthenelse{\not\equal{#1}{}}
+             {\setlength{\lpfigframethickness}{#1}}{}%
+  \let\lp@figframe=\lp@figframecmd%
+}
+
+% Draw frames around labels
+\def\lpopt@frames#1%
+{%
+  \ifthenelse{\not\equal{#1}{}}
+             {\setlength{\lplblframethickness}{#1}}{}%
+  \let\lp@lblframe=\lp@lblframecmd%
+}
+
+% Write coordinates on all four sides of the picture
+% argument=step
+\def\lpopt@coords#1%
+{%
+  \ifthenelse{\not\equal{#1}{}}
+             {\setcounter{lpcoordstep}{#1}}{}%
+  \let\lp@coords=\lp@coordscmd%
+}
+
+% Draw a grid, argument=step
+\def\lpopt@grid#1%
+{%
+  \ifthenelse{\not\equal{#1}{}}
+             {\setcounter{lpgridstep}{#1}}{}%
+  \let\lp@grid=\lp@gridcmd%
+}
+
+% Ignore all the labels
+\def\lpopt@nolbl{\renewcommand{\lbl}[2][]{\relax}}
+
+% Don't insert epsfigure
+\def\lpopt@nofigure{\let\lp@putepsfigure=\relax}
+
+% Draw what is usually convenient for adjusting the labels
+\def\lpopt@draft
+{%
+\lpopt@figframe{}\relax%
+\lpopt@frame{}\relax%
+\lpopt@coords{}\relax%
+\lpopt@grid{}\relax%
+\lpopt@frames{}\relax%
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Option processing commands
+%
+%
+
+% Should be called \exec@option{name(arg)} or 
+% \exec@option{name}. It executes \name and passes
+% arg if present as an argument.
+% That is \name should have at most one argument.
+
+\def\exec@optionmisc#1(#2)#3ENDOFTHEARGS%
+{%
+  \csname#1\endcsname{#2}\relax%
+}
+\newcommand{\exec@option}[1]
+{%
+  \exec@optionmisc#1()ENDOFTHEARGS%
+}
+
+
+% Called with a coma-separated list of options, and then executes
+% each ``name'' prefixed with the value of \option@prefix. It passes
+% this command the argument if present. Each option is either
+% ``name'' or ``name(arg)''. ``arg'' should not contain comas or
+% should be enclosed in {}.
+\def\process@optionsmisc#1,#2ENDOFTHEARGS%
+{%
+  %\lp@msg{1=#1, 2=#2}
+  \ifthenelse{\not\equal{#1}{}}%
+     {%
+       \exec@option{\option@prefix#1}%
+       \process@optionsmisc#2ENDOFTHEARGS%
+     }%
+     {}%
+}
+\newcommand\process@options[1]
+{%
+  \process@optionsmisc#1,,ENDOFTHEARGS%
+}
+
+
+% Next command process ``filename'' argument. 
+% Defines \lp@epsfile, \lp@xscale, \lp@yscale
+% Syntaxis is one of the following
+% \lp@getscaleandfile{FILE}
+% \lp@getscaleandfile{FILE()}
+% \lp@getscaleandfile{FILE(,)}
+% \lp@getscaleandfile{FILE(x)}
+% \lp@getscaleandfile{FILE(x,)}
+% \lp@getscaleandfile{FILE(,y)}
+% \lp@getscaleandfile{FILE(x,y)}
+
+\def\lp@getname#1(#2ENDOFTHEARGS{\edef\lp@epsfile{#1}\edef\lp@string{#2}}
+\def\lp@getscales#1)#2ENDOFTHEARGS{\edef\lp@string{#1}}
+\def\lp@getxscale#1,#2ENDOFTHEARGS{\edef\lp@xscale{#1}\edef\lp@string{#2}}
+\def\lp@getyscale#1,#2ENDOFTHEARGS{\edef\lp@yscale{#1}\edef\lp@string{#2}}
+
+\def\lp@getscaleandfile#1%
+{%
+  \edef\lp@epsfile{}%
+  \edef\lp@xscale{}%
+  \edef\lp@yscale{}%
+  \edef\lp@string{#1}%
+  \expandafter\lp@getname\lp@string(ENDOFTHEARGS%
+  \expandafter\lp@getscales\lp@string)ENDOFTHEARGS%
+  \expandafter\lp@getxscale\lp@string,ENDOFTHEARGS%
+  \expandafter\lp@getyscale\lp@string,ENDOFTHEARGS%
+  %\lp@msg{file=\lp@epsfile, x=\lp@xscale, y=\lp@yscale}%
+}
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \begin{lpic}[coma separated options]{filename[(xscale[,yscale])]},
+% \lbl[position]{xcoord,ycoord;object}
+% ....
+% \end{lpic}
+% Where options are clean, draft, grid, frame, frames, coords, nolbl
+% Position is at most two of the following t,b,l,r
+\newenvironment{lpic}[2][clean]
+{\begingroup%
+  %Process options
+  \edef\option@prefix{lpopt@}%
+  \setlength{\unitlength}{1sp}%
+  \lpopt@clean%
+  \process@options{#1}%
+  % read scale and filename from the second argument
+  \expandafter\lp@getscaleandfile{#2}%
+  % Calculate parameters
+  \lp@dimens%
+  % Start picture environment
+  \begin{picture}(\lp@xtotalsize,\lp@ytotalsize)
+                 (\lp@xorigin,\lp@yorigin)%
+    %insert picture. We do it before any LaTeX, so that white bg rectangles are on top
+    \lp@putepsfigure%
+}
+{%
+    %draw a frame around the whole picture
+    \lp@pictframe
+    % draw grid
+    \lp@grid
+    % draw coordinates
+    \lp@coords
+  \end{picture}%
+\endgroup}
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% \lbl[position]{<xcoord>,<ycoord>[,angle];object}
+%
+
+% read coordinates and the angle from the argument of \lbl
+\def\lp@getxya#1,#2,#3,#4ENDOFTHEARGS%
+{%
+  \setlength{\lp@tmpx}{\lpunitlength * \real{#1} * \ratio{\lp@xnum}{\lp@xdenom}}%
+  \setcounter{lp@tmpx}{\lp@tmpx / \unitlength}%
+  \setlength{\lp@tmpy}{\lpunitlength * \real{#2} * \ratio{\lp@ynum}{\lp@ydenom}}%
+  \setcounter{lp@tmpy}{\lp@tmpy / \unitlength}%
+  \def\lp@angle{#3}%
+}
+
+% disassemble the arg of \lbl
+\def\lp@getdata#1;#2#3ENDOFTHEARGS%
+{%
+  \lp@getxya#1,,,ENDOFTHEARGS% 
+  \def\lp@lbldata{#2#3}%
+}
+
+\newcommand{\lp@getcoords}[1]
+{%
+  \lp@getdata#1ENDOFTHEARGS%
+}
+
+%\setlength{\lpbgboxsep}{10mm}
+
+\newcommand{\lbl@cmd}[2][]
+{\begingroup%
+    % Set the defaults
+    \def\lp@lblbox{\makebox(0,0)[#1]} % 
+    \def\lp@bgbox{\relax}         % No background
+    \setcounter{lp@tmpdx}{0}      % No shifting
+    \setcounter{lp@tmpdy}{0}
+    % Dissasemble the second argument
+    \lp@getcoords{#2}%
+    % Let's see whether angle is supplied
+    \ifthenelse{\equal{\lp@angle}{}}
+               {\let\lp@rotatelbl=\relax}
+	       {\def\lp@rotatelbl{\turnbox{\lp@angle}}}%
+    % What options are given?
+    % ``W'' put white background with margins
+    \lp@ifsubstring W in #1;%
+	{%
+	  \setlength{\lp@tmpa}{0.152mm} 
+	  \setcounter{lp@tmpdx}{( \lpbgboxsep + \lp@tmpa ) / \unitlength}%
+	  \setcounter{lp@tmpdy}{( \lpbgboxsep + \lp@tmpa ) / \unitlength}%
+	  \def\lp@bgbox##1{%  
+            \begingroup%
+            \setlength{\fboxsep}{\lpbgboxsep}%
+            \colorbox{white}{##1}
+            \endgroup%
+          }%
+        }% 
+	{}%
+    % ``w'' put white background without margins
+    \lp@ifsubstring w in #1;%
+	{%
+	  \def\lp@bgbox##1{%
+            \begingroup%
+            \setlength{\fboxsep}{0mm}%
+            \colorbox{white}{##1}%
+            \endgroup%
+          }%
+	}%
+	{}%
+    % Positioning
+    \lp@ifsubstring t in #1;{\addtocounter{lp@tmpy}{\value{lp@tmpdy}}}{}%
+    \lp@ifsubstring b in #1;{\addtocounter{lp@tmpy}{-\value{lp@tmpdy}}}{}%
+    \lp@ifsubstring l in #1;{\addtocounter{lp@tmpx}{-\value{lp@tmpdx}}}{}%
+    \lp@ifsubstring r in #1;{\addtocounter{lp@tmpx}{\value{lp@tmpdx}}}{}%
+    % Put the material	
+    \put(\value{lp@tmpx},\value{lp@tmpy})%
+        {\lp@rotatelbl{\lp@lblbox{\lp@bgbox{\lp@lblframe{\lp@lbldata}}}}}%
+\endgroup}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% PS definitions for the white bg
+%\special{! TeXDict 
+%  begin
+%  /whitebgbox{% Needs : x0 y0 x1 y1.
+%    newpath 2 copy moveto 3 copy pop exch lineto 4 copy pop pop
+%    lineto 4 copy exch pop exch pop lineto closepath 1 setgray fill} bind def
+%  end
+%}

@@ -1,0 +1,401 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% PACKAGE: vhistory                                                        %%
+%% FILE: vhistory.sty                                                       %%
+%%                                                                          %%
+%% AUTHOR: Jochen Wertenauer                                                %%
+%% VERSION: 1.5                                                             %%
+%% DATE: 2010-07-17                                                         %%
+%%                                                                          %%
+%% LICENSE: This program may be distributed and/or modified under the       %%
+%% conditions of the LaTeX Project Public License, either version 1.2       %%
+%% of this license or (at your option) any later version.                   %%
+%% The latest version of this license is in                                 %%
+%%   http://www.latex-project.org/lppl.txt                                  %%
+%% and version 1.2 or later is part of all distributions of LaTeX           %%
+%% version 1999/12/01 or later.                                             %%
+%%                                                                          %%
+%% This program consists of the file vhistory.sty (this file).              %%
+%%                                                                          %%
+%%--------------------------------------------------------------------------%%
+%% DESCRIPTION (For better documentation see the seperate file.):           %%
+%%   This package allows the creation to create a version history, where    %%
+%% the changes that have been made to a document are listed.                %%
+%%   The version number of the last entry in the history is accessible (see %%
+%% below) with the command \vhCurrentVersion, its date with \vhCurrentDate. %%
+%% These commands can can be used for headers or title pages for example.   %%
+%%   The list of all Authors is also available.  It is stored in the set    %%
+%% \vhAllAuthorsSet.  It can be printed using \vhListAllAuthors.  There is  %%
+%% another command to list authors: \vhListAllAuthorsLong. This command     %%
+%% regards all elements in the authorset as commands (those elements do NOT %%
+%% have the \ as first character) and expands them (see example below).     %%
+%% The sorting is based on the shortcuts and not on the expansion text!     %%
+%%                                                                          %%
+%%   Note: The commands mentioned above work even before the version his-   %%
+%% tory specified.  Therefore you need two runs of LaTeX.  If 'N/A' is dis- %%
+%% played instead of the correct number, you forgot the second run.         %%
+%%                                                                          %%
+%% OPTIONS:                                                                 %%
+%% - tocentry: If provided, the version history will show up in the table   %%
+%%             of contents. By default it will not be added.                %%
+%% - nochapter: If provided, vhHistory will not start a new chaper/section  %%
+%%              Use this option, if \section is undefined!                  %%
+%% - owncaptions: You have to specify your own names for the captions. Use  %%
+%%                this option if you are using a language that is not       %%
+%%                supported.                                                %%
+%% - hideauthorcolumn: The history of versions does not contain the column  %%
+%%                     listing the name(s) of the author(s).                %%
+%%                                                                          %%
+%% REQUIRED PACKAGES:                                                       %%
+%% - sets: Works well with version 1.2 or higher                            %%
+%% - ltxtable: Works well with version 0.2 from 1995-12-11                  %%
+%%     ltxtable requires tabularx and longtable. Versions                   %%
+%%        - 2.07 (1999-01-07) of tabularx and                               %%
+%%        - 4.10 (2000-10-22) of longtable                                  %%
+%%     worked fine.                                                         %%
+%%                                                                          %%
+%% EXAMPLE OF USAGE:                                                        %%
+%% For a better documentation see the seperate file.                        %%
+%%                                                                          %%
+%%    \usepackage{vhistory}                                                 %%
+%%    ...                                                                   %%
+%%    \newcommand{\AH}{Alice Hosle}      % NOTE: All names are invented.    %%
+%%    \newcommand{\XY}{Mr. X}                                               %%
+%%    \newcommand{\CR}{Charles Richards}                                    %%
+%%    ...                                                                   %%
+%%    \begin{document}                                                      %%
+%%    ...                                                                   %%
+%%    \date{Version \vhCurrentVersion from \vhCurrentDate}                  %%
+%%    \author{\vhListAllAuthorsLong}                                        %%
+%%    ...                                                                   %%
+%%    \begin{versionhistory}                                                %%
+%%      % Note the syntax of \vhEntry! Authors are separated by `|'         %%
+%%      \vhEntry{0.1}{2004-04-23}{AH|XY}{Structure of chapters.}            %%
+%%      \vhEntry{0.2}{2004-04-24}{AH|CR}{Chapter introduction completed}    %%
+%%      \vhEntry{1.0}{2004-05-30}{XY}{spelling corrected}                   %%
+%%    \end{versionhistory}                                                  %%
+%%    ...                                                                   %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{vhistory}
+\RequirePackage{ltxtable, sets}
+
+%% Helper methods ------------------------------------------------------------
+\def \vh@empty{\empty}
+\def \vh@iwrite{\immediate\write}
+
+\long\def \vh@ReturnFi #1\fi{\fi #1}
+
+%% Copied from the TeXbook
+\def \vh@Ifundefined #1{\expandafter\ifx\csname#1\endcsname\relax}
+
+%% Prints the content of macro #1 without expansion.
+\long \def \vh@verbprint #1{\expandafter\vh@eraseToBrace\meaning #1}
+
+%% This macro writes #2 verbatim to the (open) file #1.
+\long \def \vh@verbwrite #1#2{%
+  \long \def \vh@verbtemp{#2}%
+  \expandafter\vh@iwrite\expandafter#1\expandafter{\expandafter\vh@eraseToBrace \meaning\vh@verbtemp}%
+} 
+
+%% Deletes everything before the next > e.g. "macro ->". Used by \vh@verbprint
+\def \vh@eraseToBrace #1>{}
+%% ---------------------------------------------------------------------------
+
+%% Multilanguage support -----------------------------------------------------
+\def \vh@setcaptions{%
+    \vh@EnglishCaptions %Default
+    \vh@Ifundefined{l@ngerman}\else
+      \ifnum \language=\l@ngerman\relax
+        \vh@GermanCaptions
+      \fi
+    \fi
+    \vh@Ifundefined{l@german}\else
+	  \ifnum \language=\l@german\relax
+	    \vh@GermanCaptions
+	  \fi
+	\fi
+    \vh@Ifundefined{l@austrian}\else
+      \ifnum \language=\l@austrian\relax
+        \vh@GermanCaptions
+      \fi
+    \fi
+    \vh@Ifundefined{l@french}\else
+      \ifnum \language=\l@french\relax
+        \vh@FrenchCaptions
+      \fi
+    \fi
+    \vh@Ifundefined{l@dutch}\else
+      \ifnum \language=\l@dutch\relax
+        \vh@DutchCaptions
+      \fi
+    \fi
+}
+
+\def \vh@EnglishCaptions{%
+  \def\vhhistoryname{Revision History}%
+  \def\vhversionname{Revision}%
+  \def\vhdatename{Date}%
+  \def\vhauthorname{Author(s)}%
+  \def\vhchangename{Description}%
+}
+
+\def \vh@GermanCaptions{%
+  \def\vhhistoryname{Versionshistorie}%
+  \def\vhversionname{Version}%
+  \def\vhdatename{Datum}%
+  \def\vhauthorname{Autor(en)}%
+  \def\vhchangename{\"Anderungen}%
+}
+
+\def \vh@FrenchCaptions{%
+  \def\vhhistoryname{Historique}%
+  \def\vhversionname{Version}%
+  \def\vhdatename{Date}%
+  \def\vhauthorname{Auteur(s)}%
+  \def\vhchangename{Modifications}%
+}
+
+\def \vh@DutchCaptions{%
+  \def\vhhistoryname{Wijzigingen}%
+  \def\vhversionname{Herziening}%
+  \def\vhdatename{Datum}%
+  \def\vhauthorname{Auteur(s)}%
+  \def\vhchangename{Beschrijving}%
+}
+%% ---------------------------------------------------------------------------
+
+%% -- Options ----------------------------------------------------------------
+\def \vh@tocentry{0}  % By default, there will be no entry in the toc
+\def \vh@nochapter{0} % By default, a new chapter will be started
+\def \vh@owncaptions{0} % By default, the build in captions are used.
+\def \vh@hideauthor{0} % By default, the authors of a change are shown
+
+\DeclareOption{tocentry}{\def \vh@tocentry{1}}%
+\DeclareOption{nochapter}{\def \vh@chapter{}}%
+\DeclareOption{owncaptions}{\vh@setcaptions \def \vh@owncaptions{1}}%
+\DeclareOption{hideauthorcolumn}{\def \vh@hideauthor{1}}%
+
+%% This macro starts a new chapter. If \chapter is undefined, \section is
+%% used (To work with document class article). The option nochapter will
+%% redefine this macro to {}.
+%%
+\def \vh@chapter{%
+  \vh@Ifundefined{chapter}
+    % Since chapter is undefined, we try section. If section is
+    % undefined, too we've got a problem. The User should use the option
+    % nochapter in this case.
+    \markright{\vhhistoryname}%
+    \ifnum \vh@tocentry=1\relax
+      \section{\vhhistoryname}%
+	\else
+	  \section*{\vhhistoryname}%
+	\fi
+  \else
+	\markboth{\vhhistoryname}{\vhhistoryname}%
+	\ifnum \vh@tocentry=1\relax
+	  \chapter{\vhhistoryname}%
+	\else
+	  \chapter*{\vhhistoryname}%
+	\fi
+  \fi
+}
+
+\ProcessOptions
+%% ---------------------------------------------------------------------------
+
+
+%% Informations accessible to the user ---------------------------------------
+
+%% This macro will expand to the current version number
+\def \vhCurrentVersion{N/A}
+
+%% This macro will expand to the date of the last change
+\def \vhCurrentDate{N/A}
+
+%% This set will contain all authors mentioned in the version history.
+\newsetsimple \vhAllAuthorsSet{}
+
+%% Just a shortcut :-)
+\def \vhListAllAuthors{\listset{\vhAllAuthorsSet}}
+
+%% Prints the contents of \vhAllAuthorsSet but regards the elements as
+%% commands.  Instead of XY, the definition of the command \XY will be used.
+\def \vhListAllAuthorsLong{\expandafter\vh@longlistset\vhAllAuthorsSet|\endset|}
+
+%% Helper method for \vhListAllAuthorsLong.
+\def \vh@longlistset #1|#2|{%
+  \expandafter\ifx\csname#1\endcsname\relax
+    #1%
+  \else
+    \csname#1\endcsname % Create command and expand
+  \fi
+  \ifx\endset#2%
+  \else
+    \setseparator\sets@ReturnFi{\vh@longlistset#2|}%
+  \fi
+}
+
+%% Prints the contents of \vhAllAuthorsSet but regards the elements as
+%% commands.  Instead of XY, the definition of the command \XY will be used.
+\def \vhListAllAuthorsLongWithAbbrev{\expandafter\vh@longlistsetWithAbbrev\vhAllAuthorsSet|\endset|}
+
+\def \vhAbbrevSeparator{\ }
+\def \vhAbbrevLeft{(}
+\def \vhAbbrevRight{)}
+
+%% Helper method for \vhListAllAuthorsLong.
+\def \vh@longlistsetWithAbbrev #1|#2|{%
+  \expandafter\ifx\csname#1\endcsname\relax
+    #1%
+  \else
+    \csname#1\endcsname\vhAbbrevSeparator\vhAbbrevLeft #1\vhAbbrevRight%
+  \fi
+  \ifx\endset#2%
+  \else
+    \setseparator\sets@ReturnFi{\vh@longlistsetWithAbbrev#2|}%
+  \fi
+}
+
+%% ---------------------------------------------------------------------------
+
+
+%% -- Read file \jobname.hst, if existing ------------------------------------
+\IfFileExists{\jobname.hst}%
+{\typeout{Reading file \jobname.hst...}\input{\jobname.hst}} % File exists
+{\typeout{File \jobname.hst not found.}} % File doesn't exist.
+%% ---------------------------------------------------------------------------
+
+
+%% The environment versionhistory.
+%%
+%% At first the macro \decl@revhEntry will be called to allow the user to add
+%% entries to the version history.  Second step is to write the tables's head.
+%% Third step is to delete previous contents of vhAllAuthorsSet.  Now the
+%% captions of the actual language are loaded.  Last step is to start a new
+%% chapter if the user wanted a new chapter.
+%%   At the end of the version history, the table's foot is written to the
+%% \@verfile.  Then the .hst file is written.  Afterwards the command \vhEntry
+%% is undeclared to prevent the user from making nonsense.  The last step is
+%% to load the table as a LTXtable, if the file exists.
+%%
+\newenvironment{versionhistory}{%
+  \vh@declarevhEntry
+  \vh@writeTable
+  \newsetsimple \vhAllAuthorsSet{}%
+  \ifnum \vh@owncaptions=0\relax% Defined by the options
+    \vh@setcaptions
+  \fi
+  \vh@chapter
+}{
+  \vh@writeEndTable
+  \vh@writeHstFile
+  \vh@undeclarevhEntry
+  \IfFileExists{\jobname.ver}{% file exists
+    \LTXtable{\textwidth}{\jobname.ver}}%
+   	{\@latex@warning{Rerun LaTeX to get the history of versions.}}%
+}
+
+  
+% This file contains the table that is the history of versions.
+\newwrite \vh@verfile
+
+%% This macro is called, when the environment versionhistory begins. It
+%% declares the macro vhEntry, which is used to add entries to the version
+%% history. Parameters are:
+%%   #1: version number
+%%   #2: date
+%%   #3: author(s)
+%%   #4: changes
+%% The content of the parameters is written to the file that contains the
+%% table with the history of versions.
+%%
+\def \vh@declarevhEntry{%
+  \long \gdef \vhEntry ##1##2##3##4{%
+    \gdef \vhCurrentVersion{##1}% Update version number
+    \gdef \vhCurrentDate{##2}% Update date
+    \vh@add{##3}%
+	\vh@verbwrite \vh@verfile {##1}%
+	\vh@verbwrite \vh@verfile {  & ##2}%
+	\ifnum \vh@hideauthor=0\relax
+		\vh@verbwrite \vh@verfile {  & \listset{##3}}%
+	\fi
+	\vh@verbwrite \vh@verfile {  & ##4\\}
+  }%
+}
+
+
+%% Helper macro, called by vhEntry. This macro unions the given author
+%% list with the global list of authors.
+%%
+\def \vh@add #1{%
+  \newsetsimple{\vh@EntrySet}{#1}% Define a temporary set
+  \unionsets{\vhAllAuthorsSet}{\vh@EntrySet}\to{\vhAllAuthorsSet}%
+  \global\let\vhAllAuthorsSet=\vhAllAuthorsSet% Results must be global
+}
+
+
+%% This macro is called, when the environment versionHistory is left. It 
+%% redefines the macro vhEntry, which will now produce an error message.
+%%
+\def \vh@undeclarevhEntry{%
+  \long\gdef \vhEntry ##1##2##3##4{%
+    \errhelp{\vhEntry can only be used in the versionHistory environment.}%
+    \errmessage{This command is not accessible here.}}%
+}
+
+
+%% This macro writes the current version number/date and the set of Authors to
+%% the file \jobname.hst. Unwanted expansion of macros must be prevented here.
+%%
+\def \vh@writeHstFile{%
+  \newwrite \vh@hstfile%
+  \immediate \openout \vh@hstfile=\jobname.hst%
+  \vh@iwrite \vh@hstfile {%
+    \def \noexpand\vhCurrentVersion{\vh@verbprint\vhCurrentVersion}}%
+  \vh@iwrite \vh@hstfile {%
+    \def \noexpand\vhCurrentDate{\vh@verbprint\vhCurrentDate}}%
+  \vh@iwrite \vh@hstfile {%
+    \noexpand\newsetsimple \noexpand\vhAllAuthorsSet{\vh@verbprint\vhAllAuthorsSet}}%
+  \immediate \closeout \vh@hstfile%
+}
+
+\def \vh@showAuthorHead{%
+	\vh@verbwrite \vh@verfile {%
+		\begin{longtable}{@{}ll>{\hsize=.5\hsize}X>{\hsize=1.5\hsize}X@{}}%
+	}
+}
+
+\def \vh@hideAuthorHead{%
+	\vh@verbwrite \vh@verfile {\begin{longtable}{@{}llX@{}}}
+}
+
+%% This macro is called at the beginning of a versionhistory environment. It
+%% writes the head of the resulting table to the file \jobname.ver. The table
+%% itself is a LTXtable, i.e. a longtable with the parameterset of tabularx.
+%%
+\def \vh@writeTable{%
+  \immediate \openout \vh@verfile=\jobname.ver%
+  \ifnum \vh@hideauthor=0\relax
+  	\vh@showAuthorHead
+  \else
+  	\vh@hideAuthorHead
+  \fi
+  \vh@verbwrite \vh@verfile {\textbf{\vhversionname}}%
+  \vh@verbwrite \vh@verfile {  & \textbf{\vhdatename}}%
+  \ifnum \vh@hideauthor=0\relax
+  	\vh@verbwrite \vh@verfile {  & \textbf{\vhauthorname}}%
+  \fi
+  \vh@verbwrite \vh@verfile {  & \textbf{\vhchangename}\\[1ex]}%
+}
+
+
+%% This macro writes the end of the table that \vh@writeTable has begun.
+%%
+\def \vh@writeEndTable{%
+  \vh@verbwrite \vh@verfile{\end{longtable}}%
+  \immediate \closeout \vh@verfile%
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\endinput

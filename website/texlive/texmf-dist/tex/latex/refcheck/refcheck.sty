@@ -1,0 +1,293 @@
+% refcheck.sty
+% checks lost and useless labels, shows `keys' of \label
+% in the margins
+%
+% version 1.9 for LaTeX2e
+% 31 March 2004
+%
+% Copyright 1997--2004 by Oleg Motygin
+% (mov@snark.ipme.ru, mov@mail15.com)
+% this program is free software; you can redistribute it and/or
+% modify it under the terms of the GNU General Public License
+%
+% Usage is \usepackage{refcheck} with options showrefs, norefs, showcites,
+% nocites, msgs, nomsgs, chkunlbld, ignoreunlbld
+%
+% Options showrefs and norefs, e.g. \usepackage[showrefs]{refcheck}
+% sets on and off (`on' is default) writing label keys to output margins.
+% '{?}' instead of a key means that the equation is not labelled.
+% '?'s appear around a label name if the label is not used in references.
+%
+% Option showcites and nocites sets on and off (`on' is default)
+% refcheck to show keys of bibitems in the margins.
+%
+% Options msgs (default) and nomsgs state whether refcheck writes
+% its messages to .log file or not.
+% The messages have the format
+% <Info by RefCheck> Unused bibitem..
+% <Info by RefCheck> Unused label..
+% <Info by RefCheck> Unlabelled equation..
+%
+% The check of unlabelled equations can be switched off by the option
+% ignoreunlbld and on (default) by the option chkunlbld.
+%
+% refcheck generally works with AMS-LaTeX and HyperRef
+% but amsmath and/or hyperref packages must be loaded before
+% the refcheck package.
+%
+% refcheck can be used with the xr package. Suppose one invokes
+% \usepackage{xr} \externaldocument[A:]{apps} in document foo1.tex and
+% \usepackage{xr} \externaldocument[B:]{apps} in document foo2.tex.
+% Then the commands \refcheckxrdoc[A:]{foo1} and \refcheckxrdoc[B:]{foo2}
+% used in apps.tex allows to check usage of labels from apps.tex in the
+% external files foo1.tex and foo2.tex.
+%
+% NOTE the problem with implicitly cited labels.
+% For example, if there is a set of equations which are
+% labelled by a1, a2,... an and referred in document by
+% (\ref{a1})--(\ref{an}), then the labels a2, a3,...an-1
+% cannot be recognized as `used'.
+%
+
+\def\filename{refcheck}
+\def\fileversion{v1.9}
+\def\filedate{2004/03/31}
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{refcheck}[2004/03/31 v1.9]
+
+\let\mark@size=\footnotesize
+\newif\if@labelled
+\@labelledfalse
+\newif\if@show@ref
+\newif\if@show@cite
+\newif\if@give@msgs
+\newif\if@show@unl@bld
+
+\def\set@fbox@par{\fboxrule=0.01em\fboxsep=0.2em}
+\def\unl@bld@mark{{\mark@size\textup{\{\textbf{?}\}}}}
+
+\DeclareOption{showrefs}{\@show@reftrue}
+\DeclareOption{showcites}{\@show@citetrue}
+\DeclareOption{msgs}{\@give@msgstrue}
+\DeclareOption{chckunlbld}{\@show@unl@bldtrue}
+\DeclareOption{norefs}{\@show@reffalse}
+\DeclareOption{nocites}{\@show@citefalse}
+\DeclareOption{nomsgs}{\@give@msgsfalse}
+\DeclareOption{ignoreunlbld}{\@show@unl@bldfalse}
+\ExecuteOptions{showrefs,showcites,msgs,chckunlbld}
+\ProcessOptions\relax
+
+\def\showrefnames{\global\@show@reftrue}
+\def\norefnames{\global\@show@reffalse}
+\def\showcitenames{\global\@show@citetrue}
+\def\nocitenames{\global\@show@citefalse}
+\def\setonmsgs{\global\@give@msgstrue}
+\def\setoffmsgs{\global\@give@msgsfalse}
+\def\checkunlbld{\global\@show@unl@bldtrue}
+\def\ignoreunlbld{\global\@show@unl@bldfalse}
+
+\def\@warning@rc@#1{\if@give@msgs\typeout{<Info by RefCheck> #1}\else\relax\fi}
+
+\newif\if@unsdlbl
+
+\newtoks\btoks
+
+\AtBeginDocument{%
+\typeout{Package: `refcheck' v1.9\space<2004/03/31>}%
+\typeout{options: showrefs, showcites, msgs, chckunlbld}%
+\immediate\write\@auxout{%
+  \string\providecommand\string{\string\usedref\string}[1]%
+   \string{\string\relax\string}}%
+\let\@@ref@@=\ref
+\let\@@pageref@@=\pageref
+\let\@@bibitem@@=\bibitem
+\let\@@@biblabel@@=\@biblabel
+\let\@@label@@=\label
+\renewcommand{\label}[1]{\@bsphack\global\@labelledtrue
+  \gdef\last@lbl{\@verbatim@{#1}}%
+  \@ifundefined{lab@#1}{\global\@unsdlbltrue
+  \@warning@rc@{Unused label `#1' on page \thepage}}%
+  {\global\@unsdlblfalse}%
+  \ifmmode\relax\else
+    {\setbox0=\vbox{\vss\@setnmmarginlbl}%
+    \wd0=0pt\ht0=0pt\dp0=0pt%
+    \ifvmode
+      \@tempdima=\prevdepth
+      \nointerlineskip\box0\nobreak
+      \prevdepth=\@tempdima
+    \else
+      \vadjust{\box0\nobreak}%
+    \fi}%
+  \fi
+  \@@label@@{#1}\@esphack}%
+\expandafter\DeclareRobustCommand\expandafter
+  {\csname relax\string\ref\endcsname}[1]{\@@ref@@{#1}\wrtusdrf{#1}}%
+\expandafter\let\expandafter\ref\csname relax\string\ref\endcsname
+\expandafter\DeclareRobustCommand\expandafter
+  {\csname relax\string\pageref\endcsname}[1]{\@@pageref@@{#1}\wrtusdrf{#1}}%
+\expandafter\let\expandafter\pageref\csname relax\string\pageref\endcsname
+\renewcommand{\bibitem}[2][\@nil]{%
+ \@ifundefined{cit@#2}{%
+  \@warning@rc@{Unused bibitem `#2' on page \thepage}%
+  \if@show@cite
+    \gdef\@biblabel{\makebox[0pt][r]{\zero@height{{\mark@size{\bfseries\upshape?}}%
+      \underline{\@verbatim@{#2}}{\mark@size{\bfseries\upshape?}}$\,$}}%
+      \@@@biblabel@@
+    }%
+  \fi
+ }{%
+  \if@show@cite
+    \set@fbox@par
+    \gdef\@biblabel{\makebox[0pt][r]{\zero@height{\fbox{\@verbatim@{#2}}$\,$}}\@@@biblabel@@}%
+  \fi
+ }%
+ \ifx#1\@nil\@@bibitem@@{#2}%
+ \else\@@bibitem@@[#1]{#2}%
+ \fi
+}%
+\@ifpackageloaded{amsmath}{% With AMS-LaTeX tags
+\let\@@label@@in@@=\label@in@display
+\def\label@in@display#1{\@bsphack\global\@labelledtrue
+  \gdef\last@lbl{\@verbatim@{#1}}%
+  \@ifundefined{lab@#1}{%
+    \global\@unsdlbltrue
+    \@warning@rc@{Unused label `#1' on page \thepage}}%
+  {\global\@unsdlblfalse}%
+  \@@label@@in@@{#1}\@esphack
+}%
+\let\@@eqref@@=\eqref
+\let\@tagform@@@@=\tagform@
+\expandafter\DeclareRobustCommand\expandafter
+  {\csname relax\string\eqref\endcsname}[1]%
+  {{\let\tagform@=\@tagform@@@@\@@eqref@@{#1}}}%
+\expandafter\let\expandafter\eqref\csname relax\string\eqref\endcsname
+\def\tagform@#1{\@tagform@@@@{#1}%
+  \ifmeasuring@\relax\else\if@display
+    \if@labelled\relax\else\if@show@unl@bld
+      \@warning@rc@{Unlabelled equation (\theequation) on page \thepage}%
+    \fi\fi
+    \@setmarginlbl
+  \fi\fi
+}%
+}{\let\@@eqnnum@@=\@eqnnum
+\def\@eqnnum{%
+  \if@labelled\relax\else\if@show@unl@bld
+    \@warning@rc@{Unlabelled equation (\theequation) on page \thepage}%
+  \fi\fi
+  \@@eqnnum@@
+  \@setmarginlbl
+}%
+}}%
+
+\def\@setmarginlbl{%
+  \if@show@ref
+    \if@labelled
+      \set@fbox@par
+      \if@unsdlbl
+        \makebox[0pt][l]{\zero@height{$\,${\mark@size
+        {\bfseries\upshape?}\underline{\last@lbl}{\bfseries\upshape?}}}}%
+      \else
+        \makebox[0pt][l]{\zero@height{$\,$\fbox{{\mark@size\last@lbl}}}}%
+      \fi
+    \else
+      \if@show@unl@bld
+      \makebox[0pt][l]{\zero@height{$\,$\unl@bld@mark}}%
+    \fi\fi
+  \fi
+  \global\@labelledfalse
+}
+
+\def\@setnmmarginlbl{%
+  \if@show@ref
+    \set@fbox@par
+    \if@unsdlbl
+      \hbox to \textwidth{\makebox[0pt][r]{{\mark@size{\bfseries
+      \upshape?}$\langle$\last@lbl$\rangle${\bfseries
+      \upshape?}}$\,$}\hfill}%
+    \else
+      \hbox to \textwidth{\makebox[0pt][r]{{\mark@size$\langle$%
+      \last@lbl$\rangle$}$\,$}\hfill}%
+    \fi
+  \fi
+  \global\@labelledfalse
+}
+
+\def\zero@height#1{\setbox0=\hbox{#1}\dp0=0pt\ht0=0pt\copy0}
+
+\long\def\@verbatim@#1{\def\next{#1}%
+  {\mark@size\ttfamily\upshape\frenchspacing\expandafter\@strip@\meaning\next}}
+\def\@strip@#1>{}
+
+\def\usedref#1{\@ifundefined{lab@#1}{\global\@namedef{lab@#1}{}}{}}
+
+\let\@@citation@@=\citation
+
+\renewcommand{\citation}[1]{\@@citation@@{#1}%
+\@for\@tempa:=#1\do{\@ifundefined{cit@\@tempa}%
+  {\global\@namedef{cit@\@tempa}{}}{}}%
+}
+
+\DeclareRobustCommand{\wrtusdrf}[1]{%
+  \@ifundefined{la@#1}{\global\@namedef{la@#1}{}%
+  \used@write{#1}{\usedref}}{\null}}
+
+\def\used@write#1#2{% \protected@write, but \immediate
+  \@bsphack
+  \begingroup
+    \let\thepage\relax
+    \let\protect\@unexpandable@protect
+    \edef\reserved@a{\immediate\write\@auxout{\string#2{#1}}}%
+    \reserved@a
+  \endgroup
+  \if@nobreak\ifvmode\nobreak\fi\fi
+  \@esphack
+}
+
+\def\refcheckxrdoc{\@ifnextchar[\rchXD@{\rchXD@[]}}
+\def\rchXD@[#1]#2{{%
+  \makeatletter
+  \xdef\rchXD@prefix{#1}%
+  \rchXD@next#2.aux\relax\\}}
+\def\rchXD@next#1\relax#2\\{%
+  \edef\rchXD@list{#2}%
+  \rchXD@loop{#1}}
+\def\rchXD@aux{%
+  \ifx\rchXD@list\@empty\else\expandafter\rchXD@explist\fi}
+
+\def\rchXD@explist{\expandafter\rchXD@next\rchXD@list\\}
+\def\rchXD@loop#1{\openin\@inputcheck#1\relax
+  \ifeof\@inputcheck
+    \PackageWarning{refcheck}{^^JNo file #1^^JLABELS USAGE NOT IMPORTED.^^J}%
+    \expandafter\rchXD@aux
+  \else
+    \PackageInfo{refcheck}{IMPORTING LABELS USAGE FROM #1}%
+    \expandafter\rchXD@read
+  \fi
+}
+\def\rchXD@read{%
+  \read\@inputcheck to\rchXD@line
+  \expandafter\rchXD@test\rchXD@line..\rchXD@}
+\def\cleanprefix#1#2{%
+  \if#1\@empty \usedref{#2}\else
+    \def\@test##1#1##2\@nil{\edef\@tempa{##1}\edef\@tempb{##2}}%
+    \@test#2#1\@nil
+    \ifx\@tempb\@empty \relax\else \ifx\@tempa\@empty
+      \def\@tempb#1##1\@nil{\edef\@tempa{##1}}\@tempb#2\@nil
+      \ifx\@tempa\@empty \relax\else\usedref{\@tempa}\fi
+    \fi\fi
+  \fi
+}
+\long\def\rchXD@test#1#2#3\rchXD@{%
+  \ifx#1\usedref
+    \edef\exp@nddef{\noexpand\cleanprefix{\rchXD@prefix}{#2}}%
+    \exp@nddef
+  \else\ifx#1\@input
+    \edef\rchXD@list{\rchXD@list#2\relax}%
+  \fi\fi
+  \ifeof\@inputcheck\expandafter\rchXD@aux
+  \else\expandafter\rchXD@read\fi
+}
+
+\endinput
+%%
+%% End of file `refcheck.sty'.

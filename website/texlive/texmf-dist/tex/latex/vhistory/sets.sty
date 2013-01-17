@@ -1,0 +1,437 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% PACKAGE: sets                                                            %%
+%% FILE: sets.sty                                                           %%
+%%                                                                          %%
+%% AUTHOR: Jochen Wertenauer                                                %%
+%% VERSION: 1.3                                                             %%
+%% DATE: 2010-07-17                                                         %%
+%%                                                                          %%
+%% LICENSE: This program may be distributed and/or modified under the       %%
+%% conditions of the LaTeX Project Public License, either version 1.2       %%
+%% of this license or (at your option) any later version.                   %%
+%% The latest version of this license is in                                 %%
+%%   http://www.latex-project.org/lppl.txt                                  %%
+%% and version 1.2 or later is part of all distributions of LaTeX           %%
+%% version 1999/12/01 or later.                                             %%
+%%                                                                          %%
+%% This program consists of the file sets.sty (this file).                  %%
+%%                                                                          %%
+%%--------------------------------------------------------------------------%%
+%% DESCRIPTION (see separate file for more information):                    %%
+%%   This package allows basic usage of sets. A set has the structure:      %%
+%%                   set    --> {contents}                                  %%
+%%                 contents --> element(|element)*                          %%
+%%                 contents --> \epsilon                                    %%
+%%     A element can consist of strings and command tokens. Command tokens  %%
+%%   will not be expanded before you call \listset.  Command tokens with    %%
+%%   parameters (in {}) are not allowed, i.e. \textbf{Test} would result in %%
+%%   lots of errors. Defining a macro \boldTest                             %%
+%%              \newcommand{\boldTest}{\textbf{Test}}                       %%
+%%   and using that macro would solve the problem.  Commands like like "A   %%
+%%   work fine.  Of course an element cannot contain the character | (but   %%
+%%   you can "hide" it in a command like \boldTest, too).                   %%
+%%     Other forbidden elemente are the commands \endset and \empty.        %%
+%%     In this package a set is normally sorted and contains no duplicates  %%
+%%   unless you explicitly want it as it is by using \newsetsimple (but     %%
+%%   several operations will return a sorted set without duplicates).       %%
+%%     An empty set cannot be destinguished from a set that contains only   %%
+%%   the an empty string, i.e. {} is an empty set.                          %%
+%%                                                                          %%
+%% INTERFACE:                                                               %%
+%%   Constructors:                                                          %%
+%%     \newset, \newsetsimple                                               %%
+%%   Inspectors:                                                            %%
+%%     \sizeofset, \listset, \iselementofset                                %%
+%%   Modificators:                                                          %%
+%%     \deleteduplicates, \sortset                                          %%
+%%     \unionsets, \intersectsets, \minussets                               %%
+%%   OTHER COMMANDS:                                                        %%
+%%     \setseparator                                                        %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{sets}
+
+%% Helper Methods ------------------------------------------------------------
+
+\def \sets@xxpa{\expandafter\expandafter\expandafter}
+
+\def \sets@empty{\empty}
+
+%% Appends #1 to the definition of macro #2.
+\def \sets@append #1\to#2{\expandafter \def \expandafter #2\expandafter{#2#1}}
+
+%% Removes the first character of the content of #2 and stores the result in
+%% #1. Note that \expandafter\expandafter\expandafter cannot be replaced by \sets@xxpa here!
+\def \sets@gobblefirst #1#2{%
+  \sets@xxpa \def \expandafter\expandafter\expandafter #1\expandafter\expandafter\expandafter {\expandafter\@gobble #2}}
+
+%% Deletes everthing to the next occurance of > inludung the >.
+\def \sets@erasetobrace #1>{}
+
+%% A do-while construct based on the macro of Alois Kabelschacht.
+%%
+%% Syntax:
+%% \loop
+%%   ...
+%%   \if ...
+%% \repeat  
+\def \sets@loop #1\repeat{%
+  \def \iterate {#1\expandafter \iterate\fi}%
+  \iterate \let\iterate\relax}
+
+\long\def \sets@ReturnFi #1\fi{\fi #1}
+\long\def \sets@ReturnII #1\fi\fi{\fi\fi #1}
+\long\def \sets@ReturnIII #1\fi\fi\fi{\fi\fi\fi #1}
+
+\long\def \sets@ReturnElseIII #1\else#2\fi\fi\fi{\fi\fi\fi #1}
+
+\long\def \sets@Returntrue #1\fi{\fi \iftrue}
+\long\def \sets@Returnfalse #1\fi{\fi \iffalse}
+
+\newif \ifsets@less \newif \ifsets@greater
+
+%% Compares to strings. Result will be in \ifgreater and \ifless.
+%% #1 and #2 are compared as they are. There will be no expansion.
+%% The comparison is based on the position of the symbols in the
+%% ASCII table. Therefore the comparison is case sensitive (B<a).
+%%
+%% The macros are based on a sort algorithm by Klaus Lagally.
+\def \sets@compStrings #1#2{%
+  \def \sets@CSti{#1}%
+  \edef\sets@ctempi{\expandafter\sets@erasetobrace\meaning \sets@CSti}%
+  \def \sets@CStii{#2}%
+  \edef\sets@ctempii{\expandafter\sets@erasetobrace\meaning \sets@CStii}%
+  \sets@lessfalse\sets@greaterfalse
+  \sets@xxpa\sets@compI \expandafter\sets@ctempi\expandafter|\expandafter\\\sets@ctempii|\relax
+}
+
+
+%% Recursive string comparison. Called by \sets@compStrings.
+%% (1) Because of the position of | in the ASCII table, there must be a
+%%     special test to get the right result.
+\def \sets@compI #1#2\\#3#4\relax{%
+  \ifnum `#1<`#3
+    \ifx |#3 \sets@greatertrue \else \sets@lesstrue \fi%(1)
+  \else
+    \ifnum `#1>`#3
+      \ifx |#1 \sets@lesstrue \else \sets@greatertrue \fi%(1)
+    \else
+      \ifx |#1\else
+  	\sets@ReturnIII{\sets@compI#2\\#4\relax}%
+      \fi
+    \fi
+  \fi
+}
+%-----------------------------------------------------------------------------
+
+
+
+%% Create a new set ----------------------------------------------------------
+
+%% Creates a new set. The set will be sorted and will contain no duplicate
+%% elements.
+%%
+%% Example: \newset{\myset}{Alice|Bob|Charly}
+\def \newset #1#2{%
+  \def #1{#2}%
+  \sortset{#1}{#1}%
+  \deleteduplicates{#1}{#1}%
+}
+
+%% Simple constructor of a set. There is no sorting or duplicate detection
+%% done by this macro.
+%%
+%% Example: \newsetsimple{\myset}{Alice|Bob|Charly}
+\def \newsetsimple #1#2{\def #1{#2}}
+%-----------------------------------------------------------------------------
+
+
+
+%% Size determination --------------------------------------------------------
+
+%% Stores the size of set #1 in the LaTeX counter #2. #2 has to be existing.
+\def \sizeofset #1\is#2{%
+  \setcounter{#2}{0}%
+  \expandafter\sets@sizeofset #1|\endset{#2}%
+}
+
+% Helper method for \sizeofset. Recursively calls itself. Implemented straight
+% forward.
+\def \sets@sizeofset #1|#2\endset#3{%
+  \def \sizetemps@t{#1}%
+  \ifx \sizetemps@t\empty\relax\else
+    \stepcounter{#3}%
+    \def \sizetemps@t{#2}%
+    \ifx\sizetemps@t\empty\else
+      \sets@ReturnII{\sets@sizeofset #2\endset{#3}}%
+    \fi
+  \fi
+}
+%-----------------------------------------------------------------------------
+
+
+
+%% Printing a set ------------------------------------------------------------
+
+%% The content of this macro will be used to separate the elements of the set.
+\def \setseparator{, } 
+
+%% Prints the contents of set #1. Elements will be separated by \setseparator.
+%\def \listset #1{\expandafter\sets@listset #1|\empty\endset}
+\def \listset #1{\expandafter\sets@listset #1|\endset|}
+
+
+%% Helper method for \listset.
+%\def \sets@listset #1|#2\endset{%
+%  #1%
+%  \def\temps@t{#2}%
+%  \ifx \temps@t\sets@empty{}\else
+%    \setseparator
+%    \sets@ReturnFi{\sets@listset #2\endset}%
+%  \fi
+%}
+
+\def \sets@listset #1|#2|{%
+  #1%
+  \ifx\endset #2%
+  \else
+    \setseparator\sets@ReturnFi{\sets@listset#2|}%
+  \fi
+}
+%-----------------------------------------------------------------------------
+
+
+
+%% Testing for membership ----------------------------------------------------
+
+%% This macro tests, if #1 is included in set #2.  Can be used in constructs
+%% like \if \iselementofset{...}{...} ... \else ... \fi.  It has complexity
+%% O(1), assuming that the pattern matching is done in O(1), too.
+%%
+\def \iselementofset #1#2{%
+  00\fi
+  \begingroup
+  \def \lookup ##1|#1|##2\endset{%
+    \def \temp{##2}%
+    \ifx \temp\empty 
+      \endgroup
+      \sets@Returnfalse
+    \else
+      \endgroup
+      \sets@Returntrue
+    \fi}%
+  \expandafter\lookup \expandafter |#2|#1|\endset%
+}
+%-----------------------------------------------------------------------------
+
+
+
+%% Duplicate detection: ------------------------------------------------------
+
+%% This macro finds alle duplicate elements in the SORTED set #1 and removes
+%% them. The result set (still sorted) is stored in #2.
+\def \deleteduplicates #1#2{\expandafter\sets@duplicates#1|\endset#2}
+
+%% Helper method for \deleteduplicates. Does some preparations and catches the
+%% special case of an set with size <= 1. Parameter #3 is the result set.
+\def \sets@duplicates #1|#2\endset#3{%
+  \def #3{}% Clear #3
+  \def \temps@t{#2}%
+  \ifx \temps@t\empty% Has the set more than one element?
+    \def #3{#1}% Just one element!
+  \else% More than one element
+    \sets@ReturnFi{\sets@duplicatesI#1|#2\endset#3}%
+  \fi
+}
+
+
+%% Called by \sets@duplicates, if the sorted set contains two or more elements. It
+%% checks, if two elements, which are directly following each other are equal.
+%% If yes, the first one will not be part of the result set, which is stored
+%% in #4.
+\def \sets@duplicatesI #1|#2|#3\endset#4{%
+  \def\temps@ti{#1}%
+  \def\temps@tii{#2}%
+  \def\temps@tiii{#3}%
+  \ifx \temps@tii\empty % Is #2 empty?
+    \def #4{#1}% A set with one element has no duplicates
+  \else % #2 not empty --> at least two elements (left)
+    \ifx \temps@tiii\empty% Is #3 empty?
+      % The set contains two elements, so work is nearly done.
+      % An additional | was inserted at the beginning. It has to be gobbled
+      % away.
+      \ifx \temps@ti\temps@tii % #1=#2
+	\sets@append{|#1}\to#4%
+        \sets@gobblefirst{#4}{#4}%
+      \else
+ 	\sets@append{|#1|#2}\to#4%
+        \sets@gobblefirst{#4}{#4}%
+      \fi
+    \else % #3 not empty --> at least three elements (left)
+      \ifx \temps@ti\temps@tii
+        \sets@ReturnElseIII{\sets@duplicatesI #2|#3\endset#4}%
+      \else
+        \sets@append{|#1}\to#4%
+        \sets@ReturnIII{\sets@duplicatesI #2|#3\endset#4}%
+      \fi
+    \fi
+  \fi
+}
+%-----------------------------------------------------------------------------
+
+
+
+%% Sorting a set -------------------------------------------------------------
+\newcounter{s@tlength} % LaTeX-counter used by \sortset.
+
+%% Takes an unsorted set #1, sorts it and stores the result in #2. If #1 has
+%% less than two elements, sorting is unneccessary, otherwise \sets@sortset is
+%% called.
+%%
+%% Syntax \sortset <set> <result set>
+\def \sortset #1#2{%
+  \sizeofset#1\is{s@tlength}%
+  \ifnum 2>\value{s@tlength}\relax
+    \let #2 #1%
+  \else
+    \sets@sortset #1#2%
+  \fi
+}
+
+%% Called by \sortset. This macro represents the outer loop of the bubblesort
+%% algorithm. Bubblesort has O(n^2) and is stable.
+%%
+\def \sets@sortset #1#2{%
+  \let \sorttemps@t #1%
+  \sets@loop
+    \expandafter\sets@bubblesortRun \sorttemps@t|\endset\sorttemps@t
+    \addtocounter{s@tlength}{-1}%
+    \ifnum 1<\value{s@tlength}\relax
+  \repeat
+  \let #2 \sorttemps@t
+}
+
+%% Called by \sets@sortset. Does some preparation for \sets@bubblesortRunI and
+%% removes the first character of the result. #4 is the result set.
+\def \sets@bubblesortRun #1|#2|#3\endset#4{%
+  \def\temps@t{}%
+  \sets@bubblesortRunI #1|#2|#3\endset\temps@t%
+  \sets@gobblefirst{#4}{\temps@t}%
+}
+
+%% Called by \sets@bubblesortRun and recursively by itself.
+%% This recursive macro represents the inner loop of "normal" bubblesort.
+%% #4 is the result set.
+\def \sets@bubblesortRunI #1|#2|#3\endset#4{%
+  \def\temps@tii{#2}%
+  \def\temps@tiii{#3}%
+  \ifx \temps@tii\empty 
+    \sets@append{|#1}\to#4%
+  \else
+    \ifx \temps@tiii\empty
+      \sets@compStrings{#2}{#1}%
+      \ifsets@greater
+        \sets@append{|#1|#2}\to#4%
+      \else
+        \sets@append{|#2|#1}\to#4%
+      \fi
+    \else
+      \sets@compStrings{#2}{#1}%
+      \ifsets@greater
+	\sets@ReturnElseIII{%
+          \sets@append{|#1}\to#4%
+          \sets@bubblesortRunI#2|#3\endset#4}%
+      \else
+        \sets@ReturnIII{%
+          \sets@append{|#2}\to#4%
+          \sets@bubblesortRunI#1|#3\endset#4}%
+      \fi
+    \fi
+  \fi
+}
+%-----------------------------------------------------------------------------
+
+
+
+%% Set manipulation ----------------------------------------------------------
+
+%% Takes two sets #1 and #2 and performs a union operation. #1 and #2 do not
+%% have to be sorted and may contain duplicate elements.
+%% The result is stored in #3. It contains the elements of #1 and #2 and is
+%% sorted. Duplicates are removed.
+\def \unionsets #1#2\to#3{%
+  \let\uniont@mpi=#1%
+  \let\uniont@mpii=#2%
+  \ifx \uniont@mpi\empty
+    \let \uniontemps@t=\uniont@mpii
+  \else
+    \let \uniontemps@t=\uniont@mpi
+    \ifx \uniont@mpii\empty \else
+      \expandafter\sets@append\expandafter{\expandafter|#2}\to\uniontemps@t
+    \fi
+  \fi
+  \sortset{\uniontemps@t}{\uniontemps@t}%
+  \deleteduplicates{\uniontemps@t}{#3}%
+}
+%-----------------------------------------------------------------------------
+
+
+%% Takes two sets #1 and #2 and performs an intersect operation. The result is
+%% stored in #3. #3 contains only elements that have been in both sets #1 and
+%% #2. #1 and #2 don't have to be sorted, but if #1 is sorted, #3 will be
+%% sorted, too. If #1 contains duplicates, #3 may also contain duplicates.
+\def \intersectsets #1#2\to#3{%
+  \def \tempinters@ct{}%
+  \expandafter \sets@intersectsets #1|\endset#2\tempinters@ct
+  \ifx \tempinters@ct\empty
+    \def #3{}%
+  \else
+    \sets@gobblefirst{#3}{\tempinters@ct}%
+  \fi
+}
+
+%% #1 and #2 are parts of set #1 of \intersectsets. #3 is #2 of \intersectsets
+%% #4 is the result set
+\def \sets@intersectsets #1|#2\endset#3#4{%
+  \if \iselementofset{#1}{#3}%
+    \sets@append{|#1}\to#4%
+  \fi
+  \def \tempinters@cti{#2}%
+  \ifx \tempinters@cti\empty \else
+    \sets@ReturnFi{\sets@intersectsets #2\endset#3#4}%
+  \fi
+}
+%-----------------------------------------------------------------------------
+
+
+%% Takes two sets #1 and #2 and performs a minus operation, i.e. all elements
+%% of #1 that are in #2, too, are removed. The result is saved in #3. If #1 is
+%% sorted, #3 will be sorted, too.
+%%
+%% This macro is implemented like \intersectsets. The only difference is, that
+%% an element will only be part of #1 if it is NOT in #2. In \intersectsets it
+%% will be part if it is in #2.
+\def \minussets #1\minus#2\to#3{%
+  \def \@tempminus{}%
+  \expandafter \sets@minussets #1|\endset#2\@tempminus
+  \ifx \@tempminus\empty
+    \def #3{}%
+  \else
+    \sets@gobblefirst{#3}{\@tempminus}%
+  \fi
+}
+
+%% Syntax like \sets@intersectsets, but of course different semantics.
+\def \sets@minussets #1|#2\endset#3#4{%
+  \if \iselementofset{#1}{#3}\else
+    \sets@append{|#1}\to#4%
+  \fi
+  \def \temp@minus{#2}%
+  \ifx \temp@minus\empty \else
+    \sets@ReturnFi{\sets@minussets #2\endset#3#4}%
+  \fi
+}
+%-----------------------------------------------------------------------------
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\endinput

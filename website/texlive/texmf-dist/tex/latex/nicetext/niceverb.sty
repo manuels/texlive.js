@@ -1,0 +1,837 @@
+\NeedsTeXFormat{LaTeX2e}[1994/12/01]
+\ProvidesPackage{niceverb}[2011/12/05 v0.44
+                           minimize doc markup (UL)] 
+
+%% Copyright (C) 2009-2011 Uwe Lueck, 
+%% http://www.contact-ednotes.sty.de.vu 
+%% -- author-maintained in the sense of LPPL below -- 
+%%
+%% This file can be redistributed and/or modified under 
+%% the terms of the LaTeX Project Public License; either 
+%% version 1.3a of the License, or any later version.
+%% The latest version of this license is in
+%%     http://www.latex-project.org/lppl.txt
+%% We did our best to help you, but there is NO WARRANTY. 
+%%
+%% Please report bugs, problems, and suggestions via 
+%% 
+%%   http://www.contact-ednotes.sty.de.vu 
+%%
+%% === Switching Category Codes ===
+%% v0.3 introduces `\AssignCatCodeTo' and `\MakeNormal'.
+%% 
+%% |\CatCode{\<character>}| 
+%% (or simply |\CatCode\<character>|)
+%% saves one token per use and works when the category code 
+%% of \qtd{&`} (``single left quote") has changed. 
+\newcommand*{\CatCode}{\catcode`}
+% \newcommand*{\CatCode}[1]{\catcode`#1 } %% no better 2010/02/27
+%% With |\AssignCatCodeTo{<number>}{\<char>}|,
+%% `\CatCode' may still be useful for displaying 
+%% (debugging or playing). 
+%% Note that `\<char>' is the {\it second} argument here. 
+\newcommand*{\AssignCatCodeTo}[2]{\catcode`#2=#1\relax}
+%% |\MakeLetter\<char>| is used for \emph{private letters}, i.e., 
+%% to allow <char> in ``internal", non-user control sequences 
+%% ({\it\TeX book} Chap.\,3). 
+%% |\MakeOther| is just a different implementation of 
+%% \LaTeX's \cs{@makeother}.
+\newcommand*\MakeLetter{\AssignCatCodeTo{11}}
+\def        \MakeOther {\AssignCatCodeTo{12}}
+%% ... overriding 'fifinddo' if ... %% TODO 2010/03/12
+%%
+%% |\MakeActive\<char>| just revives the meaning of <char> 
+%% it had most recently 
+%% (as an &\active character ... 
+%%  maybe ``Undefined control sequence" unless ...) 
+%% This is fine for reviving 'niceverb' functionality 
+%% after having disabled it by `\MakeNormal'\linebreak[0]---provided 
+%% no other package used <char> actively in the meantime ...
+\providecommand*{\MakeActive}{\AssignCatCodeTo\active} %% used v0.3
+%% We take a copy |\MakeActiveHere| of `\MakeActive' 
+%% as the latter may become a dangerous thing for compatibility 
+%% with 'hyperref'.
+\@ifdefinable\MakeActiveHere{%
+    \let\MakeActiveHere\MakeActive}
+  %% <- TODO aliascid + elsewhere 2010/03/12
+%% |\MakeActiveLet\<char><macro name>| activates <char> 
+%% and then gives it the meaning of <macro name>.
+\newcommand*{\MakeActiveLet}[2]{%% cf. \@sverb/\do@noligs (doc.sty)
+  \MakeActiveHere#1%        %% 2010/03/12
+  \begingroup
+    \lccode`\~`#1\relax \lowercase{\endgroup \let~#2}} 
+%% We take a copy |\MakeActiveLetHere| as well.
+\@ifdefinable\MakeActiveLetHere{%
+    \let\MakeActiveLetHere\MakeActiveLet}
+%% %% |\MakeAlign\&| can be used to restore the meaning of `&' after we 
+%% %% have made it `\active'.
+%% % \providecommand*{\MakeAlign} {\AssignCatCodeTo4}
+%% We use the ``underscore" as a private letter 
+%% (the \LaTeX2 Project Team likes it as well).
+%% Its usual meaning can be restored by |\MakeNormal\_| 
+%% For restoring the usual category codes of \TeX's special 
+%% characters later, we store them now.
+%% (I.e., these characters are listed in the macro `\dospecials' 
+%%  that expands to
+%%  $$\mbox{\tt\def\do{\string\do\unskip\string}\dospecials}$$
+%%  their category codes are
+%% {\AssignCatCodeTo{6}{\#}%
+%%  \AssignCatCodeTo{3}{\$}%% fifinddo-interference!? TODO 2010/02/27
+%%  \AssignCatCodeTo{4}{\&}%% fifinddo-interference!? TODO 2010/02/27
+%%  \def\do#1{\def\do##1{, 
+%%  \the\CatCode##1}\the\CatCode#1}\dospecials} 
+%% respectively; ``end of line", ``ignored", ``letter", ``other", and 
+%% ``invalid" are missing---cf. {\it \TeX book} Chap.\,7.)
+\def\do#1{\expandafter 
+  \chardef \csname normal_catcode_\string#1\expandafter \endcsname
+    \CatCode#1\relax}
+\dospecials
+%% Tests: 
+%% ``normal category code" of `\' is 
+%% \expandafter\the\csname normal_catcode_\string\\\endcsname,
+%% ``normal category code" of `$' is 
+%% \expandafter\the\csname normal_catcode_\string\$\endcsname;
+%% ``normal category code" of `&' is 
+%% \expandafter\the\csname normal_catcode_\string\&\endcsname.%%%
+%% \footnote{\LaTeX's \cs{nfss@catcodes} is similar, 
+%%           but it makes space-like characters ignored. 
+%%           Also cf. 'ltfinal.dtx'. 
+%%           TODO: &\RestoreNormalCatcodes.} %% 2010/03/06
+%%
+%% Here we switch to the ``underscore" as a ``letter" indeed 
+%% (for the rest of the package):
+\MakeLetter\_
+
+% \newcommand*{\make_iii_other}{\MakeOther\\\MakeOther\{\MakeOther\}}
+  %% <- replaced 2009/04/05
+%% |\MakeNormal\<char>| saves you from remembering ...
+\newcommand*{\MakeNormal}[1]{%
+  \@ifundefined{\norm_catc_str#1}%
+             {\MakeOther#1}%
+             {\AssignCatCodeTo{\csname\norm_catc_str#1\endcsname}#1}}
+\newcommand*{\norm_catc_str}{normal_catcode_\string} 
+  %% TODO add ^^I and ^^M
+%% We take a copy |\MakeNormalHere| of `\MakeNormal' as 
+%% with `\MakeActive'.
+\@ifdefinable\MakeNormalHere{\let\MakeNormalHere\MakeNormal}
+%%
+%% === Robustness by &\IfTypesetting ===
+%% It seems we need some own ways to achieve various 
+%% compatibilities---using |\IfTypesetting{<if>}{<unless>}|. 
+%% It also saves some `\expandafter's.
+\providecommand*{\IfTypesetting}{%
+%     \relax 
+%% This `\relax' suppressed ligatures of single right quotes!
+%% %% removed 2010/03/23
+    \ifx \protect\@typeset@protect
+          \expandafter \@firstoftwo 
+    \else \expandafter \@secondoftwo \fi}
+%%
+%% === &\NVerb ===
+%% `\begin_min_verb' is a beginning shared by some macros here. 
+%% It begins like \LaTeX's `\verb', apart from the final `\tt'.
+\newcommand*{\begin_min_verb}{% 
+  \relax \ifmmode \hbox \else \leavevmode\null \fi 
+  \bgroup \tt}
+%% |\NVerb<char><code><char>|
+\newcommand*{\NVerb}{%
+    \_no_nice_meta_verb_false \nice_maybe_meta_verb}
+%% |\HardNVerb<char><code><char>| does not recognize meta-variables:
+\newcommand*{\HardNVerb}{%
+    \_no_nice_meta_verb_true \nice_maybe_meta_verb}
+\newif\if_no_nice_meta_verb_
+\newcommand*{\nice_maybe_meta_verb}[1]{%
+%% Mainly avoid `\verb''s noligs list which overrides definitions 
+%% of some active characters, while 'cmtt' doesn't have any 
+%% ligatures anyway. 
+  \IfTypesetting{%
+    \begin_min_verb
+      \let\do\MakeOther \dospecials
+%% Turn off 'niceverb' specials:
+      \MakeOther\|\MakeOther\`\MakeOther\'%
+      \if_no_nice_meta_verb_ \MakeOther\<%
+      %%% \else    \MakeActiveLet\<\MetaVar     %% 2010/12/31
+      \else        \MakeActiveLetHere\<\MetaVar %% 2011/06/20
+      \fi
+      \MakeActiveLetHere #1\niceverb_egroup
+      \verb@eol@error %% TODO change message 2009/04/09
+  }{\string\NVerb \string#1}}
+%% 2009/04/11: about `etc.' [preceding a box!? 2010/03/14]
+\newcommand*{\niceverb_normal_egroup}{%
+    \egroup 
+%% 2011/09/09 adding `\niceverb_maybe_rq' for `\AddQuotes':
+    \niceverb_maybe_rq 
+    \ifmmode\else\@\fi}
+\@ifdefinable\niceverb_egroup
+    {\let\niceverb_egroup\niceverb_normal_egroup}
+%%
+%% === Single Quotes Typeset Meta-Code ===
+%% |\LQverb| will be a ``permanent alias" 
+%% for the active left single quote. 
+%%
+%% The verbatim feature must not act when another single left 
+%% quote is ahead---we assume a double quote is intended then 
+%% (thus the left quote feature does not allow to typeset 
+%%  something verbatim that starts with a single left quote). 
+%% Rather, double quotes should be typeset then.
+%% In page headers, a `\protect' may be in the way.
+%% (A hook for `\relax'ing certain things in 
+%% `\markboth' and `\markright' would have been an alternative.)
+\MakeActive\`
+  \newcommand*{\LQverb}{%
+    \IfTypesetting{\lq_double_test}{\protect`}}
+\MakeOther\`
+\newcommand*{\lq_double_test}{%
+%% This test settles the next catcode, so better switch to ``other" 
+%% in advance (won't harm if left quote isn't next):
+  \begingroup 
+    \let\do\MakeOther \dospecials 
+    \MakeOther\|%% 2010/03/09!
+    \futurelet\let_token \lq_double_decide}
+\newcommand*{\lq_double_decide}{%
+  \ifx\let_token\LQverb
+    \endgroup
+    ``\expandafter \@gobble
+%% Corresponding right quotes will become ``other" due to 
+%% having no space at the left. 
+%% TODO to be changed with 'wiki.sty'.
+  \else
+    \ifx\let_token\protect
+      \expandafter\expandafter\expandafter \lq_double_decide_ii
+    \else
+      \endgroup
+      \niceverb_maybe_qs                            %% 2011/09/09
+      \expandafter\expandafter\expandafter \NVerb 
+        \expandafter\expandafter\expandafter \'%
+    \fi
+  \fi}
+%% `\lq_double_decide_ii' continues test behind `\protect'.
+\newcommand*{\lq_double_decide_ii}[1]{%
+    \futurelet\let_token \lq_double_decide}
+%%
+%% === Ampersand (or &\cstx) Typesets Meta-Code ===
+%% |\CmdSyntaxVerb| will be a permanent alias for the active `&'.
+\MakeActive\&
+  \newcommand*{\CmdSyntaxVerb}{% 
+    \IfTypesetting{%
+      \begin_min_verb 
+%% v0.3 moves the previous line from &\cmd_syntax_verb 
+%% %% <- shows bug is fixed 2010/03/09
+%% where it is too late to establish private letters 
+%% according to next line which was in `\begin_min_verb' 
+%% earlier---an important bug fix!
+      \MakeLetter\@\MakeLetter\_% 
+      \cmd_syntax_verb
+    }{\protect&\string}}
+\MakeNormal\&
+\newcommand*{\cmd_syntax_verb}[1]{%
+  \string#1\futurelet\let_token \after_cs}
+%% However, `&' (or `\CmdSyntaxVerb') 
+%% may fail with private letters 
+%% (there should be a hook for them),       %% TODO 2010/02/28
+%% especially in \emph{macro arguments}     %% 2010/03/05
+%% and with 'hyperref' in titles of         %% 2010/03/11
+%% \emph{sections bearing \cs{label}s},
+%% so we provide something like |\cs{<characters>}| from 
+%% '\ctanpkgref{tugboat}.sty'. %% 'doc.sty'.%% corr. 2011/05/27 
+\DeclareRobustCommand*{\cs}[1]{%
+  \begin_min_verb \backslash_verb #1\egroup} 
+\newcommand*{\backslash_verb}{\char`\\}
+%% %% 2011/06/27: undid 2011/05/27
+%% Moreover, typing `&\par' in ``short" \emph{macro arguments}
+%% fails, you better type `\cs{par}' then. Likewise, 
+%% `\cs{if<letters>}' and `\cs{fi}' is safer in case 
+%% you want to skip some part of the documentation 
+%% (e.g., a package option skips commented code)
+%% by \cs{if}`<letters>'\cs{fi}.
+%% Finally, there will be PDF bookmarks support for `\cs' 
+%% rather than for a real `&' or `\CmdSyntaxVerb' analogue like 
+%% |\cstx{<charcters>}*[<opt>]{<mand>}| as follows.
+\DeclareRobustCommand*{\cstx}[1]{%              %% corr. 2010/03/17
+  \begin_min_verb \backslash_verb #1\futurelet\let_token \after_cs}
+\newcommand*{\after_cs}{%
+  \ifcat\noexpand\let_token a\egroup \space
+  \else \expandafter \decide_verb \fi}
+\newcommand*{\test_more_verb}{\futurelet\let_token \decide_verb}
+\newcommand*{\decide_verb}{%
+    \jumpteg_on_with\bgroup\braces_verb
+    \jumpteg_on_with[\brackets_verb
+    \jumpteg_on_with*\star_verb
+  \egroup}
+    %% CAUTION/TODO wrong before (... if cmd without arg
+    %%         use \ then or choose usual verb...
+    %%         or \MakeLetter\( etc. ... or \xspace
+\newcommand*{\jumpteg_on_with}[2]{%
+  \ifx\let_token#1\do_jumpteg_with#2\fi}
+%% TODO cf. 'xfor', 'xspace' (&\break@loop); 
+%% `\DoOrBranch#1'\,...\,`#1' or so. %% found 2010/03/05
+%% %% <- `...' fix 2011/01/19
+\def\do_jumpteg_with#1#2\egroup{\fi#1}
+\def\braces_verb#1{\string{#1\string}\test_more_verb}
+\def\brackets_verb[#1]{[#1]\test_more_verb}
+\def\star_verb*{*\test_more_verb}
+  %% not needed with \Auto... OTHERWISE useful in args!
+%% %%2010/03/15:
+%% As 'latex.ltx' has `\endgraf' as a permanent alias for the 
+%% primitive version of `\par' and `\endline' for `\cr', 
+%% we offer |\endcell| as a replacement for the original `&':
+\let\endcell&
+%%
+%% === Escape Character Typesets Meta-Code ===
+%% |\BuildCsSyntax| will be a permanent alias for the active escape 
+%% character.
+\DeclareRobustCommand*{\BuildCsSyntax}{% 
+  \futurelet\let_token \build_cs_syntax_sp}
+\newcommand*{\build_cs_syntax_sp}{%
+  \ifx\let_token\@sptoken 
+    \@%                                 %% 2010/12/30
+  \else %% TODO ^^M!?
+    \expandafter \start_build_cs_syntax
+  \fi}
+\newcommand*{\start_build_cs_syntax}[1]{%
+  \edef\string_built{\string#1}%
+%% #1 may be active.---With Donald Arseneau's 'import.sty' (e.g.), 
+%% \qtd{&_} may be needed to be `\active' with the meaning of 
+%% `\textunderscore', therefore restoring its category code
+%% needs some more care than with v0.32 and earlier:
+  \edef\before_build_cs_sub{\the\CatCode\_}%
+  \MakeLetter\_\MakeLetter\@%% CAUTION, cf. ...
+  \test_more_cs}
+\newcommand*{\test_more_cs}{%
+  \futurelet\let_token \decide_more_cs}
+\newcommand*{\decide_more_cs}{%
+  \ifcat\noexpand\let_token a\expandafter \add_to_cs
+  \else 
+%     \MakeNormalHere\_ 
+%% Restoring \qtd{&_} more carefully with v0.4 
+%% (`\begingroup' ... `\endgroup'!?): 
+%% %% 2010/03/27
+    \CatCode\_\before_build_cs_sub
+    \MakeOther\@%
+    \expandafter \in@ \expandafter
+      {\csname \string_built \expandafter \endcsname 
+        \expandafter}\expandafter{\niceverbNoVerbList}%
+    \ifin@
+      \csname \string_built 
+        \expandafter\expandafter\expandafter \endcsname
+    \else
+      \begin_min_verb \backslash_verb\string_built
+        \expandafter\expandafter\expandafter \test_more_verb
+    \fi
+  \fi}
+  %% TODO such \if nestings with ifthen!? 
+ %% cf.:
+%  \let\let_token,\typeout{\meaning\let_token} 
+  %% TEST TODO fuer xspace!? (\ifin@)
+\newcommand*{\add_to_cs}[1]{% 
+  \edef\string_built{\string_built#1}\test_more_cs}
+%%
+%% |\AutoCmdSyntaxVerb| starts, |\EndAutoCmdSyntaxVerb| \emph{ends}
+%% ``auto mode." 
+\newcommand*{\AutoCmdSyntaxVerb}{%
+    \MakeActiveLetHere\\\BuildCsSyntax}
+\newcommand*{\EndAutoCmdSyntaxVerb}{\CatCode\\\z@}
+%% |\NormalCommand{<characters>}| executes `\<characters>'
+%% in ``auto mode."
+\newcommand*{\NormalCommand}{} \let\NormalCommand\@nameuse
+%% %% 2010/03/11:
+%% Once I may want to use this feature in {\it Wikipedia}-like 
+%% section titles as supported by 'makedoc', yet I cannot really 
+%% apply the present feature soon, so this must wait ... 
+%% (There is a special problem with `\newlabel' and 'hyperref' ...)
+%% 
+%% Former tests: 
+%  \futurelet\LetToken\relax \relax 
+%  \show\LetToken \typeout{\ifcat\noexpand\LetToken aa\else x\fi}
+%%
+%% |\niceverbNoVerbList| is the list of macros that will be 
+%% \emph{executed} instead of being typeset. 
+\newcommand*{\niceverbNoVerbList}{%
+  \begin\end\item\verb\EndAutoCmdSyntaxVerb\NormalCommand
+  \section\subsection\subsubsection} %% TODO!?
+%% |\AddToMacro{\niceverbNoVerbList}{<macros>}| can be used to 
+%% add <macros> to that list. 
+\providecommand*{\AddToMacro}[2]{%   %% TODO move to ... 2010/03/05
+  \expandafter \def \expandafter #1\expandafter {#1#2}}
+  %% <- was very wrong 2010/03/18
+%% Hey, or just |\AddToNoVerbList{<macros>}|: %% 2010/03/28
+\newcommand*{\AddToNoVerbList}{\AddToMacro\niceverbNoVerbList}
+%%
+%% ``Auto mode" probably ain't mean a thing if it ain't invoked using 
+%% \[|\AutoCmdInput{<file>}|\] for typesetting <file> in ``auto mode:" 
+\newcommand*{\AutoCmdInput}[1]{%
+    \begingroup 
+      \AddToMacro\niceverbNoVerbList{\ProvidesFile}% 
+      %% <- removed `\endinput', will be code! 2010/04/05
+      \AutoCmdSyntaxVerb
+      \input{#1}%
+      \EndAutoCmdSyntaxVerb
+    \endgroup
+}
+%%
+%% === Meta-Variables ===
+%% |\MetaVar<var-id>>| will be a permanent alias for the active \qtd{&<}.
+\def\MetaVar#1>{%
+  \mbox{\normalfont\itshape $\langle$#1\/$\rangle$}} 
+  %% TODO offer without angles as well
+%% As opposed to 'ltxguide.cls', this works outside verbatim as well.
+%%
+%% === Hash Mark is Code ===
+%% |\HashVerb<digit>| will be a permanent alias for the active hash mark. 
+\newcommand*{\HashVerb}[1]{{\tt\##1}}
+%%
+%% === Single Right Quotes for &\textsf ===
+%% |\RQsansserif| will be a permanent alias for the active single 
+%% right quote. 
+%%
+%% The basic problem with the ``single right quote feature" 
+%% is that a single right quote may be meant to be an apostrophe. 
+%% This is certainly the case at the right of a letter. 
+%% On the other hand, we assume that it is \emph{not} an apostrophe 
+%%  (i)~in vertical mode (opening a new paragraph), 
+%% (ii)~after a horizontal skip. 
+%%
+%% For page headers, in expanding without typesetting, 
+%% the expansion of `\RQsansserif' must contain another active 
+%% single right quote.{\sloppy\par}
+\MakeActive\'
+  \newcommand*{\RQsansserif}{%
+    \IfTypesetting{\niceverb_rq_sf_test}{\protect'}}
+\MakeOther\'
+%% Another macro just to avoid more sequences of `\expandafter':
+\newcommand*{\niceverb_rq_sf_test}{%
+  \ifhmode 
+    \ifdim\lastskip>\z@ 
+      \expandafter\expandafter\expandafter \DoRQsansserif
+    \else 
+      \ifnum\niceverb_spacefactor
+        \expandafter\expandafter\expandafter\expandafter
+          \expandafter\expandafter\expandafter 
+            \DoRQsansserif
+      \else '\fi
+    \fi
+  \else \ifvmode 
+    \expandafter\expandafter\expandafter \DoRQsansserif
+    \else '\fi
+  \fi}
+%% |\DoRQsansserif| %% 2010/03/10
+%% is \emph{another} (possible) alias for the 
+%% active single right quote, see below.
+\MakeActive\'
+  \@ifdefinable\DoRQsansserif
+    {\def\DoRQsansserif#1'{\textsf{#1}}}
+\MakeOther\'
+%% The following cases are typical and cannot be decided by the 
+%% previous criteria:
+%% (i)~parenthesis, (ii)~footnotes and after ``horizontal" 
+%% environments like `\[<math>\]', (iii)~section titles, 
+%% (iv)~`\noindent'. 
+%% We introduce some dangerous tricks---redefinitions of 
+%% % \LaTeX's internals `\@footnotetext' and `\@sect' 
+%% %% <- 2010/03/16 ->
+%% \LaTeX's internal `\@sect' and of \TeX's primitives 
+%% `\noindent' and `\ignorespaces' as well as by 
+%% a signal `\spacefactor' value of 1001. 
+%% In page headers, \LaTeX\ equips the single right quote with the 
+%% meaning of `\active@math@prime' which must be overridden.
+\newcommand*{\nvAllowRQSS}{%
+    \MakeActiveLetHere\'\RQsansserif
+    \niceverb_ignore}                   %% 2010/03/16
+%% These and the entire right quote functionality are
+%% activated by                 %% removed todo 2010/03/10
+%% \[|\nvRightQuoteSansSerif|
+%%   \mbox{\quad and disabled by\quad} 
+%%   |\nvRightQuoteNormal|\]---at 
+%% `\begin{document}'---where we collect previous settings---or 
+%% later:
+\AtBeginDocument{%
+    \edef\before_niceverb_parenthesis{\the\sfcode`\(}%
+    \let \before_niceverb_ignore   \ignorespaces    %% 2010/03/16
+    \let \before_niceverb_sect     \@sect
+    \let \before_niceverb_noindent \noindent}       %% 2010/03/08
+%% We assume that `\@sect' has the same 
+%% % We assume that `\@footnotetext' and `\@sect' have the same 
+%% parameters there as in \LaTeX\ 
+%% (even if redefined by another package, like 'hyperref').
+\def\niceverb_sect#1#2#3#4#5#6[#7]#8{%
+    \before_niceverb_sect{#1}{#2}{#3}{#4}{#5}{#6}%
+                         [{\protect\nvAllowRQSS #7}]%
+                          {\protect\nvAllowRQSS #8}}
+%% 2010/03/20:
+\newcommand*{\niceverb_spacefactor}{\spacefactor=1001\relax}
+\newcommand*{\niceverb_noindent}{%
+    \before_niceverb_noindent \niceverb_spacefactor} 
+\newcommand*{\niceverb_ignore}{% 
+    \ifhmode \niceverb_spacefactor \fi \before_niceverb_ignore}
+%%
+%% Here are the main switches:
+\newcommand*{\nvRightQuoteSansSerif}{%
+    \MakeActiveLet\'\RQsansserif
+    \sfcode`\(=1001   %% enable in parentheses 2009/04/10
+%% I also added \HardNVerb+\sfcode`/=1001+ in the preamble 
+%% of 'makedoc.tex'. %% 2010/03/15
+%     \let\@footnotetext\niceverb_footnotetext
+    \let\ignorespaces\niceverb_ignore       %% 2010/03/16
+    \let\@sect\niceverb_sect
+    \let\noindent\niceverb_noindent}        %% 2010/03/08
+\newcommand*{\nvRightQuoteNormal}{%
+    \MakeNormal\'%                                     %% 2010/03/21
+    \sfcode`\(=\before_niceverb_parenthesis\relax
+    \let\ignorespaces\before_niceverb_ignore           %% 2010/03/16
+    \let\@sect\before_niceverb_sect
+    \let\noindent\before_niceverb_noindent}            %% 2010/03/08
+%% |\nvAllRightQuotesSansSerif| %% 2010/03/10
+%% (after `\begin{document}'!)
+%% forces the `\textsf' feature 
+%% \emph{without} testing for apostrophes. You then must be 
+%% sure---DANGER! CARE!---to 
+%% use \qtd{&\rq} only for obtaining an apostrophe and the 
+%% double quote character \qtd{&"} for closing double quotes, 
+%% or our `\dqtd{<text>}' for the entire quoting.
+\newcommand*{\nvAllRightQuotesSansSerif}{%
+    \nvRightQuoteNormal 
+    \MakeActiveLet\'\DoRQsansserif}
+%% I started v0.31 (signal `\sfcode'=1000, lowercase letters 
+%% get `\sfcode'=1001) because 
+%% \NVerb+\href{http://ctan.org/pkg/<pkg>}{<pkg>}+ failed. 
+%% However, what I actually needed was |\ctanpkgref{<pack-name>}|: 
+% \DeclareRobustCommand*{\ctanpkgref}[1]{%
+%     \href{http://ctan.org/pkg/#1}{\textsf{#1}}}
+%% ... moves to 'texlinks.sty' 2011/01/24.
+%%
+%% === Command-Highlighting Boxes ===
+%% With v0.3, we include one kind of command syntax boxes 
+%% whose <content> is (in 'niceverb' syntax) 
+%% delimited as \GenCmdBox+|<content>|+.
+%% %% 2010/03/14:
+\newsavebox\niceverb_savebox
+%% |\GenCmdBox<char><content><char>}| works like 
+%% `\NVerb<char><content><char>' except putting the latter's result 
+%% into a framed (or coloured or ...) box.{\sloppy\par}
+\newcommand*{\GenCmdBox}  {\_no_nice_meta_verb_false \gen_cmd_box}
+%% |\HardVerbBox| is a variant of `\GenCmdBox' with the meta-variable 
+%% feature disabled 
+%% (for the documentation of the present package).
+\newcommand*{\HardVerbBox}{\_no_nice_meta_verb_true  \gen_cmd_box}
+\newcommand*{\gen_cmd_box}{%
+%   \ifvmode\let\niceverb_boxtype\VerticalCmdBox      %% 2011/11/05
+%      \else\let\niceverb_boxtype\InlineCmdBox   \fi
+  \let\niceverb_egroup\nice_collect_verb_egroup
+  \setbox\niceverb_savebox \hbox\bgroup 
+    \if_no_nice_meta_verb_ 
+          \expandafter \HardNVerb
+    \else \expandafter \NVerb     \fi}
+\newcommand*{\nice_collect_verb_egroup}{%
+    \egroup \egroup
+  \ifvmode \expandafter \VerticalCmdBox
+  \else    \ifmmode \hbox \fi
+           \expandafter \InlineCmdBox \fi
+%   \ifmmode\hbox\fi \niceverb_boxtype                %% 2011/11/05
+   {\box\niceverb_savebox}%
+%% Modifying invocation of `\niceverb_normal_egroup' 2011/11/05
+%% according to remark of 2010/03/15 for saving nesting level:
+  \ifmmode\else\@\fi
+  \let\niceverb_egroup\niceverb_normal_egroup
+}
+%% |\nvCmdBox| will be the permanent alias for \qtd{&|}.
+\newcommand*{\nvCmdBox}{\GenCmdBox\|}
+%% |\VerticalCmdBox{<content>}| 
+%% may eventually start a `decl' environment 
+%% as in 'ltxguide.cls', looking ahead for another \qtd{&|} 
+%% in order to (perhaps) append another row.
+%% Another possibility is first to do some
+%% \[`\if@nobreak\else \pagebreak[2]\fi'\]
+%% etc. and then invoke `\InlineCmdBox'.
+%% The user can choose later by some `\renewcommand'. 
+%% We do the perhaps most essential thing here 
+%% (again cf. `\begin_min_verb'):{\sloppy\par}
+\newcommand*{\VerticalCmdBox}{\leavevmode\InlineCmdBox}
+%% (2011/11/05 removing `\null'.)
+%% The command declaration boxes in the documentation of 
+%% Nicola Talbot's \ctanpkgref{datatool}
+%% would be an especially nice realization of `\VerticalCmdBox'.
+%%
+%% |\InlineCmdBox{<content>}|, according to our idea, should not 
+%% change baseline skip, even with some `\fboxsep' and `\fboxrule'.
+%% (However, it may be a good idea to increase the overall 
+%%  normal baseline skip.)
+%% We therefore replace actual height and depth of the content by 
+%% the height and depth of math parentheses.
+\newcommand*{\InlineCmdBox}[1]{%
+  \bgroup
+%% ... needed in math mode with `\begin_min_verb'.
+    \fboxsep 1pt
+    \kern\SetOffInlineCmdBoxOuter
+    \smash{\SetOffInlineCmdBox{\kern\SetOffInlineCmdBoxInner
+                               \InlineCmdBoxArea{#1}%
+                               \kern\SetOffInlineCmdBoxInner}}%
+    \mathstrut
+    \kern\SetOffInlineCmdBoxOuter
+  \egroup
+}
+%% The default choice for |\SetOffInlineCmdBox| is `\fbox':
+\@ifdefinable\SetOffInlineCmdBox{\let\SetOffInlineCmdBox\fbox}
+%% You can `\renewcommand' it to change `\fboxsep', `\fboxrule'
+%% etc. or to use a `\colorbox' with the 'color' package, e.g.,
+%% I used the following setting so far:
+%% %% 2010/03/10
+%% \begin{verbatim}
+%%     \RequirePackage{color}
+%%     \renewcommand*{\SetOffInlineCmdBox}
+%%                   {\colorbox[cmyk]{.1,0,.2,.05}}
+%% \end{verbatim}
+%% |\SetOffInlineCmdBoxInner| enables controlling the inner 
+%% horizontal space to the box margin independently of 
+%% `\fboxsep'. 
+%% %% We set it to 0\,pt. as default (it is a macro only, 
+%% %% for a while).
+\newcommand*{\SetOffInlineCmdBoxInner}{-\fboxsep\thinspace}
+%% This choice is inspired by `\cstok' for ``boxed" things 
+%% in Knuth's 'manmac.tex' which formats {\it The \TeX book}.
+%% %% <- 2010/03/10
+%%
+%% |\SetOffInlineCmdBoxOuter| allows that the box hangs out into the 
+%% margin horizontally. 
+%% We set it to 0\,pt as default (it is a macro only, for a while).
+\newcommand*{\SetOffInlineCmdBoxOuter}{\z@}
+%% The height and depth of the frame should be the same for all 
+%% inline boxes, we think.
+%% The present choice |\InnerCmdBoxArea| for the spacing
+%% respects code characters rather than the height and depth 
+%% of the angle brackets that surround meta-variable names.
+\newcommand*{\InlineCmdBoxArea}[1]{%
+    \smash{#1}\vphantom{gjpq\backslash_verb}}
+%% \GenCmdBox+\cmdboxitem|<content>|+ is another variant of 
+%% `\GenCmdBox'. It should replace `\item[<content>]' in the 
+%% `description' environment. %% 2010/03/15
+\newcommand*{\cmdboxitem}{%
+  \bgroup 
+    \let\niceverb_egroup\cmd_item_egroup
+    \global %% TODO!? 2010/03/15
+    \setbox\niceverb_savebox \hbox\bgroup
+      \NVerb}
+\newcommand*{\cmd_item_egroup}{%
+      \egroup \egroup \egroup
+  \item[\InlineCmdBox{\box\niceverb_savebox}]}
+%%
+%% === When 'niceverb' Gets Nasty ===
+%% These things are new with v0.3.
+%% ==== Meta-Variables ====
+%% This is even newer than v0.3.    %% 2011/05/09
+%%
+%% In case you actually need $\lt$ and $\gt$ in math mode, 
+%% |\lt| and |\gt| are ``provided" as aliases:
+\providecommand*{\gt}{>}
+\providecommand*{\lt}{<}
+%%
+%% ==== Quotes ====
+%% %% WRONG 2010/03/05:
+%% % The left quote feature for meta-code requires that the right quote 
+%% % feature---for replacing `\textsf'---is activated---no, rather:
+%% % that the right quote \qtd{&'} is `\active'.
+%% %
+%% In order to get \emph{real} single quotes, you could use `\lq <text>\rq', 
+%% maybe appending a `\ ', but the code |\qtd{<text>}| may look better 
+%% and be easier to type.
+\newcommand*{\qtd}[1]{`#1'}
+%% However, here we get the problem that the left quote in 
+%% \NVerb\+\qtd{`<code>'}+ will be unable to switch into 
+%% verbatim mode entirely---then use `&', 
+%% e.g., \qtd{&\qtd{&&&&}} typesets \qtd{\qtd{&&}}, i.e., 
+%% the ampersand in single (non-verbatim) quotes.
+% TODO \qtdverb!? alternative meaning for \LQverb!? 2010/03/06
+%      rather rare, & takes less space              2010/03/09
+%% |\AddQuotes| automatically surrounds code with single quotes. 
+%% I have so often felt that it was a design mistake 
+%% to drop them (2011/09/09):
+\newcommand*{\AddQuotes}{%
+    \let\niceverb_maybe_qs\niceverb_add_qs}
+\newcommand*{\niceverb_add_qs}{%
+%% In a math display, quotes are suppressed even with `\AddQuotes':
+    \ifmmode\else
+      `\let\niceverb_maybe_rq\niceverb_rq
+    \fi}
+\@ifdefinable\niceverb_maybe_rq{\let\niceverb_maybe_rq\relax}
+\newcommand*{\niceverb_rq}{'\let\niceverb_maybe_rq\relax}
+%% You can undo this by |\DontAddQuotes|:
+\newcommand*{\DontAddQuotes}{\let\niceverb_maybe_qs\relax}
+%% The default will be the behaviour that we had before:
+\DontAddQuotes 
+%% |\dqtd{<text>}| can be used for enclosing in \emph{double} quotes 
+%% with the dangerous `\nvAllRightQuotesSansSerif' (see above).
+\newcommand*{\dqtd}[1]{``#1"} 
+%%
+%% ==== 'hyperref' ====
+%% This is for\slash about compatibility with the 'hyperref' package. 
+%% (One preliminary thing: in doubt, don't load 'niceverb' earlier 
+%% than 'hyperref'.) %% TODO 2010/03/14 
+%%
+%% We need some substitutions for PDF bookmarks with 
+%% 'hyperref'. We issue them at `\begin{document}' when we know 
+%% if 'hyperref' is at work.\footnote{An alternative approach would be 
+%%                                    using 
+%%                                    \ctanpkgref{afterpackage}
+%%                                    by Alex Rozhenko.}
+\AtBeginDocument{%
+  \@ifpackageloaded{hyperref}{%
+    \newcommand*{\PDFcstring}{%         %% moved here 2010/03/09
+      \134\expandafter\@gobble\string}% %% ASCII octal encoding
+    \pdfstringdefDisableCommands{%
+      \let\nvAllowRQSS\empty            %% not \relax 2010/03/12
+      %% 2010/03/12
+      \MakeActiveLetHere\`\lq \MakeActiveLetHere\'\rq
+      \MakeActiveLetHere\&\PDFcstring 
+      \def\cs{\134}%                    %% 2010/03/17, 2011/06/27
+    }%
+%% Moreover, in order to avoid spurious                 %% 2010/03/14
+%% \texttt{Label(s) may have changed} with 'hyperref', 
+%% a single right quote must be \emph{read} as active 
+%% by a `\newlabel' if and only if it has been active when 
+%% `\@currentlabelname' was formed.\footnote{This uses 
+%%      \cs{@onelevelsanitize}, therefore &\protect doesn't 
+%%      change the behaviour of ``active" characters.} 
+%% as `\active'. We use `\protected@write' as this cares for 
+%% `\nofiles'. `\@auxout' may be `\@partaux' for `\include'.
+    \newcommand*{\niceverb_aux_cat}[2]{%                %% 2010/03/14
+        \protected@write\@auxout{}{\string#1\string#2}}%
+    \renewcommand*{\MakeActive}[1]{%
+        \MakeActiveHere#1%
+        \niceverb_aux_cat\MakeActiveHere#1}%
+    \renewcommand*{\MakeActiveLet}[2]{%
+        \MakeActiveLetHere#1#2%
+        \niceverb_aux_cat\MakeActiveHere#1}%
+    \renewcommand*{\MakeNormal}[1]{%
+        \MakeNormalHere#1%
+        \niceverb_aux_cat\MakeNormalHere#1}%
+  }{}%
+}
+%% TODO doesn't 'babel' have the same problem? 2010/03/12
+%% ==== 'hyper-xr' ==== %% 2010/03/21
+%% With the 'hyper-xr' package creating links into external documents, 
+%% preceding `\externaldocument{<file>}' with 
+%% `\MakeActiveLet\&\CmdSyntaxVerb' may be needed. 
+%% I do not want to redefine something here right now as %% typo 2010/11/09 
+%% I have too little experience with this situation.
+%% 
+%% ==== Turning off and on altogether ====
+%% These commands are new with v0.3. 
+%%
+%% |\noNiceVerb| \emph{disables} all 'niceverb' features. 
+\newcommand*{\noNiceVerb} {\MakeNormal\`%
+                           \MakeNormal\&%
+                           \MakeNormal\<%
+                           \MakeNormal\#%
+                           \nvRightQuoteNormal
+                           \MakeNormal\|}
+%% |\useNiceVerb| \emph{activates} all the 'niceverb' features 
+%% (apart from ``auto mode"). 
+\newcommand*{\useNiceVerb}{\MakeActiveLet\`\LQverb
+%% TODO to be changed with 'wiki.sty' v0.2
+                           \MakeActiveLet\&\CmdSyntaxVerb
+                           \MakeActiveLet\<\MetaVar
+                           \MakeActiveLet\#\HashVerb
+                           \nvRightQuoteSansSerif
+                           \MakeActiveLet\|\nvCmdBox}
+%%
+%% === Activating the 'niceverb' Syntax ===
+%% 'niceverb' features are activated at `\begin{document}' 
+%% so (some) other packages can be loaded \emph{after} 'niceverb'. 
+%% For v0.3, we do this after possible settings for 
+%% compatibility with 'hyperref'.
+\AtBeginDocument{\useNiceVerb}
+%%
+%% === Leave Package Mode ===
+\MakeNormalHere\_                   %% 2010/03/12
+\endinput
+%%
+%% === VERSION HISTORY ===
+
+v0.1   2009/02/21   very first, sent to CTAN
+v0.2   2009/04/04   ...NoVerbList: \subsubsection, \AddToMacro, 
+       2009/04/05   \SimpleVerb makes more other than iii
+       2009/04/06   just uses \dospecials
+       2009/04/08   debugging code for rq/sf, +\relax
+       2009/04/09   +\verb@eol@error, prepared for new doc method, 
+                    removed spurious \makeat..., -\relax (ligature), 
+       2009/04/10   ('-trick
+       2009/04/11   \@ after \SimpleVerb
+       2009/04/14   noted TODO below
+       2009/04/15   change v0.1 to 2009/02/21
+v0.30   2010/02/27   short, more explained, \AssignCatCodeTo,
+                    use \MakeActive for re-activating, \MakeNormal
+       2010/02/28   fixed @ and _ with & by moving \begin_min_verb;
+                    replaced \lq by `; Capitals in Titles
+       2010/03/05   \SimpleVerb -> \NVerb; 
+                    use \MakeActive + \MakeNormal; \rq -> ';
+                    renamed some sections; \lq_verb -> \LQverb, 
+                    \niceverb_meta -> \MetaVar, 
+                    \param_verb -> \HashVerb
+       2010/03/06   removed \MakeAlign; removed @ and _ todo below;
+                    \NVerb makes ` and ' other; 
+                    \nvAllowRQSF allows ' in column titles,
+       2010/03/08   \LQverb and & work in column titles, 
+                    \RQverb works with \noindent; 
+                    bookmark substitutions
+       2010/03/09   extended notes on 'hyperref' (in)compatibility;
+                    \MakeLetter\@ in \CmdSyntaxVerb only;
+                    |...| implemented as \prepareCmdBox etc.!
+       2010/03/10   \colorbox example, \thinspace; ltxguide!;
+                    removed todo; ..._exec -> \DoRQsansserif; 
+                    minor doc changes in ``Nasty"
+       2010/03/11   doc changes in ``Escape Character ..." and 
+                    ``Ampersand"
+       2010/03/12   \niceverb_aux_cat, \MakeActiveHere etc., 
+                    \IfTypesetting, \noNiceVerb, \useNiceVerb,
+                    corr. bracing mistake in \MakeNormal!
+       2010/03/14   0.31 -> 0.3; \HardNVerb, \GenCmdBox, 
+                    \prepareCmdBox -> \nvCmdBox 
+       2010/03/15   \endcell; \cmdboxitem; remark on \sfcode`/
+       2010/03/16   corr. -> \endline; 
+                    advice on \cs{par}, \cs{if...}, \cs{fi};
+                    redefined \ignorespaces for RQ feature
+       2010/03/17   corr. `\fututelet', corr. \cs PDF substitution
+       2010/03/18   |\niceverbNoVerbList|, |\AddToMacro| etc.;
+                    corr. \AddToMacro; 
+                    \lastskip-fix of \niceverb_ignore, 
+                    another fix of \niceverb_noindent
+       2010/03/19   another fix of \niceverb_ignore: \spacefactor
+       2010/03/20   ... again: \niceverb_spacefactor
+
+NOT DISTRIBUTED, just stored saved as separate version
+
+v0.31  2010/03/20   right quote feauture: letters get \sfcode=1001
+                    `column title' -> `page headers', \ctanpkgref
+
+NOT DISTRIBUTED, just stored as separate version
+
+v0.32  2010/03/21   taking best things from v0.30 and v0.31
+       2010/03/23   removed \relax from \IfTypesetting
+SENT TO CTAN
+
+v0.4   2010/03/27   restoring `_' with "auto mode" safer
+       2010/03/28   \AddToNoVerbList
+       2010/03/29   note above, renamed v0.4
+SENT TO CTAN
+
+v0.41  2010/04/03   v0.33 -> v0.4 
+       2010/04/05   corrected \AutoCmdInput list
+SENT TO CTAN as part of NICETEXT release r0.41
+
+v0.41a 2010/11/09   typo corrected
+v0.42  2010/12/30   corr. `\ ' emulation in auto mode
+       2010/12/31   \MetaVar in ...maybe_meta...
+       2011/01/19   `...' fix
+       2011/01/24   \ctanpkgref moves to texlinks.sty
+       2011/01/26   update (C)
+with nicetext RELEASE r0.42
+v0.43  2011/05/09   \gt, \lt
+       2011/05/27   \cs uses \@backslashchar
+       2011/06/20   \MakeActiveLetHere in \nice_maybe_meta_verb !!!
+       2011/06/27   2011/05/27 undone
+       2011/08/20   `r0.42', `v0.43'
+with nicetext RELEASE r0.43
+v0.44  2011/09/09   \AddQuotes, \DontAddQuotes
+with nicetext RELEASE r0.44
+v0.45  2011/11/05   mod. \niceverb_collect_egroup/\VerticalCmdBox, 
+                    tried \output problem without avail
+       2011/12/05   clarified "r0.44"

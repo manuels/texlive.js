@@ -1,0 +1,263 @@
+% This file is part of the Lecturer package.
+% Paul Isambert -- July 2010.
+% 
+\def\ltr@link_create#1#2#3{%
+  \hbox{%
+    \pdfannot{%
+      /Subtype/Link
+      /Border [0 0 0]
+      /H/\ifstring{#1}{none}{N}{\ifstring{#1}{flash}{I}{\ifstring{#1}{push}{P}{N}}}
+      \reverse\iffemptycommand\ltr@step_current{/OC \ltr@step_current 0 R}
+      /A #2}%
+    #3}%
+  }
+%
+\def\firstslide{%
+  \ifnext[{\ltr@firstslide}{\ltr@firstslide[]}%
+  }
+\def\ltr@firstslide[#1]#2{%
+  \ltr@link_create{#1}{<< /S/GoTo /D (ltr@linktopage_1) >>}{#2}%
+  }
+\def\lastslide{%
+  \ifnext[{\ltr@lastslide}{\ltr@lastslide[]}%
+  }
+\def\ltr@lastslide[#1]#2{%
+  \ltr@link_create{#1}{<< /S/Named /N/LastPage >>}{#2}%
+  }
+\def\prevslide{%
+  \ifnum\slideno=1
+    \expandafter\firstslide
+  \else
+    \afterfi{\ifnext[{\ltr@prevslide}{\ltr@prevslide[]}}
+  \fi
+  }
+\def\ltr@prevslide[#1]#2{%
+  \ltr@link_create{#1}{<< /S/GoTo /D (ltr@linktopage_\the\numexpr\slideno-1\relax)  >>}{#2}%
+  }
+\def\nextslide{%
+  \ifnext[{\ltr@nextslide}{\ltr@nextslide[]}%
+  }
+\def\ltr@nextslide[#1]#2{%
+  \ltr@link_create{#1}{<< /S/GoTo /D (ltr@linktopage_\the\numexpr\slideno+1\relax)  >>}{#2}%
+  }
+\def\nextstep{%
+  \ifnext[{\ltr@nextstep}{\ltr@nextstep[]}%
+  }
+\def\ltr@nextstep[#1]#2{%
+  \ltr@link_create{#1}{<< /S/Named /N/NextPage >>}{#2}%
+  }
+\def\prevstep{%
+  \ifnext[{\ltr@prevstep}{\ltr@prevstep[]}%
+  }
+\def\ltr@prevstep[#1]#2{%
+  \ltr@link_create{#1}{<< /S/Named /N/PrevPage >>}{#2}%
+  }
+%
+\def\anchor#1{%
+  \ifcs{ltr@anchor_user:#1}
+    {\ltr@error{Anchor `#1' already exists. Find another name}}
+    {\global\letcs{ltr@anchor_user:#1}\relax
+     \immediate\pdfobj\iffcs{ltr@anchor_objnum:#1}{useobjnum \usecs{ltr@anchor_objnum:#1}}{\ltr@anchor{\the\slideno}{\ltr@activesteps_count}}%
+     \reverse\iffcs{ltr@anchor_objnum:#1}{\xdefcs{ltr@anchor_objnum:#1}{\the\pdflastobj\spacecs}}}%
+  }
+\def\ltr@anchor#1#2{%
+  <<
+    /S/GoTo /D (ltr@linktopage_#1)
+    /Next << /S/JavaScript /JS (\ltr@ifvalue job:autofullscreen; = true {app.fs.isFullScreen = true; }{}%
+                                if (app.fs.isFullScreen) {\repeatuntil{#2}{app.execMenuItem("NextPage");}}) >>
+  >>}%
+\def\goto{%
+  \ifnextnospace[{\ltr@goto}{\ltr@goto[none]}%
+  }
+\def\ltr@goto[#1]#2#3{%
+  \reverse\iffcs{ltr@anchor_objnum:#2}
+    {\pdfobj reserveobjnum%
+     \xdefcs{ltr@anchor_objnum:#2}{\the\pdflastobj}}%
+  \ltr@link_create{#1}{\usecs{ltr@anchor_objnum:#2} 0 R}{#3}%
+  }
+\def\gotoA{%
+  \ifnextnospace[{\ltr@gotoA}{\ltr@gotoA[none]}%
+  }
+\def\ltr@gotoA[#1]#2#3{%
+  \anchor{ltr@#2_back}%
+  \ltr@goto[#1]{#2}{#3}%
+  }
+\def\gotoB{%
+  \ifnextnospace[{\ltr@gotoB}{\ltr@gotoB[none]}%
+  }
+\def\ltr@gotoB[#1]#2#3{%
+  \anchor{#2}%
+  \ltr@goto[#1]{ltr@#2_back}{#3}%
+  }  
+\def\showorhide{%
+  \ifnextnospace[{\ltr@showorhide}{\ltr@showorhide[none]}%
+  }
+\def\ltr@showorhide[#1]#2#3{%
+  \ifsuffix,{#2}
+    {\ltr@showorhide_loop{}{}{}{#2}}
+    {\ltr@showorhide_loop{}{}{}{#2,}}%
+  \ltr@link_create{#1}{\ltr@temp 0 R}{#3}%
+  }
+\newfor\ltr@showorhide_loop{3}#4=#5,{%
+  \ltr@showorhide_objloop{#5 }%
+  \passtrim{#4}\ifstring{on}
+    {\passarguments{#1#5 }{#2}{#3}}
+    {\passtrim{#4}\ifstring{off}
+      {\passarguments{#1}{#2#5 }{#3}}
+      {\passtrim{#4}\ifstring{toggle}
+        {\passarguments{#1}{#2}{#3#5 }}
+        {\ltr@error{Unkown attribute `#4' in \string\showorhide}}}}%
+  }[\immediate\pdfobj{%
+      << /S/SetOCGState
+         /State [/ON \ltr@showorhide_objects{#1} /OFF \ltr@showorhide_objects{#2} /Toggle \ltr@showorhide_objects{#3}] >>}%
+    \edef\ltr@temp{\the\pdflastobj\spacecs}]
+\newfornoempty\ltr@showorhide_objloop#1 {%
+  \reverse\iffcs{ltr@step_objnum:#1_\the\slideno}
+    {\pdfobj reserveobjnum 
+     \xdefcs{ltr@step_objnum:#1_\the\slideno}{\the\pdflastobj\spacecs}}%
+  }
+\newfornoempty\ltr@showorhide_objects#1 {%
+  \usecs{ltr@step_objnum:#1_\the\slideno}0 R
+  }
+%
+\def\showbookmarks{%
+  \ifnextnospace[{\ltr@showbookmarks}{\ltr@showbookmarks[none]}%
+  }
+\def\ltr@showbookmarks[#1]#2{%
+  \reverse\iffcommand\ltr@bookmark_menuobject{%
+    \pdfobj reserveobjnum
+    \xdef\ltr@bookmark_menuobject{\the\pdflastobj\spacecs}}%  
+  \ltr@link_create{#1}{\ltr@bookmark_menuobject 0 R}{#2}%
+  }
+%
+\def\ltr@bookmark_list{}
+\def\ltr@bookmark_stack{}
+\def\createbookmark{%
+  \ifnextnospace[{\ltr@createbookmark}{\ltr@createbookmark[]}%
+  }
+\newcount\ltr@bookmark_count
+\def\ltr@createbookmark[#1]#2{%
+  \ifnextnospace[
+    {\ltr@bookmark_create{#1}{#2}}
+    {\global\advance\ltr@bookmark_count1
+     \ltr@bookmark_create{#1}{#2}[ltr@bookmark_number:\the\ltr@bookmark_count]}%
+  }
+\def\ltr@bookmark_create#1#2[#3]#4{%
+  \reverse\iffcommand\ltr@bookmark_menuobject{%
+    \pdfobj reserveobjnum
+    \xdef\ltr@bookmark_menuobject{\the\pdflastobj\spacecs}%
+    }%
+  \passexpanded{\ltr@bookmark_add{#2}{{#4}{\the\slideno,\the\ltr@activesteps_count,{#3}}{#1}}}\ltr@bookmark_stack
+  }
+\bgroup
+\setcatcodes{\{\}=12,<=1,>=2}
+\gdef\ltr@leftbrace<{>
+\gdef\ltr@rightbrace<}>
+\egroup
+\def\ltr@bookmark_submenu#1{%
+  \reverse\iffemptystring{#1}{, oSubMenu: [#1]}%
+  }
+\newfor\ltr@bookmark_add{2}#3,{%
+  \straightenif{ifdim}{#1pt>#3pt }
+    {\global\eaddright\ltr@bookmark_list{#2\ltr@leftbrace}
+     \retrieverest{\ltr@bookmark_addtostack{#1,#3,}}}
+    {\global\eaddright\ltr@bookmark_list{\ltr@rightbrace,}}
+  }[\global\eaddright\ltr@bookmark_list{#2\ltr@leftbrace}
+    \ltr@bookmark_addtostack{#1,}{}]
+\def\ltr@bookmark_addtostack#1#2{\gdef\ltr@bookmark_stack{#1#2}}
+
+%
+%
+% JOB END
+% Creates the bookmarks and fills the catalog with the OCGs.
+% The default end job is maintained, except in TeX. 
+%
+\newfor\ltr@bookmark_endlist#1,{%
+  \eaddright\ltr@bookmark_list{\ltr@rightbrace,}%
+  }
+\newfor\ltr@bookmark_process#1#2#3#4,{%
+  \ltr@bookmark_subcount{0}{#1}{#2}{#3}{#4}%
+  \reverse\iffemptystring{#4}{\ltr@bookmark_process{#4}}%
+  }
+\newfor\ltr@bookmark_subcount{4}#5,{%
+  \passarguments{#1+1}{#2}{#3}{#4}
+  }[\def\ltr@bookmark_sign{-}%
+    \def\ltr@bookmark_options{}%
+    \ltr@option_launchloop{bookmark}{#4}%
+    \ltr@bookmark_anchor#3,%
+    \pdfoutline attr {\ltr@bookmark_options} user {\ltr@bookmark_action#3,} count \ltr@bookmark_sign\the\numexpr(#1)  {#2}%
+   ]
+\def\ltr@bookmark_useatom#1{%
+  \ifstring{#1}{italic}
+    {\eaddright\ltr@bookmark_options{/F 1 }}
+    {\ifstring{#1}{bold}
+       {\eaddright\ltr@bookmark_options{/F 2 }}
+       {\ifstring{#1}{bolditalic}
+         {\eaddright\ltr@bookmark_options{/F 3 }}
+         {\ifstring{#1}{open}
+          {\def\ltr@bookmark_sign{}}
+          {\ifstring{#1}{closed}
+             {\def\ltr@bookmark_sign{-}}
+             {\reverse\iffstring{#1}{nosubmenutext}
+               {\eaddright\ltr@bookmark_options{/C [#1]}}}}}}}%
+  }
+\def\ltr@bookmark_action#1,#2,#3,{\ltr@anchor{#1}{#2}}
+\def\ltr@bookmark_anchor#1,#2,#3,{%
+  \immediate\pdfobj\iffcs{ltr@anchor_objnum:#3}{useobjnum \usecs{ltr@anchor_objnum:#3}}{\ltr@anchor{#1}{#2}}%
+  \reverse\iffcs{ltr@anchor_objnum:#1}{\xdefcs{ltr@anchor_objnum:#1}{\the\pdflastobj\spacecs}}%
+  }
+\newstring{nosubmenutext}
+\newfor\ltr@bookmark_javaprocess{1}#2#3#4#5,{%
+  \reverse\iffemptystring{#1}{, }%
+  {cName: "#2"%
+   \ifemptystring{#5}
+     {, cReturn: "#3"}
+     {, oSubMenu: [\ifcontains{nosubmenutext}{#4}
+                     {\ltr@bookmark_javaprocess{}{#5}}
+                     {\ltr@bookmark_javaprocess{}{{\ltr@usevalueor job:menutext;{***}}{#3}{}{},#5}}]%
+     }}%
+  \passarguments{*}
+  }
+\def\ltr@job_end{%
+  \reverse\iffemptycommand\ltr@bookmark_list{%
+    \expandafter\ltr@bookmark_endlist\expandafter{\ltr@bookmark_stack}
+    \bgroup
+      \setcatcodes{_@=11}
+      \scantokens\expandafter{\expandafter\gdef\expandafter\ltr@bookmark_list\expandafter{\ltr@bookmark_list}}%
+    \egroup
+    \expandafter\ltr@bookmark_process\expandafter{\ltr@bookmark_list}
+    \edef\ltr@bookmark_list{\passexpanded{\ltr@bookmark_javaprocess{}}\ltr@bookmark_list}
+    \immediate\pdfobj useobjnum \ltr@bookmark_menuobject{%
+      << /S/JavaScript
+         /JS (var bookmark = app.popUpMenuEx(\ltr@bookmark_list);
+              if (bookmark != null)
+                 {var bookmark = bookmark.split(",");
+                  \ltr@ifvalue job:autofullscreen; = true {app.fs.isFullScreen = true; }{}%
+                  this.gotoNamedDest("ltr@linktopage_" + bookmark[0])};)
+         % If the two JS actions are executed together, the timing is wrong and the second
+         % one has no effect. Hence its isolation in a /Next action.
+         /Next << /S/JavaScript
+           /JS (if (app.fs.isFullScreen) { if (bookmark != null) {for (var i=0; i<bookmark[1];i++) {app.execMenuItem("NextPage")}} } ) >>
+       >>
+      }}
+  \pdfcatalog{%
+    \iffcommand\ltr@job_background\ltr@job_background
+    /OCProperties <<
+      /OCGs [\ltr@catalog_OCGs] 
+      /D << /Order [\ltr@order_OCGs] /BaseState/OFF /ON [\ltr@visible_OCGs] >>
+    >>}
+  \ltr@end_job
+  }
+\ifnum\formatnumber<3
+  \let\ltr@end_job\end
+  \let\bye\ltr@job_end % plain and eplain
+\else
+  \ifnum\formatnumber=3
+    \let\ltr@end_job\normalend
+    \let\normalend\ltr@job_end % ConTeXt
+  \else
+    \let\ltr@end_job\@@end
+    \AtEndDocument{\ltr@job_end}% LaTeX
+  \fi
+\fi
+

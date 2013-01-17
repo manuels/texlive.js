@@ -1,0 +1,114 @@
+
+%%%%%%%%%%%% The macro \EAN generates EAN-8 barcodes. %%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% May 30, 1995                             Jaroslav Moucka (Mou\v{c}ka)
+
+% This macro is inspired by ean13 macro by Petr Olsak
+% The ean8 macro is very similar as ean13 and more simple.  
+% Don't change the Copyright message.
+% You can use the macro on your own risk.
+% The macro must be tested! There is no warranty that the macro works OK.
+
+% Usage: For example \EAN 8591-2342 generates the \vbox with barcodes
+% in TeX hight accuracy using \rule primitive.
+% The EAN number is appended downwards in OCR-b font (9pt).
+% Don't use brackets in parameters!
+% The macro checks the checksum in EAN.
+
+% Recomendation: If you plan the offset print, use the barcode
+% correction 20 for your phototypesetter. See the \bcorr=.020mm bellow.
+
+\font\ocrb=ocrb9
+
+\newcount\numlines \newcount\nummodules
+\newcount\numdigit \newcount\evensum \newcount\oddsum
+
+\newdimen\X  \newdimen\bcorr  \newdimen\workdimen  \newdimen\barheight   
+
+%%% First, we prepare internal code in format: dig dig dig (44 digits).
+%%% Odd possition of dig is number of moduls for white space,
+%%% even for black space; from left to right.
+
+\def\internalcode{0111}             % Begin mark at start
+\def\frontdigits{}                  % 8--5 digit of EAN
+
+%%% EAN-8:
+\message{The EAN-8 barcodes macro. Copyright (C) Jaroslav Moucka, 1995}
+
+\def\EAN{\begingroup\EANscan}
+
+\def\EANscan#1{\if#1-\let\next=\EANscan \else
+    \advance\numdigit by1
+    \ifnum\numdigit<8
+      \ifodd\numdigit \advance\evensum by #1 \else \advance\oddsum by #1 \fi
+      \let\next=\EANscan
+      \ifnum\numdigit=1 \def\tabs{\A\A\A\A} \fi
+      \ifnum\numdigit<5 \usetabA #1 \edef\frontdigits{\frontdigits#1} \else
+      \ifnum\numdigit=5 \insertseparator \A \usetabC #1 \def\enddigits{#1}
+      \else             \usetabC #1 \edef\enddigits{\enddigits#1}
+      \fi\fi
+    \else \testchecksum #1 \usetabC #1 \edef\enddigits{\enddigits#1}
+      \let\next=\EANclose
+    \fi\fi \next}
+
+
+\def\EANclose{\insertendmark
+    \wlog{EAN: \frontdigits\space\enddigits}
+    \wlog{EANinternal: \internalcode}
+    \expandafter\EANbox\internalcode..\endgroup}
+
+\def\testchecksum#1{\multiply\evensum by3 \advance\evensum by\oddsum
+    \oddsum=\evensum
+    \divide\oddsum by10 \multiply\oddsum by10 \advance\oddsum by10
+    \advance\oddsum by-\evensum \ifnum\oddsum=10 \oddsum=0 \fi
+    \ifnum#1=\oddsum \else
+    \errmessage{The checksum digit has to be \the\oddsum, no #1 !}\fi}
+
+\def\A{\def\0{3211}\def\1{2221}\def\2{2122}\def\3{1411}\def\4{1132}
+  \def\5{1231}\def\6{1114}\def\7{1312}\def\8{1213}\def\9{3112}}
+
+\def\usetabA#1{\expandafter\scantab\tabs\end \usetabC #1}
+
+\def\scantab#1#2\end{#1\def\tabs{#2}}
+
+\def\usetabC#1{\edef\internalcode{\internalcode\csname#1\endcsname}}
+
+\def\insertseparator{\edef\internalcode{\internalcode 11111}}
+
+\def\insertendmark{\edef\internalcode{\internalcode 111}}
+
+
+\def\EANbox{\vbox\bgroup\offinterlineskip
+  \setbox0=\hbox\bgroup \kern7\X \EANrepeat}
+
+\def\EANrepeat#1#2{\if#1.\let\next=\EANfinal \else\let\next=\EANrepeat
+  \advance\numlines by1
+  \advance\nummodules by#1 \advance\nummodules by#2
+  \workdimen=#1\X \advance\workdimen by \bcorr \kern\workdimen
+     \workdimen=#2\X \advance\workdimen by-\bcorr \vrule width\workdimen
+     \ifdim\barheight=0pt height 55.24242424\X \else height\barheight \fi     
+     \ifnum\numlines=1  depth5\X\else
+     \ifnum\numlines=2  depth5\X\else
+     \ifnum\numlines=11 depth5\X\else
+     \ifnum\numlines=12 depth5\X\else
+     \ifnum\numlines=21 depth5\X\else
+     \ifnum\numlines=22 depth5\X\else depth0pt \fi\fi\fi\fi\fi\fi
+  \fi\next}
+
+\def\EANfinal{\testconsistence
+  \kern7\X\egroup
+  \dp0=0pt \box0 \kern-1\X
+  \hbox{\ocrb\kern11\X \frontdigits\kern5\X \enddigits}
+  \egroup }
+
+\def\internalerr{\errmassage{Sorry, my internal tables are wrong, may be.}}
+
+\def\testconsistence{\ifnum\numlines=22\else\internalerr\fi
+  \ifnum\nummodules=67\else\internalerr\fi}
+
+\barheight=0pt
+\X=.33mm       % Basic size 100%, SC2 code
+\bcorr=.020mm  % Barcode correction for offset 
+\endinput
+
+

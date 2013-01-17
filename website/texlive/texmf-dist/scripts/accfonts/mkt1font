@@ -1,0 +1,1012 @@
+#!/usr/bin/perl
+
+#   Mkt1font: a program to generate accented Type 1 PostScript fonts
+#   Copyright (C) 1997 John D. Smith
+
+#   This program is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; either version 2 of the License, or
+#   (at your option) any later version.
+
+#   This program is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+
+#   You should have received a copy of the GNU General Public License
+#   along with this program; if not, write to the Free Software
+#   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+
+$version = 0.25;
+#-----------------------------------------------------------------------------#
+$description =
+"Syntax: mkt1font -n fontname -d definition-file -a afm-file -f font-file
+           [-s shrink-factor] [-c candrabindu-adjustment] [-b]
+
+Mkt1font creates new Type 1 PostScript fonts based on existing fonts
+(\"input fonts\"). In order to do this it makes use of I. Lee
+Hetherington's programs t1asm and t1disasm, which must be present on
+the system. A successful run will generate an AFM file and a PFB
+file, as well as a DIS file containing a disassembled version of the
+PFB file (including useful comments). Four options must be specified
+on the command line, as follows:
+
+  -n should name the font it is intended to generate. Avoid names
+     such as \"myfont\", as both mkt1font and other programs attempt
+     to draw conclusions from the name; better would be something
+     like \"Utopia_French-BoldItalic\". The generated font files
+     will also use this for their basename.
+
+  -d should refer to a font definition file. This file (which could
+     usefully be named, e.g., \"French.def\") should consist of
+     lines of character definitions, in the form
+               \"number\"   \"character\"
+     or
+               \"number\"   \"character\"   \"accent\"
+     Here \"number\" represents the character's position in the new
+     encoding and may be expressed in decimal, octal or hex;
+     \"character\" names the character (e.g. \"comma\", \"eight\",
+     \"A\") or consists of the word \".notdef\" (indicating that
+     the specified number's \"slot\" in the new encoding is to be
+     empty); and \"accent\" optionally names an accent to be placed
+     on the character. In addition to the standard accents available
+     in PostScript fonts, \"underbar\" and \"underdot\" are also
+     available, as are \"under\" versions of all the normal
+     superscript accents (\"underdieresis\", \"underring\", etc.).
+     The Indian accent \"candrabindu\" may also be specified: it
+     is formed by overprinting a breve with a dotaccent. Finally,
+     \"overdot\" may be used as a synonym for \"dotaccent\".
+
+     If the character named in the \"accent\" position is not in fact
+     a valid accent character, the program interprets the definition
+     as a request for a digraph formed from the \"character\" and the
+     \"accent\". A digraph consisting of, say, \"k\" and \"h\" will be
+     indistinguishable from the letters \"k\" and \"h\" printed
+     consecutively, but the digraph \"kh\" can itself receive accents
+     like any other character: see next paragraph.
+
+     A new character (such as \"amacron\" or \"kh\") may be freely
+     used in the \"character\" position of a further definition (such
+     as \"amacron breve\" or \"kh underbar\"). There is no constraint
+     on the ordering of definitions within a definition file. The
+     definition of \"a macron\" does not have to precede that of
+     \"amacron breve\": requests for \"impossible\" characters are
+     deferred until their constituents have had a chance to come into
+     being.
+
+     \"Slots\" for which no new definition is given retain the
+     definition they have in the input font.
+
+     The definition file may also contain blank lines and comments
+     (introduced by \"\#\").
+
+  -a should refer to the AFM (Adobe Font Metrics) file for the input
+     font.
+
+  -f should refer to the binary font file (PFB) for the input font.
+     (In fact the equivalent ASCII file (PFA) is also acceptable for
+     input, but the output font is always in PFB format.)
+
+  -s may optionally give the factor, expressed as a per-thousand
+     value, by which normally superscript accents (such as dieresis,
+     ring) should be shrunk when they are used as subscript accents
+     (such as underdieresis, underring). Values of around 800 may be
+     found useful.
+
+  -c may optionally give two comma-separated numerical values to
+     adjust the x and y coordinates of the dotaccent placed within a
+     breve to form the candrabindu accent.
+
+  -b may optionally be specified to block the use of predefined
+     accented characters, forcing mkt1font to define its own
+     versions. This may be useful to secure a consistent appearance
+     in cases where a font designer does not share mkt1font's views
+     on where accents should be placed.
+
+The -h option prints this help.
+";
+#-----------------------------------------------------------------------------#
+
+########################
+# Packages and constants
+########################
+#
+use File::Basename;
+use Getopt::Std;
+$cmdline = basename($0) . " " . join " ", @ARGV;
+getopts('n:d:a:f:c:s:bh');
+if  ($opt_h or !($opt_n && $opt_d && $opt_a && $opt_f) or ($#ARGV >= 0)) {
+   print STDERR $description;
+   exit 1;
+}
+($enc = basename($opt_d)) =~ s/\..*$//;
+if ($opt_n =~ /\s/) { die "Font name cannot contain whitespace\n" }
+($famname = $opt_n) =~ s/^(.*)-.*?$/$1/;
+if ($opt_s) { $shrink = $opt_s / 1000 } else { $shrink = 1 }
+@months = ( "January",   "February", "March",    "April",
+            "May",       "June",     "July",     "August",
+	    "September", "October",  "November", "December"
+          );
+@lt = localtime;
+$date = "$months[$lt[4]] $lt[3], ${ \($lt[5] + 1900) }";
+if ($opt_c) { ($cbx, $cby) = $opt_c =~ /^(.*),(.*)$/ }	# candrabindu
+
+###############
+# Read DEF file
+###############
+#
+open DEF, $opt_d or die "Cannot open $opt_d: $!\n";
+while (<DEF>) {
+   next if (/^\s*$/ || /^\#/);
+   s/\s*(\#.*)?$//;
+   push @deflines, $_;
+}
+close DEF;
+
+###############
+# Read AFM file
+###############
+#
+# File header
+#
+open AFM, $opt_a or die "Cannot open $opt_a: $!\n";
+while (<AFM>) {
+   if (/^StartFontMetrics/) {
+      $afmhead = $_;
+      do {
+	 $_ = <AFM>;
+	 $afmhead .= $_;
+      }
+      until $_ =~ /^StartCharMetrics \d+\r?$/;
+      $afmhead =~ s/\r//gm;				# Might be DOS file
+      $afmhead =~ /^FontName (.*)$/m;
+      $ofname = $1;
+      $afmbanner =  "\nComment Based on $ofname; modified for $enc encoding";
+      $afmbanner .= "\nComment by John Smiths's program mkt1font ";
+      $afmbanner .= "(v. $version) " if $version;
+      $afmbanner .= "on $date";
+      $afmbanner .= "\nComment Command line: $cmdline";
+      $afmhead =~ s/(\n^FontName )(.*)$/$1$opt_n/m;
+      $afmhead =~ s/(\n^FullName )(.*)$/$1$opt_n/m;
+      $afmhead =~ s/(\n^FamilyName )(.*)$/$1$famname/m;
+      $afmhead =~ s/\n^Comment /$afmbanner$&/m;
+      $afmhead =~ s/(\n^EncodingScheme ).*$/$1FontSpecific/m;
+      if ($afmhead =~ /\n^ItalicAngle (.*)$/m)        { $italangle = $1 }
+      if ($afmhead =~ /\n^CapHeight (.*)$/m)          { $capheight = $1 }
+      if ($afmhead =~ /\n^XHeight (.*)$/m)            { $xheight = $1 }
+      if ($afmhead =~ /\n^FontBBox -?\d+ (-?\d+) (-?\d+) (-?\d+)$/m) {
+	 ($maxdp, $maxrs, $maxht) = ($1, $2, $3);
+      }
+   }
+   #
+   # Encoded chars
+   #
+   if (/(^C (\d+) ; WX \d+ ; N ([a-zA-Z_][a-zA-Z0-9_.]*|\.notdef) ; B .* ;( L .* ;)?)\r?$/) {
+      $metrics_enc[$2] = "$1\n";
+   }
+   #
+   # Unencoded chars
+   #
+   elsif (/(^C -1 ; WX \d+ ; N ([a-zA-Z_][a-zA-Z0-9_.]*|\.notdef) ; B .* ;( L .* ;)?)\r?$/) {
+      $metrics_unenc .= "$1\n";
+   }
+   #
+   # Kerns etc.
+   #
+   if (/^EndCharMetrics\r?$/) {
+      $afmtail = $_;
+      do {
+	 $_ = <AFM>;
+	 $afmtail .= $_;
+      }
+      until eof(AFM);
+      $afmtail =~ s/[\r\cZ]//gm;			# Might be DOS file
+   }
+}
+if ($afmtail =~ /(\A(?:.|\n)*^StartKernPairs )\d+\n((?:.|\n)*)(^EndKernPairs(?:.|\n)*\Z)/m) {
+   ($kstart, $kdefs, $kend) = ($1, $2, $3);
+}
+close AFM;
+
+###############################
+# Read and disassemble PFB file
+###############################
+#
+open PFB, $opt_f or die "Cannot open $opt_f: $!\n";
+$_ = <PFB>;
+unless (/%!/) { die "File $opt_f is not a PostScript font\n" }
+close PFB;
+$disfile1 = "mkt1font$$.dis";
+system "t1disasm $opt_f >$disfile1 2>/dev/null";
+open DIS, $disfile1 or die "Cannot open disassembled font file: $!\n";
+while (<DIS>) {
+   #
+   # Locate crucial definitions
+   #
+   if (/^\/(.*?) ?{ ?noaccess def ?} ?executeonly def$/) {
+      $nd = $1;
+      ($rend = $nd) =~ s/\|/\\|/g;			# Regexp version
+      next;
+   }
+   if (/^\/(.*?) ?{ ?noaccess put ?} ?executeonly def$/) {
+      $np = $1;
+      ($renp = $np) =~ s/\|/\\|/g;			# Regexp version
+      next;
+   }
+   if (/^\/Subrs (\d+) array/) {
+      $subrsnum = $1;
+      do {
+      #
+      # Store subroutine definitions in @subrs
+      #
+      $l = $_ = <DIS>;
+      if (/^dup (\d+) {$/) {
+	 $subrnum = $1;
+	 $subrdef = $_;
+	    do {
+	       $_ = <DIS>;
+	       $subrdef .= $_;
+	    }
+	    until /^\t} ?$renp$/;
+	 }
+	 #
+	 # "correct" t1disasm output so t1asm will accept it as input
+	 #
+	 $subrdef =~ s/^(\t})($rend|$renp)$/$1 $2/m;
+         $subrs[$subrnum] = $subrdef;
+      }
+      until ($l !~ /^dup \d+ {$/);
+      next;
+   }
+   if (/^2 index \/CharStrings (\d+) dict dup begin/) {
+      #
+      # do *not* use "$" to anchor the end of this line, because
+      # it may end with an invisible trailing space!
+      #
+      $chdefsnum = $1;
+      do {
+	 #
+	 # Store character definitions in %chstrings
+	 #
+	 $l = $_ = <DIS>;
+	 if (/^\/([a-zA-Z_][a-zA-Z0-9_.]*|\.notdef|\.null) {$/) {
+	    $chname = $1;
+	    $chdef = $_;
+	    do {
+	       $_ = <DIS>;
+	       $chdef .= $_;
+	    }
+	    until /^\t} ?$rend$/;
+	 }
+	 #
+	 #"correct" t1disasm output so t1asm will accept it as input
+	 #
+	 $chdef =~ s/^(\t})($rend|$renp)$/$1 $2/m;
+         $chstrings{$chname} = $chdef;
+      }
+      until ($l !~ /^\/([a-zA-Z_][a-zA-Z0-9_.]*|\.notdef|\.null) {$/);
+      #
+      # File tail
+      #
+      if (/^end/) {
+	 $distail = $_;
+	 do {
+	    $_ = <DIS>;
+	    $distail .= $_;
+	 }
+	 until eof(DIS);
+      }
+   }
+}
+close DIS;
+unless ($nd) { die "Cannot find \"noaccess def\" definition\n" }
+unless ($np) { die "Cannot find \"noaccess put\" definition\n" }
+unless ($subrsnum) { die "Cannot find size of Subrs array\n" }
+unless ($chdefsnum) { die "Cannot find size of CharStrings dict\n" }
+
+##################
+# Set up constants
+##################
+#
+$subacc = "(cedilla|ogonek|commaaccent)";
+$supacc = "(grave|acute|circumflex|tilde|macron|breve|dotaccent|overdot|dieresis|ring|hungarumlaut|caron|candrabindu)";
+$underacc = "(underdot|under$supacc)";
+$accents = "($subacc|$supacc|$underacc|underbar)";
+$underadp = -230;				# depth of "under" accs
+$underddp = -213;				# depth of underdot
+if ($opt_n =~ /Bold/) { $thk = 72 } else { $thk = 52 }	# thickness and
+$underbdp = -(82 + $thk);				# depth of underbar
+getcharinfo("macron");
+$accheight = $chht{macron};				# height of macron
+$accdepth = $chdp{macron};				# "depth" of macron
+$v1 = $accheight - $xheight;		# vertical offset for double accents
+$v2 = $capheight - $xheight;		# vertical offset for accented caps etc
+#
+# Italic adjustment: tan(angle)
+#
+$itadj  = sin($italangle * 3.14159 / 180) / cos($italangle * 3.14159 / 180);
+
+###########################
+# Create uni0237 (dotlessj)
+###########################
+#
+$chstrings{uni0237} = $chstrings{j} . "\n";
+$chstrings{uni0237} =~ /\A(.*?)(\t[-0-9 ]+?[rvh]moveto)(\n.+)(\n\t.*?(-?\d+) [rv]moveto)(.*?)(\n\tendchar.*?)\Z/ms;
+($one, $two, $three, $four, $five, $six, $seven) = ($1, $2, $3, $4, $5, $6, $7);
+if ($five > 0) { $chstrings{uni0237} = $one . $two . $three . $seven }
+else {
+   findend("j1", ($two . $three));
+   $j1end = "\t$hend{j1} $vend{j1} rmoveto";
+   $chstrings{uni0237} = $one . $j1end . $four . $six . $seven
+}
+$chstrings{uni0237} =~s/\A\/j /\/uni0237 /m;
+getcharinfo("j");
+getcharinfo("dotlessi");
+$metrics_unenc .= "C -1 ; WX $chwd{j} ; N uni0237 ; B $chls{j} $chdp{j} $chrs{j} $chht{dotlessi} ;\n";
+#
+######################
+# Build the characters
+######################
+#
+# First build a list of definitions supplied by user
+#
+for (@deflines) {
+   if (/^\s*(\d+|0[0-7]+|0x[0-9a-fA-F]+)\s+([a-zA-Z_][a-zA-Z0-9_.]*?|\.notdef)(?:\s+([a-zA-Z_][a-zA-Z0-9_.]*))?$/) {
+      ($num, $char, $acc)  = ($1, $2, $3);
+      $num = oct $num if $num =~ /^0/;
+      if ($num > 255) { die "Bad definition (number out of range): $_\n" }
+      $def = {};
+      $def->{qdef}  = $_;
+      $def->{num}   = $num;
+      $def->{char}  = $char;
+      $def->{acc}   = $acc;
+      $def->{nchar} = $char . $acc;
+      push @nchars, $def->{nchar};
+      push @defs,   $def;
+   }
+   else { die "Bad definition: $_\n" }
+}
+#
+# Work through the list
+#
+while (@defs) {
+   $def  = shift @defs;
+   $qdef  = $def->{qdef};
+   $num   = $def->{num};
+   $char  = $def->{char};
+   $acc   = $def->{acc};
+   $nchar = $def->{nchar};
+   #
+   # If we can't handle $char/$acc yet, but believe we will be able
+   # to later, send the definition to the back of the queue. In case
+   # it later turns out we were wrong, allow only five loops before
+   # giving up.
+   #
+   if (!grep / ; N $char ; /, @metrics_enc
+        and $metrics_unenc !~ / ; N $char ; /m) {
+      if (grep /^$char$/, @nchars) {
+	 unless (++$def->{requeue} > 5) {
+	    push @defs, $def;
+	    next;
+	 }
+      }
+      else { die "Bad definition (no such character): $qdef\n" }
+   }
+   if ($acc
+        and !grep / ; N $acc ; /, @metrics_enc
+        and $metrics_unenc !~ / ; N $acc ; /m
+        and $acc !~ /^$accents$/) {
+      if (grep /^$acc$/, @nchars) {
+	 unless (++$def->{requeue} > 5) {
+	    push @defs, $def;
+	    next;
+	 }
+      }
+      else { die "Bad definition (no such accent): $qdef\n" }
+   }
+   #
+   # First deal with .notdef
+   #
+   if ($nchar eq ".notdef") {
+      ($old = $metrics_enc[$num]) =~ s/^C $num/C -1/;
+      $metrics_unenc .= $old unless $metrics_unenc =~ /$old/m;
+      undef $metrics_enc[$num];
+   }
+   #
+   # Now look for new char among existing encoded chars (unless blocked by -b)
+   #
+   else {
+      if (!($acc and $opt_b)
+	   and @foundit = grep / ; N $nchar ; /, @metrics_enc) {
+	 ($foundit = shift @foundit) =~ s/^C (\d+)/C $num/;
+	 $prevnum = $1;
+	 unless ($prevnum == $num) {
+	    ($old = $metrics_enc[$num]) =~ s/^C $num/C -1/;
+	    $metrics_unenc .= $old unless $metrics_unenc =~ /$old/m;
+	    $metrics_enc[$num] = $foundit;
+	 }
+	 fixkerns($char, $acc);
+      }
+      #
+      # Next look among existing unencoded chars (unless blocked by -b)
+      #
+      elsif (!($acc and $opt_b)
+	      and $metrics_unenc =~ s/^C -1 ; WX \d+ ; N $nchar ; B .* ;( L .* ;)?\n//m) {
+	 ($foundit = $&) =~ s/^C -1/C $num$1/m;
+	 $old = $metrics_enc[$num];
+	 if ($old) {
+	    $old =~ s/^C $num/C -1/;
+	    $metrics_unenc .= $old unless $metrics_unenc =~ /$old/m;
+	 }
+	 $metrics_enc[$num] = $foundit;
+	 fixkerns($char, $acc);
+      }
+      #
+      # If it can't be built from sub-elements, issue a warning and move on
+      #
+      elsif (!$acc) { warn "No such character - ignoring definition: $qdef\n" }
+      #
+      # Now build the char
+      #
+      else {
+         #
+         # First get rid of predefined afm entries and synonyms
+         #
+	 $metrics_unenc =~ s/^C -1 ; WX \d+ ; N $nchar ; B .* ;( L .* ;)?\n//m;
+         $kdefs =~ s/\nKPX .*$nchar .*$//gm;
+	 if ($acc eq "overdot") {
+	    $nchar2 = $char . "dotaccent";
+	    $metrics_unenc =~ s/^C -1 ; WX \d+ ; N $nchar2 ; B .* ;( L .* ;)?\n//m;
+	    $kdefs =~ s/\nKPX .*$nchar2 .*$//gm;
+	    delete $chstrings{$nchar2};
+	 }
+	 #
+	 # Go!
+	 #
+	 if ($acc =~ /^$subacc$/) {
+	    subacc($num, $char, $acc, $nchar);
+	    fixkerns($char, $acc);
+	 }
+	 elsif ($acc =~ /^$supacc$/) {
+	    supacc($num, $char, $acc, $nchar);
+	    fixkerns($char, $acc);
+	 }
+	 elsif ($acc =~ /^$underacc$/) {
+	    underacc($num, $char, $acc, $nchar);
+	    fixkerns($char, $acc);
+	 }
+	 elsif ($acc =~ /^underbar$/) {
+	    underb($num, $char, $nchar);
+	    fixkerns($char, $acc);
+	 }
+	 else {
+	    digraph($num, $char, $acc, $nchar);
+	    fixkerns($char, $acc);
+	 }
+      }
+   }
+}
+
+################
+# Write AFM file
+################
+#
+open OUTAFM, ">$opt_n.afm";
+foreach (@metrics_enc) {			# Avoid duplicate entries
+   ($chname) = /( ; N [a-zA-Z_][a-zA-Z0-9_.]* ; )/;
+   $metrics_unenc =~ s/^C -1 .*$chname.*\n//gm if $chname;
+}
+$chmetricnum = split(/\n/, $metrics_unenc);
+$chmetricnum += grep /^C /, @metrics_enc;
+$afmhead =~ s/^(FontBBox -?\d+ )-?\d+ -?\d+ -?\d+$/$1$maxdp $maxrs $maxht/m;
+$afmhead =~ s/^(StartCharMetrics )\d+$/$1$chmetricnum/m;
+$encoding = "/Encoding 256 array\n0 1 255 {1 index exch /.notdef put} for\n";
+print OUTAFM $afmhead;
+for $i (0 .. 255) {
+   $line = $metrics_enc[$i];
+   if ($line) {
+      print OUTAFM $line;
+      if ($line =~ /^C \d+ ; WX \d+ ; N ([a-zA-Z_][a-zA-Z0-9_.]*) ; /) {
+	 $encoding .= "dup $i /$1 put\n";
+      }
+   }
+}
+$encoding .= "readonly def\n";
+print OUTAFM $metrics_unenc;
+#
+# Tidy up kerns
+#
+if ($kdefs) {
+   $kdefs = join("\n", sort split /\n/, $kdefs);	# sort
+   $kdefs .= "\n";
+   $kdefs =~ s/((^KPX .*?)-?\d+$)\n\2.*$/$1/gm;		# remove duplicates
+   $kdefs =~ s/^\s*\n//gm;				# and blank lines
+   $knum = split(/\n/, $kdefs);
+   $afmtail = $kstart . $knum . "\n" . $kdefs . $kend;
+}
+#
+# Eliminate composite character definitions
+#
+$afmtail =~ s/\n(Start|End)Composites.*$//gm;
+$afmtail =~ s/\nCC .*;$//gm;
+print OUTAFM $afmtail;
+close OUTAFM;
+
+#########################
+# Write DIS and PFB files
+#########################
+#
+$disfile2 = "$opt_n.dis";
+open OUTDIS, ">$disfile2";
+$disbanner  = "% Based on $ofname; modified for $enc encoding\n";
+$disbanner .= "% by John Smiths's program mkt1font ";
+$disbanner .= "(v. $version) " if $version;
+$disbanner .= "on $date\n";
+$disbanner .= "% Command line: $cmdline";
+open DIS, $disfile1;
+while (<DIS>) {							# get header
+   s/^(%!.*: ).*$/$1$opt_n\n$disbanner/;
+   s/(\/FullName \().*(\).*)$/$1$opt_n$2/;
+   s/(\/FamilyName \().*(\).*)$/$1$famname$2/;
+   s/(\/FontName \/).*?( .*)$/$1$opt_n$2/;
+   s/(\/FontBBox {-?\d+ )-?\d+ -?\d+ -?\d+/$1$maxdp $maxrs $maxht/m;
+   if (/^\/Encoding /) {
+      print OUTDIS $encoding;
+      next;
+   }
+   next if (/\/UniqueID .*$/);
+   s /(\/BlueValues \[.*)(\] def)$/$1 $accheight $accheight$2/;
+   if (/(\/Subrs )\d+( array)$/) {
+      print OUTDIS "$1$subrsnum$2\n";
+      last;
+   }
+   else  { print OUTDIS }
+}
+close DIS;
+unlink $disfile1;
+foreach $subrdef (@subrs) { print OUTDIS $subrdef }
+$chdefsnum = scalar(keys(%chstrings));
+print OUTDIS "$nd\n2 index /CharStrings $chdefsnum dict dup begin\n";
+foreach (sort values %chstrings) { print OUTDIS }
+print OUTDIS $distail;
+close OUTDIS;
+system "t1asm -b $disfile2 >$opt_n.pfb 2>/dev/null";
+
+#####################
+# End of main program
+#####################
+
+sub subacc {
+   #
+   # Subscript accents
+   #
+   my ($num, $char, $acc, $nchar) = @_;
+   my ($old, $astr, $h, $H, $V, $chdef, $acdef, $pstr);
+   ($old = $metrics_enc[$num]) =~ s/^C $num/C -1/;
+   $metrics_unenc .= $old unless $metrics_unenc =~ /$old/m;
+   getcharinfo($char) unless defined $chwd{$char};
+   getcharinfo($acc) unless defined $chwd{$acc};
+   $astr = "C $num ; WX $chwd{$char} ; N $nchar ; B $chls{$char} ";
+   $astr .= "$chdp{$acc} $chrs{$char} $chht{$char} ;\n";
+   $metrics_enc[$num] = $astr;
+   $h = round(($chwd{$char} - $chwd{$acc}) / 2 + $chls{$acc});
+   unless (defined $hend{$char}) { findend($char, $chstrings{$char}) }
+   $H = $h - $hend{$char} - $chls{$char};
+   $V = -$vend{$char};
+   $chstrings{$char} =~ /^\/$char {\n(\t.+?hsbw\n(.|\n)*?)\tendchar\n\t} $rend\n/m;
+   $chdef = $1;
+   $chstrings{$acc} =~ /^\/$acc {\n\t.+? .+?hsbw\n((.|\n)+?\t} $rend\n)/m;
+   $acdef = $1;
+   $acdef = fixhints($nchar, $acc, $acdef, $h, 0);
+   $pstr = "/$nchar {\n$chdef      % $nchar: start of $acc\n";
+   $pstr .= "\t$H $V rmoveto\n$acdef";
+   $chstrings{$nchar} = $pstr;
+}
+
+sub supacc {
+   #
+   # Superscript accents
+   #
+   my ($num, $char, $acc, $nchar) = @_;
+   my ($old, $cb, $astr, $h, $v, $H, $V, $it, $chdef, $acdef, $pstr, $newchar);
+   ($old = $metrics_enc[$num]) =~ s/^C $num/C -1/;
+   $metrics_unenc .= $old unless $metrics_unenc =~ /$old/m;
+   if ($char eq "i") { $char = "dotlessi" }
+   if ($char eq "j") { $char = "uni0237" }
+   if ($acc eq "overdot") { $acc = "dotaccent" }
+   if ($acc eq "candrabindu") {
+      $acc = "breve";
+      $chstrings{"dotaccent"} =~ /^\/dotaccent {\n\t.+? .+?hsbw\n((.|\n)+?\t} $rend\n)/m;
+      $cb = $1;
+   }
+   getcharinfo($char) unless defined $chwd{$char};
+   getcharinfo($acc) unless defined $chwd{$acc};
+   $astr = "C $num ; WX $chwd{$char} ; N $nchar ; B ";
+   $astr .= "$chls{$char} $chdp{$char} $chrs{$char} ";
+   $v = $chht{$acc};
+   if ($chht{$char} >= $accheight + $v2) {		# double accs
+      $v += ($v1 + $v2);				# on caps etc.
+      $it = ($v1 + $v2) * $itadj;
+   }
+   elsif ($chht{$char} > 1.15 * $xheight) {
+      if ($char =~ /$supacc$/ and $char !~ /under$supacc$/) {
+	 $v += $v1;					# double accents
+	 $it = $v1 * $itadj;
+      }
+      else {
+	 $v += $v2;					# accented caps etc.
+	 $it = $v2 * $itadj;
+      }
+   }
+   else { $it = 0 }
+   if ($v > $maxht) { $maxht = $v }
+   $astr .= "$v ;\n";
+   $metrics_enc[$num] = $astr;
+   $v -= $chht{$acc};
+   $h = round(($chwd{$char} - $chwd{$acc}) / 2 + $chls{$acc} - $it);
+   unless (defined $hend{$char}) { findend($char, $chstrings{$char}) }
+   $H = $h - $hend{$char} - $chls{$char};
+   $V = $v - $vend{$char};
+   $chstrings{$char} =~ /^\/$char {\n(\t.+?hsbw\n(.|\n)*?)\tendchar\n\t} $rend\n/m;
+   $chdef = $1;
+   $chstrings{$acc} =~ /^\/$acc {\n\t.+? .+?hsbw\n((.|\n)+?\t} $rend\n)/m;
+   $acdef = $1;
+   $acdef = fixhints($nchar, $acc, $acdef, $h, $v);
+   $pstr = "/$nchar {\n$chdef      % $nchar: start of $acc\n";
+   $pstr .= "\t$H $V rmoveto\n$acdef";
+   if ($cb) {						# candrabindu
+      getcharinfo("dotaccent") unless defined $chwd{dotaccent};
+      $h = round(($chwd{$char} - $chwd{dotaccent}) / 2 + $chls{dotaccent} - $it);
+      $h += $cbx;
+      $v += $cby;
+      $cb = fixhints($nchar, "dotaccent", $cb, $h, $v);
+      $newchar = $char . $acc;
+      unless (defined $hend{$newchar}) { findend($newchar, $pstr) }
+      $H = $h - $hend{$newchar} - $chls{$char};
+      $V = $v - $vend{$newchar};
+      $pstr =~ s/\tendchar\n\t} $rend\n\Z//m;
+      $pstr .= "      % $nchar: start of dotaccent\n\t$H $V rmoveto\n$cb";
+   }
+$chstrings{$nchar} = $pstr;
+}
+
+sub underacc {
+   #
+   # Dropped accents
+   #
+   # The Fontographer hack below is necessary because Fontographer (which
+   # I have had to use to build TrueType and Macintosh versions of fonts)
+   # seems not to respect the depths for characters specified in afm files
+   # it has imported: it sets the depth to the lowest point in the path,
+   # whether or not a mark was made there. So it is not possible to
+   # implement (e.g.) underring by diving down low and then printing a
+   # ring at its normal height.
+   #
+   my ($num, $char, $acc, $nchar) = @_;
+   my ($old, $acname, $astr, $h, $v, $H, $V, $chdef, $acdef, $begin, $line, $end, $pstr);
+   ($old = $metrics_enc[$num]) =~ s/^C $num/C -1/;
+   $metrics_unenc .= $old unless $metrics_unenc =~ /$old/m;
+   $acc =~ s/^under//;
+   $acname = $acc;
+   if ($acc eq "dot") { $acc = "period" }
+   if ($acc eq "candrabindu") { die "Bad definition (no such accent): $qdef\n" }
+   getcharinfo($char) unless defined $chwd{$char};
+   getcharinfo($acc) unless defined $chwd{$acc};
+   if ($acc =~ /^$supacc$/) {
+      $v = round($underadp + ($chdp{$acc} - $accdepth) * $shrink);
+   }
+   else { $v = $underddp + $chdp{$acc} }
+   if ($v < $maxdp) { $maxdp = $v }
+   $astr = "C $num ; WX $chwd{$char} ; N $nchar ; B $chls{$char} ";
+   $astr .= "$v $chrs{$char} $chht{$char} ;\n";
+   $metrics_enc[$num] = $astr;
+   if ($acc =~ /^$supacc$/) {
+      $h = round(($chwd{$char} - ($chwd{$acc} * $shrink)) / 2
+	       + $chls{$acc} * $shrink - ($v - $accdepth * $shrink) * $itadj);
+   }
+   else {
+      $h = round(($chwd{$char} - $chwd{$acc}) / 2 + $chls{$acc} - $v * $itadj);
+   }
+   unless (defined $hend{$char}) { findend($char, $chstrings{$char}) }
+   $H = $h - $hend{$char} - $chls{$char};
+   if ($acc =~ /^$supacc$/) { $V = $underadp - $vend{$char} }
+   else { $V = $v - $chdp{$acc} - $vend{$char} }
+   #
+   # Adjustment for smaller, therefore lower, shrunken accent defs
+   #
+   if ($acc =~ /^$supacc$/) {
+      $V += round($chdp{$acc} * (1 - $shrink) / $shrink);
+   }
+   $chstrings{$char} =~ /^\/$char {\n(\t.+?hsbw\n(.|\n)*?)\tendchar\n\t} $rend\n/m;
+   $chdef = $1;
+   $chstrings{$acc} =~ /^\/$acc {\n\t.+? .+?hsbw\n((.|\n)+?\t} $rend\n)/m;
+   $acdef = $1;
+   if ($acc =~ /^$supacc$/ and $opt_s) { $acdef = fixshrink($acc, $acdef) }
+   if ($acc =~ /^$supacc$/) {
+      $acdef = fixhints($nchar, $acc, $acdef, $h, $underadp);
+   }
+   else { $acdef = fixhints($nchar, $acc, $acdef, $h, $underddp) }
+   #
+   # Bloody Fontographer! We can't just say
+   #   if ($acc =~ /^$supacc$/) { $V -= $accdepth }
+   # Instead we have to go through the following rigmarole:
+   #
+   if ($acc =~ /^$supacc$/) {
+      if ($acdef =~ /^(.*moveto)$/m) {
+	 ($begin, $line, $end) = ($`, $1, $');
+	 if ($line =~ /^\t(-?\d+) (-?\d+)( rmoveto)$/) {
+	    $acdef = "$begin\t$1 " . ($2 - $accdepth) . $3 . $end;
+	 }
+	 elsif ($line =~ /^\t(-?\d+)( vmoveto)$/) {
+	    $acdef = "$begin\t" . ($1 - $accdepth) . $2 . $end;
+	 }
+	 elsif ($line =~ /\t(-?\d+) hmoveto$/) {
+	    $acdef = "$begin\t$1 " . (-$accdepth) . "rmoveto" . $end;
+	 }
+      }
+      else { $acdef =~ s/\A/\t-$accdepth vmoveto\n/m }
+   }
+   $pstr = "/$nchar {\n$chdef      % $nchar: start of $acname\n";
+   $pstr .= "\t$H $V rmoveto\n$acdef";
+   $chstrings{$nchar} = $pstr;
+}
+
+sub underb {
+   #
+   # Underbar
+   #
+   my ($num, $char, $nchar) = @_;
+   my ($old, $astr, $l, $h, $v, $H, $V, $bdef, $chdef, $acdef, $pstr);
+   ($old = $metrics_enc[$num]) =~ s/^C $num/C -1/;
+   $metrics_unenc .= $old unless $metrics_unenc =~ /$old/m;
+   $v = $underbdp + $thk;
+   getcharinfo($char) unless defined $chwd{$char};
+   $h = round(0.1 * $chwd{$char} - $underbdp * $itadj);
+   $l = round(0.8 * $chwd{$char});
+   $astr = "C $num ; WX $chwd{$char} ; N $nchar ; B $chls{$char} ";
+   $astr .= "$underbdp $chrs{$char} $chht{$char} ;\n";
+   $metrics_enc[$num] = $astr;
+   unless (defined $hend{$char}) { findend($char, $chstrings{$char}) }
+   $H = $h - $hend{$char} - $chls{$char};
+   $V = -$vend{$char};
+   $bdef = "\t$underbdp $thk hstem\n\t$v vmoveto\n\t-$thk vlineto\n\t";
+   $bdef .= "$l hlineto\n\t$thk vlineto\n\tclosepath\n";
+   $chstrings{$char} =~ /^\/$char {\n(\t.+?hsbw\n(.|\n)*?)\tendchar\n\t} $rend\n/m;
+   $chdef = $1;
+   $acdef = fixhints($nchar, "underbar", $bdef, $h, 0);
+   $pstr = "/$nchar {\n$chdef      % $nchar: start of $acc\n";
+   $pstr .= "\t$H $V rmoveto\n$acdef\tendchar\n\t} $nd\n";
+   $chstrings{$nchar} = $pstr;
+}
+
+sub digraph {
+   #
+   # Make a new character consisting of two existing characters
+   #
+   my ($num, $char, $acc, $nchar) = @_;
+   my ($old, $kern, $w, $newrs, $astr, $H, $V, $chdef, $acdef, $pstr);
+   ($old = $metrics_enc[$num]) =~ s/^C $num/C -1/;
+   $metrics_unenc .= $old unless $metrics_unenc =~ /$old/m;
+   getcharinfo($char) unless defined $chwd{$char};
+   getcharinfo($acc) unless defined $chwd{$acc};
+   if ($kdefs =~ /^KPX $char $acc (-?\d+)$/m) { $kern = $1 };
+   $w = $chwd{$char} + $chwd{$acc} + $kern;
+   $newrs = $chrs{$char} + $chwd{$acc} + $kern;
+   if ($newrs > $maxrs) { $maxrs = $newrs }
+   $astr = "C $num ; WX " . $w . " ; N $nchar ; B $chls{$char} ";
+   $astr .= (min($chdp{$char}, $chdp{$acc})) . " $newrs ";
+   $astr .= (max($chht{$char}, $chht{$acc})) . " ;\n";
+   $metrics_enc[$num] = $astr;
+   unless (defined $hend{$char}) { findend($char, $chstrings{$char}) }
+   $H = $chwd{$char} + $chls{$acc} + $kern - $hend{$char};
+   $V = -$vend{$char};
+   $chstrings{$char} =~ /^\/$char {\n(\t.+?hsbw\n(.|\n)*?)\tendchar\n\t} $rend\n/m;
+   ($chdef = $1) =~ s/-?\d+( hsbw\n)/$w$1/m;
+   $chstrings{$acc} =~ /^\/$acc {\n\t.+? .+?hsbw\n((.|\n)+?\t} $rend\n)/m;
+   $acdef = $1;
+   $acdef = fixhints($nchar, $acc, $acdef, ($chwd{$char} + $kern), 0);
+   $pstr = "/$nchar {\n$chdef      % $nchar: start of $acc\n";
+   $pstr .= "\t$H $V rmoveto\n$acdef";
+   $chstrings{$nchar} = $pstr;
+}
+
+sub max {
+   #
+   # Return greater of two values
+   #
+   my ($a, $b) = @_;
+   return $a > $b ? $a : $b;
+}
+
+sub min {
+   #
+   # Return lesser of two values
+   #
+   my ($a, $b) = @_;
+   return $a > $b ? $b : $a;
+}
+
+sub round {
+   #
+   # Return nearest integer value
+   #
+   my ($num) = shift;
+   my $n1, $n2;
+   if ($num < 0) { $n1 = (0 - $num) }
+   else { $n1 = $num }
+   $n2 = int($n1);
+   if (($n1 - $n2) >= 0.5) { $n2++ }
+   if ($num < 0) { return (0 - $n2) }
+   else { return $n2 }
+}
+
+sub getcharinfo {
+   #
+   # Store character metric information
+   #
+   my $char = shift;
+   my $foundit;
+   my $metrics_all = join("", @metrics_enc) . $metrics_unenc;
+   if ($metrics_all =~ /^.* ; N $char ; .*$/m) { $foundit = $& }
+   else { die "Bad definition (no such character/accent): $char\n" }
+   $foundit =~ /^C (-?\d+) ; WX (\d+) ; N $char ; B (.+?) (.+?) (.+?) (.+?) ;/;
+   ($chnum{$char}, $chwd{$char}, $chls{$char},
+     $chdp{$char}, $chrs{$char}, $chht{$char}) = ($1, $2, $3, $4, $5, $6);
+}
+
+sub fixkerns {
+   #
+   # Generalise the kerning info contained in the afm file by applying
+   # it to new accented chars. Do not kern lower-case chars bearing
+   # superscript accents with capitals, quotes or a preceding "f".
+   #
+   my ($char, $acc) = @_;
+   my ($lchar, $rchar);
+   if ($acc =~ /^$accents$/) { $lchar = $rchar = $char }
+   else {
+      $lchar = $char;
+      $rchar = $acc;
+   }
+   if ($char =~ /^[a-z]/ and $acc =~ /^$supacc$/) {
+      if ($kdefs =~ /^(KPX $char)(( (?:[a-pr-z][a-zA-Z]*|q(?!uote).*?) )-?\d+)$/m) {
+	 ($one, $three) = ($1, $3);
+	 $kdefs =~ s[^(KPX $char)(( (?:[a-pr-z][a-zA-Z]*|q(?!uote).*?) )-?\d+)$]
+	            [$&\n$1$acc$2]gm
+	   unless $kdefs =~ /^$one$acc$three/m;
+      }
+      if ($kdefs =~ /^(KPX (?:[a-eg-pr-z][a-zA-Z]*|q(?!uote).*?) $char)( -?\d+)$/m) {
+	 $one = $1;
+	 $kdefs =~ s[^(KPX (?:[a-eg-pr-z][a-zA-Z]*|q(?!uote).*?) $char)( -?\d+)$]
+	            [$&\n$1$acc$2]gm
+	   unless $kdefs =~ /^$one$acc /m;
+      }
+   }
+   else {
+      if ($kdefs =~ /^(KPX )$rchar(( [a-zA-Z]+ )-?\d+)$/m) {
+	 ($one, $three) = ($1, $3);
+	 $kdefs =~ s[^(KPX )$rchar(( [a-zA-Z]+ )-?\d+)$]
+	            [$&\n$1$char$acc$2]gm
+	   unless $kdefs =~ /^$one$char$acc$three/m;
+      }
+      if ($kdefs =~ /^(KPX [a-zA-Z]+ )$char( -?\d+)$/m) {
+	 $one = $1;
+	 $kdefs =~ s[^(KPX [a-zA-Z]+ )$char( -?\d+)$]
+	   [$&\n$1$char$acc$2]gm
+	   unless $kdefs =~ /^$one$char$acc /m;
+      }
+   }
+}
+
+sub fixshrink {
+   #
+   # Multiply all coordinates in a character definition by $shrink,
+   # creating new subroutines as necessary.
+   #
+   my ($ch, $chdef) = @_;
+   my (@chdef, $line, $snum, $subrdef);
+   @chdef = split(/\n/, $chdef);
+   $chdef = "";
+   foreach $line (@chdef) {
+      if ($line =~ /^\t(\d+) .*call(other)?subr$/) {
+	 $snum = $1;
+	 $subrdef = $subrs[$snum];
+	 $subrdef = fixshrink($ch, $subrdef);
+	 $subrdef =~ s/^(dup )$snum \{$/$1$subrsnum {\n      % $nchar: shrink $ch/m;
+	 $subrs[$subrsnum] = $subrdef;
+	 $line =~ s/^\t$snum/\t$subrsnum/;
+	 $subrsnum++;
+      }
+      else { $line =~ s/-?\d+/int($& * $shrink)/ge unless $line =~ /^dup / }
+      $chdef .= "$line\n";
+   }
+   return $chdef;
+}
+
+sub fixhints {
+   #
+   # First adjust any Flex "0 callsubr" lines for horizontal and
+   # vertical offset. Then collect the hints from the accent definition,
+   # remove them, adjust for horizontal and vertical offset, and
+   # place them in a numbered subroutine. Have the definition call
+   # the subroutine.
+   #
+   my ($nchar, $acc, $acdef, $h, $v) = @_;
+   my $subrdef;
+   $acdef =~ s[^(\t-?\d+ )(-?\d+) (-?\d+)( 0 callsubr)$]
+	      [$1 . ($2 + $h) . " " . ($3 + $v) . $4]gme;
+   if ($subrdef = join("\n", grep /^\t.*[hv]stem$/, split(/\n/, $acdef))) {
+      $acdef = join("\n", grep !/^\t.*[hv]stem$/, split(/\n/, $acdef)) . "\n";
+   }
+   elsif ($acdef =~ s/\A(?:\t(\d+) callsubr\n)((?:.|\n)*)\Z/$2/m) {
+      $subrdef = $subrs[$1];
+      $subrdef = join("\n", grep /^\t.*[hv]stem$/, split(/\n/, $subrdef))
+   }
+   $subrdef =~ s/^(\t)(-?\d+)( .*hstem)$/$1 . ($2 + $v) . $3/gme;
+   $subrdef =~ s/^(\t)(-?\d+)( .*vstem)$/$1 . ($2 + $h) . $3/gme;
+   if ($subrdef) {
+      $subrs[$subrsnum] = "dup $subrsnum {\n      % $nchar: hints for $acc\n";
+      $subrs[$subrsnum] .= "$subrdef\n\treturn\n\t} $np\n";
+      $acdef = "\t$subrsnum 1 3 callothersubr\n\tpop\n\tcallsubr\n" . $acdef;
+      $subrsnum++;
+   }
+   return $acdef;
+}
+
+sub findend {
+   #
+   # Calculate the current point reached at the end of the character
+   # definition. Place the horizontal offset in $hend{$char}, the
+   # vertical offset in $vend{$char}.
+   #
+   my ($char, $def) = @_;
+   my $line;
+   foreach $line (split /\n/, $def) {
+      SWITCH: {
+	 $line =~ /^\t(-?\d+) h(line|move)to$/
+	   && do {
+	      $hend{$char} += $1;
+	      last SWITCH;
+	   };
+	 $line =~ /^\t(-?\d+) v(line|move)to$/
+	   && do {
+	      $vend{$char} += $1;
+	      last SWITCH;
+	   };
+	 $line =~ /^\t(-?\d+) (-?\d+) r(line|move)to$/
+	   && do {
+	      $hend{$char} += $1;
+	      $vend{$char} += $2;
+	      last SWITCH;
+	   };
+	 $line =~ /^\t(-?\d+) (-?\d+) (-?\d+) (-?\d+) hvcurveto$/
+	   && do {
+	      $hend{$char} += ($1 + $2);
+	      $vend{$char} += ($3 + $4);
+	      last SWITCH;
+	   };
+	 $line =~ /^\t(-?\d+) (-?\d+) (-?\d+) (-?\d+) vhcurveto$/
+	   && do {
+	      $hend{$char} += ($2 + $4);
+	      $vend{$char} += ($1 + $3);
+	      last SWITCH;
+	   };
+	 $line =~ /^\t(-?\d+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) (-?\d+) rrcurveto$/
+	   && do {
+	      $hend{$char} += ($1 + $3 + $5);
+	      $vend{$char} += ($2 + $4 + $6);
+	      last SWITCH;
+	   };
+	 $line =~ /^\t(\d+) callsubr$/
+	   && do {
+	      findend($char, $subrs[$1]);
+	      last SWITCH;
+	   };
+	 $line =~ /^\t-?\d+ (-?\d+) (-?\d+) 0 callsubr$/		# Flex
+	   && do {
+	      $hend{$char} = $1;
+	      $vend{$char} = $2;
+	      last SWITCH;
+	   };
+      }
+   }
+}

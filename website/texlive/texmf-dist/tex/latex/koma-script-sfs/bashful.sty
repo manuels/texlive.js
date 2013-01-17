@@ -1,0 +1,544 @@
+% Copyright (C) 2011,2012 by Yossi Gil  yogi@cs.technion.ac.il
+% ---------------------------------------------------------------------------
+% This work may be distributed and/or modified under the conditions of the
+% LaTeX Project Public License (LPPL), either version 1.3 of this license or
+% (at your option) any later version.  The latest version of this license is in
+% http://www.latex-project.org/lppl.txt and version 1.3 or later is part of all
+% distributions of LaTeX version 2005/12/01 or later.
+%
+% This work has the LPPL maintenance status `maintained'.
+%
+% The Current Maintainer of this work is Yossi Gil.
+%
+% This work consists of the files bashful.tex and bashful.sty and the derived
+% bashful.pdf
+
+\NeedsTeXFormat{LaTeX2e}%
+
+% Auxiliary identification information
+\newcommand\date@bashful{2012/03/08}%
+\newcommand\version@bashful{V 0.93}%
+\newcommand\author@bashful{Yossi Gil}%
+\newcommand\mail@bashful{yogi@cs.technion.ac.il}%
+\newcommand\signature@bashful{%
+  bashful \version@bashful{} by
+  \author@bashful{} \mail@bashful
+}%
+
+% Identify this package
+\ProvidesPackage{bashful}[\date@bashful{} \signature@bashful:
+  Write and execute a bash script within LaTeX, with, or
+  without displaying the script and/or its output.
+]
+\PackageInfo{bashful}{This is bashful, \signature@bashful}%
+
+\RequirePackage{xcolor}
+\RequirePackage{catchfile}
+\RequirePackage{xkeyval} % Use xkeyval for retrieving parameters
+\RequirePackage{textcomp} % For upquote
+
+% If true, all activities take place in a designated directory.
+\newif\if@hide@BL@\@hide@BL@false
+
+% \if@unique@BL@ is a Boolean flag, telling us whether unique names should be
+% generated for the auxiliary files (XX.sh, XX.stdout, XX.stderr and
+% XX.exitCode) in each invocation of the \bash command. 
+\newif\if@unique@BL@\@unique@BL@false
+\def\unique@BL{\if@unique@BL@ @\the\inputlineno\fi}
+
+% This is the default name for a directory in which processing should
+% take place if \@hide@BL@true.
+\def\directory@BL{_00}
+
+% Use listing to display bash scripts.
+\RequirePackage{listings}%
+
+  % listings style for the script, can be redefined by client
+  \lstdefinestyle{bashfulScript}{
+    basicstyle=\ttfamily,
+    keywords={},
+    upquote=true,
+    showstringspaces=false}%
+  % listings style for the standard output file, can be redefined by client
+  \lstdefinestyle{bashfulStdout}{
+    basicstyle=\sl\ttfamily,
+    keywords={},
+    upquote=true,
+    showstringspaces=false
+  }%
+  % listings style for the standard error file, can be redefined by client
+  \lstdefinestyle{bashfulStderr}{
+    basicstyle=\sl\ttfamily\color{red},
+    keywords={},
+    upquote=true,
+    showstringspaces=false
+  }%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Keys generating file names in alphabetical order:
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% dir: String = \directory@BL: Name of directory in which execution is going
+% to take place
+\define@cmdkey{bashful}[BL@]{dir}{\def\directory@BL{#1}}%
+
+% exitCodeFile: String = \BL@exitCodeFile: In which file should the exit code
+% be stored if it is not zero.
+\def\BL@exitCodeFile{\jobname\unique@BL.exitCode}%
+\define@cmdkey{bashful}[BL@]{exitCodeFile}{}%
+
+% scriptFile: String = \BL@scriptFile: In which file should the script be
+% saved?
+\def\BL@scriptFile{\jobname\unique@BL.sh}%
+\define@cmdkey{bashful}[BL@]{scriptFile}{}%
+
+% stderrFile: String = \BL@stderrFile: In which file should the standard
+% error stream be saved?
+\def\BL@stderrFile{\jobname\unique@BL.stderr}%
+\define@cmdkey{bashful}[BL@]{stderrFile}{}%
+
+% stdoutFile: String = \BL@stdoutFile: In which file should the standard
+% output stream be saved?
+\def\BL@stdoutFile{\jobname\unique@BL.stdout}%
+\define@cmdkey{bashful}[BL@]{stdoutFile}{}%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% List configuration boolean keys
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% list: Boolean = \ifBL@script: Should we list the script we generate?
+\define@boolkey{bashful}[BL@]{script}[true]{}%
+
+% stdout: Boolean = \ifBL@stderr: Should we list the standard error?
+\define@boolkey{bashful}[BL@]{stderr}[true]{}%
+
+% stdout: Boolean = \ifBL@stdout: Should we list the standard output?
+\define@boolkey{bashful}[BL@]{stdout}[true]{}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Error checking Boolean keys.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% stdout: Boolean = \ifBL@ignoreExitCode: Should we ignore the exit
+% code?
+\define@boolkey{bashful}[BL@]{ignoreExitCode}[true]{}
+
+% stdout: Boolean = \ifBL@ignoreStderr: Should we ignore the exit
+% code?
+\define@boolkey{bashful}[BL@]{ignoreStderr}[true]{}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Miscelaneous keys
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% environment: String = \BL@environment: Which environment should we wrap
+% the listings
+\def\BL@environment{none@BL}%
+\define@cmdkey{bashful}[BL@]{environment}{}%
+\newenvironment{none@BL}{}{} % Default, empty environment for wrapping 
+											 % the listings
+
+% prefix: String = \BL@prefix: What prefix should be printed before a listing.
+\def\BL@prefix{\@percentchar\space}%
+\define@cmdkey{bashful}[BL@]{prefix}{}%
+
+% shell: String = \BL@shell: Which shell should be used for execution?
+\def\BL@shell{bash}%
+\define@cmdkey{bashful}[BL@]{shell}{}%
+
+% verbose: Boolean = \ifBL@verbose: Log every step we do
+\define@boolkey{bashful}[BL@]{verbose}[true]{}%
+
+% The "unique" package flag that tells the package to generated unique names
+% for the auxiliary files. If true the generated files (XX.sh, XX.stdout,
+% XX.stderr and XX.exitCode) are given unique names in each invocation of the
+% \bash command. Unique names are generated by the pattern JOB@LINE.EXTENSION,
+% where JOB is the job's name, LINE is the number of the line in the input in
+% which the \bash command was invoked, and EXTENSION is one of "sh", "stdout",
+% "stderr" and "exitCode".
+\DeclareOptionX{unique}  {\@unique@BL@true}
+\DeclareOptionX{hide}    {\@hide@BL@true}
+\DeclareOptionX{dir}     {\@hide@BL@true\def\directory@BL{#1}}
+\DeclareOptionX{verbose} {\BL@verbosetrue}
+
+\ExecuteOptionsX{}
+\ProcessOptionsX\relax
+
+% \bash: the main command we define. It chains to \bashI which chains to
+% \bashII, etc.
+\begingroup
+  %\where@BL
+  \catcode`\^^M\active%
+  \gdef\bash{%
+    \logBL{Beginning a group so that all cat code changes are local}%
+    \begingroup%
+    \logBL{Making \^\^M a true newline}%
+    \catcode`\^^M\active%
+    \def^^M{^^J}%
+    \logBL{Checking for optional arguments}%
+    \@ifnextchar[{\bashI}{\bashI[]}%
+  }%
+\endgroup
+
+% \bashI: Process the optional arguments and continue
+\def\bashI[#1]{\setKeys@BL{#1}\bashII}
+
+% \bashII: Set category codes of all characters to special, and proceed.
+\begingroup
+  \catcode`\^^M\active%
+  \gdef\bashII{%
+    \logBL{bashII: Making \^\^M a true new line}%
+    \catcode`\^^M\active%
+    \def^^M{^^J}%
+    \logBL{bashII: Making all characters other}%
+    \let\do\@makeother%
+    \dospecials%
+    \bashIII}%
+\endgroup
+
+% \bashIII: Consume all tokens until \END (but ignoring the preceding and
+% terminating newline), and proceed.
+\begingroup
+  \catcode`\@=0\relax
+  \catcode`\^^M\active
+  @catcode`@\=12@relax%
+  @gdef@bashIII^^M#1^^M%
+    \END{@bashIV{#1}@bashV{#1}@logBL{bashV: Done!}@endgroup}@endgroup
+
+% \bashIV: Process the tokens by storing them in a script file, and executing
+% this file,
+\newcommand\bashIV[1]{%
+  \logBL{BashIV: begin}%
+  \makeDirectory@BL
+  \generateScriptFile@BL{#1}\relax
+  \executeScriptFile@BL
+  \logBL{BashIV: done}%
+}%
+
+% \logBL: record a log message in verbose mode
+\newcommand\logBL[1]{\ifBL@verbose\typeout{L\the\inputlineno: #1}\fi}
+
+% A macro to create a new directory
+\def\makeDirectory@BL{%
+  \if@hide@BL@
+    \logBL{Making directory \directory@BL}%
+    \immediate\write18{mkdir -p \directory@BL}%
+  \else
+    \logBL{Using current directory}%
+  \fi
+}
+
+\newcommand\splice[1]{%
+  \bashIV{#1}%
+  \expandFileName@BL{\BL@stdoutFile}%
+  \CatchFileDef{\BL@file@contents}{\BL@stdoutFile}{\relax}%
+  \ignorespaces\BL@file@contents\unskip
+}
+
+% listing the script file if required, and presenting the standard output and
+% standard error files if required.
+\newcommand\bashV[1]{%
+  \logBL{Wrapping up after execution}%
+  \storeToFile@BL{\BL@prefix#1}{\BL@scriptFile}%
+  \expandFileName@BL\BL@scriptFile
+  \expandFileName@BL\BL@stdoutFile
+  \expandFileName@BL\BL@stderrFile
+  \logBL{Files are: \BL@scriptFile, \BL@stdoutFile, and \BL@stderrFile}%
+  \checkScriptErrors@BL
+  \listEverything@BL
+  \defineMacros@BL
+  \logBL{Wrap up done}}
+
+\def\expandFileName@BL#1{%
+  \logBL{Setting, if necessary, correct path of \noexpand#1 }%
+  \if@hide@BL@
+    \logBL{Prepending path (\directory@BL) to #1}%
+    \edef#1{\directory@BL/#1}%
+    \logBL{Obtained #1}%
+  \fi
+}
+
+\def\setKeys@BL#1{%
+  \logBL{Processing key=val pairs in options string [#1]}\relax
+  \setkeys{bashful}{#1}%
+}%
+
+% Store the list of tokens in the first argument into our script file
+\newcommand\generateScriptFile@BL[1]{%
+  \logBL{Generating script file \BL@scriptFile}
+  \storeToFile@BL{#1}{\BL@scriptFile}%
+}%
+
+\newwrite\writer@BL
+% Store the list of tokens in the first argument into the file given
+% in the second argument; prepend directory if necessary
+\newcommand\storeToFile@BL[2]{%
+  \logBL{  #2 :=^^J#1^^J}%
+  \if@hide@BL@
+     \logBL{File #2 will be created in \directory@BL}%
+     \storeToFileI@BL{#1}{\directory@BL/#2}
+  \else
+     \logBL{File #2 will be created in current directory}%
+     \storeToFileI@BL{#1}{#2}%
+  \fi
+  \logBL{Writing done!}%
+}%
+
+% Store the list of tokens in the first argument into the file given
+% in the second argument; the second argument could be qualified with
+% a directory name.
+\newcommand\storeToFileI@BL[2]{%
+  \logBL{Writing to file #2...}%
+  \immediate\openout\writer@BL#2%
+  \immediate\write\writer@BL{#1}%
+  \immediate\closeout\writer@BL
+}%
+
+% Execute the content of our script file.
+\newcommand\executeScriptFile@BL{%
+  \edef\command@BL{\BL@shell \space \BL@scriptFile}%
+  \if@hide@BL@
+    \logBL{Adding a "cd command"}%
+    \edef\command@BL{cd \directory@BL;\command@BL}
+  \fi%
+  \edef\command@BL{\command@BL \space >\BL@stdoutFile \space 2>\BL@stderrFile}%
+  \edef\command@BL{\command@BL \space || echo $? >\BL@exitCodeFile}%
+  \edef\command@BL{\BL@shell\space -c "\command@BL"}%
+  \logBL{Executing:^^J \command@BL}%
+  \immediate\write18{\command@BL}%
+}%
+
+\newread\reader@BL
+
+% Issue an error message if errors found during execution
+\newcommand\checkScriptErrors@BL{%
+  \logBL{Checking for script errors}%
+%  \begingroup
+  \newif\ifErrorsFound@\ErrorsFound@false
+  \checkExitCodeFile@BL
+  \ifdefined\exitCode@BL
+    \logBL{Non zero exit code found (\exitCode@BL), and I was not instructed to 
+           ignore it}
+    \ErrorsFound@true
+  \fi
+  \def\eoln{\par}
+  \def\firstErrorLine{\par}
+  \checkStderrFile@BL
+  \logBL{I will now print the contents of file \BL@stderrFile\space (if found)}
+  \ifx\firstErrorLine\eoln
+    \relax
+  \else
+    \logBL{Standard error was not empty, and I was not instructed to ignore it}
+    \message{Standard error not empty. Here is how
+     ^^Jfile \BL@stderrFile\space begins:
+     ^^J>>>>\firstErrorLine
+     ^^J>>>>\space
+     ^^Jbut, you really ought to examine this file yourself!}
+    \ErrorsFound@true
+  \fi
+  \ifErrorsFound@
+    \logBL{Issuing an error message since \BL@stderrFile\space was not empty}%
+    \errmessage{Your shell script failed...}%
+    \BL@verbosetrue
+		\logBL{Switching to verbose mode}%
+  \else
+    \logBL{File \BL@stderrFile\space was empty}%
+    \logBL{Proceeding as usual}%
+  \fi
+%  \endgroup
+}%
+
+\newcommand\checkExitCodeFile@BL{%
+  \logBL{Considering \BL@exitCodeFile}%
+  \ifBL@ignoreExitCode
+     \logBL{Ignoring \BL@exitCodeFile, as per command flag}%
+  \else
+    \logBL{Opening \BL@exitCodeFile}%
+    \openin\reader@BL=\BL@exitCodeFile
+    \ifeof\reader@BL
+      \logBL{File \BL@exitCodeFile\space is missing, exit code was probably 0}
+      \closein\reader@BL
+    \else
+      \logBL{File \BL@exitCodeFile\space exists, let's get the exit code}%
+      \logBL{Reading first line of \BL@exitCodeFile}%
+      \catcode`\^^M=5
+      \read\reader@BL to \exitCode@BL
+      \closein\reader@BL
+    \fi
+  \fi
+}
+
+\newcommand\checkStderrFile@BL{%
+  \ifBL@stderr
+    \logBL{Will be listing \BL@stderrFile, so erroneous content is ignored}%
+  \else
+    \ifBL@ignoreStderr
+      \logBL{Ignoring \BL@stderrFile, as per command flag}%
+    \else
+      \checkStderrFileI@BL
+    \fi
+  \fi
+}
+
+\newcommand\checkStderrFileI@BL{%
+  \logBL{Opening \BL@stderrFile}%
+  \openin\reader@BL=\BL@stderrFile\relax
+  \ifeof\reader@BL
+    \logBL{Hmm... \BL@stderrFile\space does not exist (probably a package bug)}%
+    \logBL{Switching to verbose mode}%
+    \BL@verbosetrue
+  \else
+    \logBL{Reading first line of \BL@stderrFile}%
+    \catcode`\^^M=5
+    \read\reader@BL to \firstErrorLine
+    \ifeof\reader@BL
+      \ifx\firstErrorLine\eoln
+        \logBL{File \BL@stderrFile\space is empty}
+      \else
+        \logBL{File \BL@stderrFile\space has one line [\firstErrorLine]}%
+        \ErrorsFound@true
+      \fi
+    \else
+      \logBL{File \BL@stderrFile\space has two lines or more}%
+      \ErrorsFound@true
+		\fi
+   \fi
+   \closein\reader@BL
+}
+
+% List the contents of the script, stdout and stderr, as per the flags.
+\newcommand\listEverything@BL{%
+  \logBL{Checking whether any listings are required}%
+  \newif\if@listSomething@BL@
+  \ifBL@script\@listSomething@BL@true\fi
+  \ifBL@stdout\@listSomething@BL@true\fi
+  \ifBL@stderr\@listSomething@BL@true\fi
+  \if@listSomething@BL@
+    \beginWrappingEnvironment@BL
+    \listEverythingWithinEnvironment@BL
+    \endWrappingEnvironment@BL
+  \else
+    \logBL{Nothing has to be listed}%
+  \fi
+}
+
+% Auxiliary macro to list the contents of the script, stdout and stderr, as per
+% the flags.
+\newcommand\listEverythingWithinEnvironment@BL{%
+  \logBL{Laying out the correct \noexpand\lstinputlisting commands}%1
+  \ifBL@script\listScript@BL\BL@scriptFile\fi
+  \ifBL@stdout\listStdout@BL\BL@stdoutFile\fi
+  \ifBL@stderr\listStderr@BL\BL@stderrFile\fi
+}%
+
+\newcommand\listScript@BL[1]{%
+  \logBL{Listing script: #1}
+  \def\flags@BL{style=bashfulScript}
+  \logBL{Initial flags for listing #1 are \flags@BL}
+  \ifBL@stdout\edef\flags@BL{\flags@BL, belowskip=0pt}\fi
+  \ifBL@stderr\edef\flags@BL{\flags@BL, belowskip=0pt}\fi
+  \doList@BL#1\flags@BL
+}
+
+\newcommand\listStdout@BL[1]{%
+  \logBL{Listing stdout: #1}
+  \edef\flags@BL{style=bashfulStdout}
+  \logBL{Initial flags for listing stdout file are \flags@BL}
+  \ifBL@script\edef\flags@BL{\flags@BL, aboveskip=0pt}\fi
+  \ifBL@stderr\edef\flags@BL{\flags@BL, belowskip=0pt}\fi
+  \doList@BL#1\flags@BL
+}%
+
+\newcommand\listStderr@BL[1]{%
+  \logBL{Listing stderr: #1}%
+  \def\flags@BL{style=bashfulStderr}%
+  \logBL{Initial flags for listing stderr file are \flags@BL}
+  \ifBL@script\edef\flags@BL{\flags@BL, aboveskip=0pt}\fi
+  \ifBL@stdout\edef\flags@BL{\flags@BL, aboveskip=0pt}\fi
+  \doList@BL#1\flags@BL
+}%
+
+\newcommand\doList@BL[2]{%
+    \logBL{Flags for listing #1 are #2}%
+    \expandafter\lstset\expandafter{#2}%
+    \lstinputlisting{#1}%
+  }%
+
+\def\beginWrappingEnvironment@BL{%
+  \logBL{Beginning environment \BL@environment}%
+  \expandafter\csname\BL@environment\endcsname
+  \forceLTR@BL
+  \fixPolyglossiaBug@BL
+}%
+
+\def\endWrappingEnvironment@BL{%
+  \expandafter\csname end\BL@environment\endcsname
+}%
+
+% Define the \bashStdout and \bashStderr macro. 
+\newcommand\defineMacros@BL{%
+  \logBL{Defining macro for the contents of the standard output file}%
+  \immediate\openin\reader@BL=\BL@stdoutFile
+  \logBL{Opened file \BL@stdoutFile}%
+  \begingroup
+    \endlinechar=-1%
+    \ifeof\reader@BL
+      \logBL{File \BL@stdoutFile was empty}%
+      \global\let\bashStdout\relax
+    \else
+      \logBL{Reading contents of \BL@stdoutFile}%
+      \immediate\read\reader@BL to \BL@temp
+      \global\let\bashStdout\BL@temp
+    \fi
+		\typeout{after EOF}%
+   	\logBL{bashStdout :=^^J\bashStdout^^J}%
+  \endgroup
+  \logBL{Closing file \BL@stdoutFile}%
+  \immediate\closein\reader@BL
+  \logBL{Defining macro for the contents of the standard error file}%
+  \immediate\openin\reader@BL=\BL@stderrFile
+  \logBL{Opened file \BL@stderrFile}%
+  \begingroup
+    \endlinechar=-1%
+    \ifeof\reader@BL
+      \logBL{File \BL@stdoutFile was empty}%
+      \global\let\bashStdout\relax
+     \else
+       \logBL{Reading contents of \BL@stderrFile}%
+        \immediate\read\reader@BL to \BL@temp
+       \global\let\bashStderr\BL@temp
+     \fi
+   	 \logBL{bashStderr :=^^J\bashStderr^^J}%
+  \endgroup
+  \logBL{Closing file \BL@stderrFile}%
+  \immediate\closein\reader@BL
+}
+
+\newcommand\fixPolyglossiaBug@BL{%
+  \logBL{Trying to fix a Polyglossia package bug}%
+  \ifdefined\ttfamilylatin
+    \logBL{Replacing \noexpand\ttfamily with \noexpand\ttfamilylatin}%
+    \let\ttfamily=\ttfamilylatin
+    \logBL{Replacing \noexpand\rmfamily with \noexpand\rmfamilylatin}%
+    \let\rmfamily=\rmfamilylatin
+    \logBL{Replacing \noexpand\sffamily with \noexpand\sffamilylatin}%
+    \let\sffamily=\sffamilylatin
+    \logBL{Replacing \noexpand\normalfont with \noexpand\normalfontlatin}%
+    \let\normalfont=\normalfontlatin
+  \else
+    \logBL{Polyglossia package probably not loaded}%
+    \relax
+ \fi
+}%
+
+\newcommand\forceLTR@BL{%
+  \logBL{Making sure we are not in right-to-left mode}%
+  \ifdefined\setLTR
+    \logBL{Command \noexpand\setLTR is defined, invoking it}%
+    \setLTR
+  \else
+    \logBL{Command \noexpand\setLTR is not defined, we are probably LTR}%
+    \relax
+  \fi
+}%

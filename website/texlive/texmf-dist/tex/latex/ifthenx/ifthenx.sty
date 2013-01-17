@@ -1,0 +1,277 @@
+% $Id: ifthenx.sty 790 2012-04-01 10:59:41Z Geoffrey $
+%
+% ifthenx.sty Copyright (C) 2012 Geoffrey Jones 2012/04/01 (v0.1a)
+% <geoffrey stop jones snailshell uqconnect stop edu stop au>
+%
+% Package ifthenx.sty -- this little package extends David Carlisle's
+% ifthen package, adding a few extra tests. These include:
+%     \isinteger
+%     \ispositiveinteger
+%     \isrealnumber           (synonym: \isnumber)
+%     \ispositiverealnumber   (synonym: \ispositivenumber)
+%     \classloaded
+%     \packageloaded
+%     \fileexists
+%
+% Example:
+%   \ifthenelse{\ispositiveinteger{\foo}\AND\fileexists{\foo.log}}
+%     { commands to execute if true  }
+%     { commands to execute if false }
+%
+%   The production rules for numbers are quite straightforward:
+%     \ispositiveinteger    (string of one or more digits)
+%     \isinteger            (ditto, with optional leading minus sign)
+%     \isrealnumber         (ditto, with optional decimal point)
+%     \ispositiverealnumber (ditto, with no leading minus sign)
+%
+%   Note that well-formed numbers are considered negative if they
+%   possess a leading minus sign. Accordingly, while 0, 0.0, -0 and
+%   -0.0 are all well-formed numbers, only 0 and 0.0 test positive.
+%   Consider this a feature.
+%
+% Motivation:
+%   While nowadays the ifthen package is sometimes deprecated (e.g., see the
+%   March 2011 stackexchange.com conversation on this topic), it has several
+%   useful attributes that make it attractive in certain situations.
+%   Setting aside its downsides (particularly, the care needed when using it
+%   inside fragile contexts), positives include:
+%   1. it provides a simple mechanism for assembling complex logical
+%      expressions, i.e., those employing \AND, \OR, \NOT and \( ... \)
+%   2. its syntax, while always subject to preference, may be somewhat
+%      easier for LaTeX novices to read, write and understand. (To my
+%      eye, it presents a more approachable and certainly more uniform
+%      grammar than etoolbox's syntax. E.g., compare
+%        \ifboolexpr{ test {\ifnumcomp{\value{mycounter}}{>}{3}}}...
+%      with
+%        \ifthenelse{\value{mycounter} > 3}...
+%      )
+%   3. string expansion semantics (cf., etoolbox that does not)
+%   4. it is relatively lightweight compared to, say, the might of etoolbox
+%      (although note that we use etoolbox's \patchcmd if already loaded).
+%
+% Required Packages:
+%   ifthen.sty (that's all)
+%
+%   However, note that ifthenx uses \patchcmd if etoolbox.sty is already
+%   loaded.
+%
+% Related Packages:
+%   xifthen.sty provides an alternative set of ifthen package extension
+%   tests, several of which are based around capabilities drawn from
+%   the calc package.
+%
+%   xifthen and ifthenx are compatible, but only if xifthen is loaded
+%   before ifthenx (xifthen doesn't patch \ifthenelse but rewrites its
+%   own modified version instead). If loaded in the recommended order,
+%   users can ``mix and match'' the tests.
+%   For example:
+%       \newcommand*\foo{3}
+%       \newcommand*\baz{98}
+%       \ifthenelse{
+%         \isnumber{\foo}                   % ifthenx pkg command
+%         \AND\isodd{\foo}                  % ifthen pkg command
+%         \AND\cnttest{\foo + \baz}{>}{100} % xifthen pkg command
+%       }{true}{false}
+%     evaluates true.
+%
+% Version: v0.1a *** release for comments ***
+%    The author would welcome bug reports, comments, suggestions,
+%    extensions and so forth at this early stage.
+%
+% Acknowledgements:
+%   Gracious thanks David Carlisle for the ifthen package and for
+%   teaching me a new technique for run-time patching macro code.
+%
+% This work may be distributed and/or modified under the conditions of the
+% LaTeX Project Public License, either version 1.3 of this license or (at
+% your option) any later version. The latest version of this license is in
+% http://www.latex-project.org/lppl.txt and version 1.3 or later is part of
+% all distributions of LaTeX version 2005/12/01 or later.
+%
+% This work has the LPPL maintenance status `maintained'.
+%
+% The Original Author of this work is Geoffrey Jones.
+% The Current Maintainer of this work is Geoffrey Jones.
+% ==========================================================================
+\NeedsTeXFormat{LaTeX2e}[1994/12/01]
+
+\ProvidesPackage{ifthenx}
+  [2012/04/01 (v0.1a) ifthen package extensions (GJ)]
+
+\RequirePackage{ifthen}
+
+\def\itx@patchpayload{%
+  \let\isinteger\itx@isinteger
+  \let\ispositiveinteger\itx@ispositiveinteger
+  \let\isrealnumber\itx@isrealnumber%   <-- synonyms (a)
+  \let\isnumber\itx@isrealnumber%       <-- synonyms (a)
+  \let\ispositiverealnumber\itx@ispositiverealnumber%   <-- synonyms (b)
+  \let\ispositivenumber\itx@ispositiverealnumber%       <-- synonyms (b)
+  \let\classloaded\itx@classloaded
+  \let\packageloaded\itx@packageloaded
+  \let\fileexists\itx@fileexists
+}
+
+\newif\ifitx@patched
+\itx@patchedfalse
+
+\@ifpackageloaded{etoolbox}{
+  % compile-time patch
+  \patchcmd{\ifthenelse}
+    {\TE@undef}{\TE@undef\itx@patchpayload}
+    {\itx@patchedtrue}{}
+}{}
+
+\ifitx@patched\else
+  % run-time patch
+  \let\itx@ifthenelse\ifthenelse
+  \long\def\ifthenelse{\expandafter\itx@@patch\itx@ifthenelse}
+  \def\itx@@patch#1\TE@undef{#1\TE@undef\itx@patchpayload}
+  \itx@patchedtrue % quite unnecessary but at least complete
+\fi
+
+% Pattern: all the tests that follow share a similar structure.
+% Each entry command sets up conditions then executes a helper
+% macro. The helper writes `!' or `?' to a temporary macro,
+% respectively to signify test success/true or failure/false.
+% This is then expanded and responded to by the mainline command.
+% Note that, where appropriate (the number tests), we ensure that
+% any `!' contained in arguments won't interrupt this pattern.
+
+%------------------------------------------------------------------
+% \ifthenelse{\packageloaded{<pkgname>}}{<true part>}{<false part>}
+% \ifthenelse{\classloaded{<clsname>}}{<true part>}{<false part>}
+%------------------------------------------------------------------
+\def\itx@packageloaded#1#2{%
+  \TE@neg\TE@throw\noexpand\itx@@packageloaded#1\noexpand\@nil%
+  \noexpand\if!\@tempa#2}
+
+\def\itx@@packageloaded#1\@nil{%
+  \def\@tempa{\if\csname ver@#1.sty\endcsname\relax!\else?\fi}}
+
+\def\itx@classloaded#1#2{%
+  \TE@neg\TE@throw\noexpand\itx@@classloaded#1\noexpand\@nil%
+  \noexpand\if!\@tempa#2}
+
+\def\itx@@classloaded#1\@nil{%
+  \def\@tempa{\if\csname ver@#1.cls\endcsname\relax!\else?\fi}}
+
+%------------------------------------------------------------------
+% \ifthenelse{\fileexists{<file.ext>}}{<true part>}{<false part>}
+%
+% Normal TeX file search conventions apply, e.g., if file `x.tex'
+% exists in the TEXMF file structure or a local path, then
+%     \ifthenelse{\fileexists{x}}{<true part>}{<false part>}
+% will branch along the <true part> path.
+%
+% \input@path will be searched if the file isn't found in the
+% installation TEXMF tree. This can be configured; for example,
+%     \newcommand*\input@path{{C:/Temp/}{C:/tmp/}}
+% Note that each search path must reside within its own group,
+% and that each must end with a file path separator '/'.
+%
+% Also note that this test trims leading (but not trailing) space
+% characters from its argument before producing its result. Like
+% LaTeX's native \IfFileExists, this test returns false if passed
+% an empty (zero length) filename and, rather absurdly, true
+% if the filename expands to \relax.
+%
+% While our \filexists test (mostly) follows \IfFileExists semantics,
+% we resist the urge to emulate the following rather rare and thus
+% far unreported bug...
+%
+%   LaTeX2e \IfFileExists bug. Under the following conditions,
+%     1. \input@path has been defined, and
+%     2. filename includes one or more leading spaces, and
+%     3. file does not exist in TEXMF or in \input@path
+%   then, once for every path specified in \input@path,
+%   \IfFileExists places filename on the token stream.
+%
+%   Example:
+%     \newcommand\input@path{{C:/Temp/}{D:/tmp/}}
+%     \IfFileExists{ xx}{yes}{no}
+%   produces:
+%     xx xx no
+%------------------------------------------------------------------
+\def\itx@fileexists#1#2{%
+  \TE@throw\openin\@inputcheck=#1 % local endgroup implicitly closes the file
+  \noexpand\itx@@fileexists#1\noexpand\@nil%
+  \noexpand\@tempa\noexpand\if!\@tempb#2}
+
+\def\itx@@fileexists#1\@nil{%
+  \def\@tempa{%
+    \edef\@tempc{% zap leading spaces in #1
+      \detokenize\expandafter{\romannumeral-`X\expandafter\noexpand#1}}%
+    \if\relax\@tempc\relax% catch empty #1
+      \def\@tempb{?}%
+    \else
+      \ifeof\@inputcheck%
+        \ifx\input@path\@undefined%
+          \def\@tempb{?}%
+        \else%
+         \@iffileonpath{\@tempc}{\def\@tempb{!}}{\def\@tempb{?}}%
+        \fi%
+      \else%
+        \def\@tempb{!}%
+      \fi%
+    \fi%
+  }%
+}
+
+%----------------------------------------------------------------------------
+% \ifthenelse{<numtest>{...}}{<true part>}{<false part>}, where <numtest> is:
+%   \ispositiveinteger    (string of one or more digits)
+%   \isinteger            (ditto, with optional leading minus sign)
+%   \isrealnumber         (ditto, with optional decimal point)
+%   \ispositiverealnumber (ditto, with no leading minus sign)
+%
+% NB, 0, 0.0, etc consigned positive, -0, -0.0, etc negative by these tests.
+%----------------------------------------------------------------------------
+\def\itx@gobbleleadingminus#1{\if-#1\else#1\fi}
+
+\def\itx@gobblefirstdecimalpoint#1{%
+  \expandafter\itx@@gobblefirstdecimalpoint%
+  \romannumeral-`X#1\@empty.\@empty\relax}
+
+\def\itx@@gobblefirstdecimalpoint#1.#2\@empty#3\relax{#1#2}
+
+\def\itx@ispositiveinteger#1#2{%
+  \TE@throw\noexpand\in@{!}{#1}%
+  \noexpand\itx@@ispositiveinteger#1\noexpand\@nil%
+  \noexpand\if!\@tempa#2}
+
+\def\itx@@ispositiveinteger#1\@nil{%
+  \def\@tempa{\ifin@?\else\ifnum9<1#1!\else?\fi\fi}}
+
+\def\itx@isinteger#1#2{%
+  \TE@throw\noexpand\in@{!}{#1}%
+  \noexpand\itx@@isinteger#1\noexpand\@nil%
+  \noexpand\if!\@tempa#2}
+
+\def\itx@@isinteger#1\@nil{%
+  \expandafter\itx@@ispositiveinteger%
+    \expandafter{\expandafter\itx@gobbleleadingminus#1}\@nil}
+
+\def\itx@ispositiverealnumber#1#2{%
+  \TE@throw\noexpand\in@{!}{#1}%
+  \noexpand\itx@@ispositiverealnumber#1\noexpand\@nil%
+  \noexpand\if!\@tempa#2}
+
+\def\itx@@ispositiverealnumber#1\@nil{%
+  \expandafter\itx@@ispositiveinteger%
+    \expandafter{\expandafter\itx@gobblefirstdecimalpoint%
+      \expandafter{#1}}\@nil}
+
+\def\itx@isrealnumber#1#2{%
+  \TE@throw\noexpand\in@{!}{#1}%
+  \noexpand\itx@@isrealnumber#1\noexpand\@nil%
+  \noexpand\if!\@tempa#2}
+
+\def\itx@@isrealnumber#1\@nil{%
+  \expandafter\itx@@ispositiveinteger%
+    \expandafter{\expandafter\itx@gobblefirstdecimalpoint%
+      \expandafter{\expandafter\itx@gobbleleadingminus%
+        \expandafter{#1}}}\@nil}
+
+%
+%============================ end ifthenx.sty ============================

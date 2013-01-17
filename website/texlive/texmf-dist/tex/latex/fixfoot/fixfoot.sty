@@ -1,0 +1,219 @@
+\ProvidesPackage{fixfoot}[2007/12/12 v0.3a fixed-text footnotes]
+%
+% Author: Robin Fairbairns <rf10@cam.ac.uk>
+%
+% This program may be distributed and/or modified under the
+% conditions of the LaTeX Project Public License, either version 1.1
+% of this license or (at your option) any later version.
+% The latest version of this license is in
+%   http://www.latex-project.org/lppl.txt
+% and version 1.1 or later is part of all distributions of LaTeX 
+% version 1999/06/01 or later.
+%
+% This program consists of a package file fixfoot.sty and a test file
+% testfix.tex
+%
+% this is an experimental package that provides fixed footnotes
+% only one instance of a fixed footnote will appear on any one page
+%
+% the package defines a single command, \DeclareFixedFootnote, which
+% takes an optional *, and two `ordinary' arguments.
+%
+% if the optional * is present, the command declared has an \xspace
+% imbedded in it, so that spaces following it in running text tend not
+% to be lost.
+%
+% the first ordinary argument is a cs name
+% the second ordinary argument is the fixed text of the footnote
+%
+% e.g., \DeclareFixedFootnote*{\sic}{\emph{sic}}
+%       \DeclareFixedFootnote{\prooflater}{This theorem will be proved
+%                                          later}
+%
+% the package works by exchanging information with itself via the .aux
+% file.  just as with labels (and per-page footnote numbers in
+% footmisc), the user ordinarily needs to run latex at least twice.
+% this package does not (yet) have the ability to warn the user that
+% another run of latex is still necessary (changing labels or footnote
+% numbers in footmisc \emph{do} thus warn).
+\newif\if@fftn@debug
+\DeclareOption{debug}{\@fftn@debugtrue}
+\ProcessOptions\relax
+%
+\newcommand\DeclareFixedFootnote{%
+  \@ifstar{\@declare@fftn\xspace}%
+          {\@declare@fftn\relax }%
+}
+%
+% relay after detecting optional `|*|':
+\newcommand\@declare@fftn[3]{%
+% #1 \cs{xspace} (if `|*|' found) or \cs{relax}
+% #2 footnote name, #3 footnote body
+%
+% extract the \csname bit of it...
+  \edef\reserved@a{\expandafter\@gobble\string#2}%
+  \@ifundefined\reserved@a
+    {\@declare@@fftn{#1}{#2}{#3}}%
+    {\@notdefinable}%
+}
+%
+% finally, relayed command to do the actual job (same parameters as
+% \cs{@declare@fftn}, which has simply checked that we're allowed to
+% do this declaration)
+\newcommand\@declare@@fftn[3]{%
+  \edef\reserved@a{\expandafter\@gobble\string#2}%
+%
+% the actual command
+  \protected@edef#2{\protect\@fixed@footnote{\reserved@a}%
+                                            {#1}{#3}}%
+%
+% define the fixed foot serial number and page counters
+  \@definecounter{@\reserved@a @fftn@serial}%                            
+  \@namedef{@\reserved@a @fftn@curpage}{moocow}%
+  \@namedef{@\reserved@a @fftn@scanpage}{baalamb}%
+  \@namedef{@\reserved@a @fftn@pagelim}{-1}%
+%
+% now the things we want executed at end document:
+  \protected@edef\@tempa{%
+    \expandafter\protect\csname @\reserved@a @fftn@aux\endcsname}%
+  \protected@edef\@tempb{%
+    \expandafter\protect\csname @\reserved@a @fftn@scanpage\endcsname}%
+%
+% Note that \cs{AtEndDocument} has global effect\dots
+  \begingroup
+    \let\protect\noexpand
+    \edef\@tempc{\noexpand\AtEndDocument{%
+      \fftn@clearpage
+      \noexpand\def\@tempa{%
+        \noexpand\@reprocess@fftn@mark{\reserved@a}}%
+      \noexpand\def\@tempb{oinkpig}}}%
+    \@tempc
+  \endgroup
+  \let\fftn@clearpage\@empty
+}%
+\def\fftn@clearpage{\noexpand\clearpage}
+%
+% Stick a dummy \cs{@process@fftn@mark} into the |.aux| file, in
+% accordance with good practice for such things...
+\AtBeginDocument{\immediate\write\@auxout{\noexpand\providecommand
+    \noexpand\@process@fftn@mark[3]{}}}
+%
+% \@reprocess@fftn@mark#1#2#3 will deal (when we've written it) with a
+% fixed footnote mark in the .aux file at end document #1 footnote tag
+% #2 serial number #3 actual page...  (What should it do???)
+%
+% the fundamental fixed footnote command:
+% the command \cs{}\meta{tag} which is supposed to generate a footnote
+% containing \meta{body}, generates a call
+% \@fixed@footnote\marg{tag}\marg{end-execution}\marg{body}
+\def\@fixed@footnote#1#2#3{%
+% #1 footnote tag
+% #2 \xspace or \relax
+% #3 footnote body
+% 
+% count this footnote
+  \stepcounter{@#1@fftn@serial}%
+%
+% Is this serial beyond the limit of serial numbers destined for this
+% page?
+  \if@fftn@debug
+    \message{footnote #1 serial \csname the@#1@fftn@serial\endcsname\space
+      existing limit \csname @#1@fftn@pagelim\endcsname;}%
+  \fi
+  \ifnum\csname @#1@fftn@pagelim\endcsname <
+        \csname c@@#1@fftn@serial\endcsname
+%
+% so here we're going to have to create a new footnote, but let's
+% first find whether the |.aux| file scan at the start gave us a
+% range of serial numbers to share it with us:
+    \expandafter\let\expandafter\@tempa
+      \csname @#1@fftn-\the\csname c@@#1@fftn@serial\endcsname\endcsname
+    \ifx\@tempa\relax
+      \if@fftn@debug
+        \message{footnote #1 no limit to inherit from .aux file;}%
+      \fi
+    \else
+      \if@fftn@debug
+        \message{footnote #1 limit \@tempa;}%
+      \fi
+%
+% record the information from the file
+      \global\expandafter\let\csname @#1@fftn@pagelim\endcsname\@tempa
+    \fi
+%
+% create the footnote and record its number (whether we're going to
+% use it or not)
+    \footnote{#3}%
+    \expandafter\xdef\csname @#1@fftn@footnote\endcsname
+                      {\the\c@footnote}%
+    \if@fftn@debug
+      \message{written new #1 footnote, number \the\c@footnote.}%
+    \fi
+%
+% if we're still on the same page as the previous footnote, create a
+% mark only; note we can't use \cs{footnotemark} here, as it won't do
+% the right thing if we're in a minipage (or anywhere where
+% \cs{thempfn} isn't the same as \cs{thefootnote}).
+  \else
+    \protected@xdef\@thefnmark{\csname @#1@fftn@footnote\endcsname}%
+    \@footnotemark
+    \if@fftn@debug
+      \message{reusing #1 footnote \csname @#1@fftn@footnote\endcsname.}%
+    \fi
+  \fi
+%
+% record which page `this' footnote appeared in the |.aux|
+  \protected@writeaux\relax{\protect\@process@fftn@mark{#1}%
+    {\the\csname c@@#1@fftn@serial\endcsname}{\noexpand\thepage}}%
+%
+% and finally insert the `end-command' stuff (this can be \cs{xspace}
+% or \cs{relax} if we're being called from a conventionally-defined
+% fixed footnote command, but could be anything, really, one
+% supposes!)
+  #2%
+  }
+%
+% \@process@fftn@mark#1#2#3 deals with a fixed footnote mark in
+% the .aux file at begin document;
+% arguments #1 footnote tag
+%           #2 serial number
+%           #3 actual page
+\newcommand\@process@fftn@mark[3]{%
+  \if@fftn@debug
+    \message{fftn #1 #2 #3;}%
+  \fi
+  \def\@tempa{#3}%
+  \expandafter\ifx\csname @#1@fftn@scanpage\endcsname\@tempa
+  \if@fftn@debug
+    \message{on same page as previous;}%
+  \fi
+  \else
+%
+% well, we're no longer on whatever was last recorded as the page of a
+% fixed footnote of this name -- record the serial
+    \expandafter\def\csname @#1@fftn@lastserial\endcsname{#2}%
+    \expandafter\let\csname @#1@fftn@scanpage\endcsname\@tempa
+  \fi
+%
+% 
+  \if@fftn@debug
+    \message{setting limit for serial \csname @#1@fftn@lastserial\endcsname.}%
+  \fi
+  \expandafter\gdef\csname @#1@fftn-%
+                     \csname @#1@fftn@lastserial\endcsname
+                       \endcsname{#2}%
+}
+%
+% \@reprocess@fftn@mark#1#2#3 deals with a fixed footnote mark in
+% the .aux file at end document; arguments #1 footnote tag
+% #2 serial number #3 actual page
+\newcommand\@reprocess@fftn@mark[3]{}% pro tem
+%
+% use that when processing the .aux file at the end of the document
+\AtEndDocument{\let\@process@fftn@mark\@reprocess@fftn@mark}
+%
+% this command originates in Matt Swift's inclusion stuff; I use it
+% all over the place...
+\providecommand\protected@writeaux{%
+  \protected@write\@auxout
+}

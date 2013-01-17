@@ -1,0 +1,171 @@
+\NeedsTeXFormat{LaTeX2e}[1999/12/01]
+\ProvidesPackage{currfile-abspath}[%
+    2012/05/15
+    v0.7
+    Provides absolute file paths, the parent working directory and the main file name]
+\newcommand*\thepwd{}
+\newcommand*\theabspath{}
+\newcommand*\theabsdir{}
+\newcommand*\themainfile{}
+\newif\ifcurrfile@abspath@windows
+\providecommand\currfile@mainext{tex}
+\ifx\currfile@mainext\@empty
+    \PackageError{currfile-abspath}
+        {Empty main file extension is not supported}{}%
+\fi
+\def\currfile@abspath@noflswarning{%
+    \PackageWarning{currfile-abspath}
+        {The required recorder file (.fls) was not found.\MessageBreak
+            Please compile with the '-recorder' option.\MessageBreak
+            Note that MikTeX requires two compiler runs.\MessageBreak
+            Occurred}%
+    \global\let\currfile@abspath@noflswarning\relax
+    \global\csname currfile@abspathfalse\endcsname
+}%
+\newcommand\getpwd{%
+    \begingroup
+    \let\thepwd\@empty
+    \IfFileExists{\jobname.fls}{%
+        \openin\@inputcheck=\jobname.fls\relax
+        \endlinechar\m@ne
+        \loop
+            \readline\@inputcheck to \line
+            \@onelevel@sanitize\line
+            \expandafter\currfile@checkpwd\line\relax\relax\relax\relax\relax
+            \ifeof\@inputcheck\else
+        \repeat
+        \closein\@inputcheck
+    }
+    \currfile@abspath@noflswarning
+    \edef\@tempa{%
+        \def\noexpand\thepwd{\thepwd}%
+    }%
+    \expandafter
+    \endgroup
+    \@tempa
+}
+\def\currfile@checkpwd#1#2#3#4#5\relax{%
+    \edef\@tempa{#1#2#3}%
+    \edef\@tempb{PWD}%
+    \@onelevel@sanitize\@tempb
+    \ifx\@tempa\@tempb
+        \edef\thepwd{#4#5/}%
+        \def\@tempa{#4}%
+        \def\@tempb{/}%
+        \ifx\@tempa\@tempb
+            \currfile@abspath@windowsfalse
+        \else
+            \currfile@abspath@windowstrue
+        \fi
+        \let\iterate\relax
+    \fi
+}
+\newcommand\getabspath[1]{%
+    \begingroup
+    \edef\filename{#1}%
+    \@onelevel@sanitize\filename%
+    \let\theabspath\@empty
+    \let\theabsdir\@empty
+    \IfFileExists{\filename}{%
+    \IfFileExists{\jobname.fls}{%
+        \openin\@inputcheck=\jobname.fls\relax
+        \endlinechar\m@ne
+        \expandafter\currfile@abspath@defs\expandafter{\filename}%
+        \readline\@inputcheck to \line
+        \@onelevel@sanitize\line
+        \expandafter\currfile@checkpwd\line\relax\relax\relax\relax\relax
+        \loop
+            \readline\@inputcheck to \line
+            \@onelevel@sanitize\line
+            \expandafter\currfile@abspath@getabspath\expandafter{\line}%
+            \ifeof\@inputcheck\else
+        \repeat
+        \closein\@inputcheck
+    }\currfile@abspath@noflswarning
+    }{}%
+    \edef\@tempa{%
+        \def\noexpand\theabspath{\theabspath}%
+        \def\noexpand\theabsdir{\theabsdir}%
+        \def\noexpand\thepwd{\thepwd}%
+    }%
+    \expandafter
+    \endgroup
+    \@tempa
+}
+\newcommand\getmainfile{%
+    \begingroup
+    \let\themainfile\@empty
+    \IfFileExists{\jobname.fls}{%
+        \openin\@inputcheck=\jobname.fls\relax
+        \endlinechar\m@ne
+        \readline\@inputcheck to \line
+        \@onelevel@sanitize\line
+        \expandafter\currfile@checkpwd\line\relax\relax\relax\relax\relax
+        \loop
+            \readline\@inputcheck to \line
+            \@onelevel@sanitize\line
+            \expandafter\currfile@abspath@getmainfile\expandafter{\line}%
+            \ifeof\@inputcheck\else
+        \repeat
+        \closein\@inputcheck
+    }%
+    \currfile@abspath@noflswarning
+    \edef\@tempa{%
+        \def\noexpand\themainfile{\themainfile}%
+        \def\noexpand\thepwd{\thepwd}%
+    }%
+    \expandafter
+    \endgroup
+    \@tempa
+}
+\def\currfile@abspath@testfname#1#2#3\relax{%
+    \ifcurrfile@abspath@windows
+        \def\@tempa{#2}%
+        \def\@tempb{:}%
+    \else
+        \def\@tempa{#1}%
+        \def\@tempb{/}%
+    \fi
+    \ifx\@tempa\@tempb\else
+        \let\theabsdir\thepwd
+    \fi
+}
+\begingroup
+\catcode`I=12
+\catcode`N=12
+\catcode`P=12
+\catcode`U=12
+\catcode`T=12
+\gdef\currfile@abspath@defs#1{%
+    \def\currfile@abspath@checkabspath ##1INPUT ##2#1\relax##3\relax##4\@nnil{%
+        \ifx\@empty##4\@empty\else
+            \def\theabsdir{##2}%
+            \ifx\theabsdir\@empty
+                \currfile@abspath@testfname#1\@empty\@empty\relax
+            \fi
+            \edef\theabspath{\theabsdir#1}%
+            \let\iterate\relax
+        \fi
+    }%
+    \def\currfile@abspath@getabspath##1{%
+        \currfile@abspath@checkabspath##1\relax INPUT \@empty#1\relax{}\relax\@nnil
+    }%
+}
+\def\@tempa#1{%
+    \gdef\currfile@abspath@checkmainfile ##1INPUT ##2#1\relax##3\relax##4\@nnil{%
+        \ifx\@empty##4\@empty\else
+            \def\themainfile{##2#1}%
+            \let\iterate\relax
+        \fi
+    }%
+    \gdef\currfile@abspath@getmainfile##1{%
+        \currfile@abspath@checkmainfile##1\relax INPUT \@empty#1\relax{}\relax\@nnil
+    }%
+}
+\edef\@tempb{.\currfile@mainext}
+\@onelevel@sanitize\@tempb
+\expandafter\@tempa\expandafter{\@tempb}
+\endgroup
+\endinput
+%%
+%% End of file `currfile-abspath.sty'.

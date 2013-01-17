@@ -1,0 +1,231 @@
+\ProvidesPackage{verbatimcopy}[2008/11/17 v0.06 by Lars Madsen and Ulrich Diez]
+
+%% This package be distributed and/or modified under the
+%% conditions of the LaTeX Project Public License, either version 1.3
+%% of this license or (at your option) any later version.
+%% The latest version of this license is in
+%%   http://www.latex-project.org/lppl.txt
+%% and version 1.3 or later is part of all distributions of LaTeX
+%% version 2003/12/01 or later.
+%%
+%% This work has the LPPL maintenance status "maintained".
+%%
+%% The Current Maintainer of this work is Lars Madsen <daleif@imf.au.dk>
+%%
+%% Package code:  Ulrich Diez <eu_angelion@web.de>
+%% Packing and user documentation: Lars Madsen <daleif@imf.au.dk>
+%%
+%%
+%% The implementation is as is, any questions about the implementaion
+%% of this package should preferably be send to Ulrich Diez via the
+%% email above.
+%%
+%% For usage information see the user manual
+%
+\RequirePackage{verbatim}
+%
+% Directory-separator usually is slash.
+%
+\newcommand\VC@slash{/}%
+\@onelevel@sanitize\VC@slash
+%
+% Enquote file-names with quotes.
+%
+\newcommand\VC@quote{"}%
+\@onelevel@sanitize\VC@quote
+%
+\newcommand*\VC@@quote{}%
+%
+\newcommand*\VC@outputdir{}%
+%
+\begingroup
+\long\def\@@setOutputDir#1{%
+  \endgroup
+  %
+  %\@@setOutputDir automatically adds a trailing /
+  %
+  \@ifdefinable\@@setOutputDir{%
+    \long\def\@@setOutputDir##1#1\@nil##2\@nil#1{%
+      \ifx\@nil##2\@nil
+        \expandafter\@firstoftwo
+      \else
+        \expandafter\@secondoftwo
+      \fi
+    }%
+  }%
+  \newcommand\setOutputDir[1]{%
+    \@bsphack
+    \@@setOutputDir##1\@nil#1\@nil\@nil#1%
+    {\def\VC@outputdir{##1#1}}%
+    {\def\VC@outputdir{##1}}%
+    \@esphack
+  }%
+}%
+\expandafter\@@setOutputDir\expandafter{\VC@slash}%
+%
+% memoir defines this one, verbatim does not
+%
+\@ifundefined{verbatim@out}{\newwrite\verbatim@out}{}
+%
+% the following is basically based on an idea
+% by Ulrich Diez on comp.text.tex
+% (http://groups.google.com/group/comp.text.tex/msg/153e3dc7a8d0e548?hl=en&)
+%
+% be very carefull, this will overwrite without asking
+%
+% the idea is simply to mess with \verbatiminput such that it write
+% instead of read
+%
+\newcommand*\VerbatimCopy[2]{% {from file}{to file}
+  \@bsphack
+  \expandafter\def\expandafter\VC@target\expandafter{\VC@outputdir#2}%
+  \IfFileExists{\VC@@quote#1\VC@@quote}%
+  {%
+    \bgroup
+    \def\@verbatim{%
+      \obeylines
+      \let\do\@makeother
+      \dospecials
+    }%
+    \let\endtrivlist\relax
+    \def\verbatim@processline{%
+      \immediate\write\verbatim@out{\the\verbatim@line}%
+    }%
+    \immediate\openout\verbatim@out\VC@@quote\VC@target\VC@@quote\relax
+    \verbatiminput{\VC@@quote#1\VC@@quote}%
+    \immediate\closeout\verbatim@out%
+    \egroup%
+  }%
+  {%
+    \PackageError{verbatimcopy}%
+    {Source-file cannot be found}%
+    {%
+      For copying source-file to target-file it would be nice to
+      have the source-file available.%
+    }%
+  }%
+  \@esphack
+}%
+%
+% Copy the original user-level-macros.
+%
+\@ifdefinable\OldVerbatimCopy{%
+  \let\OldVerbatimCopy\VerbatimCopy
+}%
+\@ifdefinable\OldsetOutputDir{%
+  \let\OldsetOutputDir\setOutputDir
+}%
+%
+% Implement stuff for reading arguments "verbatim":
+%
+% Syntax of \VCverbaction:
+%
+%   \VCverbaction{<Mandatory 1>}{<Mandatory 2>}<verbatim-Arg>
+%
+% yields:
+%
+%   <Mandatory 1>{<Mandatory2>{<verbatim-Arg>}}
+%
+% The Mandatory-Arguments are mandatory. If they consist of several
+% tokens, they must be nested into catcode-1/2-character-pair / braces.
+% If reading is necessary, they will be read under normal catcode-
+% conditions.
+% The verbatim-Arg is also mandatory. It will be read under
+% verbatim-catcode-conditions. If its first character is a brace,
+% it will be "assumed" that the argument is nested into braces.
+% Otherwise it will be assumed, that the argument is delimited
+% by the first character - like the argument of \verb.
+%
+% Empty-lines will not be ignored.
+%
+% By nesting calls to \VCverbaction within \VCverbaction's first
+% argument, you can collect "verbatim-arguments" within its second
+% argument.
+%
+% E.g.,
+%
+%   \VCverbaction{\VCverbaction{\VCverbaction{\action}}}% <- Mandatory 1
+%                {}%                               <- Mandatory 2 is empty!
+%                <verbatim-Arg1><verbatim-Arg2><verbatim-Arg3>
+%
+% yields:
+%
+%  \VCverbaction{\VCverbaction{\action}}% <- Mandatory 1
+%               {<verbatim-Arg1>}%        <- Mandatory 2
+%               <verbatim-Arg2><verbatim-Arg3>
+%
+% yields:
+%
+%  \VCverbaction{\action}% <- Mandatory 1
+%               {{<verbatim-Arg1>}{<verbatim-Arg2>}}% <- Mandatory 2
+%               <verbatim-Arg3>
+%
+% yields:
+%
+%  \action{{<verbatim-Arg1>}{<verbatim-Arg2>}{<verbatim-Arg3>}}
+%
+\newcommand\VCverbaction[2]{%
+  \@bsphack
+  \begingroup
+  \let\do\@makeother\dospecials
+  \catcode`\{=1 %
+  \catcode`\ =10 %
+  \@ifnextchar\bgroup
+  {\catcode`\}=2 \@@VCverbaction{#1}{#2}}%
+  {\do\{\@VCverbaction{#1}{#2}}%
+}%
+\newcommand\@VCverbaction[3]{%
+  \do\ %
+  \catcode`\^^M=14 %
+  \long\def\@tempb##1#3{%
+    \def\@tempb{##1}%
+    \@onelevel@sanitize\@tempb
+    \expandafter\@@@VCverbaction\expandafter{\@tempb}{#1}{#2}%
+  }%
+  \@tempb
+}%
+\newcommand\@@VCverbaction[2]{%
+  \do\ %
+  \catcode`\^^M=14 %
+  \long\def\@tempb##1{%
+    \def\@tempb{##1}%
+    \@onelevel@sanitize\@tempb
+    \expandafter\@@@VCverbaction\expandafter{\@tempb}{#1}{#2}%
+  }%
+  \@tempb
+}%
+\newcommand\@@@VCverbaction[3]{%
+  \endgroup
+  \@esphack
+  #2{#3{#1}}%
+}%
+%
+%
+\DeclareOption{compatibility}{\endinput}
+\DeclareOption{enquotefilenames}{\let\VC@@quote=\VC@quote}
+\ProcessOptions\relax
+%
+% If compatibility-option is provided, then package-loading is done
+% and loading finishes via \endinput.
+%
+% Otherwise have the copies called when a nesting-chain of \VCverbaction
+% has read and collected all the arguments needed for the copies
+% "verbatimly".
+%
+\outer\def\VerbatimCopy{%
+  \@bsphack
+  \VCverbaction{%
+    \VCverbaction{%
+      \expandafter\@esphack\expandafter\OldVerbatimCopy\@firstofone
+    }%
+  }{}%
+}%
+%
+\outer\def\setOutputDir{%
+  \@bsphack
+  \VCverbaction{%
+    \expandafter\@esphack\expandafter\OldsetOutputDir\@firstofone
+  }{}%
+}%
+%
+\endinput

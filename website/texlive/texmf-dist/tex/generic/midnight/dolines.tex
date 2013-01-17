@@ -1,0 +1,180 @@
+\ifx\DOLINES\relax\endinput\else\let\DOLINES=\relax\fi % \input only once
+%
+% dolines.tex: Meta-macros to separate arguments by newlines and by
+%	       empty lines.
+% version: 1.0  release: 15 April 1991
+%
+% copyright (c) 1991 Marcel R. van der Goot
+%	You can use these macros to typeset documents. You may
+%	distribute this file freely, provided that you also distribute
+%	the accompanying documentation.
+%	    You may make changes to this file, or extract portions
+%	of it for inclusion in other files, provided that
+%	    (1) you change the name of the file;
+%	    (2) you give proper credit and include copyright
+%		information where applicable;
+%	    (3) explain how an unchanged version can be obtained; and
+%	    (4) document the usage of your macros/changes (if usage
+%		of your macros is not worth documenting, they must not
+%		be worth using).
+%	You are not allowed to use the name ``Midnight Macros'' for
+%	any changed files.
+%	    The above rules for making changes do not apply where it
+%	is explicitly noted in this file that something can be changed
+%	to conform to your local installation.
+%
+% USAGE:
+%   See the file dolines.doc
+%   You need Midnight/loop.tex to use these macros.
+%
+% original: csvax.cs.caltech.edu [131.215.131.131] in pub/tex
+%	    (use anonymous ftp). Also in various archives.
+%
+% Caltech, Pasadena  ---  Marcel van der Goot
+%			  marcel@cs.caltech.edu
+%			    Caltech 256--80
+%			    Pasadena, CA 91125
+%			    USA
+%			    (818) 356--4603
+%
+
+% update history:
+% version 1.0: This one.
+%	release 15 April 1991: This one.
+%	release 8 February 1991: Used \next instead of \do_next, which
+%		occasionally conflicted with use of \next in other macros.
+
+%%%%%% CODE: (you don't need to read this to use the macros)
+
+\input Midnight/loop % CHANGE this filename to correspond to your installation
+
+%%%%%%% Reading from a different file
+% This is relatively simple, it can be done with a loop. The read function
+% reads a single line (that is what \read does). A file that is being
+% \read always ends with an empty line, therefore no test for eof(lines_in)
+% is needed in the inner loop.
+%
+%	 while (!eof(lines_in))
+%	   {
+%	     read(lines_in, _ln);
+%	     if (_ln != empty_ln)
+%		{
+%		  beforelines();
+%		  do { everyline(_ln);
+%		       read(lines_in, _ln);
+%		  } while (_ln != empty_ln);
+%		  afterlines();
+%		}
+%	   }
+%
+
+{\catcode`\^^M=12 \endlinechar=-1 % 12 = other
+\catcode`\_=11 % 11 = letter (used to make macros private)
+
+\newread\lines_in
+
+\globaldefs=1
+
+\def\empty_ln{\par}
+
+\def\filedolines#1%
+   {{\openin\lines_in=#1 %
+     \ifeof\lines_in\message{File #1 not found.}\fi
+     \Loop\ifeof\lines_in \Break1 \fi
+          \read\lines_in to\_ln
+          \ifx\_ln\empty_ln
+          \else {\beforelines
+	         \Loop\everyline{\_ln}%
+		      \read\lines_in to\_ln
+		      \ifx\_ln\empty_ln \Break1 \fi
+	         \Pool
+	         \afterlines
+	        }%
+          \fi
+     \Pool
+     \closein\lines_in
+   }}
+
+} % restore \catcode`\^^M, \catcode`\_, etc.
+
+
+%%%%%%% Reading from the current file
+% This is more complicated. The problem is that a line can only be
+% read at the end of a macro, because otherwise a part of the macro
+% itself will be read. Therefore, the above solution with \Loop cannot
+% be used. Instead, this is implemented as a finite state machine. The
+% FSM has two major states, outer_loop and inner_loop, corresponding to the
+% program above. In these states, the value of _ln is used to determine
+% what actions to take, and what the next state is. The next state
+% is indicated by the control-sequence \do_next.
+%    There are two minor states, get_out and get_in. In each of them
+% the next line is read into _ln. After get_out, the next state is always
+% outer_loop; after get_in it is always inner_loop.
+%    Here is a ``picure.'' `(...)' is a state, `...?' denotes the value
+% of _ln, and other texts are actions. ctrl-M stands for an empty line.
+%
+%				 /---<----\
+%			    (get_out)	  |
+%				 \      ctrl-M?
+%   begindolines		  V      /
+%     \->bgroup -> (get_out) -> (outer_loop) -> enddolines? -> egroup
+%				 ^   |    ^		        \-> (finish)
+%				/    |	   \
+%		  afterlines --/   other?   \-- afterlines
+%			^	     V		     ^
+%			|	beforelines	     |
+%	            ctrl-M? <--\     |      /--> enddolines?
+%				\    V     /
+%				(inner_loop)
+%				  /     ^
+%			     other?      \
+%			      |        (get_in)
+%			      V            |
+%			      \-everyline->/
+%
+
+
+{\catcode`\^^M=12 \endlinechar=-1 % 12 = other
+\catcode`\_=11 % 11 = letter (used to make macros private)
+\globaldefs=1
+
+
+\long\def\get_out#1^^M% here a line is read (as #1)
+   {\gdef\_ln{#1}%
+    \outer_loop
+   }
+
+\long\def\get_in#1^^M% here a line is read (as #1)
+   {\gdef\_ln{#1}%
+    \inner_loop
+   }
+
+\def\outer_loop
+   {\ifx\_ln\enddolines \egroup\let\do_next=\finishdolines
+    \else\ifx\_ln\empty \let\do_next=\get_out
+    \else \beforelines\let\do_next=\inner_loop
+    \fi  \fi
+    \do_next
+   }
+
+\def\inner_loop
+   {\ifx\_ln\enddolines \afterlines\let\do_next=\outer_loop
+    \else\ifx\_ln\empty \afterlines\let\do_next=\outer_loop
+    \else \everyline\_ln\let\do_next=\get_in
+    \fi  \fi
+    \do_next
+   }
+
+\def\begindolines
+   {\bgroup
+    \catcode`\^^M=12 %
+    \get_out
+   }
+
+} % restore \catcode`\^^M, \catcode`\_, etc.
+
+% We define \finishdolines and \enddolines, in case someone forgets:
+
+\let\finishdolines=\relax
+\def\enddolines{\enddolines}
+

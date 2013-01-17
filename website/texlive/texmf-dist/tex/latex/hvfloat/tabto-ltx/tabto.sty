@@ -1,0 +1,160 @@
+% tabto.sty
+%
+% version 1.0  (May 2006)
+%
+% Tabbing to fixed positions in a paragraph.
+%
+% Copyright 2006 by Donald Arseneau, 
+%     Vancouver, Canada (asnd@triumf.ca)
+% Permission to use, distribute and modify this software is granted
+% under the conditions of the LaTeX Project Public License, either 
+% version 1.3 or (at your option) any later version.  The license is
+% found at http://www.latex-project.org/lppl.txt, and is part of all 
+% recent distributions of LaTeX.
+%
+% This work has the LPPL maintenance status `maintained'.
+%
+% Two new text positioning commands are defined: \tabto and \tab.
+% 
+% \tabto{<length>}
+% Tab to a position relative to the left margin in a paragraph
+% (any indentation due to a list is part of the `margin' in this
+% context).  If the text on the line already goes past the desired
+% position, the tab starts a new line and moves to the requested
+% horizontal  position.
+%
+% \tabto*{<length>}
+% Similar to \tabto, except it will perform backspacing, and over-
+% print previous text on the line whenever that text is already
+% longer than the specified length (i.e., no linebreak is produced).
+% Line-breaks are suppressed immediately after \tabto or \tabto*.
+%
+% \tab
+% Tab to the next tab-stop chosen from a list of tab positions, in
+% the traditional style of typewriters.  A \tab will always move
+% to the next tab stop (or the next line), even if it is already
+% exactly at a tab stop. Thus, "\tab\tab" skips a position.  A
+% linebreak is permitted immediately following a \tab, in case the
+% ensuing text does not fit well in the remaining space.
+%
+% The tab-stop positions are declared using either \TabPositions
+% or \NumTabs:
+%
+% \TabPositions{<length>, <length>,...<length>}
+% Declares the tab stops as a comma-separated list of positions 
+% relative to the left margin. A tab-stop at 0pt is implicit, and 
+% need not be listed.
+%
+% \NumTabs{<number>}
+% Declares a list of <number> equally-spaced tabs, starting at the
+% left margin and spanning \linewidth.  For example \NumTabs{2} 
+% declares tab-stops at 0pt and 0.5\linewidth, the same as
+% \TabPositions{0pt, 0.5\linewidth} or \TabPositions{0.5\linewidth}
+%
+
+\newdimen\CurrentLineWidth
+
+\newcommand\tabto[1]{%
+ \leavevmode
+ \begingroup
+ \def\@tempa{*}\def\@tempb{#1}%
+ \ifx\@tempa\@tempb
+   \endgroup
+   \TTo@overlaptrue
+   \expandafter\tabto
+ \else
+   \ifinner % in a \hbox, so ignore
+   \else % unrestricted horizontal mode
+     \null% \predisplaysize will tell the position of this box (must be box)
+     \parfillskip\fill
+     \everydisplay{}\everymath{}%
+     \predisplaypenalty\@M \postdisplaypenalty\@M
+     $$% math display so we can test \predisplaysize
+      \lineskiplimit=-999pt % so we get pure \baselineskip
+      \abovedisplayskip=-\baselineskip \abovedisplayshortskip=-\baselineskip
+      \belowdisplayskip\z@skip \belowdisplayshortskip\z@skip
+      \halign{##\cr\noalign{%
+        % get the width of the line above
+        \ifdim\predisplaysize<\z@ 
+           \CurrentLineWidth\z@
+        \else
+           \CurrentLineWidth\predisplaysize 
+           % Correct the 2em offset, but avoid error when -\maxdimen
+           \advance\CurrentLineWidth -2em
+           \advance\CurrentLineWidth -\displayindent
+           \advance\CurrentLineWidth -\leftskip
+        \fi
+        % Enshrine the tab-to position; #1 might reference \CurrentLineWidth
+        \@tempdimb=#1\relax
+        %\message{*** Tab to \the\@tempdimb, previous width 
+        %     is \the\CurrentLineWidth. ***}%
+        % Build the action to perform
+        \protected@xdef\TTo@action{%
+           \vrule\@width\z@\@depth\the\prevdepth
+           \ifdim\CurrentLineWidth>\@tempdimb
+              \ifTTo@overlap\else
+                 \protect\newline \protect\null
+           \fi\fi
+           \protect\nobreak
+           \protect\hskip\the\@tempdimb\relax
+        }%
+        % get back to the baseline, regardless of its depth.
+        \vskip-\prevdepth
+        \prevdepth-99\p@
+        \vskip\prevdepth
+      }}%
+      $$
+     % Don't count the display as lines in the paragraph
+     \count@\prevgraf \advance\count@-4 \prevgraf\count@
+     \TTo@action
+%%   \penalty\@m % to allow a penalized line break
+   \fi
+   \endgroup
+   \TTo@overlapfalse
+   \ignorespaces
+ \fi
+}
+
+% \tab -- to the next position
+% \hskip so \tab\tab moves two positions
+% Allow a (penalized but flexible) line-break right after the tab.
+%
+\newcommand\tab{\leavevmode\hskip2sp\tabto{\NextTabStop}%
+  \nobreak\hskip\z@\@plus 30\p@\penalty4000\hskip\z@\@plus-30\p@\relax}
+
+
+% Expandable macro to select the next tab position from the list
+
+\newcommand\NextTabStop{%
+  \expandafter \TTo@nexttabstop \TabStopList,\maxdimen,>%
+}
+
+\def\TTo@nexttabstop #1,{%
+    \ifdim#1<\CurrentLineWidth
+      \expandafter\TTo@nexttabstop
+    \else
+      \ifdim#1<0.9999\linewidth#1\else\z@\fi
+      \expandafter\strip@prefix
+    \fi
+}
+\def\TTo@foundtabstop#1>{}
+
+\newcommand\TabPositions[1]{\def\TabStopList{\z@,#1}}
+
+\newcommand\NumTabs[1]{%
+   \def\TabStopList{}%
+   \@tempdimb\linewidth 
+   \divide\@tempdimb by#1\relax
+   \advance\@tempdimb 1sp % counteract rounding-down by \divide
+   \CurrentLineWidth\z@
+   \@whiledim\CurrentLineWidth<\linewidth\do {%
+     \edef\TabStopList{\TabStopList\the\CurrentLineWidth,}%
+     \advance\CurrentLineWidth\@tempdimb
+   }%
+   \edef\TabStopList{\TabStopList\linewidth}%
+}
+
+% default setting of tab positions:
+\TabPositions{\parindent,.5\linewidth}
+
+\newif\ifTTo@overlap \TTo@overlapfalse

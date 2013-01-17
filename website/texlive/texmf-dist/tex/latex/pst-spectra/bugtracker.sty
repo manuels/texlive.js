@@ -1,0 +1,418 @@
+%--------------------------------------------------
+% Provides a simple, text-based bug tracker. 
+%
+% Idea: simply write a text-todo list into a tex file, and write
+% trivial support macros which allow to provide priorities, status
+% flags and sorting capabilities. Sort key:
+% (section,isactive,priority). Can be processed with pgfplotstable.
+% Could also support the codeexample environment of pgfmanual.
+%   -> Advantages: 
+%   - simple human readable text files (I like that!)
+%   - independent of any tool
+%   - can be sorted
+%   UI:
+%   \begin{feature}[<status>][prio=<num>]
+%   <text>
+%   \end{feature}
+% 
+%   \begin{bug}[<status>][prio=<num>]
+%   <text>
+%   \end{bug}
+%   Idea: collect *all* entries in one huge array, then sort this array, then
+%   typeset the result. Should work reasonably, I guess. If it is too slow,
+%   typeset directly.
+%-------------------------------------------------- 
+%
+\ProvidesPackage{bugtracker}[2010/07/23 Version 0.1]
+
+\RequirePackage{pgfplotstable}
+\RequirePackage{listings}
+\RequirePackage{hyperref}
+
+\ifx\scantokens\@undefined
+  \PackageError{pgfmanual-macros}{You need to use extended latex
+    (elatex) or (pdfelatex) to process this document}{}
+\fi
+
+\def\bugtracker@init@items{%
+}%
+
+{
+\catcode`\[=1
+\catcode`\]=2
+\catcode`\{=12
+\catcode`\}=12
+\gdef\bugtracker@lbrace[{]
+\gdef\bugtracker@rbrace[}]
+]
+{
+\catcode`\|=0
+|catcode`\\=12
+|gdef|bugtracker@bslash{\}
+}
+
+% #1: the environment (item) name
+% #2: the sort order (an integer)
+\def\declarebugtrackeritem#1#2{%
+	\expandafter\def\expandafter\bugtracker@init@items\expandafter{%
+		\bugtracker@init@items
+		\expandafter\gdef\csname c@bugtracker@#1\endcsname{0}%
+	}%
+	\expandafter\edef\csname bugtracker@end@#1\endcsname{\bugtracker@bslash end\bugtracker@lbrace #1\bugtracker@rbrace}%
+	\expandafter\def\csname #1\endcsname{\bugtracker@collect{#1}}%
+	\expandafter\def\csname end#1\endcsname{\relax}%
+	\pgfkeyssetvalue{/bugtracker/sort order/#1}{#2}%
+}%
+
+\newif\ifbugtracker@sort
+
+\newenvironment{bugtracker}{%
+	\let\bugtracker@enqueue=\bugtracker@enqueue@ACTIVE
+	\pgfplotsarraynewemptyglobal\bugtrackeritems
+}{%
+	\ifbugtracker@sort
+		\begingroup
+		\pgfkeyslet{/pgfplots/iflessthan/.@cmd}\bugtracker@iflessthan
+		\pgfkeysdef{/pgfplots/array/unscope pre}{\bugtracker@typeset}%
+		\pgfkeysdef{/pgfplots/array/unscope post}{}%
+		\pgfplotsarraysort\bugtrackeritems
+		\endgroup
+	\else
+		\bugtracker@typeset
+	\fi
+}%
+
+\def\bugtrackerset{\pgfqkeys{/bugtracker}}%
+
+
+\def\bugtracker@collect#1{%
+	\pgfutil@ifnextchar[{%
+		\bugtracker@collect@status{#1}%
+	}{%
+		\bugtracker@collect@status{#1}[open]%
+	}%
+}%
+\def\bugtracker@collect@status#1[#2]{%
+	\pgfutil@ifnextchar[{%
+		\bugtracker@collect@status@opt{#1}[#2]%
+	}{%
+		\bugtracker@collect@status@opt{#1}[#2][]%
+	}%
+}%
+\def\bugtracker@collect@status@opt#1[#2][#3]{%
+	\begingroup
+	\bugtrackerset{#2,#3}%
+	\expandafter\let\expandafter\bugtracker@temp\csname bugtracker@end@#1\endcsname
+	\expandafter\long\expandafter\def\expandafter\bugtracker@collect@until\expandafter##\expandafter1\bugtracker@temp{\bugtracker@enqueue{#1}{##1}}%
+	\bugtracker@prepare@collect
+	\bugtracker@collect@until
+}%
+
+
+\def\bugtracker@prepare@collect{%
+	\def\do##1{\catcode`##1=12 }\dospecials
+	\catcode`\^^M=12
+	\catcode`\^^J=12
+	\catcode`\^^I=12
+}%
+
+\def\bugtracker@restore@catcodes{%
+	\catcode`\^^M=5
+	\catcode`\^^J=10
+	\catcode`\^^I=10
+	% this is important to get \scantokens to work: otherwise, it will
+	% eat up the ^^M chars:
+	\endlinechar=`\^^M
+	\newlinechar=\endlinechar
+}%
+
+\long\def\bugtracker@enqueue#1#2{%
+	\toks0={#2}%
+	\edef\bugtracker@entry{{#1}{\bugtracker@status}{\pgfkeysvalueof{/bugtracker/prio}}{\the\toks0}{\the\inputlineno}}%
+	\expandafter\pgfplotsarraypushbackglobal\expandafter{\bugtracker@entry}\to\bugtrackeritems
+	\endgroup
+	\end{#1}%
+}%
+\let\bugtracker@enqueue@ACTIVE=\bugtracker@enqueue
+\long\def\bugtracker@enqueue#1#2{%
+	\PackageError{bugtracker}{Sorry, bug tracker elements can only be used inside of \string\begin{bugtracker} ... \string\end{bugtracker}. Discarding this element}{}%
+}%
+
+\long\def\bugtracker@unpack#1#2#3#4#5{%
+	\bugtrackerset{name={#1},status=#2,prio=#3,source line={#5}}%
+	\def\bugtracker@content{#4}%
+}%
+
+\long\def\bugtracker@unpack@sorting#1#2#3#4#5{%
+	\edef\bugtracker@name	{\pgfkeysvalueof{/bugtracker/sort order/#1}}%
+	\edef\bugtracker@status{\pgfkeysvalueof{/bugtracker/status order/#2}}%
+	\def\bugtracker@prio{#3}%
+	\def\bugtracker@source{#5}%
+}%
+\def\bugtracker@iflessthan#1#2#3#4\pgfeov{%
+	\expandafter\bugtracker@unpack@sorting#1%
+	\let\bugtracker@nameA=\bugtracker@name
+	\let\bugtracker@statusA=\bugtracker@status
+	\let\bugtracker@prioA=\bugtracker@prio
+	\let\bugtracker@sourceA=\bugtracker@source
+	%
+	\expandafter\bugtracker@unpack@sorting#2%
+	%
+	\def\bugtracker@lt{0}%
+	\ifnum\bugtracker@nameA<\bugtracker@name
+		\def\bugtracker@lt{1}%
+	\else
+		\ifnum\bugtracker@nameA=\bugtracker@name
+			\ifnum\bugtracker@statusA<\bugtracker@status
+				\def\bugtracker@lt{1}%
+			\else
+				\ifnum\bugtracker@statusA=\bugtracker@status
+					\ifnum\bugtracker@prioA>\bugtracker@prio
+						\def\bugtracker@lt{1}%
+					\else
+						\ifnum\bugtracker@prioA=\bugtracker@prio
+							\ifnum\bugtracker@sourceA<\bugtracker@source
+								\def\bugtracker@lt{1}%
+							%\else
+								%\ifnum\bugtracker@sourceA=\bugtracker@source
+								%\fi
+							\fi
+						\fi
+					\fi
+				\fi
+			\fi
+		\fi
+	\fi
+	\if1\bugtracker@lt #3\else #4\fi
+}%
+
+
+\long\def\bugtracker@typeset@#1#2{%
+	\pgfkeysvalueof{/bugtracker/typeset/.@cmd}{#1}{#2}\pgfeov
+}%
+
+\def\bugtracker@typeset{%
+	\let\minimal=\bugtracker@minimal@env
+	\def\endminimal{\relax}%
+	%
+	\pgfkeysvalueof{/bugtracker/font}%
+	\bugtracker@init@items
+	\gdef\bugtracker@isfirst{1}%
+	\pgfplotsarrayforeach\bugtrackeritems\as\entry{%
+		\if1\bugtracker@isfirst
+		\else
+			\vskip\pgfkeysvalueof{/bugtracker/vskip}
+		\fi
+		\expandafter\bugtracker@unpack\entry
+		%
+		\edef\c@bugtracker{\csname c@bugtracker@\pgfkeysvalueof{/bugtracker/name}\endcsname}%
+		\expandafter\pgfplotsutil@advancestringcounter@global\csname c@bugtracker@\pgfkeysvalueof{/bugtracker/name}\endcsname
+		%
+		\message{bugtracker: processing \jobname.tex:\pgfkeysvalueof{/bugtracker/source line}...^^J}%
+		\begingroup
+			\bugtracker@restore@catcodes
+			\expandafter\bugtracker@typeset@\expandafter{\expandafter\scantokens\expandafter{\bugtracker@content}}{\c@bugtracker}%%
+		\endgroup
+		\gdef\bugtracker@isfirst{0}%
+	}%
+}%
+
+\bugtrackerset{
+	sort/.is if=bugtracker@sort,
+	sort=true,
+	name/.initial=,
+	typeset name/.code={%
+		\pgfkeysifdefined{/bugtracker/name text/#1}{%
+			\pgfkeysvalueof{/bugtracker/name text/#1}%
+		}{%
+			#1%
+		}%
+	},
+	prio/.initial=5,
+	source line/.initial=,
+	status/.is choice,
+	status/open/.code=	{\def\bugtracker@status{open}},
+	status/closed/.code=	{\def\bugtracker@status{closed}},
+	status/cancelled/.code=	{\def\bugtracker@status{cancelled}},
+	status/partially/.code=	{\def\bugtracker@status{partially}},
+	status/-/.style=	{/bugtracker/status/open},
+	status/+/.style=	{/bugtracker/status/closed},
+	status/X/.style=	{/bugtracker/status/cancelled},
+	status=open,
+	status order/open/.initial=0,
+	status order/closed/.initial=10,
+	status order/cancelled/.initial=7,
+	status order/partially/.initial=1,
+	shell escape/.initial=-shell-escape,
+	prefix/.initial=\jobname-,
+	file ext/.initial=pdf,
+	system call/.initial={pdflatex \bugtracker@checkshellescape -halt-on-error -interaction=batchmode -jobname "\image" "\texsource"},
+	vskip/.initial=\baselineskip,
+	font/.initial={%
+		\parindent=0pt
+		\raggedright
+	},
+	% #1: a running index.
+	typeset id/.code={%
+		\begin{minipage}[t]{3cm}%
+		\raggedleft
+		%[\##1]\par
+		{\ttfamily \jobname.tex:\pgfkeysvalueof{/bugtracker/source line}}
+		\end{minipage}
+	},
+	typeset/.code 2 args={%
+		\noindent
+		\paragraph{%
+			\protect\llap{\normalfont\scriptsize \protect\bugtrackerset{/bugtracker/typeset id=#2}\hspace{2em}}%
+			\protect\bugtrackerset{/bugtracker/typeset name={\pgfkeysvalueof{/bugtracker/name}}}
+		%	\##2
+		}
+			[\bugtracker@status, Priority \pgfkeysvalueof{/bugtracker/prio}] 
+		\vskip4pt
+		{%
+			\noindent
+			\parskip=\baselineskip
+			#1%
+			\par
+		}%
+		%{\scriptsize Entry in {\ttfamily \jobname.tex:\pgfkeysvalueof{/bugtracker/source line}}}%
+	},%
+	typeset minimal/.code={%
+		\ifvmode
+			\noindent
+		\fi
+		\href{file:\bugtracker@minimal@filename@}{[\textcolor{blue}{see \texttt{\filename}}]}%
+		\bugtracker@minimal@typeset@{#1}%
+	},
+	.unknown/.code={%
+		\edef\bugtracker@tempkey{\noexpand\pgfkeysalso{/bugtracker/status=\pgfkeyscurrentname}}%
+		\bugtracker@tempkey
+	},
+}
+
+\declarebugtrackeritem{feature}{10}
+\declarebugtrackeritem{bug}{5}
+\declarebugtrackeritem{doctodo}{0}
+
+\bugtrackerset{
+	name text/feature/.initial=Feature Proposal,
+	name text/bug/.initial=Bug,
+	name text/doctodo/.initial=Documentation Todo,
+}
+
+
+\lstdefinestyle{minimalexample}{
+	basicstyle=\ttfamily\footnotesize,
+	columns=fullflexible,
+}
+
+
+% a 
+% \begin{minimal}
+% \end{minimal}
+% environment which is executed automatically :
+\newcount\c@bugtracker@minimal
+\c@bugtracker@minimal=0
+
+\def\bugtracker@minimal@env{%
+	\begingroup
+	\bugtracker@prepare@collect
+	\bugtracker@minimal@collect
+}%
+\expandafter\edef\csname bugtracker@temp\endcsname{\bugtracker@bslash end\bugtracker@lbrace minimal\bugtracker@rbrace}%
+\expandafter\long\expandafter\def\expandafter\bugtracker@minimal@collect\expandafter#\expandafter1\bugtracker@temp{%
+	\endgroup
+	\edef\bugtracker@minimal@filename{\pgfkeysvalueof{/bugtracker/prefix}\the\c@bugtracker@minimal}%
+	\edef\bugtracker@minimal@filename@{\bugtracker@minimal@filename.\pgfkeysvalueof{/bugtracker/file ext}}%
+	\global\advance\c@bugtracker@minimal by1
+	%
+	\IfFileExists{\bugtracker@minimal@filename@}{}{%
+		\bugtracker@minimal@create{#1}%
+	}%
+	\bugtracker@minimal@typeset{#1}%
+	\end{minimal}%
+}%
+\long\def\bugtracker@minimal@typeset#1{%
+	\begingroup
+		\pgfplotscommandtostring\bugtracker@minimal@filename@\filename
+		\bugtracker@restore@catcodes
+		\edef\bugtracker@temp##1{%
+			\bugtracker@bslash begin{lstlisting}[style=minimalexample]%
+			##1%
+			\bugtracker@bslash end{lstlisting}%
+		}%
+		\def\bugtracker@temp@##1{\pgfkeysvalueof{/bugtracker/typeset minimal/.@cmd}{##1}\pgfeov}%
+		\expandafter\bugtracker@temp@\expandafter{\bugtracker@temp{#1}}%
+	\endgroup
+}%
+\long\def\bugtracker@minimal@typeset@#1{%
+	\scantokens{#1}%
+}%
+\long\def\bugtracker@minimal@create#1{%
+	%
+	\immediate\openout\w@pgf@writea=\bugtracker@minimal@filename\relax
+	\immediate\write\w@pgf@writea{#1}%
+	\immediate\closeout\w@pgf@writea
+	%
+	\bugtracker@assemble@systemcall\bugtracker@minimal@filename\bugtracker@temp
+\message{Issuing system-call^^J$ \bugtracker@temp^^J}%
+	\immediate\write18{\bugtracker@temp}%
+	\IfFileExists{\bugtracker@minimal@filename@}{}{%
+		\PackageError{bugtracker}{Sorry, the system call '\bugtracker@temp' did NOT result in a usable output file '\bugtracker@minimal@filename@' (adjust '/bugtracker/file ext' if needed). Please verify that you have enabled system calls. For pdflatex, this is 'pdflatex -shell-escape'. Sometimes it is also named 'write 18' or something like that. Or maybe the command simply failed? Error messages can be found in '\bugtracker@minimal@filename.log'}{}%
+	}%
+}
+
+{
+\catcode`\"=12
+\catcode`\'=12
+\catcode`\;=12
+\catcode`\&=12
+\catcode`\-=12
+\xdef\bugtracker@normal@dq{"}
+\xdef\bugtracker@normal@sq{'}
+\xdef\bugtracker@normal@semic{;}
+\xdef\bugtracker@normal@and{&}
+\xdef\bugtracker@normal@dash{-}
+\catcode`\"=13
+\catcode`\'=13
+\catcode`\;=13
+\catcode`\&=13
+\catcode`\-=13
+\gdef\bugtracker@activate@normal@dq{\let"=\bugtracker@normal@dq}
+\gdef\bugtracker@activate@normal@sq{\let'=\bugtracker@normal@sq}
+\gdef\bugtracker@activate@normal@semic{\let;=\bugtracker@normal@semic}
+\gdef\bugtracker@activate@normal@and{\let&=\bugtracker@normal@and}
+\gdef\bugtracker@activate@normal@dash{\let-=\bugtracker@normal@dash}
+\catcode`\|=0
+\catcode`\\=12
+|xdef|bugtracker@normal@backslash{\}%
+}
+% Creates the '/bugtracker/system call' command as string and
+% returns it into the (global!) macro #2.
+% #1: the output file name 
+% #2: the global return value macro
+%
+\def\bugtracker@assemble@systemcall#1#2{%
+	\begingroup
+		\def\image{#1}%
+		\let\texsource=\image
+		\ifnum\the\catcode`\"=13 \bugtracker@activate@normal@dq\fi
+		\ifnum\the\catcode`\'=13 \bugtracker@activate@normal@sq\fi
+		\ifnum\the\catcode`\;=13 \bugtracker@activate@normal@semic\fi
+		\ifnum\the\catcode`\-=13 \bugtracker@activate@normal@dash\fi
+		\let\\=\bugtracker@normal@backslash
+		\xdef#2{\pgfkeysvalueof{/bugtracker/system call}}%
+	\endgroup
+}%
+
+\pgfutil@ifundefined{pdfshellescape}{%
+	\def\bugtracker@checkshellescape{}%
+}{%
+	\ifnum\pdfshellescape=1
+		\def\bugtracker@checkshellescape{\pgfkeysvalueof{/bugtracker/shell escape}\space}%
+	\else
+		\def\bugtracker@checkshellescape{}%
+	\fi
+}%
+
+\endinput

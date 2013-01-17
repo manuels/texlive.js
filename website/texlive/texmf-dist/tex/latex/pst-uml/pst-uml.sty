@@ -1,0 +1,860 @@
+%%
+%% This is file `pst-uml.sty',
+%%
+%% IMPORTANT NOTICE:
+%%
+%% Package `pst-uml.sty'
+%%
+%% Maurice Diamantini <diam@ensta.fr>
+%%
+%% Jan 01, 2007
+%%
+%% This program can be redistributed and/or modified under the terms
+%% of the LaTeX Project Public License Distributed from CTAN archives
+%% in directory macros/latex/base/lppl.txt.
+%%
+%% DESCRIPTION:
+%%   `pst-uml' is a PSTricks package to draw UML diagrams
+%%
+% Inspir\'e des exemples de Denis GIROU
+%
+%
+\def\filename{pst-uml}
+\def\fileBut{Quelques macros pstricks pour diagrammes UML}
+\def\fileversion{0.83}
+\def\filedate{2007/01/03}
+\def\fileMailAutor{diam@ensta.fr}
+%
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{\filename}%
+   [\filedate\space v\fileversion\space-\space\fileMailAutor]
+\typeout{\space\space\space But\space:\space\fileBut.}
+%
+\RequirePackage{pstricks}
+\RequirePackage{pst-node}
+\RequirePackage{pst-tree}
+\RequirePackage{multido}
+
+\RequirePackage{calc}
+\RequirePackage{ifthen}
+
+\RequirePackage{graphicx} % a charger APRES pstricks
+\RequirePackage{pst-xkey}
+%
+\pst@addfams{pst-uml}
+%
+% D\'efinition de quelques couleur par d\'efaut utilis\'ees pour UML
+%
+\definecolor{UMLgreyLight}{gray}{0.9}
+\definecolor{UMLgrey80}   {gray}{0.8}
+%
+% Quelques variable ou boite temporaires :
+%
+% compteur (i.e. entiers) pour les calculs temporaires
+\newcounter{umlint@a}
+\newcounter{umlint@b}
+\newcounter{umlint@c}
+\newcounter{umlint@d}
+% longueurs pour les calculs temporaires
+\newlength{\umldim@a}
+\newlength{\umldim@b}
+\newlength{\umldim@c}
+\newlength{\umldim@d}
+\newlength{\umldim@D}% Depth
+\newlength{\umldim@H}% Height
+\newlength{\umldim@W}% Width
+% boite temporaire de memoristion des parametres
+\newsavebox{\umlbox@a}
+\newsavebox{\umlbox@b}
+\newsavebox{\umlbox@c}
+\newsavebox{\umlbox@d}
+\newsavebox{\umlbox@out}
+% boolean temporaires
+\newboolean{umlbool@a}
+\newboolean{umlbool@b}
+\newboolean{umlbool@c}
+\newboolean{umlbool@d}
+
+% Affectation des valeurs par defaut standard de pstricks :
+
+\psset{
+   % labelsep=0.5mm,  	% au lieu de plus/minus 2mm
+   labelsep=1mm,  	% au lieu de plus/minus 2mm
+   subgriddiv=1,    	% pour une grille de 1cm en pointilles
+   griddots=10,
+   gridlabels=6pt,
+   arrowscale=2,
+}
+\SpecialCoor
+
+% Definition des parametres par d\'efaut (nouvelles longueurs, ...)
+
+% % For debug : ShowPosition
+% %
+% % usage :
+% % \ifthenelse{\value{umlDebug} > 0}{\ShowPosition}{}%
+% %
+% \newboolean{umlDebug}\setboolean{umlDebug}{false}
+
+% Un entier pour Degoguer
+% ATTENTION : si pb de port\'ee de variable (si besoin compteur global) :
+%             passer par \edef
+%
+\newcounter{umlDebug}
+\define@key[psset]{pst-uml}{umlDebug}{%
+  \setcounter{umlDebug}{#1}%
+  %
+  % \setcounter{umlint@a}{#1}
+  % \setcounter{umlDebug}{\the\umlint@a}%
+  %
+  % \pst@cntg=#1\relax%
+  % \edef\psk@Integer{\the\pst@cntg}%
+}
+%
+% Alignement du texte dans la boite umlstack (l, c, r)
+\newcommand{\umlstr@Align}{}
+\define@key[psset]{pst-uml}{umlAlign}{\renewcommand{\umlstr@Align}{#1}%
+    \@ifundefined{newcolumntype}{}{%   set alignment for array package
+        \newcolumntype{U}{#1}}}
+
+% Positionnement vertical de la boite umlstack (t, b, c)
+\newcommand{\umlstr@Pos}{}
+\define@key[psset]{pst-uml}{umlPos}{\renewcommand{\umlstr@Pos}{#1}}
+
+% Distance de s\'eparation du texte à la boite umlstack
+%   Influe sur colsep pour l'espace horizontal et sur des strut pour
+%   l'espace vertical
+\newlength\umldim@StackSep
+\define@key[psset]{pst-uml}{umlStackSep}{\pssetlength\umldim@StackSep{#1}}
+
+% coo\'eficient de modif de l'interligne de umlstack
+\newcommand{\umlreal@StackLinesStretch}{}
+\define@key[psset]{pst-uml}{umlStackLinesStretch}{%
+          \renewcommand{\umlreal@StackLinesStretch}{#1}}
+
+% Largeur de la boite "umlStack"
+\newlength\umldim@StackWidth
+\define@key[psset]{pst-uml}{umlStackWidth}{\pssetlength\umldim@StackWidth{#1}}
+
+% Largeur de la boite "classe"
+\newlength\umldim@ClassWidth
+\define@key[psset]{pst-uml}{umlClassWidth}{\pssetlength\umldim@ClassWidth{#1}}
+
+% distance entre deux \hline dans la boite "classe"
+\newlength\umldim@umlDoubleRuleSep
+\define@key[psset]{pst-uml}{umlDoubleRuleSep}{\pssetlength\umldim@umlDoubleRuleSep{#1}}
+
+% Chaine "Template"
+% umlParameter
+\newcommand{\umlstr@umlParameter}{}
+\define@key[psset]{pst-uml}{umlParameter}{\renewcommand{\umlstr@umlParameter}{#1}}
+
+
+% % un parametre boolean
+% \newif\ifuml@Shadow
+% \define@key[psset]{pst-uml}{umlShadow}[true]{\@nameuse{uml@Shadow#1}}
+% un parametre boolean
+\newboolean{umlbool@Shadow}
+\define@key[psset]{pst-uml}{umlShadow}[true]{\setboolean{umlbool@Shadow}{#1}}
+
+
+% Epaisseur de ligne pour le dessin d'un acteur
+\newlength\umldim@ActorLineWidth
+\define@key[psset]{pst-uml}{umlActorLineWidth}{\pssetlength\umldim@ActorLineWidth{#1}}
+
+% Nom d'un objet (umlState, ...) N'EST PAS UTILISE !
+\newcommand{\umlname@umlTitle}{}
+\define@key[psset]{pst-uml}{umlTitle}{\renewcommand{\umlname@umlTitle}{#1}}
+
+% Affectation des valeurs par defaut sprecifique a pst-uml:
+\psset{
+   umlClassWidth=0,
+   umlShadow=true,
+   umlActorLineWidth=0.6mm,
+   umlParameter=,
+   umlTitle=,
+   umlDoubleRuleSep=2mm,
+   umlStackLinesStretch=0.85,
+   umlStackSep=0,
+   umlStackWidth=0,
+   umlAlign=c,
+   umlPos=c,
+}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Quelques commandes utilitaires generales :
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% pour passer plusieurs lignes (par \\) dans un parametre simple
+%
+% La difficult\'e \'etait de g\'erer l'option "StackSep" pour le
+% haut et le bas du texte.
+% ATTENTION il faut s'assurer que cette commande fonctionne même
+% si le texte pass\'e en parametre commence ou finit par \hline !
+%
+%
+\newcommand{\umlStack}[2][]{{%
+   \psset{#1}%
+   \setlength{\tabcolsep}{\umldim@StackSep}%
+   \renewcommand{\arraystretch}{\umlreal@StackLinesStretch}%
+   \ifthenelse{\lengthtest{\umldim@StackWidth=0pt}}{%
+     % dimensionnement automatique
+     \@ifundefined{newcolumntype}{% standard
+       \begin{tabular}[\umlstr@Pos]{\umlstr@Align}%
+     }{% for array package, columntype U was defined previous
+       \begin{tabular}[\umlstr@Pos]{U}%
+     }%
+   }{% else
+     % dimensionnement fixe
+     \@ifundefined{newcolumntype}{% see above
+       \begin{tabular*}{\umldim@StackWidth}[\umlstr@Pos]{\umlstr@Align}%
+     }{%
+       \begin{tabular*}{\umldim@StackWidth}[\umlstr@Pos]{U}%
+     }%
+   }% endif
+   % \begin{tabular}[\umlstr@Pos]{\umlstr@Align}%
+      \setlength{\umldim@a}{1.5ex+\umldim@StackSep}%
+      \rule{0pt}{\umldim@a}%
+      \\[-2.5ex]%
+      #2%
+      \\[-2.5ex]%
+      \setlength{\umldim@a}{-\umldim@StackSep}%
+      \rule[-\umldim@StackSep]{0pt}{0pt}%
+   % \end{tabular}%
+   \ifthenelse{\lengthtest{\umldim@StackWidth=0pt}}{%
+     % dimensionnement automatique
+     \end{tabular}%
+   }{% else
+     % dimensionnement fixe
+     \end{tabular*}%
+   }% endif
+}}
+
+% FONCTIONNE MAIS LE PREMIER \rule gene si #2 commence par \hline
+% \newcommand{\umlStack}[2][]{{%
+%    \psset{#1}%
+%    \setlength{\tabcolsep}{\umldim@StackSep}%
+%    \renewcommand{\arraystretch}{\umlreal@StackLinesStretch}%
+%    \begin{tabular}{\umlstr@Align}%
+%       \setlength{\umldim@a}{1.5ex+\umldim@StackSep}%
+%       \rule{0pt}{\umldim@a}%
+%       #2%
+%       \setlength{\umldim@a}{-\umldim@StackSep}%
+%       \rule[-\umldim@StackSep]{0pt}{0pt}
+%    \end{tabular}%
+% }}
+
+% Pour creer une boite vide width, height
+% Exemple \umlEmptyBox{7cm}{10cm}
+\newcommand{\umlEmptyBox}[2]{%
+  \rule{#1}{0cm}%
+  \rule{0cm}{#2}%
+}
+
+% permet d'afficher <<MonStereoType>> sans serif.
+\newcommand{\umlStereoType}[1]{%
+  {\footnotesize\ensuremath{\ll}}\textsf{#1}{\footnotesize\ensuremath{\gg}}%
+}
+
+% permet d'afficher un triangle plein vers la droite.
+% Pas d'option pour l'instant
+\newcommand{\umlTriRight}[1][]{{%
+  \psset{#1}%
+  \space
+  \begin{pspicture}(0,0)(1.1ex,1.1ex)%
+      \pstriangle[linewidth=0,fillstyle=solid,fillcolor=black,gangle=-90]%
+            (0.55ex,0.55ex)(1.1ex,1.1ex)%
+  \end{pspicture}%
+  \space
+}}
+% permet d'afficher un triangle plein vers la gauche.
+% Pas d'option pour l'instant
+\newcommand{\umlTriLeft}[1][]{{%
+  \psset{#1}%
+  \space
+  \begin{pspicture}(0,0)(1.1ex,1.1ex)%
+      \pstriangle[linewidth=0,fillstyle=solid,fillcolor=black,gangle=90]%
+            (0.55ex,0.55ex)(1.1ex,1.1ex)%
+  \end{pspicture}%
+  \space
+}}
+
+% For drawing a grid of 1cm in pointed line
+% but \showgrid could be already define by another package
+% PLANTE SI \showgrid EST REDEFINIE DANS fvrbext.sty
+% \providecommand{\showgrid}{%
+%    \psset{subgriddiv=1,griddots=10,gridlabels=6pt,}
+%    \psgrid
+% }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% La macro principal pour dessiner une classe :
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Le corps de la commande est entre {{ }} pour assurer des changements
+% LOCAUX des valeurs de parametres (tels que \psset{...})
+\newcommand{\umlClass}[3][]{{%
+  \psset{#1}%             Reading keyOptions
+  \setlength{\doublerulesep}{\umldim@umlDoubleRuleSep}%
+  \def\next{#2}%
+  \ifx\next\empty%
+    % Title IS EMPTY (JAMAIS UTILISE ! : A VIRER ??)
+    \sbox{\umlbox@out}{\texttt{\umlStack[umlStackSep=1ex]{#3}}}%
+  \else%
+    % Title is NOT EMPTY
+    \def\next{#3}%
+    \ifx\next\empty%
+      % Body IS EMPTY
+      \sbox{\umlbox@out}{\textbf{\umlStack[umlStackSep=1ex]{#2}}}%
+    \else%
+      % Body is NOT EMPTY
+      \sbox{\umlbox@out}{\ttfamily%
+         \begin{tabular}{l}%
+              \hfil\normalfont\textbf{%
+                 \setlength{\tabcolsep}{0pt}
+                 \begin{tabular}{c}
+                     #2
+                 \end{tabular}
+              }%
+              \\ \hline%
+              #3%
+         \end{tabular}%
+      }%
+    \fi%
+  \fi%
+  % Output box is now define
+  %
+  % On dessine la boite finale :
+  \ifthenelse{\boolean{umlbool@Shadow}}{%
+     \psshadowbox[fillstyle=solid,framesep=0,fillcolor=UMLgrey80]%
+            {\usebox{\umlbox@out}}%
+  }{%
+     {\setlength{\fboxsep}{0pt}\fbox{\usebox{\umlbox@out}}}%
+  }%
+  %
+  % On superpose \'eventuellement le template (rectangle pointill\'e)
+  %
+  \settowidth{\umldim@a}{\umlstr@umlParameter}%
+  \ifthenelse{\lengthtest{\umldim@a=0pt}}{%
+  }{%
+     \settoheight{\umldim@H}{\usebox{\umlbox@out}}% Height
+     \setlength{\umldim@a}{1.5ex}%  dx
+     \setlength{\umldim@b}{\umldim@H - 0.3ex}% Height - dy
+     %
+     \rput[br](\umldim@a,\umldim@b){%
+        \psframebox[fillstyle=solid,fillcolor=white,linestyle=dashed]%
+             {\Large\textbf{\umlstr@umlParameter}}%
+     }%
+  }%
+  %
+}}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Memorisation d'une classe dans une boite
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Surcourche à la commande de dessin de classe :
+% CECI FONCTIONNE MAL (la boite cree s'appel "#" )
+% Je n'ai pas reussi en jonglant aves les \csname et autre \@nameuse
+\newcommand{\umlSaveClass}[3][]{%
+  \newsavebox{\#2}%
+  \savebox{\#2}{%
+    \umlClass[#1]{#2}{#3}%
+  }%
+}
+% Pas de \umlUseClass car sera egalement utilis\'ee pour les acteurs, ...
+\newcommand{\umlUseBox}[1]{\usebox{\#1}}
+
+
+% % Surcourche à la commande de dessin de classe :
+% %
+% % CECI FONCTIONNE PAS :
+% %     \newsavebox{\csname#2\endcsname} PLANTE :
+% % idem avec :
+% %     \expandafter\newsavebox{\csname#2\endcsname}
+% % ! LaTeX Error: Command \csnameClasse 1 bis\endcsname  already defined.
+% %
+% \newcommand{\umlSaveClass}[3][]{%
+%   \typeout{**************avant newsavebox }
+%   \expandafter\newsavebox{\csname#2\endcsname}%
+%   \typeout{**************apres newsavebox }
+%   \savebox{\csname#2\endcsname}{%
+%     \typeout{**************apres savebox }
+%     \umlClass[#1]{#2}{#3}%
+%   }%
+% }
+% % Pas de \umlUseClass car sera aussi utilis\'ee pour les acteurs, ...
+% \newcommand{\umlUseBox}[1]{%
+%     \typeout{***************avant use box }
+%   \usebox{\csname#1\endcsname}%
+% }
+
+
+% % Surcourche à la commande de dessin de classe :
+% % CECICOMPILE MAIS  FONCTIONNE PAS
+% % affiche "Classe 1bisClasse 1bis"  (nom double) sous la classe
+% \newcommand{\umlSaveClass}[3][]{%
+%   \newsavebox{\@nameuse{#2}}%
+%   \savebox{\@nameuse{#2}}{%
+%     \umlClass[#1]{#2}{#3}%
+%   }%
+% }
+% % Pas de \umlUseClass car sera aussi utilis\'ee pour les acteurs, ...
+% \newcommand{\umlUseBox}[1]{%
+%   \usebox{\@nameuse{#1}}%
+% }
+
+% % Surcourche à la commande de dessin de classe :
+% % CECI FONCTIONNE PAS :
+% % ! Illegal parameter number in definition of \@tempa.
+% % Je n'ai pas reussi en jonglant aves les \csname et autre \@nameuse
+% \newcommand{\umlSaveClass}[3][]{%
+%   \@namedef{boxname}{#2}
+%   \newsavebox{\expandafter\boxname}%
+%   \savebox{\expandafter\boxname}}{%
+%     \umlClass[#1]{#2}{#3}%
+%   }%
+% }
+% % Pas de \umlUseClass car sera aussi utilis\'ee pour les acteurs, ...
+% \newcommand{\umlUseBox}[1]{%
+%   \@namedef{boxname}{#1}
+%   \usebox{\expandafter\boxname}%
+% }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Memorisation d'une classe dans une commande
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% A faire (utiliser gdef par exemple ?)
+% s'assurer que la commande cree est GLOGALE !!
+
+
+% \newcommand{\umlDefClass}[3][]{%
+%   \@ifundefined{\csname#2\endcsname}{%
+%      % NOT DEFINE
+%      \typeout{^^Jcommande NON definie : "#2"^^J}%
+%      \newcommand{\csname#2\endcsname}{%
+%         \umlClass[#1]{#2}{#3
+%      }
+%   }{%
+%      % IS DEFINE
+%      \typeout{^^Jcommande DEJA definie : "#2"^^J}%
+%      \renewcommand{\csname#2\endcsname}{%
+%         \umlClass[#1]{#2}{#3
+%      }
+%   }
+% }
+% % Pas de \umlRunClass car sera aussi utilis\'ee pour les acteurs, ...
+% \newcommand{\umlRun}[1]{\@usename{#1}}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% La macro pour dessiner un acteur :
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcommand{\umlActor}[2][]{{%
+  \psset{unit=0.8,arrows=-}%
+  \psset{#1}%
+    \begin{tabular}[t]{c}%
+    \begin{pspicture}(-0.5,0)(0.5,1.9)%
+      \psset{linewidth=\umldim@ActorLineWidth}%
+      \pscircle(0,1.6){0.3\psyunit}%        la tete
+      \psline(0cm,.65)(0cm,1.3)%    le tronc
+      \psline(-0.25,0cm)(0cm,0.65)% jambe gauche
+      \psline(0.25,0cm)(0cm,0.65)%  jambe droite
+      \psline(-0.5,1)(0.5,1)%       les bras
+    \end{pspicture}\\
+    \begin{pspicture}(0,0)%
+      \setlength{\tabcolsep}{0pt}%
+      \begin{tabular}[t]{c}%
+      #2%
+      \end{tabular}%
+    \end{pspicture}\\
+  \end{tabular}%
+}}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% La macro pour dessiner les useCase :
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% \umlCase[keyOptions]{Title}{Body} : #2 = Title
+% Option : idem que psovalbox
+% Remarque : utiliser ovalnode et non pas rnode pour les placements
+%
+% BUG : \psovalbox creer une boite RECTANGULAIRE dans la quelle il y a
+% un oval => difficile de s\'eparer la CREATION du dessin et le PLACEMENT
+% de celui-ci avec la cr\'eation d'un node CONCLUSION : inutilis\'e !
+% (Utiliser plutot la commande suivante \umlCasePut)
+%
+\newcommand{\umlCase}[2][]{{%
+  \psset{#1}%             Reading keyOptions
+  \sbox{\umlbox@out}{\umlStack{#2}}%
+  \psovalbox{\usebox{\umlbox@out}}
+}}
+
+% Pour placer directement dans un ovalnode
+% UTILISATION :
+% \umlCasePut[keyOptions{10,2}{C6}{Identifier\\contraintes bloquantes}%
+%
+\newcommand{\umlCasePut}[4][]{{%
+  \psset{#1}%             Reading keyOptions
+  \rput(#2){\ovalnode[framesep=0]{#3}{\umlStack{#4}}}%
+}}
+\let\umlPutCase\umlCasePut % for compatibility
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% La macro pour dessiner les etats :
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% \umlState[keyOptions]{Title}{Body} : #2 = Title ; #3 = Body
+%
+\newcommand{\umlState}[3][]{{%
+  \psset{#1}%             Reading keyOptions
+  % \typeout{***** DEBUT umlState : Titre=:#2:, Body=:#3:}%
+  \def\next{#2}%
+  \ifx\next\empty
+    % \typeout{**Title IS EMPTY : #2}
+    \sbox{\umlbox@out}{\texttt{\umlStack[umlStackSep=0.35em]{#3}}}%
+  \else
+    % \typeout{**Title is NOT EMPTY : #2}%
+    \def\next{#3}%
+    \ifx\next\empty
+      % \typeout{**Body IS EMPTY : #3}%
+      \sbox{\umlbox@out}{\textbf{\umlStack[umlStackSep=.35em]{#2}}}%
+    \else
+      % \typeout{**Body is NOT EMPTY : #3}%
+      \sbox{\umlbox@out}{\umlStack{%
+              \textbf{%
+                 \umlStack[umlStackSep=.35em]{#2}%
+              }\\
+              \hline%
+              \texttt{%
+                 \umlStack[umlStackSep=.35em,umlAlign=l]{#3}%
+              }%\\%
+      }}%
+    \fi
+  \fi
+  \psframebox[framesep=0,cornersize=absolute,linearc=0.2]%
+             {\usebox{\umlbox@out}}%
+}}
+
+
+\newcommand{\umlStateIn}[1][]{{%
+  \psset{#1}%             Reading keyOptions
+  \begin{pspicture}[](-0.25,-0.25)(0.25,0.25)
+    \pscircle[fillstyle=solid,fillcolor=black]{0.25}%
+  \end{pspicture}%
+}}
+
+\newcommand{\umlStateOut}[1][]{{%
+  \psset{#1}%             Reading keyOptions
+  \begin{pspicture}[](-0.40,-0.40)(0.40,0.40)
+    \pscircle[fillstyle=solid,fillcolor=black]{0.25}%
+    \pscircle[fillstyle=none,linewidth=0.06]{0.40}%
+  \end{pspicture}%
+}}
+
+% Pour placer directement dans un cnode
+% UTILISATION :
+% \umlPutStateIn[keyOptions]{10,2}{stateInA}%
+%
+\newcommand{\umlPutStateIn}[3][]{{%
+  \psset{#1}%             Reading keyOptions
+  \rput(#2){\cnode[linestyle=none]{0.25}{#3}{%
+      \pscircle[fillstyle=solid,fillcolor=black]{0.25}%
+  }}%
+}}
+
+\newcommand{\umlPutStateOut}[3][]{{%
+  \psset{#1}%             Reading keyOptions
+  \rput(#2){\cnode[linestyle=none]{0.40}{#3}{%
+      \pscircle[fillstyle=solid,fillcolor=black]{0.25}%
+      \pscircle[fillstyle=none,linewidth=0.06]{0.40}%
+  }}%
+}}
+
+% A FAIRE : pour le pseudo-\'etat 'History"
+% \newcommand{\umlStateH}[1][]{{%
+%   \psset{#1}%             Reading keyOptions
+% }}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% La macro pour dessiner les notes :
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% \umlNote[keyOptions]{Body} :
+%
+\newcommand{\umlNote}[2][]{{%
+  \psset{umlAlign=l}%
+  \psset{#1}%             Reading keyOptions
+  \sbox{\umlbox@a}{\texttt{\umlStack[umlStackSep=1.5ex]{#2}}}%
+  \settowidth{\umldim@W}{\usebox{\umlbox@a}}% Width
+  \settoheight{\umldim@H}{\usebox{\umlbox@a}}% Height
+  \settodepth{\umldim@D}{\usebox{\umlbox@a}}% Depth
+  \setlength{\umldim@a}{\umldim@W - 2.0ex}% Width - coin
+  \setlength{\umldim@b}{\umldim@H - 2.0ex}% Height - coin
+  \setlength{\umldim@c}{\umldim@H + \umldim@D}% hauteur totale
+  \psframe(0,-\umldim@D)(\umldim@W,\umldim@H)%
+  \psframe[linecolor=white](\umldim@a,\umldim@b)(\umldim@W,\umldim@H)%
+  % On d\'ecalle le triangle vers l'int\'erieur pour qu'il ne d\'eborde pas :
+  \setlength{\umldim@W}{\umldim@W-1.0\pslinewidth}%
+  \setlength{\umldim@H}{\umldim@H-1.0\pslinewidth}%
+  % \setlength{\umldim@D}{\umldim@D-1.0\pslinewidth}%
+  \pspolygon(\umldim@W,\umldim@b)%
+            (\umldim@a,\umldim@H)%
+            (\umldim@a,\umldim@b)%
+            (\umldim@W,\umldim@b)%
+  \usebox{\umlbox@a}%
+}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Commandes de placement relatif de type "LOGO"
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% A partir d'une version TEX de Denis GIROU
+% Inspired by an idea of Sebastian Rahtz <s.rahtz@elsevier.co.uk>
+% (LGC, example 4-10-10)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% For debug : ShowPosition
+%
+% usage :
+% \ifthenelse{\value{umlDebug} > 0}{\ShowPosition}{}%
+%
+\newboolean{umlDebug}\setboolean{umlDebug}{false}
+\newcommand{\ShowPosition}[1][]{%
+   \typeout{%
+      **** umlCpt@Direction=\the\value{umlCpt@Direction} - %
+          X=\the\X\space - Y=\the\Y^^J%
+      \space\space\space\space#1^^J%
+   }%
+}%
+
+
+% Direction (non utilis\'ee pour l'instant) cod\'e en nombre de quart de cercle
+% (i x 90) =>  0 right, 1 up, 2 left, 3 down
+%
+\newcounter{umlCpt@Direction}\setcounter{umlCpt@Direction}{-1}
+
+% New length for recording current postion :
+\newlength{\umldim@PosX}%\setlength\umldim@PosX{0pt}
+\newlength{\umldim@PosY}%\setlength\umldim@PosY{0pt}
+% ALIAS for user ?
+\newlength{\X}%\setlength\X{\umldim@PosX}
+\newlength{\Y}%\setlength\Y{\umldim@PosY}
+
+% Reset position
+\newcommand{\ResetXY}{%
+  \pssetlength{\umldim@PosX}{0}%
+  \pssetlength{\umldim@PosY}{0}%
+  \pssetlength{\X}{0}%
+  \pssetlength{\Y}{0}%
+  \ifthenelse{\value{umlDebug} > 0}{\ShowPosition}{}%
+}
+\ResetXY
+% % For Getting X or Y position by the user.
+% \newcommand{\X}{\the\umldim@PosX}
+% \newcommand{\Y}{\the\umldim@PosY}
+
+% Set position
+\newcommand{\SetX}[1]{%
+  \pssetlength{\umldim@PosX}{#1}%
+  \pssetlength{\X}{#1}%
+  \ifthenelse{\value{umlDebug} > 0}{\ShowPosition}{}%
+}
+\newcommand{\SetY}[1]{%
+  \pssetlength{\umldim@PosY}{#1}%
+  \pssetlength{\Y}{#1}%
+  \ifthenelse{\value{umlDebug} > 0}{\ShowPosition}{}%
+}
+% IMPORTANT : essayer d'utiliser les nodes ou autre
+% coordonnees speciales de pstricks pour \SetXY :
+% Utilisation de \pst@getcoor et \pssetxlength
+\newcommand{\SetXY}[1]{%
+  \pssetxlength{\umldim@PosX}{#1}%
+  \pssetylength{\umldim@PosY}{#1}%
+  \pssetxlength{\X}{#1}%
+  \pssetylength{\Y}{#1}%
+  \ifthenelse{\value{umlDebug} > 0}{\ShowPosition}{}%
+}
+
+\newcommand{\incrX}[1]{%
+  % record the direction for later (NOT DONE)
+  % \setcounter{umlCpt@Direction}{0} % if #1 is positive
+  % \setcounter{umlCpt@Direction}{3} % if #1 is negative
+  % increment X position
+  \psaddtolength{\umldim@PosX}{#1}
+  \psaddtolength{\X}{#1}
+}
+\newcommand{\incrY}[1]{%
+  % record the direction for later (NOT DONE)
+  % \setcounter{umlCpt@Direction}{1} % if #1 is positive
+  % \setcounter{umlCpt@Direction}{4} % if #1 is negative
+  % increment Y position
+  \psaddtolength{\umldim@PosY}{#1}
+  \psaddtolength{\Y}{#1}
+}
+% For moving Est, West, North or Sud
+\newcommand{\moveE}[1]{\incrX{#1}}
+\newcommand{\moveW}[1]{\incrX{-#1}}
+\newcommand{\moveN}[1]{\incrY{#1}}
+\newcommand{\moveS}[1]{\incrY{-#1}}
+
+
+% % % \newcommand{\Right}[1]{%
+% % %   % record the direction for later
+% % %   \setcounter{umlCpt@Direction}{0}
+% % %   % increment X position
+% % %   \psaddtolength{\umldim@PosX}{#1}
+% % % }
+% % % \newcommand{\Up}[1]{%
+% % %   % record the direction for later
+% % %   \setcounter{umlCpt@Direction}{1}
+% % %   % increment Y position
+% % %   \psaddtolength{\umldim@PosY}{#1}
+% % % }
+% % %
+% % % \newcommand{\Left}[1]{%
+% % %   % record the direction for later
+% % %   \setcounter{umlCpt@Direction}{2}
+% % %   % decrement X position
+% % %   \psaddtolength{\umldim@PosX}{-#1}
+% % % }
+% % %
+% % % \newcommand{\Down}[1]{%
+% % %   % record the direction for later
+% % %   \setcounter{umlCpt@Direction}{3}
+% % %   % decrement Y position
+% % %   \psaddtolength{\umldim@PosY}{-#1}
+% % % }
+
+% % Put an object at current coordinates
+% \newcommand{\rputXY}[2][]{%
+%   \psset{#1}%
+%   \rput(\umldim@PosX,\umldim@PosY){#2}
+% }
+%
+% Put an object at current coordinates
+\newcommand{\rputXY}[2][]{%
+  \psset{#1}%
+  \rput(\umldim@PosX,\umldim@PosY){#2}%
+}
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% D\'efinition des "fleches" de UML (sous forme de labels)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcommand{\ncputicon}[2][]{{%
+   \psset{npos=0,nrot=:D}% defaut : au debut et vers la gauche
+   \psset{#1}%
+   \@ifundefined{umlicon@#2}%
+      {\typeout{^^JERREUR : FLECHE NON definie "#2"^^J}}%
+      {}%                   FLECHE BIEN definie
+   \ncput{\@nameuse{umlicon@#2}}
+}}
+% Definition des fleches de base (vers la droite)
+%   Utiliser nrot=:U pour une orientation vers la droite (Up)
+%   Utiliser nrot=:D pour une orientation vers la gauche (Down)
+\newcommand{\umlicon@umlV}{%
+  \psline(-0.4,0.2)(0,0)(-0.4,-0.2)
+}
+\newcommand{\umlicon@umlHerit}{%
+   \pstriangle[gangle=-90,
+              linestyle=solid,
+              fillstyle=solid,
+              fillcolor=white,
+              ](-0.6,0)(0.4,0.6)%    (centre)(Width,Length)
+}
+\newcommand{\umlicon@umlAgreg}{%
+  \psdiamond[linestyle=solid,
+            fillstyle=solid,
+            fillcolor=white,
+            ](-0.25,0)(-0.25,0.15)
+}
+\newcommand{\umlicon@umlCompos}{%
+  \psdiamond[linestyle=solid,
+            fillstyle=solid,
+            fillcolor=black,
+            ](-0.25,0)(-0.25,0.15)
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Nouvelles d\'efinition pour les interconnexions
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Ces connecteurs sont une surcouche aux diff\'erents connecteurs
+% propos\'es par pstricks.
+% Leur but est de simplifier le trac\'e des liens en se restreingnant aux
+% directions horizontales et verticales.
+%
+% Le principe est d'indiquer dans le nom même de la commande le nombre
+% de segments à tracer et leur direction :
+%  - E, W, N, S pour Est, West, North, Sud
+%  - H, V pour Horizontal; Vertical
+%  - D pour diagonal
+%  - X pour indiff\'erent
+
+% Un seul segments
+% Effet de bord : en fait, un deuxieme segment est dessin\'e. Mais celui
+% n'apparait g\'en\'eralement pas car il longe la frontière de boite
+\newpsobject{ncE}{ncangle}{angleA=0,angleB=180,armB=0,npos=0.5,nodesepB=-0.5pt}
+% \newpsobject{ncE}{ncangle}{angleA=0,angleB=180,armB=0,npos=0.5}
+\newpsobject{ncW}{ncangle}{angleA=180,angleB=0,armB=0,npos=0.5}
+\newpsobject{ncN}{ncangle}{angleA=90,angleB=-90,armB=0,npos=0.5}
+\newpsobject{ncS}{ncangle}{angleA=-90,angleB=90,armB=0,npos=0.5}
+
+% Deux segments
+\newpsobject{ncEN}{ncangle}{angleA=0,angleB=-90,armB=0}
+\newpsobject{ncES}{ncangle}{angleA=0,angleB=90,armB=0}
+\newpsobject{ncWN}{ncangle}{angleA=180,angleB=-90,armB=0}
+\newpsobject{ncWS}{ncangle}{angleA=180,angleB=90,armB=0}
+\newpsobject{ncNE}{ncangle}{angleA=90,angleB=180,armB=0}
+\newpsobject{ncNW}{ncangle}{angleA=90,angleB=0,armB=0}
+\newpsobject{ncSE}{ncangle}{angleA=-90,angleB=180,armB=0}
+\newpsobject{ncSW}{ncangle}{angleA=-90,angleB=0,armB=0}
+
+% Trois segments
+% On peut utiliser armA ou armB pour imposer la longueur des extr\'emit\'es
+%
+% remplace \ncbar (connecteurs en forme de U)
+\newpsobject{ncEVW}{ncangles}{angleA=0,angleB=0}
+\newpsobject{ncWVE}{ncangles}{angleA=180,angleB=180}
+\newpsobject{ncSHN}{ncangles}{angleA=-90,angleB=-90}
+\newpsobject{ncNHS}{ncangles}{angleA=90,angleB=90}
+
+% connecteurs en forme de Z (mais \`a angles droits)
+\newpsobject{ncEVE}{ncangles}{angleA=0,angleB=180}
+\newpsobject{ncWVW}{ncangles}{angleA=180,angleB=0}
+\newpsobject{ncNHN}{ncangles}{angleA=90,angleB=-90}
+\newpsobject{ncSHS}{ncangles}{angleA=-90,angleB=90}
+
+
+% connecteurs 3 segments dont segment median en diagonale (incomplet)
+\newpsobject{ncEDE}{ncdiag}{angleA=0,angleB=180}
+\newpsobject{ncWDW}{ncdiag}{angleA=180,angleB=0}
+\newpsobject{ncNDN}{ncdiag}{angleA=90,angleB=-90}
+\newpsobject{ncSDS}{ncdiag}{angleA=-90,angleB=90}
+
+
+% quatre (voire trois) segments :
+\newpsobject{ncSXE}{ncangles}{angleA=-90,angleB=180}
+\newpsobject{ncSXW}{ncangles}{angleA=-90,angleB=0}
+\newpsobject{ncEXS}{ncangles}{angleA=0,angleB=90}
+\newpsobject{ncEXN}{ncangles}{angleA=0,angleB=-90}
+\newpsobject{ncWXS}{ncangles}{angleA=180,angleB=90}
+\newpsobject{ncWXN}{ncangles}{angleA=180,angleB=-90}
+\newpsobject{ncNXE}{ncangles}{angleA=90,angleB=180}
+\newpsobject{ncNXW}{ncangles}{angleA=90,angleB=0}
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% FIN
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\typeout{Package \filename.sty is loaded.}
+\endinput

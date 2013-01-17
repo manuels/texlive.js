@@ -1,0 +1,365 @@
+# -*- CPERL -*-
+package LaTeXML::Package::Pool;
+use strict;
+use LaTeXML::Package;
+RequirePackage('omtext');
+RequirePackage('modules');
+sub lowcase {my ($string) = @_; $string ? return lc(ToString($string)) : return('')}#$
+sub dashed { join('-',map($_->toString,@_));}#$
+sub makeNCName {
+  my ($name) = @_;
+  my $ncname=$name;
+  $ncname=~s/\s/_/g;  #Spaces to underscores
+  $ncname="_$ncname" if $ncname!~/^(\w|_)/;  #Ensure start with letter or underscore
+  ##More to come...
+  $ncname;
+}
+sub simple_wrapper {
+  #Deref if array reference
+  my @input;
+  foreach (@_) {
+  if (ref $_ && $_ =~ /ARRAY/ && $_ !~ /LaTeXML/) {
+      @input=(@input,@$_);
+    } else
+      { push (@input,$_); }
+  }
+  return '' if (!@input);
+  @input = map(split(/\s*,\s*/,ToString($_)),@input);
+  my $output=join(" ",@input);
+  $output=~s/(^ )|[{}]//g; #remove leading space and list separator brackets
+  $output||'';
+}
+sub hash_wrapper{
+  #Deref if array reference
+  my @input;
+  foreach (@_) {
+  if (ref $_ && $_ =~ /ARRAY/ && $_ !~ /LaTeXML/) {
+      @input=(@input,@$_);
+    } else
+      { push (@input,$_); }
+  }
+  return '' if (!@input);
+  @input = map(split(/\s*,\s*/,ToString($_)),@input);
+  my $output=join(".sym #",@input);
+  $output=~s/(^\.sym )|[{}]//g; #remove leading space and list separator brackets
+  "#$output"||'';
+}
+DefEnvironment('{assertion} OptionalKeyVals:omtext',
+  "<omdoc:assertion "
+  .   "?&KeyVal(#1,'id')(xml:id='&KeyVal(#1,'id')')() "
+  .   "?&KeyVal(#1,'theory')(theory='&KeyVal(#1,'theory')')() "
+  .   "type='&lowcase(&KeyVal(#1,'type'))'>"
+  .   "?&KeyVal(#1,'title')(<dc:title>&KeyVal(#1,'title')</dc:title>)()"
+ .  "<omdoc:CMP>#body"
+  ."</omdoc:assertion>\n");
+DefEnvironment('{example} OptionalKeyVals:omtext',
+       "<omdoc:example "
+       . "?&KeyVal(#1,'id')(xml:id='&KeyVal(#1,'id')')() "
+       . "?&KeyVal(#1,'for')(for='&hash_wrapper(&KeyVal(#1,'for'))')()>"
+       . "?&KeyVal(#1,'title')(<dc:title>&KeyVal(#1,'title')</dc:title>)()"
+      . "<omdoc:CMP>#body"
+     . "</omdoc:example>\n");
+DefEnvironment('{axiom} OptionalKeyVals:omtext',
+  "<omdoc:axiom "
+  .   "?&KeyVal(#1,'id')(xml:id='&KeyVal(#1,'id')')()>"
+  .   "?&KeyVal(#1,'title')(<dc:title>&KeyVal(#1,'title')</dc:title>)()"
+ . "<omdoc:CMP>#body"
+  . "</omdoc:axiom>\n");
+DefEnvironment('{symboldec} OptionalKeyVals:symboldec',
+       "<omdoc:symbol "
+      .  "?&KeyVal(#1,'id')(xml:id='&KeyVal(#1,'id')')"
+      .                   "(xml:id='&makeNCName(&KeyVal(#1,'name')).def.sym')"
+      .               "name='&KeyVal(#1,'name')'>"
+      .  "?&KeyVal(#1,'title')(<dc:title>&KeyVal(#1,'title')</dc:title>)()"
+      .  "<dc:description>#body"
+      ."</omdoc:symbol>\n");
+DefConstructor('\symtype{}{}',
+  "<omdoc:type system='#1'><ltx:Math><ltx:XMath>#2</ltx:XMath></ltx:Math></omdoc:type>");
+sub definitionBody {
+    my ($doc, $keyvals, %props) = @_;
+    my $for = $keyvals->getValue('for') if $keyvals;
+    my $type = $keyvals->getValue('type') if $keyvals;
+   my %for_attr=();
+    if (ToString($for)) {
+      $for = ToString($for);
+      $for =~ s/^{(.+)}$/$1/eg;
+      foreach (split(/,\s*/,$for)) {
+        $for_attr{$_}=1;
+     }}
+   if ($props{theory}) {
+    my @symbols = @{$props{defs} || []};
+    foreach my $symb(@symbols) {
+      next if $for_attr{$symb};
+      $for_attr{$symb}=1;
+      $doc->insertElement('omdoc:symbol', undef, (name=>$symb, "xml:id"=>makeNCName("$symb.def.sym")));
+    }
+   }
+    my %attrs = ();
+    $for = join(" ",(keys %for_attr));
+    $attrs{'for'} = $for if $for;
+    my $id = $keyvals->getValue('id') if $keyvals;
+    $attrs{'xml:id'} = $id if $id;
+    $attrs{'type'} = $type if $type;
+    if ($props{theory}) {
+      $doc->openElement('omdoc:definition', %attrs);
+    } else {
+      $attrs{'type'}='definition';
+      $doc->openElement('omdoc:omtext', %attrs);
+    }
+    my $title = $keyvals->getValue('title') if $keyvals;
+    if ($title) {
+      $doc->openElement('omdoc:metadata');
+      $doc->openElement('dc:title');
+      $doc->absorb($title);
+      $doc->closeElement('dc:title');}
+    $doc->openElement('omdoc:CMP');
+   $doc->absorb($props{body}) if $props{body};
+   $doc->maybeCloseElement('omdoc:CMP');
+    if ($props{theory}) {
+      $doc->closeElement('omdoc:definition');
+    } else {
+      $doc->closeElement('omdoc:omtext');
+    }
+    return; }
+DefEnvironment('{definition} OptionalKeyVals:omtext', sub{definitionBody(@_)},
+  afterDigestBegin=>sub {
+    my ($stomach, $whatsit) = @_;
+    my @symbols = ();
+    $whatsit->setProperty(theory=>LookupValue('current_module'));
+    $whatsit->setProperty(defs=>\@symbols);
+    AssignValue('defs', \@symbols);  return; },
+  afterDigest => sub { AssignValue('defs', undef); return; });#$
+DefEnvironment('{notation} OptionalKeyVals:omtext',
+  "<omdoc:definition "
+ .   "?&KeyVal(#1,'id')(xml:id='&KeyVal(#1,'id').not')()"
+ .   "?&KeyVal(#1,'for')(for='&simple_wrapper(&KeyVal(#1,'for'))')()>"
+ . "?&KeyVal(#1,'title')(<dc:title>&KeyVal(#1,'title')</dc:title>)()"
+ . "<omdoc:CMP>#body"
+  . "</omdoc:definition>\n");
+DefConstructor('\notatiendum OptionalKeyVals:notation {}',
+              "<ltx:text class='notatiendum'>#2</ltx:text>");
+DefConstructor('\definiendum [] {}',
+       "<omdoc:term role='definiendum' name='#name' cd='#theory'>#2</omdoc:term>",
+       afterDigest => sub {
+ my ($stomach, $whatsit) = @_;
+ my $addr = LookupValue('defs');
+ my $name = $whatsit->getArg(1);
+ $name = $whatsit->getArg(2) unless $name;
+ $whatsit->setProperty(name=>$name->toString);
+ push(@$addr, $name->toString) if ($addr and $name);
+ $whatsit->setProperty(theory=>LookupValue('current_module'));
+ return; });#$
+DefConstructor('\defi[]{}',
+       "<omdoc:idx>"
+      .  "<omdoc:idt>"
+      .     "<omdoc:term role='definiendum' name='?#1(#1)(#2)' cd='#theory'>#2</omdoc:term>"
+      .  "</omdoc:idt>"
+      .  "<omdoc:ide index='default'><omdoc:idp>#2</omdoc:idp></omdoc:ide>"
+      ."</omdoc:idx>",
+       afterDigest => sub {
+ my ($stomach, $whatsit) = @_;
+ my $addr = LookupValue('defs');
+ my $name = $whatsit->getArg(1);
+ $name = $whatsit->getArg(2) unless $name;
+ push(@$addr, $name->toString) if ($addr and $name);
+ $whatsit->setProperty(theory=>LookupValue('current_module'));#$
+ return; },
+       alias=>'\defi');
+DefConstructor('\adefi[]{}{}',
+       "<omdoc:idx>"
+      .  "<omdoc:idt>"
+      .     "<omdoc:term role='definiendum' name='?#1(#1)(#3)' cd='#theory'>#2</omdoc:term>"
+      .  "</omdoc:idt>"
+      .  "<omdoc:ide index='default'><omdoc:idp>#3</omdoc:idp></omdoc:ide>"
+      ."</omdoc:idx>",
+       afterDigest => sub {
+ my ($stomach, $whatsit) = @_;
+ my $addr = LookupValue('defs');
+ my $name = $whatsit->getArg(1);
+ $name = $whatsit->getArg(3) unless $name;
+ push(@$addr, $name->toString) if ($addr and $name);
+ $whatsit->setProperty(theory=>LookupValue('current_module'));#$
+ return; },
+      alias=>'\adefi');
+DefConstructor('\defii[]{}{}',
+       "<omdoc:idx>"
+      .  "<omdoc:idt>"
+      .    "<omdoc:term role='definiendum' name='?#1(#1)(&dashed(#2,#3))' cd='#theory'>"
+      .      "#2 #3"
+      .    "</omdoc:term>"
+      .  "</omdoc:idt>"
+      .  "<omdoc:ide index='default'>"
+      .    "<omdoc:idp>#2</omdoc:idp>"
+      .    "<omdoc:idp>#3</omdoc:idp>"
+      .  "</omdoc:ide>"
+      ."</omdoc:idx>",
+       afterDigest => sub {
+ my ($stomach, $whatsit) = @_;
+my $addr = LookupValue('defs');
+ my $name = $whatsit->getArg(1);
+ $name = $name->toString if $name;
+ $name = $whatsit->getArg(2)->toString.'-'.$whatsit->getArg(3)->toString unless $name;
+ push(@$addr, $name) if ($addr and $name);
+ $whatsit->setProperty(theory=>LookupValue('current_module'));
+ return; },
+       alias=>'\defii');#$
+DefConstructor('\adefii[]{}{}{}',
+       "<omdoc:idx>"
+      .  "<omdoc:idt>"
+      .    "<omdoc:term role='definiendum' name='?#1(#1)(&dashed(#3,#4))' cd='#theory'>"
+      .       "#2"
+      .    "</omdoc:term>"
+      .  "</omdoc:idt>"
+      .  "<omdoc:ide index='default'>"
+      .    "<omdoc:idp>#3</omdoc:idp>"
+      .    "<omdoc:idp>#4</omdoc:idp>"
+      .  "</omdoc:ide>"
+      ."</omdoc:idx>",
+       afterDigest => sub {
+ my ($stomach, $whatsit) = @_;
+ my $addr = LookupValue('defs');
+ my $name = $whatsit->getArg(1);
+ $name = $name->toString if $name;
+ $name = $whatsit->getArg(3)->toString.'-'.$whatsit->getArg(4)->toString unless $name;
+ push(@$addr, $name) if ($addr and $name);
+ $whatsit->setProperty(theory=>LookupValue('current_module'));
+ return; },
+       alias=>'\defii');#$
+DefConstructor('\defiii[]{}{}{}',
+       "<omdoc:idx>"
+       . "<omdoc:idt>"
+         . "<omdoc:term role='definiendum' cd='#theory' name='?#1(#1)(&dashed(#2,#3,#4))'>#2 #3 #4</omdoc:term>"
+       . "</omdoc:idt>"
+       . "<omdoc:ide index='default'>"
+         . "<omdoc:idp>#2</omdoc:idp>"
+         . "<omdoc:idp>#3</omdoc:idp>"
+         . "<omdoc:idp>#4</omdoc:idp>"
+       . "</omdoc:ide>"
+     . "</omdoc:idx>",
+       afterDigest => sub {
+ my ($stomach, $whatsit) = @_;
+ my $addr = LookupValue('defs');
+ my $name = $whatsit->getArg(1);
+ $name = $name->toString if $name;
+ $name = $whatsit->getArg(2)->toString.'-'.$whatsit->getArg(3)->toString.'-'.$whatsit->getArg(4)->toString unless $name;
+ push(@$addr, $name) if ($addr and $name);
+ $whatsit->setProperty(theory=>LookupValue('current_module'));
+ return; },
+       alias=>'\defiii');
+DefConstructor('\adefiii[]{}{}{}{}',
+       "<omdoc:idx>"
+       . "<omdoc:idt>"
+       . "<omdoc:term role='definiendum' cd='#theory' name='?#1(#1)(&dashed(#3,#4,#5))'>#2</omdoc:term>"
+       . "</omdoc:idt>"
+       . "<omdoc:ide index='default'>"
+         . "<omdoc:idp>#3</omdoc:idp>"
+         . "<omdoc:idp>#4</omdoc:idp>"
+         . "<omdoc:idp>#5</omdoc:idp>"
+       . "</omdoc:ide>"
+     . "</omdoc:idx>",
+       afterDigest => sub {
+ my ($stomach, $whatsit) = @_;
+ my $addr = LookupValue('defs');
+ my $name = $whatsit->getArg(1);
+ $name = $name->toString if $name;
+ $name = $whatsit->getArg(3)->toString.'-'.$whatsit->getArg(4)->toString.'-'.$whatsit->getArg(5)->toString unless $name;
+ push(@$addr, $name) if ($addr and $name);
+ $whatsit->setProperty(theory=>LookupValue('current_module'));
+ return; },
+       alias=>'\defiii');
+DefConstructor('\inlineex OptionalKeyVals:omtext {}',
+              "<ltx:text class='example'>#2</ltx:text>");
+DefConstructor('\inlinedef OptionalKeyVals:omtext {}', sub {
+ my ($document, $keyvals, $body, %props) = @_;
+ my $for = $keyvals->getValue('for') if $keyvals;
+ my %for_attr=();
+ if (ToString($for)) {
+   $for = ToString($for);
+   $for =~ s/^{(.+)}$/$1/eg;
+   foreach (split(/,\s*/,$for)) {
+     $for_attr{$_}=1;
+   }}
+ my @symbols = @{$props{defs} || []};
+ #Prepare for symbol insertion -insert before the parent of the closest ancestor CMP element
+  my $original_node = $document->getNode;
+ my $xc = XML::LibXML::XPathContext->new( $original_node );
+ $xc->registerNs('omdoc', 'http://omdoc.org/ns');
+ my ($statement_ancestor) = $xc->findnodes('./ancestor::omdoc:CMP/..');
+ foreach my $symb(@symbols) {
+   next if $for_attr{$symb};
+   $for_attr{$symb}=1;
+   my $symbolnode = XML::LibXML::Element->new('symbol');
+   $symbolnode->setAttribute(name=>$symb);
+   $symbolnode->setAttribute("xml:id"=>makeNCName("$symb.def.sym"));
+   $statement_ancestor->parentNode->insertBefore($symbolnode,$statement_ancestor);
+ }
+ #Restore the insertion point
+ $document->setNode($original_node);
+ my %attrs = ();
+ $for = join(" ",(keys %for_attr));
+ $attrs{'for'} = $for if $for;
+ my $id = $keyvals->getValue('id') if $keyvals;
+ $attrs{'xml:id'} = $id if $id;
+$attrs{'class'} = 'inlinedef';
+ $document->openElement('ltx:text',%attrs);
+ $document->absorb($body);
+$document->closeElement('ltx:text'); },
+ #Prepare 'defs' hooks for \defi and \definiendum symbol names
+  beforeDigest=>sub {
+    my @symbols = ();
+    AssignValue('defs', \@symbols); return; },
+ #Adopt collected names as 'defs' property, remove hooks
+  afterDigest=>sub {
+    my ($stomach, $whatsit) = @_;
+    my $defsref = LookupValue('defs');
+    my @defs = @$defsref;
+    $whatsit->setProperty('defs',\@defs);
+    AssignValue('defs',undef);
+ return; });
+DefConstructor('\termref OptionalKeyVals:termref {}',
+               "<omdoc:term "
+              .  "?&KeyVal(#1,'cdbase')(cdbase='&KeyVal(#1,'cdbase')')() "
+             .  "cd='?&KeyVal(#1,'cd')(&KeyVal(#1,'cd'))(#module)' "
+              .  "name='&KeyVal(#1,'name')'>"
+              .  "#2"
+              ."</omdoc:term>",
+      afterDigest=>sub{$_[1]->setProperty(module=>LookupValue('current_module'))});
+RawTeX('
+\newcommand\atrefi[3][]{\def\@test{#1}\ifx\@test\@empty\termref[name=#3]{#2}\else\termref[cd=#1,name=#3]{#2}\fi}
+\newcommand\atrefii[4][]{\atrefi[#1]{#2}{#3-#4}}
+\newcommand\atrefiii[5][]{\atrefi[#1]{#2}{#3-#4-#5}}
+\newcommand{\trefi}[2][]{\atrefi[#1]{#2}{#2}}
+\newcommand{\trefii}[3][]{\atrefi[#1]{#2 #3}{#2-#3}}
+\newcommand{\trefiii}[4][]{\atrefi[#1]{#2 #3 #4}{#2-#3-#4}}
+');
+DefConstructor('\symref{}{}',
+               "<omdoc:term cd='&LookupValue('symdef.#1.cd')' name='&LookupValue('symdef.#1.name')'>"
+              .  "#2"
+              ."</omdoc:term>");
+Tag('omdoc:assertion',afterOpen=>\&numberIt,afterClose=>\&locateIt);
+Tag('omdoc:definition',afterOpen=>\&numberIt,afterClose=>\&locateIt);
+Tag('omdoc:example',afterOpen=>\&numberIt,afterClose=>\&locateIt);
+Tag('omdoc:requation',afterOpen=>\&numberIt,afterClose=>\&locateIt);
+Tag('omdoc:axiom',afterOpen=>\&numberIt,afterClose=>\&locateIt);
+Tag('omdoc:symbol',afterOpen=>\&numberIt,afterClose=>\&locateIt);
+Tag('omdoc:type',afterOpen=>\&numberIt,afterClose=>\&locateIt);
+Tag('omdoc:term',afterOpen=>\&numberIt,afterClose=>\&locateIt);
+RawTeX('
+\newcommand\defin[2][]{\defi[#1]{#2}%
+\PackageWarning{statements}{\protect\defin\space is deprecated, use \protect\defi\space instead}}
+\newcommand\twindef[3][]{\defii[#1]{#2}{#3}%
+\PackageWarning{statements}{\protect\twindef\space is deprecated, use \protect\defii\space instead}}
+\newcommand\atwindef[4][]{\defiii[#1]{#2}{#3}{#4}%
+\PackageWarning{statements}{\protect\atwindef\space is deprecated, use \protect\defiii\space instead}}
+\newcommand\definalt[3][]{\adefi[#1]{#2}{#3}%
+\PackageWarning{statements}{\protect\definalt\space is deprecated, use \protect\adefi\space instead}}
+\newcommand\twindefalt[4][]{\adefii[#1]{#2}{#3}{#4}%
+\PackageWarning{statements}{\protect\twindefalt\space is deprecated, use \protect\adefii\space instead}}
+\newcommand\atwindefalt[5][]{\adefiii[#1]{#2}{#3}{#4}{#5}%
+\PackageWarning{statements}{\protect\atwindefalt\space is deprecated, use \protect\adefiii\space instead}}
+\newcommand\twinref[3][]{\trefii[#1]{#2}{#3}%
+\PackageWarning{statements}{\protect\twinref\space is deprecated, use \protect\trefii\space instead}}
+\newcommand\atwinref[4][]{\atrefiii[#1]{#2}{#3}{#4}%
+\PackageWarning{statements}{\protect\atwindef\space is deprecated, use \protect\trefiii\space instead}}
+');
+1;

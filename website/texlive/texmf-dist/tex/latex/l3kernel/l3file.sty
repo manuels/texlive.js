@@ -1,0 +1,639 @@
+%%
+%% This is file `l3file.sty',
+%% generated with the docstrip utility.
+%%
+%% The original source files were:
+%%
+%% l3file.dtx  (with options: `package')
+%% 
+%% EXPERIMENTAL CODE
+%% 
+%% Do not distribute this file without also distributing the
+%% source files specified above.
+%% 
+%% Do not distribute a modified version of this file.
+%% 
+%% File: l3file.dtx Copyright (C) 1990-2012 The LaTeX3 Project
+%%
+%% It may be distributed and/or modified under the conditions of the
+%% LaTeX Project Public License (LPPL), either version 1.3c of this
+%% license or (at your option) any later version.  The latest version
+%% of this license is in the file
+%%
+%%    http://www.latex-project.org/lppl.txt
+%%
+%% This file is part of the "l3kernel bundle" (The Work in LPPL)
+%% and all files in that bundle must be distributed together.
+%%
+%% The released version of this bundle is available from CTAN.
+%%
+%% -----------------------------------------------------------------------
+%%
+%% The development version of the bundle can be found at
+%%
+%%    http://www.latex-project.org/svnroot/experimental/trunk/
+%%
+%% for those people who are interested.
+%%
+%%%%%%%%%%%
+%% NOTE: %%
+%%%%%%%%%%%
+%%
+%%   Snapshots taken from the repository represent work in progress and may
+%%   not work or may contain conflicting material!  We therefore ask
+%%   people _not_ to put them into distributions, archives, etc. without
+%%   prior consultation with the LaTeX3 Project.
+%%
+%% -----------------------------------------------------------------------
+\RequirePackage{l3names}
+\GetIdInfo$Id: l3file.dtx 3520 2012-03-09 19:34:07Z joseph $
+  {L3 Experimental file and I/O operations}
+\ProvidesExplPackage
+  {\ExplFileName}{\ExplFileDate}{\ExplFileVersion}{\ExplFileDescription}
+\package_check_loaded_expl:
+\tl_new:N \g_file_current_name_tl
+\tl_gset_eq:NN \g_file_current_name_tl \@currname
+\seq_new:N \g_file_stack_seq
+\seq_new:N \g_file_record_seq
+\tl_new:N \l_file_internal_name_tl
+\seq_new:N \l_file_search_path_seq
+\seq_new:N \l_file_internal_saved_path_seq
+\seq_new:N \l_file_internal_seq
+\cs_new_protected:Npn \file_name_sanitize:nn #1#2
+  {
+    \group_begin:
+      \seq_map_inline:Nn \l_char_active_seq
+        { \cs_set_nopar:Npx ##1 { \token_to_str:N ##1 } }
+      \tl_set:Nx \l_file_internal_name_tl {#1}
+      \tl_set:Nx \l_file_internal_name_tl
+        { \tl_to_str:N \l_file_internal_name_tl }
+      \tl_if_in:NnTF \l_file_internal_name_tl { ~ }
+        {
+          \msg_kernel_error:nnx { file } { space-in-file-name }
+            { \l_file_internal_name_tl }
+        }
+      \use:x
+        {
+          \group_end:
+          \exp_not:n {#2} { \l_file_internal_name_tl }
+        }
+  }
+\cs_new_protected:Npn \file_add_path:nN #1
+  { \file_name_sanitize:nn {#1} { \file_add_path_aux:nN } }
+\cs_new_protected:Npn \file_add_path_aux:nN #1#2
+  {
+    \ior_open_unsafe:Nn \g_file_internal_ior {#1}
+    \ior_if_eof:NTF \g_file_internal_ior
+      { \file_add_path_search:nN {#1} #2 }
+      {
+        \ior_close:N \g_file_internal_ior
+        \tl_set:Nn #2 {#1}
+      }
+  }
+\cs_new_protected:Npn \file_add_path_search:nN #1#2
+  {
+    \tl_set:Nn #2 { \q_no_value }
+    \cs_if_exist:NT \input@path
+      {
+        \seq_set_eq:NN \l_file_internal_saved_path_seq \l_file_search_path_seq
+        \seq_set_from_clist:NN \l_file_internal_seq \input@path
+        \seq_concat:NNN \l_file_search_path_seq
+          \l_file_search_path_seq \l_file_internal_seq
+      }
+    \seq_map_inline:Nn \l_file_search_path_seq
+      {
+        \ior_open_unsafe:Nn \g_file_internal_ior { ##1 #1 }
+        \ior_if_eof:NF \g_file_internal_ior
+          {
+            \tl_set:Nx #2 { ##1 #1 }
+            \seq_map_break:
+          }
+      }
+    \cs_if_exist:NT \input@path
+      { \seq_set_eq:NN \l_file_search_path_seq \l_file_internal_saved_path_seq }
+    \ior_close:N \g_file_internal_ior
+  }
+\prg_new_protected_conditional:Npnn \file_if_exist:n #1 { T , F , TF }
+  {
+    \file_add_path:nN {#1} \l_file_internal_name_tl
+    \quark_if_no_value:NTF \l_file_internal_name_tl
+      { \prg_return_false: }
+      { \prg_return_true: }
+  }
+\cs_new_protected:Npn \file_input:n #1
+  {
+    \file_add_path:nN {#1} \l_file_internal_name_tl
+    \quark_if_no_value:NTF \l_file_internal_name_tl
+      { \file_name_sanitize:nn {#1} { \file_input_error:n } }
+      { \file_input_aux:V \l_file_internal_name_tl }
+  }
+\cs_new_protected:Npn \file_input_aux:n #1
+  {
+    \@addtofilelist {#1}
+    \seq_gpush:Nn \g_file_stack_seq \g_file_current_name_tl
+    \tl_gset:Nn \g_file_current_name_tl {#1}
+    \tex_input:D #1 \c_space_tl
+    \seq_gpop:NN \g_file_stack_seq \g_file_current_name_tl
+  }
+\cs_generate_variant:Nn \file_input_aux:n { V }
+\cs_new_protected:Npn \file_input_error:n #1
+  { \msg_kernel_error:nnx { file } { file-not-found } {#1} }
+\cs_new_protected:Npn \file_path_include:n #1
+  {
+    \seq_if_in:NnF  \l_file_search_path_seq {#1}
+      { \seq_put_right:Nn \l_file_search_path_seq {#1} }
+  }
+\cs_new_protected:Npn \file_path_remove:n #1
+  { \seq_remove_all:Nn \l_file_search_path_seq {#1} }
+\cs_new_protected_nopar:Npn \file_list:
+  {
+    \seq_remove_duplicates:N \g_file_record_seq
+    \iow_log:n { *~File~List~* }
+    \seq_map_inline:Nn \g_file_record_seq { \iow_log:n {##1} }
+    \iow_log:n { ************* }
+  }
+\AtBeginDocument
+  {
+    \seq_set_from_clist:NN \l_file_internal_seq \@filelist
+    \seq_gconcat:NNN \g_file_record_seq \g_file_record_seq \l_file_internal_seq
+  }
+\cs_new_eq:NN \c_term_ior \c_sixteen
+\cs_new_eq:NN \c_log_iow  \c_minus_one
+\cs_new_eq:NN \c_term_iow \c_sixteen
+\tl_const:Nn \c_iow_streams_tl
+  {
+    \c_zero
+    \c_one
+    \c_two
+    \c_three
+    \c_four
+    \c_five
+    \c_six
+    \c_seven
+    \c_eight
+    \c_nine
+    \c_ten
+    \c_eleven
+    \c_twelve
+    \c_thirteen
+    \c_fourteen
+    \c_fifteen
+  }
+\cs_new_eq:NN \c_ior_streams_tl \c_iow_streams_tl
+\prop_new:N \g_iow_streams_prop
+\prop_new:N \g_ior_streams_prop
+\prop_put:Nnn \g_iow_streams_prop { 0 } { LaTeX2e~reserved }
+\prop_put:Nnn \g_iow_streams_prop { 1 } { LaTeX2e~reserved }
+\prop_put:Nnn \g_iow_streams_prop { 2 } { LaTeX2e~reserved }
+\prop_put:Nnn \g_ior_streams_prop { 0 } { LaTeX2e~reserved }
+\int_new:N \l_iow_stream_int
+\cs_new_eq:NN \l_ior_stream_int \l_iow_stream_int
+\cs_set_eq:NN \iow_raw_new:N \newwrite
+\cs_set_eq:NN \ior_raw_new:N \newread
+\cs_generate_variant:Nn \ior_raw_new:N { c }
+\cs_generate_variant:Nn \iow_raw_new:N { c }
+\cs_new_protected:Npn \ior_new:N #1 { \cs_new_eq:NN #1 \c_term_ior }
+\cs_generate_variant:Nn \ior_new:N { c }
+\cs_new_protected:Npn \iow_new:N #1 { \cs_new_eq:NN #1 \c_term_iow }
+\cs_generate_variant:Nn \iow_new:N { c }
+\ior_new:N \g_file_internal_ior
+\cs_new_protected:Npn \ior_open:Nn #1#2
+  { \file_name_sanitize:nn {#2} { \ior_open_aux:Nn #1 } }
+\cs_generate_variant:Nn \ior_open:Nn { c }
+\cs_new_protected:Npn \iow_open:Nn #1#2
+  { \file_name_sanitize:nn {#2} { \iow_open_unsafe:Nn #1 } }
+\cs_generate_variant:Nn \iow_open:Nn { c }
+\cs_new_protected:Npn \ior_open_aux:Nn #1#2
+  {
+    \file_add_path:nN {#2} \l_file_internal_name_tl
+    \quark_if_no_value:NTF \l_file_internal_name_tl
+      { \file_input_error:n {#2} }
+      { \ior_open_unsafe:No #1 \l_file_internal_name_tl }
+  }
+\prg_new_protected_conditional:Npnn \ior_open:Nn #1#2 { T , F , TF }
+  { \file_name_sanitize:nn {#2} { \ior_open_aux:NnTF #1 } }
+\cs_new_protected:Npn \ior_open_aux:NnTF #1#2
+  {
+    \file_add_path:nN {#2} \l_file_internal_name_tl
+    \quark_if_no_value:NTF \l_file_internal_name_tl
+      { \prg_return_false: }
+      {
+        \ior_open_unsafe:No #1 \l_file_internal_name_tl
+        \prg_return_true:
+      }
+  }
+\cs_generate_variant:Nn \ior_open:NnT  { c }
+\cs_generate_variant:Nn \ior_open:NnF  { c }
+\cs_generate_variant:Nn \ior_open:NnTF { c }
+\cs_new_protected:Npn \ior_open_unsafe:Nn #1#2
+  {
+    \ior_close:N #1
+    \int_set:Nn \l_ior_stream_int \c_sixteen
+    \tl_map_function:NN \c_ior_streams_tl \ior_alloc_read:n
+    \int_compare:nNnTF \l_ior_stream_int = \c_sixteen
+      { \msg_kernel_fatal:nn { ior } { streams-exhausted } }
+      {
+        \ior_stream_alloc:N #1
+        \prop_gput:NVn \g_ior_streams_prop \l_ior_stream_int {#2}
+        \tex_openin:D #1#2 \scan_stop:
+      }
+  }
+\cs_generate_variant:Nn \ior_open_unsafe:Nn { No }
+\cs_new_protected:Npn \iow_open_unsafe:Nn #1#2
+  {
+    \iow_close:N #1
+    \int_set:Nn \l_iow_stream_int \c_sixteen
+    \tl_map_function:NN \c_iow_streams_tl \iow_alloc_write:n
+    \int_compare:nNnTF \l_iow_stream_int = \c_sixteen
+      { \msg_kernel_fatal:nn { iow } { streams-exhausted } }
+      {
+        \iow_stream_alloc:N #1
+        \prop_gput:NVn \g_iow_streams_prop \l_iow_stream_int {#2}
+        \tex_immediate:D \tex_openout:D #1#2 \scan_stop:
+      }
+  }
+\cs_new_protected:Npn \iow_alloc_write:n #1
+  {
+    \prop_if_in:NnF \g_iow_streams_prop {#1}
+      {
+        \int_set:Nn \l_iow_stream_int {#1}
+        \tl_map_break:
+      }
+  }
+\cs_new_protected:Npn \ior_alloc_read:n #1
+  {
+    \prop_if_in:NnF \g_iow_streams_prop {#1}
+      {
+        \int_set:Nn \l_ior_stream_int {#1}
+        \tl_map_break:
+      }
+  }
+\iow_new:N \g_iow_internal_iow
+\ior_new:N \g_ior_internal_ior
+\cs_new_protected:Npn \iow_stream_alloc:N #1
+  {
+    \cs_if_exist:cF { g_iow_ \int_use:N \l_iow_stream_int _iow }
+      {
+        \iow_stream_alloc_aux:
+        \int_compare:nNnT \l_iow_stream_int = \c_sixteen
+          {
+            \iow_raw_new:N \g_iow_internal_iow
+            \int_set:Nn \l_iow_stream_int { \g_iow_internal_iow }
+            \cs_gset_eq:cN
+              { g_iow_ \int_use:N \l_iow_stream_int _iow } \g_iow_internal_iow
+          }
+      }
+    \cs_gset_eq:Nc #1 { g_iow_ \int_use:N \l_iow_stream_int _iow }
+  }
+\cs_new_protected_nopar:Npn \iow_stream_alloc_aux:
+  {
+    \int_incr:N \l_iow_stream_int
+    \int_compare:nNnT \l_iow_stream_int < \c_sixteen
+      {
+        \cs_if_exist:cTF { g_iow_ \int_use:N \l_iow_stream_int _iow }
+          {
+            \prop_if_in:NVT \g_iow_streams_prop \l_iow_stream_int
+              { \iow_stream_alloc_aux: }
+          }
+          { \iow_stream_alloc_aux: }
+      }
+  }
+\cs_new_protected:Npn \ior_stream_alloc:N #1
+  {
+    \cs_if_exist:cF { g_ior_ \int_use:N \l_ior_stream_int _ior }
+      {
+        \ior_stream_alloc_aux:
+        \int_compare:nNnT \l_ior_stream_int = \c_sixteen
+          {
+            \ior_raw_new:N \g_ior_internal_ior
+            \int_set:Nn \l_ior_stream_int { \g_ior_internal_ior }
+            \cs_gset_eq:cN
+              { g_ior_ \int_use:N \l_iow_stream_int _ior } \g_ior_internal_ior
+          }
+      }
+    \cs_gset_eq:Nc #1 { g_ior_ \int_use:N \l_ior_stream_int _ior }
+  }
+\cs_new_protected_nopar:Npn \ior_stream_alloc_aux:
+  {
+    \int_incr:N \l_ior_stream_int
+    \int_compare:nNnT \l_ior_stream_int < \c_sixteen
+      {
+        \cs_if_exist:cTF { g_ior_ \int_use:N \l_ior_stream_int _ior }
+          {
+            \prop_if_in:NVT \g_ior_streams_prop \l_ior_stream_int
+              { \ior_stream_alloc_aux: }
+          }
+          { \ior_stream_alloc_aux: }
+      }
+  }
+\cs_new_protected:Npn \ior_close:N #1
+  {
+    \cs_if_exist:NT #1
+      {
+        \int_compare:nNnF #1 = \c_minus_one
+          {
+            \int_compare:nNnF #1 = \c_sixteen
+              { \tex_closein:D #1 }
+            \prop_gdel:NV \g_ior_streams_prop #1
+            \cs_gset_eq:NN #1 \c_term_ior
+          }
+      }
+  }
+\cs_new_protected:Npn \iow_close:N #1
+  {
+    \cs_if_exist:NT #1
+      {
+        \int_compare:nNnF #1 = \c_minus_one
+          {
+            \int_compare:nNnF #1 = \c_sixteen
+              { \tex_closein:D #1 }
+            \prop_gdel:NV \g_iow_streams_prop #1
+            \cs_gset_eq:NN #1 \c_term_iow
+          }
+      }
+  }
+\cs_generate_variant:Nn \ior_close:N { c }
+\cs_generate_variant:Nn \iow_close:N { c }
+\cs_new_protected_nopar:Npn \ior_list_streams:
+  { \ior_list_streams_aux:Nn \g_ior_streams_prop { ior } }
+\cs_new_protected_nopar:Npn \iow_list_streams:
+  { \ior_list_streams_aux:Nn \g_iow_streams_prop { iow } }
+\cs_new_protected:Npn \ior_list_streams_aux:Nn #1#2
+  {
+    \msg_aux_use:nn { LaTeX / #2 }
+      { \prop_if_empty:NTF #1 { show-no-stream } { show-open-streams } }
+    \msg_aux_show:x
+      { \prop_map_function:NN #1 \msg_aux_show_unbraced:nn }
+  }
+\msg_kernel_new:nnnn { iow } { streams-exhausted }
+  { Output~streams~exhausted }
+  {
+    TeX~can~only~open~up~to~16~output~streams~at~one~time.\\
+    All~16 are currently~in~use,~and~something~wanted~to~open
+    another~one.
+  }
+\msg_kernel_new:nnnn { ior } { streams-exhausted }
+  { Input~streams~exhausted }
+  {
+    TeX~can~only~open~up~to~16~input~streams~at~one~time.\\
+    All~16 are currently~in~use,~and~something~wanted~to~open
+    another~one.
+  }
+\cs_new_eq:NN \iow_shipout_x:Nn \tex_write:D
+\cs_generate_variant:Nn \iow_shipout_x:Nn { Nx }
+\cs_new_protected:Npn \iow_shipout:Nn #1#2
+  { \iow_shipout_x:Nn #1 { \exp_not:n {#2} } }
+\cs_generate_variant:Nn \iow_shipout:Nn { Nx }
+\cs_new_protected_nopar:Npn \iow_now:Nx { \tex_immediate:D \iow_shipout_x:Nn }
+\cs_new_protected:Npn \iow_now:Nn #1#2
+  { \iow_now:Nx #1 { \exp_not:n {#2} } }
+\cs_set_protected_nopar:Npn \iow_log:x  { \iow_now:Nx \c_log_iow  }
+\cs_new_protected_nopar:Npn \iow_log:n  { \iow_now:Nn \c_log_iow  }
+\cs_set_protected_nopar:Npn \iow_term:x { \iow_now:Nx \c_term_iow }
+\cs_new_protected_nopar:Npn \iow_term:n { \iow_now:Nn \c_term_iow }
+\cs_new_nopar:Npn \iow_newline: { ^^J }
+\cs_new_eq:NN \iow_char:N \cs_to_str:N
+\int_new:N  \l_iow_line_length_int
+\int_set:Nn \l_iow_line_length_int { 78 }
+\int_new:N \l_iow_target_length_int
+\int_new:N \l_iow_current_line_int
+\int_new:N \l_iow_current_word_int
+\int_new:N \l_iow_current_indentation_int
+\tl_new:N \l_iow_current_line_tl
+\tl_new:N \l_iow_current_word_tl
+\tl_new:N \l_iow_current_indentation_tl
+\tl_new:N \l_iow_wrap_tl
+\tl_new:N \l_iow_wrapped_tl
+\bool_new:N \l_iow_line_start_bool
+\group_begin:
+  \char_set_catcode_other:N \*
+  \char_set_lccode:nn {`\*} {`\ }
+  \tl_to_lowercase:n { \tl_const:Nn \c_catcode_other_space_tl { * } }
+\group_end:
+\group_begin:
+  \int_set_eq:NN \tex_escapechar:D \c_minus_one
+  \tl_const:Nx \c_iow_wrap_marker_tl
+    { \tl_to_str:n { \^^I \^^O \^^W \^^_ \^^W \^^R \^^A \^^P } }
+  \cs_set:Npn \iow_wrap_new_marker:n #1
+    {
+      \tl_const:cx { c_iow_wrap_ #1 _marker_tl }
+        {
+          \c_catcode_other_space_tl
+          \c_iow_wrap_marker_tl
+          \c_catcode_other_space_tl
+          #1
+          \c_catcode_other_space_tl
+        }
+    }
+  \iow_wrap_new_marker:n { end }
+  \iow_wrap_new_marker:n { newline }
+  \iow_wrap_new_marker:n { indent }
+  \iow_wrap_new_marker:n { unindent }
+\group_end:
+\cs_new_protected:Npn \iow_indent:n #1 { }
+\cs_new:Npx \iow_indent_expandable:n #1
+  {
+    \c_iow_wrap_indent_marker_tl
+    #1
+    \c_iow_wrap_unindent_marker_tl
+  }
+\cs_new_protected:Npn \iow_wrap:xnnnN #1#2#3#4#5
+  {
+    \group_begin:
+      \int_set:Nn \l_iow_target_length_int { \l_iow_line_length_int - ( #3 ) }
+      \int_zero:N \l_iow_current_indentation_int
+      \tl_clear:N \l_iow_current_indentation_tl
+      \int_zero:N \l_iow_current_line_int
+      \tl_clear:N \l_iow_current_line_tl
+      \tl_clear:N \l_iow_wrap_tl
+      \bool_set_true:N \l_iow_line_start_bool
+      \int_set_eq:NN \tex_escapechar:D \c_minus_one
+      \cs_set_nopar:Npx \{ { \token_to_str:N \{ }
+      \cs_set_nopar:Npx \# { \token_to_str:N \# }
+      \cs_set_nopar:Npx \} { \token_to_str:N \} }
+      \cs_set_nopar:Npx \% { \token_to_str:N \% }
+      \cs_set_nopar:Npx \~ { \token_to_str:N \~ }
+      \int_set:Nn \tex_escapechar:D { 92 }
+      \cs_set_eq:NN \\ \c_iow_wrap_newline_marker_tl
+      \cs_set_eq:NN \  \c_catcode_other_space_tl
+      \cs_set_eq:NN \iow_indent:n \iow_indent_expandable:n
+      #4
+      \protected@edef \l_iow_wrap_tl {#1}
+      \cs_set:Npn \\ { \iow_newline: #2 }
+      \use:x
+        {
+          \iow_wrap_loop:w
+          \tl_to_str:N \l_iow_wrap_tl
+          \tl_to_str:N \c_iow_wrap_end_marker_tl
+          \c_space_tl \c_space_tl
+          \exp_not:N \q_stop
+        }
+    \exp_args:NNo \group_end:
+    #5 \l_iow_wrapped_tl
+  }
+\cs_new_protected:Npn \iow_wrap_loop:w #1 ~ %
+  {
+    \tl_set:Nn \l_iow_current_word_tl {#1}
+    \tl_if_eq:NNTF \l_iow_current_word_tl \c_iow_wrap_marker_tl
+      { \iow_wrap_special:w }
+      { \iow_wrap_word: }
+  }
+\cs_new_protected_nopar:Npn \iow_wrap_word:
+  {
+    \int_set:Nn \l_iow_current_word_int
+      { \str_length_skip_spaces:N \l_iow_current_word_tl }
+    \int_add:Nn \l_iow_current_line_int { \l_iow_current_word_int }
+    \int_compare:nNnTF \l_iow_current_line_int < \l_iow_target_length_int
+      { \iow_wrap_word_fits: }
+      { \iow_wrap_word_newline: }
+    \iow_wrap_loop:w
+  }
+\cs_new_protected_nopar:Npn \iow_wrap_word_fits:
+  {
+    \bool_if:NTF \l_iow_line_start_bool
+      {
+        \bool_set_false:N \l_iow_line_start_bool
+        \tl_put_right:Nx \l_iow_current_line_tl
+          { \l_iow_current_indentation_tl \l_iow_current_word_tl }
+        \int_add:Nn \l_iow_current_line_int
+          { \l_iow_current_indentation_int }
+      }
+      {
+        \tl_put_right:Nx \l_iow_current_line_tl
+          { ~ \l_iow_current_word_tl }
+        \int_incr:N \l_iow_current_line_int
+      }
+  }
+\cs_new_protected_nopar:Npn \iow_wrap_word_newline:
+  {
+    \tl_put_right:Nx \l_iow_wrapped_tl
+      { \l_iow_current_line_tl \\ }
+    \int_set:Nn \l_iow_current_line_int
+      {
+        \l_iow_current_word_int
+        + \l_iow_current_indentation_int
+      }
+    \tl_set:Nx \l_iow_current_line_tl
+      { \l_iow_current_indentation_tl \l_iow_current_word_tl }
+  }
+\cs_new_protected:Npn \iow_wrap_special:w #1 ~ #2 ~ #3 ~ %
+  {
+    \use:c { iow_wrap_#1: }
+    \str_if_eq:xxTF { #2~#3 } { ~ \c_iow_wrap_marker_tl }
+      { \iow_wrap_special:w }
+      { \iow_wrap_loop:w #2 ~ #3 ~ }
+  }
+\cs_new_protected_nopar:Npn \iow_wrap_newline:
+  {
+    \tl_put_right:Nx \l_iow_wrapped_tl
+      { \l_iow_current_line_tl \\ }
+    \int_zero:N \l_iow_current_line_int
+    \tl_clear:N \l_iow_current_line_tl
+    \bool_set_true:N \l_iow_line_start_bool
+  }
+\cs_new_protected_nopar:Npx \iow_wrap_indent:
+  {
+    \int_add:Nn \l_iow_current_indentation_int \c_four
+    \tl_put_right:Nx \exp_not:N \l_iow_current_indentation_tl
+      { \c_space_tl \c_space_tl \c_space_tl \c_space_tl }
+  }
+\cs_new_protected_nopar:Npn \iow_wrap_unindent:
+  {
+    \int_sub:Nn \l_iow_current_indentation_int \c_four
+    \tl_set:Nx \l_iow_current_indentation_tl
+      { \prg_replicate:nn \l_iow_current_indentation_int { ~ } }
+  }
+\cs_new_protected_nopar:Npn \iow_wrap_end:
+  {
+    \tl_put_right:Nx \l_iow_wrapped_tl
+      { \l_iow_current_line_tl }
+    \use_none_delimit_by_q_stop:w
+  }
+\cs_new_nopar:Npn \str_length_skip_spaces:N
+  { \exp_args:No \str_length_skip_spaces:n }
+\cs_new:Npn \str_length_skip_spaces:n #1
+  {
+    \int_value:w \int_eval:w
+      \exp_after:wN \str_length_loop:NNNNNNNNN \tl_to_str:n {#1}
+        { X8 } { X7 } { X6 } { X5 } { X4 } { X3 } { X2 } { X1 } { X0 } \q_stop
+    \int_eval_end:
+  }
+\cs_new:Npn \str_length_loop:NNNNNNNNN #1#2#3#4#5#6#7#8#9
+  {
+    \if_catcode:w X #9
+      \exp_after:wN \use_none_delimit_by_q_stop:w
+    \else:
+      9 +
+      \exp_after:wN \str_length_loop:NNNNNNNNN
+    \fi:
+  }
+\cs_new_eq:NN \if_eof:w \tex_ifeof:D
+\prg_new_conditional:Nnn \ior_if_eof:N { p , T , F , TF }
+  {
+    \cs_if_exist:NTF #1
+      {
+        \if_int_compare:w #1 = \c_sixteen
+          \prg_return_true:
+        \else:
+          \if_eof:w #1
+            \prg_return_true:
+          \else:
+            \prg_return_false:
+          \fi:
+        \fi:
+      }
+      { \prg_return_true: }
+  }
+\cs_new_protected:Npn \ior_to:NN #1#2
+  { \tex_read:D #1 to #2 }
+\cs_new_protected:Npn \ior_gto:NN #1#2
+  { \tex_global:D \tex_read:D #1 to #2 }
+\cs_new_protected:Npn \ior_str_to:NN #1#2
+  { \etex_readline:D #1 to #2 }
+\cs_new_protected:Npn \ior_str_gto:NN #1#2
+  { \tex_global:D \etex_readline:D #1 to #2 }
+\cs_new_protected_nopar:Npn \ior_map_inline:Nn
+  { \ior_map_inline_aux:NNn \ior_to:NN }
+\cs_new_protected_nopar:Npn \ior_str_map_inline:Nn
+  { \ior_map_inline_aux:NNn \ior_str_to:NN }
+\cs_new_protected_nopar:Npn \ior_map_inline_aux:NNn
+  {
+    \exp_args:Nc \ior_map_inline_aux:NNNn
+      { ior_map_ \int_use:N \g_prg_map_int :n }
+  }
+\cs_new_protected:Npn \ior_map_inline_aux:NNNn #1#2#3#4
+  {
+    \cs_set:Npn #1 ##1 {#4}
+    \int_gincr:N \g_prg_map_int
+    \ior_if_eof:NF #3 { \ior_map_inline_loop:NNN #1#2#3 }
+    \prg_break_point:n { \int_gdecr:N \g_prg_map_int }
+  }
+\cs_new_protected:Npn \ior_map_inline_loop:NNN #1#2#3
+  {
+    #2 #3 \l_ior_internal_tl
+    \ior_if_eof:NF #3
+      {
+        \exp_args:No #1 \l_ior_internal_tl
+        \ior_map_inline_loop:NNN #1#2#3
+      }
+  }
+\tl_new:N  \l_ior_internal_tl
+\msg_kernel_new:nnnn { file } { file-not-found }
+  { File~'#1'~not~found. }
+  {
+    The~requested~file~could~not~be~found~in~the~current~directory,~
+    in~the~TeX~search~path~or~in~the~LaTeX~search~path.
+  }
+\msg_kernel_new:nnnn { file } { space-in-file-name }
+  { Space~in~file~name~'#1'. }
+  {
+    Spaces~are~not~permitted~in~files~loaded~by~LaTeX: \\
+    Further~errors~may~follow!
+  }
+\cs_new_protected:Npn \iow_now_when_avail:Nn #1
+  { \cs_if_free:NTF #1 { \use_none:n } { \iow_now:Nn #1 } }
+\cs_new_protected:Npn \iow_now_when_avail:Nx #1
+  { \cs_if_free:NTF #1 { \use_none:n } { \iow_now:Nx #1 } }
+%% 
+%%
+%% End of file `l3file.sty'.

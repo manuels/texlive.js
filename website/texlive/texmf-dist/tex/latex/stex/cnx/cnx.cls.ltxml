@@ -1,0 +1,280 @@
+# -*- CPERL -*-
+package LaTeXML::Package::Pool;
+use strict;
+use LaTeXML::Package;
+RequirePackage('metakeys');
+RegisterNamespace('cnx'=>"http://cnx.rice.edu/cnxml");
+RegisterNamespace('md'=>"http://cnx.rice.edu/mdml/0.4");
+RegisterNamespace('bib'=>"http://bibtexml.sf.net/");
+RegisterNamespace('m'=>"http://www.w3.org/1998/Math/MathML");
+DocType("cnx:document",
+"-//CNX//DTD CNXML 0.5 plus LaTeXML//EN",
+"../dtd/cnxml+ltxml.dtd",
+'#default'=>"http://cnx.rice.edu/cnxml",
+        'md'=>"http://cnx.rice.edu/mdml/0.4",
+        'bib'=>"http://bibtexml.sf.net/",
+        'm'=>"http://www.w3.org/1998/Math/MathML",
+        'ltx'=>"http://dlmf.nist.gov/LaTeXML");
+NewCounter('@itemizei',   'document',   idprefix=>'I');
+NewCounter('@itemizeii',  '@itemizei',  idprefix=>'I');
+NewCounter('@itemizeiii', '@itemizeii', idprefix=>'I');
+NewCounter('@itemizeiv',  '@itemizeiii',idprefix=>'I');
+NewCounter('@itemizev',   '@itemizeiv', idprefix=>'I');
+NewCounter('@itemizevi',  '@itemizev',  idprefix=>'I');
+
+NewCounter('enumi',  '@itemizei',   idprefix=>'i');
+NewCounter('enumii', '@itemizeii',  idprefix=>'i');
+NewCounter('enumiii','@itemizeiii', idprefix=>'i');
+NewCounter('enumiv', '@itemizeiv',  idprefix=>'i');
+# A couple of more levels, since we use these for ID's!
+NewCounter('enumv',  '@itemizev',   idprefix=>'i');
+NewCounter('enumvi', '@itemizevi',  idprefix=>'i');
+
+DefMacro('\theenumi',           '\arabic{enumi}');
+DefMacro('\theenumii',          '\alph{enumii}');
+DefMacro('\theenumiii',         '\roman{enumiii}');
+DefMacro('\theenumiv',          '\Alph{enumiv}');
+
+NewCounter('equation', 'document', idprefix=>'E');
+DefMacro('\theequation', '\arabic{equation}');
+DefMacro('\textwidth','16cm');
+Let('\thedocument@ID','\@empty');
+DefKeyVal('cnxmodule','name','Semiverbatim');
+DefKeyVal('cnxmodule','id','Semiverbatim');
+DefEnvironment('{document}','<cnx:document>#body</cnx:document>',
+       beforeDigest=> sub { AssignValue(inPreamble=>0); },
+       afterDigest=> sub { $_[0]->getGullet->flush; return; });
+DefEnvironment('{cnxmodule} OptionalKeyVals:cnxmodule',
+       "<cnx:name>&KeyVal('#1','name')</cnx:name>\n#body\n",
+       afterDigestBegin => sub {
+ AssignValue('cnxmodule_id',
+     KeyVal($_[1]->getArg(1), 'id')->toString,
+     'global');
+       });#$
+Tag('cnx:document', afterClose => sub {
+      $_[1]->setAttribute('id', LookupValue('cnxmodule_id'));
+    });
+DefEnvironment('{ccontent}',"<cnx:content>#body</cnx:content>");
+DefKeyVal('sectioning','id','Semiverbatim');
+DefEnvironment('{csection}OptionalKeyVals:sectioning{}',
+       "<cnx:section %&KeyVals(#1)>\n"
+             . "?#2(<cnx:name>#2</cnx:name>\n)()"
+             . "#body\n</cnx:section>\n");
+DefEnvironment('{csubsection}OptionalKeyVals:sectioning{}',
+       "<cnx:section %&KeyVals(#1)>\n"
+             . "?#2(<cnx:name>#2</cnx:name>\n)()"
+             . "#body\n</cnx:section>\n");
+DefEnvironment('{csubsubsection}OptionalKeyVals:sectioning{}',
+       "<cnx:section %&KeyVals(#1)>\n"
+             . "?#2(<cnx:name>#2</cnx:name>\n)()"
+             . "#body\n</cnx:section>\n");
+DefKeyVal('para','id','Semiverbatim');
+DefEnvironment('{cpara} OptionalKeyVals:para','<cnx:para %&KeyVals(#1)>#body</cnx:para>');
+sub number_para {
+  my($document,$node,$whatsit)=@_;
+  # Get prefix from first parent with an id.
+  my(@parents)=$document->findnodes('ancestor::*[@id]',$node); # find 1st id'd parent.
+  my $prefix= (@parents ? $parents[$#parents]->getAttribute('id')."." : '');
+  # Get the previous number within parent; Worried about intervening elements around para's, but...
+  my(@siblings)=$document->findnodes("preceding-sibling::cnx:para",$node);
+  my $n=1;
+  $n = $1+1  if(@siblings && $siblings[$#siblings]->getAttribute('id')=~/(\d+)$/);
+  $node->setAttribute(id=>$prefix."p$n"); }
+Tag('cnx:para',afterOpen=>\&number_para);
+DefConstructor('\par',sub { $_[0]->maybeCloseElement('cnx:para'); },alias=>"\\par\n");
+Tag('cnx:para', autoClose=>1, autoOpen=>1);
+DefKeyVal('note','id','Semiverbatim');
+DefKeyVal('note','type','Semiverbatim');
+DefEnvironment('{cnote}OptionalKeyVals:note','<cnx:note %&KeyVals(#1)>#body</cnx:note>');
+DefKeyVal('equation','id','Semiverbatim');
+DefEnvironment('{cequation} OptionalKeyVals:equation',
+       "<cnx:equation %&KeyVals(#1)>"
+             . "<ltx:Math mode='display'>"
+             . "<ltx:XMath>#body</ltx:XMath>"
+             . "</ltx:Math></cnx:equation>",
+       mode=>'display_math');
+DefKeyVal('cquote','id','Semiverbatim');
+DefKeyVal('cquote','type','Semiverbatim');
+DefKeyVal('cquote','src','Semiverbatim');
+DefEnvironment('{cquote} OptionalKeyVals:cquote',
+               "<cnx:quote %&KeyVals(#1)>#body</cnx:quote>");
+DefConstructor('\footnote[]{}',"<cnx:note type='foot'>#2</cnx:note>");
+DefConstructor('\emph{}',"<cnx:emphasis>#1</cnx:emphasis>");
+DefConstructor('\[',
+       "<cnx:equation id='#id'>"
+       . "<ltx:Math mode='display'>"
+       .  "<ltx:XMath>"
+       .   "#body"
+       .  "</ltx:XMath>"
+       . "</ltx:Math>"
+       ."</cnx:equation>",
+       beforeDigest=> sub{ $_[0]->beginMode('display_math'); },
+       captureBody=>1,
+       properties=> sub { RefStepID('equation') });
+DefConstructor('\]'  ,"",beforeDigest=> sub{ $_[0]->endMode('display_math'); });
+DefConstructor('\[',
+       "<cnx:equation id='#id'>"
+       . "<ltx:Math mode='display'>"
+       .  "<ltx:XMath>"
+       .   "#body"
+       .  "</ltx:XMath>"
+       . "</ltx:Math>"
+       ."</cnx:equation>",
+       beforeDigest=> sub{ $_[0]->beginMode('display_math'); },
+       captureBody=>1,
+       properties=> sub { RefStepID('equation') });
+DefConstructor('\]'  ,"",beforeDigest=> sub{ $_[0]->endMode('display_math'); });
+
+DefMacro('\eqnarray',    '\@@eqnarray\@start@alignment');
+DefMacro('\endeqnarray', '\@finish@alignment\end@eqnarray');
+DefMacro('\csname eqnarray*\endcsname',    '\@@eqnarray*\@start@alignment');
+DefMacro('\csname endeqnarray*\endcsname', '\@finish@alignment\end@eqnarray');
+DefConstructor('\@@eqnarray OptionalMatch:* AlignmentBody:\end@eqnarray',
+       sub {
+ my($document,$star,$body,%props)=@_;
+ $document->openElement('cnx:equation',refnum=>$props{refnum},id=>$props{id});
+ $document->openElement('ltx:Math',mode=>'display');
+ $document->openElement('ltx:XMath');
+ constructAlignment($document,$body,attributes=>{name=>'eqnarray'});
+ $document->closeElement('ltx:XMath');
+ $document->closeElement('ltx:Math');
+ $document->closeElement('cnx:equation'); },
+       mode=>'display_math',
+       beforeDigest=>sub { alignmentBindings('rcl'); },
+       properties=> sub { ($_[1] ? RefStepID('equation') : RefStepCounter('equation')); },
+       afterDigest=>sub {
+ $_[1]->setProperty(body=>$_[1]->getArg(2));}, # So we get TeX
+       reversion=>'\begin{eqnarray#1}#2\end{eqnarray#1}');
+Tag('cnx:item', autoClose=>1);
+DefConstructor('\item[]',"<cnx:item>?#1(<cnx:name>#1</cnx:name>)");
+DefConstructor('\litem[]{}',"<cnx:item id='#2'>?#1(<cnx:name>#1</cnx:name>)");
+DefConstructor('\itemize@item[]',
+       "<cnx:item id='#id'>?#1(<cnx:name>#1</cnx:name>)",
+       properties=>sub{ RefStepItemCounter(); });
+DefConstructor('\enumerate@item[]',
+       "<cnx:item id='#id'>?#1(<cnx:name>#1</cnx:name>)",
+       properties=>sub{ RefStepItemCounter(); });
+DefConstructor('\description@item[]',
+       "<cnx::item id='#id'>?#1(<cnx:name>#1</cnx:name>)",
+       properties=>sub{ RefStepItemCounter(); });
+AssignValue(itemlevel=>0);
+DefEnvironment('{itemize}',
+       "<cnx:list id='#id' type='itemize'>#body</cnx:list>",
+       properties=>sub { beginItemize('itemize'); });
+DefEnvironment('{enumerate}',
+       "<cnx:list type='enumerate'  id='#id'>#body</cnx:list>",
+       properties=>sub { beginItemize('enumerate'); });
+DefEnvironment('{description}',
+       "<cnx:list  type='description'  id='#id'>#body</cnx:list>",
+       properties=>sub { beginItemize('description'); });
+DefEnvironment('{center}','#body');
+DefEnvironment('{minipage}{}','#body');
+DefEnvironment('{small}','#body');
+DefEnvironment('{footnotesize}','#body');
+DefEnvironment('{tiny}','#body');
+DefEnvironment('{scriptsize}','#body');
+DefConstructor('\ref Semiverbatim', "<cnx:cnxn target='#1'>&LookupValue('LABEL@#1')</cnx:cnxn>");
+DefKeyVal('example','id','Semiverbatim');
+DefEnvironment('{cexample}OptionalKeyVals:example',
+               "<cnx:example %&KeyVals(#1)>#body</cnx:example>");
+DefKeyVal('cexercise','id','Semiverbatim');
+DefKeyVal('cexercise','name','Semiverbatim');
+DefEnvironment('{cexercise}OptionalKeyVals:exercise',
+               "<cnx:exercise ?&defined(&KeyVal(#1,'id'))(id='&KeyVal(#1,'id')')()>"
+               . "#body"
+             . "</cnx:exercise>");
+DefKeyVal('cproblem','id','Semiverbatim');
+DefKeyVal('cproblem','name','Semiverbatim');
+DefEnvironment('{cproblem}OptionalKeyVals:cproblem',
+               "<cnx:problem ?&defined(&KeyVal(#1,'id'))(id='&KeyVal(#1,'id')')()>"
+          . "?&defined(&KeyVal(#1,'name'))(<cnx:name>&KeyVal(#1,'name')</cnx:name>\n)()"
+               . "#body"
+             . "</cnx:problem>");
+DefKeyVal('csolution','id','Semiverbatim');
+DefKeyVal('csolution','name','Semiverbatim');
+DefEnvironment('{csolution}OptionalKeyVals:cproblem',
+               "<cnx:solution ?&defined(&KeyVal(#1,'id'))(id='&KeyVal(#1,'id')')()>"
+          . "?&defined(&KeyVal(#1,'name'))(<cnx:name>&KeyVal(#1,'name')</cnx:name>\n)()"
+               . "#body"
+             . "</cnx:solution>");
+DefKeyVal('rule','id','Semiverbatim');
+DefKeyVal('rule','name','Semiverbatim');
+DefKeyVal('rule','type','Semiverbatim');
+DefEnvironment('{crule}OptionalKeyVals:rule',
+               "<cnx:rule ?&defined(&KeyVal(#1,'id'))(id='&KeyVal(#1,'id')')() type='&KeyVal(#1,'type')'>\n"
+     . "?&defined(&KeyVal(#1,'name'))(<cnx:name>&KeyVal(#1,'name')</cnx:name>\n)()"
+     . "\n#body\n"
+     . "</cnx:rule>\n");
+DefKeyVal('statement','id','Semiverbatim');
+DefEnvironment('{statement} OptionalKeyVals:statement','<cnx:statement %&KeyVals(#1)>#body</cnx:statement>');
+DefKeyVal('proof','id','Semiverbatim');
+DefEnvironment('{proof}OptionalKeyVals:proof','<cnx:proof %&KeyVals(#1)>#body</cnx:proof>');
+DefKeyVal('definition','id','Semiverbatim');
+DefKeyVal('definition','term','Semiverbatim');
+DefKeyVal('definition','seealso','Semiverbatim');
+DefEnvironment('{definition}OptionalKeyVals:definition',
+               "<cnx:definition ?&defined(&KeyVal(#1,'id'))(id='&KeyVal(#1,'id')')()>\n"
+     . "?&defined(&KeyVal(#1,'term'))(<cnx:term>&KeyVal(#1,'term')</cnx:term>\n)()"
+     . "\n#body\n"
+     . "?&defined(&KeyVal(#1,'seealso'))(<cnx:seealso><cnx:term>&KeyVal(#1,'term')</cnx:term></cnx:seealso>\n)()"
+     . "</cnx:definition>\n");
+DefKeyVal('meaning','id','Semiverbatim');
+DefEnvironment('{cmeaning}OptionalKeyVals:meaning','<cnx:meaning %&KeyVals(#1)>#body</cnx:meaning>');
+DefKeyVal('cnxn','document','Semiverbatim');
+DefKeyVal('cnxn','target','Semiverbatim');
+DefKeyVal('cnxn','strength','Semiverbatim');
+DefConstructor('\cnxn OptionalKeyVals:cnxn {}','<cnx:cnxn %&KeyVals(#1)>#1</cnx:cnxn>');
+DefKeyVal('link','src','Semiverbatim');
+DefConstructor('\link OptionalKeyVals:link {}','<cnx:link %&KeyVals(#1)>#2</cnx:link>');
+DefKeyVal('cfigure','id','Semiverbatim');
+DefKeyVal('cfigure','name','Semiverbatim');
+DefKeyVal('cfigure','type','Semiverbatim');
+DefKeyVal('cfigure','caption','Semiverbatim');
+DefConstructor('\cfigure OptionalKeyVals:cfigure Semiverbatim Semiverbatim',
+               "<cnx:figure ?&defined(&KeyVal(#1,'id'))(id='&KeyVal(#1,'id')')()>"
+          . "?&defined(&KeyVal(#1,'name'))(<cnx:name>&KeyVal(#1,'name')</cnx:name>\n)()"
+               . "<cnx:media type='&KeyVal(#1,'type')' src='#3'/>"
+          . "?&defined(&KeyVal(#1,'caption'))(<cnx:caption>&KeyVal(#1,'caption')</cnx:caption>\n)()"
+             . "</cnx:figure>");
+DefKeyVal('ccite','src','Semiverbatim');
+DefConstructor('\ccite OptionalKeyVals:ccite {}','<cnx:cite %&KeyVals(#1)>#2</cnx:cite>');
+DefConstructor('\term[]{}',"<cnx:term>#2</cnx:term>");
+DefKeyVal('metadata','version','Semiverbatim');
+DefKeyVal('metadata','created','Semiverbatim');
+DefKeyVal('metadata','revised','Semiverbatim');
+DefEnvironment('{metadata}OptionalKeyVals:metadata',
+       "<cnx:metadata>\n"
+     . "<md:version>&KeyVal('#1','version')</md:version>\n"
+     . "<md:created>&KeyVal('#1','created')</md:created>\n"
+     . "<md:revised>&KeyVal('#1','revised')</md:revised>\n"
+     . "#body\n"
+     . "</cnx:metadata>");
+DefEnvironment('{authorlist}',"<md:authorlist>#body</md:authorlist>");
+DefEnvironment('{maintainerlist}',"<md:maintainerlist>#body</md:maintainerlist>");
+DefKeyVal('auth','id','Semiverbatim');
+DefKeyVal('auth','firstname','Semiverbatim');
+DefKeyVal('auth','surname','Semiverbatim');
+DefKeyVal('auth','email','Semiverbatim');
+DefConstructor('\cnxauthor OptionalKeyVals:auth',
+       "<md:author id='&KeyVal('#1','id')'>\n"
+     . "?&defined(&KeyVal(#1,'honorific'))(<md:honorific>&KeyVal('#1','honorific')</md:honorific>\n)()"
+     . "?&defined(&KeyVal(#1,'firstname'))(<md:firstname>&KeyVal('#1','firstname')</md:firstname>\n)()"
+     . "?&defined(&KeyVal(#1,'other'))(<md:other>&KeyVal('#1','other')</md:other>\n)()"
+     . "?&defined(&KeyVal(#1,'surname'))(<md:surname>&KeyVal('#1','surname')</md:surname>\n)()"
+             . "?&defined(&KeyVal(#1,'lineage'))(<md:lineage>&KeyVal('#1','lineage')</md:lineage>\n)()"
+             . "?&defined(&KeyVal(#1,'email'))(<md:email>&KeyVal('#1','email')</md:email>\n)()"
+     . "</md:author>\n");
+DefConstructor('\maintainer OptionalKeyVals:auth',
+       "<md:maintainer id='&KeyVal('#1','id')'>\n"
+     . "?&defined(&KeyVal(#1,'honorific'))(<md:honorific>&KeyVal('#1','honorific')</md:honorific>\n)()"
+     . "?&defined(&KeyVal(#1,'firstname'))(<md:firstname>&KeyVal('#1','firstname')</md:firstname>\n)()"
+     . "?&defined(&KeyVal(#1,'other'))(<md:other>&KeyVal('#1','other')</md:other>\n)()"
+     . "?&defined(&KeyVal(#1,'surname'))(<md:surname>&KeyVal('#1','surname')</md:surname>\n)()"
+             . "?&defined(&KeyVal(#1,'lineage'))(<md:lineage>&KeyVal('#1','lineage')</md:lineage>\n)()"
+             . "?&defined(&KeyVal(#1,'email'))(<md:email>&KeyVal('#1','email')</md:email>\n)()"
+     . "</md:maintainer>\n");
+DefEnvironment('{keywordlist}',"<md:keywordlist>\n#body\n</md:keywordlist>");
+DefConstructor('\keyword {}',"<md:keyword>#1</md:keyword>");
+DefEnvironment('{cnxabstract} OptionalKeyVals:cnxabstract',
+       "<md:abstract>\n#body\n</md:abstract>\n");
+1;

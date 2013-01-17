@@ -1,0 +1,119 @@
+% import.sty  Ver 5.1  23-Mar-2009  Donald Arseneau  (asnd@triumf.ca)
+%
+% This software is in the public domain; free of any restrictions.
+%
+% Two new \LaTeX\ commands, "\import {full_path} {file}" and 
+% "\subimport {path_extension} {file}" are defined to input a file 
+% from another directory, allowing that file to find its own inputs
+% (using "\input", "\includegraphics" etc.) in that directory.
+% 
+% Alias command names are "\inputfrom" and "\subinputfrom".
+%
+% Also provided are "\includefrom" and "\subincludefrom", which are
+% based on the "\include" command, rather than "\input".  There are
+% also "*" variants described below.
+%
+% For example, if a remote file "/usr5/friend/work/report.tex" has contents:
+%
+%      My graph: \includegraphics{picture}
+%      \input{explanation}
+%
+% then you can safely input that file in your own document with the command
+% "\import{/usr5/friend/work/}{report}"; the explanation and picture will 
+% be taken from the "/usr5/friend/work/" directory.
+%
+% The "\subimport" command takes a relative path instead of a full absolute
+% file path, and it allows imported files to import files themselves, using
+% their own directory as the root of another "path_extension". Do not use
+% both "\import" and "\subimport" in the same file.
+%
+% For example, if a file is imported (using either command) from directory
+% "abc/" and that file contains the command "\subimport{lmn/}{xyz}" then
+% file "abc/lmn/xyz.tex" is input, and any "\input" commands in that file
+% will read files from directory "abc/lmn/". 
+%
+% Note that the sub-import path is merely appended to the current import
+% path.  Mistakes from this method must be rectified by "\import@path@fix".
+%
+% Depending on on how your \TeX\ system is configured, if a file with the 
+% same name as the import file exists in the current directory or in the 
+% TEXINPUTS path, that other file will be read in preference to one in the 
+% import directory.  So here is the real behavior of the previous example:
+% Given the sequence "\import{abc/}{one}", "\subimport{lmn/uvw/}{two}" (in
+% file one), "\input{three}" (in file two), \LaTeX\ first looks for three.tex
+% in the TEXINPUTS search path; if not found, it tries "abc/lmn/uvw/three";
+% if that doesn't exist, it tries "abc/three"; if still not found, it tries
+% the defined "\input@path", if there is one.
+%
+% To avoid searching the TEXINPUTS path when importing files, use the `star'
+% versions of the commands: "\import*" and "\subimport*".
+%
+% A hook "\import@path@fix" is provided to reformat the import path
+% to fit the syntax of a particular operating system.  It *could* be
+% defined to convert unix-style path names to the local format, but 
+% all it does now is remove "][" from VMS sub-import directories.
+%
+% Presently, the paths are defined ``locally'' so input files must have 
+% balanced grouping.
+%====================== END INSTRUCTIONS ===========================
+
+\ProvidesPackage{import}[2009/03/23 \space  v 5.1]
+\ProcessOptions
+
+\@ifundefined{import}{%
+ \newcommand{\import}{\global\let\import@path\@empty \@doimport\input}
+}{
+ \PackageWarning{import}{\string\import\space command is already defined!^^J%
+   Defining only its \string\inputfrom\space alias.}
+}
+\newcommand{\inputfrom}{\global\let\import@path\@empty \@doimport\input}
+\newcommand{\subimport}{\@doimport\input}
+\newcommand{\subinputfrom}{\@doimport\input}
+\newcommand{\includefrom}{\global\let\import@path\@empty \@doimport\include}
+\newcommand{\subincludefrom}{\@doimport\include}
+
+\def\@doimport#1{\@ifstar
+  {\@sub@import#1\@iffileonpath}{\@sub@import#1\IfFileExists}}
+
+% #1 = import command,  #2 = switch for *,  #3 = import path extension
+\def\@sub@import#1#2#3{%
+  \begingroup
+  \protected@edef\@tempa{\endgroup
+    \let\noexpand\IfFileExists\noexpand#2%
+    \noexpand\@import  \noexpand#1%  param 1
+      {\@ifundefined{input@path}{}{\input@path}}% 2
+      {\@ifundefined{Ginput@path}{}{\Ginput@path}}% 3
+      {\import@path#3}{\import@path}% 4,5
+      {\ifx\IfFileExists\im@@IfFileExists \noexpand\im@@IfFileExists 
+       \else \noexpand\IfFileExists \fi}}% 6
+  \@tempa}
+%
+% #1 = import command (\input or \include)
+% #2 = previous input path list. #3 = previous graphics input path list.
+% #4 = full path added to each.  #5 = previous import path.  
+% #6 = previous \IfFileExists.   #7 = file name.
+%
+\def\@import#1#2#3#4#5#6#7{%
+  \gdef\import@path{#4}%
+  \protected@edef\input@path{{\import@path@fix{#4}}#2}%
+  \protected@edef\Ginput@path{{\import@path@fix{#4}}#3}%
+  #1{#7}%
+  \let\IfFileExists#6% restore after \import*
+  \gdef\import@path{#5}%
+  \def\input@path{#2}\ifx\input@path\@empty \let\input@path\@undefined \fi
+  \def\Ginput@path{#3}\ifx\Ginput@path\@empty \let\Ginput@path\@undefined \fi
+}
+
+\let\im@@IfFileExists\IfFileExists
+\gdef\import@path{}
+
+\let\import@path@fix\@firstofone % default
+
+% Check for vms file names and set \import@path@fix appropriately
+\gdef\@gtempa{[]}
+\ifx\@gtempa\@currdir % VMS directory syntax
+ \gdef\import@path@fix#1{\@gobbleVMSbrack#1][>}
+ \gdef\@gobbleVMSbrack#1][#2{#1\ifx>#2\@empty
+    \expandafter \strip@prefix \fi % Gobble up to >
+    \@gobbleVMSbrack #2}
+\fi

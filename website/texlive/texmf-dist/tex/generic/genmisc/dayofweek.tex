@@ -1,0 +1,149 @@
+%
+%	\DayOfWeek	expands to the day of the week ("Sunday", etc.)
+%	\PhaseOfMoon	expands to the phase of the moon
+%
+%	Written by Martin Minow of DEC (minow%bolt.dec@decwrl.dec.com).
+%
+\def\DayOfWeek{%
+%
+% 	Calculate day of the week, return "Sunday", etc.
+%
+  \newcount\dow				% Gets day of the week
+  \newcount\leap			% Leap year fingaler
+  \newcount\x				% Temp register
+  \newcount\y 				% Another temp register
+%		leap = year + (month - 14)/12;
+  \leap=\month \advance\leap by -14 \divide\leap by 12
+  \advance\leap by \year
+%		dow = (13 * (month + 10 - (month + 10)/13*12) - 1)/5
+  \dow=\month \advance\dow by 10
+  \y=\dow \divide\y by 13 \multiply\y by 12
+  \advance\dow by -\y \multiply\dow by 13 \advance\dow by -1 \divide\dow by 5
+%		dow += day + 77 + 5 * (leap % 100)/4
+  \advance\dow by \day \advance\dow by 77
+  \x=\leap \y=\x \divide\y by 100 \multiply\y by 100 \advance\x by -\y
+  \multiply\x by 5 \divide\x by 4 \advance\dow by \x
+%		dow += leap / 400
+  \x=\leap \divide\x by 400 \advance\dow by \x
+%		dow -= leap / 100 * 2;
+%		dow = (dow % 7)
+  \x=\leap \divide\x by 100 \multiply\x by 2 \advance\dow by -\x
+  \x=\dow \divide\x by 7 \multiply\x by 7 \advance\dow by -\x
+  \ifcase\dow Sunday\or Monday\or Tuesday\or Wednesday\or
+	Thursday\or Friday\or Saturday\fi
+}
+%%
+%%
+%%
+\def\PhaseOfMoon{%	Calculate the phase of the (civil) moon.
+%
+% The routine calculates the year's epact (the age of the moon on Jan 1.),
+% adds this to the number of days in the year, and calculates the phase
+% of the moon for this date.  It returns the phase as a string, e.g.,
+% "new", "full", etc.
+%
+% In the algorithm:
+%
+%	diy	Is the day of the year - 1 (i.e., Jan 1 is day 0).
+%
+%	golden	Is the number of the year in the Mentonic cycle, used to
+%		determine the position of the calender moon.
+%
+%	epact	Is the age of the calender moon (in days) at the beginning
+%		of the year.  To calculate epact, two century-based
+%		corrections are applied:
+%		Gregorian:	(3 * cent)/4 - 12
+%			is the number of years such as 1700, 1800 when
+%			leap year was not held.
+%		Clavian:	(((8 * cent) + 5) / 25) - 5
+%			is a correction to the Mentonic cycle of about
+%			8 days every 2500 years.  Note that this will
+%			overflow 16 bits in the year 409600.  Beware.
+%
+% The algorithm is accurate for the Gregorian calender only.
+%	
+% The magic numbers used in the phase calculation are as follows:
+%	 29.5		The moon's period in days.
+%	177		29.5 scaled by 6
+%	 22		(29.5 / 8) scaled by 6 (this gets the phase)
+%	 11		((29.5 / 8) / 2) scaled by 6
+%
+% Theoretically, this should yield a number in the range 0 .. 7.  However,
+% two days per year, things don't work out too well.
+%
+% Epact is calculated by the algorithm given in Knuth vol. 1 (calculation
+% of Easter).  See also the article on Calenders in the Encyclopaedia
+% Britannica and Knuth's algorithm in CACM April 1962, page 209.
+%
+  \newcount\cent		% Century number (1979 == 20)
+  \newcount\epact		% Age of the moon on Jan. 1
+  \newcount\diy			% Day in the year
+  \newcount\golden		% Moon's golden number
+  \newcount\x			% Temp
+  \newcount\m			% Temp for modulus
+  \diy=\day \advance\diy by \ifcase\month		% Jan 1 == 0
+	-1\or -1\or 30\or 58\or 89\or 119\or 150\or	% Jan .. Jun
+	180\or 211\or 241\or 272\or 303\or 333\fi	% Jul .. Dec
+%		if ((month > 2) && ((year % 4 == 0) && 
+%		    ((year % 400 == 0) || (year % 100 != 0))))
+%			diy++;		/* Leapyear fixup	*/
+  \ifnum \month>2
+    \x=\year \m=\x \divide\m by 4 \multiply\m by 4 \advance\x by -\m
+    \ifnum \x=0				% month > 2 and maybe leapyear
+      \x=\year \m=\x \divide\m by 400 \multiply\m by 400 \advance\x by -\m
+      \ifnum \x=0			% 2000 is a leap year
+	\advance\diy by 1		% so it's one day later
+      \else				% not 2000, check other '00's
+	\x=\year \m=\x \divide\m by 100 \multiply\m by 100 \advance\x by -\m
+	\ifnum \x>0			% not some other '00' year
+	    \advance\diy by 1		% it's still one day later
+	\fi				% not odd century
+      \fi				% not 2000-type century
+    \fi					% not leapish year
+  \fi					% not march or later
+%		cent = (year / 100) + 1;	/* Century number	*/
+%		golden = (year % 19) + 1;	/* Golden number	*/
+  \cent=\year \divide\cent by 100 \advance\cent by 1
+  \golden=\year
+  \m=\year \divide\m by 19 \multiply\m by 19 \advance\golden by -\m
+  \advance\golden by 1
+%		epact = ((11 * golden) + 20	/* Golden number	*/
+%		+ (((8 * cent) + 5) / 25) - 5	/* 400 year cycle	*/
+%		- (((3 * cent) / 4) - 12)) % 30;/* Leap year correction	*/
+  \epact=11 \multiply\epact by \golden
+  \advance\epact by 20
+  \x=8 \multiply\x by \cent \advance\x by 5
+  \divide\x by 25 \advance\x by -5
+  \advance\epact by \x
+  \x=3 \multiply\x by \cent \divide\x by 4 \advance\x by -12
+  \advance\epact by -\x
+  \m=\epact \divide\m by 30 \multiply\m by 30 \advance\epact by -\m
+%	if (epact <= 0)
+%		epact += 30;			/* Age range is 1 .. 30	*/
+%	if ((epact == 25 && golden > 11) || epact == 24)
+%		epact++;
+  \ifnum \epact<0
+    \advance\epact by 30
+  \fi
+  \ifnum \epact=25
+    \ifnum \golden>11
+      \advance \epact by 1
+    \fi
+  \else
+    \ifnum \epact=24
+      \advance \epact by 1
+    \fi
+  \fi
+%
+% Calculate the phase, using the magic numbers defined above.
+% Note that phase may be equal to 8 (== 0) on two days of the year
+% due to the way the algorithm was implemented.
+%	phase = (((((diy + epact) * 6) + 11) % 177) / 22) & 7;
+%
+  \x=\diy \advance\x by \epact \multiply\x by 6 \advance\x by 11
+  \m=\x \divide\m by 177 \multiply\m by 177 \advance\x by -\m
+  \divide\x by 22
+  \ifcase\x new\or waxing crescent\or in its first quarter\or
+	waxing gibbous\or full\or waning gibbous\or
+	in its last quarter\or waning crescent\or new\fi
+}

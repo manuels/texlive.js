@@ -1,0 +1,707 @@
+% This is the YaX package.
+% Relevant information can be found in yax-doc.pdf
+%
+% Author: Paul Isambert.
+% E-mail: zappathustra AT free DOT fr
+% Comments and suggestions are welcome.
+% Date: January 2011.
+%
+\ifcsname yax@already_loaded\endcsname
+  \expandafter\endinput
+\fi
+
+\input texapi % Everything I need. It figures: I wrote it for this.
+
+\ifdefined\texapiversion
+  \ifdim\texapiversion pt<1.03pt
+    \senderror{YaX}{You need texapi with version at least 1.03. I quit}
+    \expandafter\expandafter\expandafter\endinput
+  \fi
+\else
+  % \texapiversion was introduced in v.1.02.
+  \senderror{YaX}{You need texapi with version at least 1.03. I quit}
+  \expandafter\endinput
+\fi
+
+\setcatcodes{@_=11}
+\def\yaxversion{1.03}
+\let\yax@already_loaded\relax
+\def\yax@error{\senderror{YaX}}
+
+%
+% Retrieval of parameter and attribute.
+%
+\def\yax@getparameter#1#2:{%
+  \passtrim{#2}{#1}%
+  }
+\def\yax@defparameter#1#2{%
+  \def\yax@parameter{#2}#1
+  }
+% #1 and #2 are thing_to_do and parameter.
+\def\yax@getattribute#1#2#3 {%
+  \ifemptystring{#3}{\yax@getattribute{#1}{#2}}
+                    {#1{#2}{#3}}%
+  }
+% \yax@getall\foo
+% => \foo{<parameter>}{<attribute>}
+\def\yax@getall#1{%
+  \yax@getparameter{\yax@getattribute{#1}}%
+  }
+%
+\long\def\yax@get_topar#1#2\par{%
+  #1{#2}%
+  }
+%
+%
+%
+%
+%%%%%%%%%%%%%%% SETTING PARAMETERS %%%%%%%%%%%%%%%
+%
+% The crux of the biscuit.
+%
+% \setparameter <list of parameters> :
+%   <prefix><attribute1> = <value1>
+%   <prefix><attribute2> = <value2>
+%   ...
+%   <prefix><attributeN> = <valueN>
+% \par
+%
+% A generic loop for space-delimited lists.
+% The the texapi documentation for the information on the \newfor loop.
+%
+\newfornoempty\yax@space_loop{1}#2 {#1{#2}}%
+%
+\pdef\setparameter{%
+  \yax@getparameter\yax@setparameter_getattributes
+  }
+\long\def\yax@setparameter_getattributes#1#2\par{%
+  \yax@setparameter_getpairs{}{#2 }%
+  \expandafter\yax@space_loop\expandafter{\expandafter\yax@setparameter_assign\expandafter{\yax@setparameters_pairs}}{#1 }%
+  \yax@space_loop\yax@setparameter_execute{#1 }%
+  }
+\newfor\yax@setparameter_getpairs{1}#2={%
+  \pausefor{\skipspace{\passtrim{#2}{\yax@setparameter_checkprefix{\yax@setparameter_howgiven{#1}}}}}%
+  }[\def\yax@setparameters_pairs{#1}]
+
+\newstring{e:} \newstring{g:} \newstring{x:}
+\long\def\yax@setparameter_checkprefix#1#2{%
+  \ifprefix{e:}{#2}
+      {\removeprefixand{e:}{#2}\passtrim{#1\edefcs}}
+      {\ifprefix{g:}{#2}
+           {\removeprefixand{g:}{#2}\passtrim{#1\gdefcs}}
+           {\ifprefix{x:}{#2}
+                {\removeprefixand{x:}{#2}\passtrim{#1\xdefcs}}
+                {#1\defcs{#2}}}}%
+  }
+
+\long\def\yax@setparameter_howgiven#1#2#3{%
+  \ifnextnospace"
+      {\yax@setparameter_getquote{#1}{#2}{#3}}
+       % No need for a new nospace: it has been removed
+      {\ifcatnext\foo
+           {\yax@setparameter_getcommand{#1}{#2}{#3}}
+           {\yax@setparameter_getspace{#1}{#2}{#3}}}%
+  }
+
+\long\def\yax@setparameter_getquote#1#2#3"#4"{%
+  \skipspace{\resumefor\yax@setparameter_getpairs{#1{#2}{#3}{#4}}}% Better not to forget this!
+  }
+\long\def\yax@setparameter_getcommand#1#2#3#4{%
+  \skipspace{\resumefor\yax@setparameter_getpairs{#1{#2}{#3}{#4}}}%
+  }
+\long\def\yax@setparameter_getspace#1#2#3#4 {%
+  \skipspace{\resumefor\yax@setparameter_getpairs{#1{#2}{#3}{#4}}}%
+  }
+
+\long\def\yax@setparameter_assign#1#2{%
+  \yax@setparameter_assignloop{#2}{#1}%
+  }
+
+\newfor\yax@setparameter_assignloop{1}#2#3#4{%
+  \yax@space_loop{\yax@setparameter_do{#1}{#2}{#4}}{#3 }%
+  }
+
+\newif\ifyax@makedef
+% #1 = parameter; #2 = \<|e|g|x>defcs; #3 = value; #4 = attribute
+\long\def\yax@setparameter_do#1#2#3#4{%
+  \yax@makedeftrue
+  \iffcs{yax@#1@restricted}% Parameter restricted.
+        {\reverse\iffcs{yax@#1:#4@allowed}% Attribute not allowed.
+                      {\yax@makedeffalse
+                       \yax@error{Attribute `#4' is not allowed in parameter `#1'.
+                         Authorized attributes are `\unexpandedcs{yax@#1@restricted}'}}}%
+  \ifcs{yax@#1:#4@restricted}% Attribute restricted in this parameter.
+       {\reverse\iffcs{yax@#1:#4:\detokenize{#3}@allowed}% Value not allowed.
+                      {\yax@makedeffalse
+                       \yax@error{Value `\detokenize{#4}' is not allowed in attribute `#1:#4'.
+                         Authorized values are `\unexpandedcs{yax@#1:#4@restricted}'}}}%
+        {\iffcs{yax@attribute@#4@restricted}% Attribute restricted in all parameters.
+               {\reverse\iffcs{yax@attribute@#4:\detokenize{#3}@allowed}% Value not allowed.
+                              {\yax@makedeffalse
+                                \yax@error{Value `\detokenize{#3}' is not allowed in attribute `#4'.
+                                  Authorized values are `\unexpandedcs{yax@attribute@#4@restricted}'}}}}%
+  \ifyax@makedef
+    \reverse\iffcs{yax@#1@attributelist}{\gdefcs{yax@#1@attributelist}{}}%
+    \ifx#2\gdefcs
+      \passexpandedcs{\yax@parameterlist_add\global{#1}{#4}}{yax@#1@attributelist}%
+    \else\ifx#2\xdefcs
+      \passexpandedcs{\yax@parameterlist_add\global{#1}{#4}}{yax@#1@attributelist}%
+    \else
+      \passexpandedcs{\yax@parameterlist_add{}{#1}{#4}}{yax@#1@attributelist}%
+    \fi\fi
+    #2{yax@#1:#4}{#3}%
+  \fi
+  }
+
+\newfor\yax@parameterlist_add{3}#4{%
+  \iffstring{#3}{#4}{\breakfor{}}%
+  }[#1\eaddrightcs{yax@#2@attributelist}{{#3}}]
+
+\def\yax@setparameter_execute#1{%
+  \iffcs{yax@#1@active}{\usecs{yax@#1@def}}%  
+  }
+%
+% \setparameterlist <list of parameters>[<default value>|*<cs>]<attribute>=<value>, ...
+%
+\def\setparameterlist#1{%
+  \ifnextnospace[
+    {\yax@setparameterlist_getdefault{#1}}
+    {\yax@setparameterlist_getdefault{#1}[]}%
+  }
+
+\def\yax@setparameterlist_getdefault#1[#2]#3{%
+  \yax@setparameterlist_loop{#1}{#2}{#3,}%
+  \yax@space_loop\yax@setparameter_execute{#1 }%
+  }
+
+\newstring{=}
+\newfornoempty\yax@setparameterlist_loop{2}#3,{%
+  \ifcontains={#3}
+    {\yax@setparameterlist_getargs{#1}#3\yax@endofentry}
+    {\ifemptystring{#2}
+       {\yax@setparameterlist_getargs{#1}#3=true\yax@endofentry}
+       {\passtrim{#3}{#2}}}%
+  }
+
+\long\def\yax@setparameterlist_getargs#1#2=#3\yax@endofentry{%
+  \yax@setparameter_checkprefix{\passtrim{#3}{\yax@setparameterlist_assign{#1}}}{#2}%
+  }
+
+\long\def\yax@setparameterlist_assign#1#2#3#4{%
+  \yax@space_loop{\yax@setparameterlist_do{#3}{#2}{#4}}{#1 }%
+  }
+
+\long\def\yax@setparameterlist_do#1#2#3#4{%
+  \yax@space_loop{\yax@setparameter_do{#4}{#1}{#2}}{#3 }%
+  }
+%
+% \setattribute <parameter> : <attribute> = <value>
+%
+\def\yax@removesign#1#2#3#4={#1{#2}{#3}}%
+\pdef\setattribute{%
+  \yax@getall{\yax@removesign{\yax@setattribute\defcs}}%
+  }
+\pdef\esetattribute{%
+  \yax@getall{\yax@removesign{\yax@setattribute\edefcs}}%
+  }
+\pdef\gsetattribute{%
+  \yax@getall{\yax@removesign{\yax@setattribute\gdefcs}}%
+  }
+\pdef\xsetattribute{%
+  \yax@getall{\yax@removesign{\yax@setattribute\xdefcs}}%
+  }
+\def\yax@setattribute#1#2#3{%
+  \skipspace{\yax@setattribute_getvalue{#1}{#2}{#3}}%
+  }
+\long\def\yax@setattribute_getvalue#1#2#3#4 {%
+  \yax@setparameter_do{#2}{#1}{#4}{#3}%
+  }
+%
+% \copyparameter <list of parameters> : <parameter>
+%
+\pdef\copyparameter{%
+  \yax@getall{\yax@copyparameter{}}%
+  }
+\pdef\gcopyparameter{%
+  \yax@getall{\yax@copyparameter\global}%
+  }
+\def\yax@copyparameter#1#2#3{%
+  \reverse\iffcs{yax@#3@attributelist}{#1\letcs{yax@#3@attributelist}\emptycs}%
+  \yax@space_loop{\yax@copyparameter_do{#1}{#3}}{#2 }%
+  }
+\def\yax@copyparameter_do#1#2#3{%
+  \iffcs{yax@#3@attributelist}{%
+    \passexpandedcs{\yax@parameterlist_copy{#1}{#3}{#2}}{yax@#3@attributelist}}%
+  }
+\newfor\yax@parameterlist_copy{3}#4{%
+  #1\letcstocs{yax@#3:#4}{yax@#2:#4}%
+  \passexpandedcs{\yax@parameterlist_add{#1}{#3}{#4}}{yax@#3@attributelist}%
+  }
+%
+%
+%
+% \deleteparameter <list of parameters>:
+%
+\pdef\deleteparameter{%
+  \yax@getparameter{\yax@deleteparameter{}}%
+  }
+\pdef\gdeleteparameter{%
+  \yax@getparameter{\yax@deleteparameter\global}%
+  }
+\def\yax@deleteparameter#1#2{%
+  \yax@space_loop{\yax@deleteparameter_do{#1}}{#2 }%
+  }
+\def\yax@deleteparameter_do#1#2{%
+  \iffcs{yax@#2@attributelist}{\passexpandedcs{\yax@parameterlist_delete{#1}{#2}}{yax@#2@attributelist}}%
+  }
+\newfor\yax@parameterlist_delete{2}#3{%
+  #1\letcs{yax@#2:#3}\yax@somethinghopefullyundefined
+  }[#1\letcs{yax@#2@attributelist}\yax@somethinghopefullyundefined]
+%
+%
+% \deleteattribute <parameter> : <attribute>
+%
+\def\deleteattribute{%
+  \yax@getall{\yax@deleteattribute{}}%
+  }
+\def\gdeleteattribute{%
+  \yax@getall{\yax@deleteattribute\global}%
+  }
+\def\yax@deleteattribute#1#2#3{%
+  \iffcs{yax@#2@attributelist}{%
+    #1\letcs{yax@#2:#3}\yax@undefined
+    \passexpandedcs{\yax@parameterlist_remove{#1\edefcs}{#2}{#3}{}}{yax@#2@attributelist}}%
+  }
+
+\newfor\yax@parameterlist_remove{4}#5{%
+  \reverse\iffstring{#3}{#5}{\passarguments{#1}{#2}{#3}{#4{#5}}}%
+  }[#1{yax@#2@attributelist}{#4}]
+%
+%
+%
+%
+% \restrictparameter <list of parameters> : 
+%   <attribute1>
+%   <attribute2>
+%   ...
+%   <attributeN>
+% \par
+%
+\pdef\restrictparameter{%
+  \yax@getparameter\yax@restrictparameter_getrestrictions
+  }%
+\long\def\yax@restrictparameter_getrestrictions#1#2\par{%
+  \yax@space_loop{\yax@restrictparameter{#2 meta }}{#1 }% Meta is always allowed.
+  }
+\long\def\yax@restrictparameter#1#2{%
+  \def\yax@parameter{#2}%
+  \yax@space_loop\yax@restrictparameter_readrestrictions{#1}%
+  }
+\long\def\yax@restrictparameter_readrestrictions#1{%
+  \letcs{yax@\yax@parameter :#1@allowed}\relax
+  \ifcs{yax@\yax@parameter @restricted}
+        {\addrightcs{yax@\yax@parameter @restricted}{, #1}}
+        {\defcs{yax@\yax@parameter @restricted}{#1}}%
+  }
+%
+% \restrictattribute <parameter>:<attribute>
+%   <value1>
+%   <value2>
+%   ...
+%   <valueN>
+%\par
+%
+\pdef\restrictattribute{%
+  \yax@getall\yax@restrictattribute_getrestrictions
+  }
+\long\def\yax@restrictattribute_getrestrictions#1#2#3\par{%
+  \yax@space_loop{\yax@restrictattribute_readrestrictions{#1}{#2}}{#3 }%
+  }
+\long\def\yax@restrictattribute_readrestrictions#1#2#3{%
+  \letcs{yax@#1:#2:\detokenize{#3}@allowed}\relax
+  \ifcs{yax@#1:#2@restricted}
+        {\addrightcs{yax@#1:#2@restricted}{, #3}}
+        {\defcs{yax@#1:#2@restricted}{#3}}%
+  }
+%
+% \restrictallattributes <attribute>
+%   <value1>
+%   <value2>
+%   ...
+%   <valueN>
+%\par
+%
+\long\pdef\restrictallattributes#1 #2\par{%
+  \yax@space_loop{\yax@restrictallattributes_readrestrictions{#1}}{#2 }%
+  }
+\long\def\yax@restrictallattributes_readrestrictions#1#2{%
+  \letcs{yax@attribute@#1:\detokenize{#2}@allowed}\relax
+  \ifcs{yax@attribute@#1@restricted}
+        {\addrightcs{yax@attribute@#1@restricted}{, #2}}
+        {\defcs{yax@attribute@#1@restricted}{#2}}%
+  }
+%
+%
+%
+%
+% \defparameter<list of parameters>{<definition>}
+% \defactiveparameter<list of parameters>{<definition>}
+% \executeparameter <parameter> : 
+% 
+\newif\ifyax@activeparameter
+\def\defparameter#1#{%
+  \def\yax@parameter{#1 }%
+  \afterassignment\yax@defparameter_do
+  \def\yax@temp##1%
+  }%
+\def\yax@defparameter_do{%
+  \passexpanded{\yax@space_loop\yax@defparameter_def}\yax@parameter
+  \yax@activeparameterfalse
+  }
+
+\def\defactiveparameter{%
+  \yax@activeparametertrue\defparameter
+  }%
+\long\def\yax@defparameter_def#1{%
+  \edefcs{yax@#1@def}{\primunexpanded\expandafter{\yax@temp{#1}}}%
+  \ifyax@activeparameter
+    \letcs{yax@#1@active}\relax
+  \fi
+  }
+\def\executeparameter{%
+  \yax@getparameter\yax@executeparameter
+  }
+\def\yax@executeparameter#1{%
+  \iffcs{yax@#1@def}{\csname yax@#1@def\endcsname}%
+  }
+%
+%
+%
+%
+%%%%%%%%%%%%%%%%%% USING VALUES %%%%%%%%%%%%%%%%%%
+%
+% These are the loops used to check whether <parameter>:<attribute> exists,
+% and if not to search the meta-parameters. They are used of course in
+% \usevalue and associates.
+% I could use one loop only for all macros, but then I should have used more
+% internal code to pass arguments here and there.
+%
+% #1 = list of parameters already checked (used to spot loops in meta-search)
+%    => becomes {#1{#3}} on each iteration.
+% #2 = command executed on yax@<parameter>:<attribute> if it exists.
+%    => doesn't change from one iteration to the next.
+% #3 = <parameter>
+%    => becomes \usecs{yax@<parameter>:<meta>} on each iteration, thus
+%    returning a new <parameter> to be searched.
+% #4 = <attribute>
+%    => doesn't change from one iteration to the next.
+% #5 = <or> if alone, <and> when #6 exists.
+% #6 = <or>.
+%    => neither change.
+%
+% The loop does the following:
+% If <parameter>:<attribute> exists, then execute #2 on it followed by <and> if any.
+% Or, if <parameter> has a meta attribute, it calls
+% the \yax@ifattribute_checkmeta subloop with <or> and <parameter>
+% as passed arguments and <list of previous parameters> as the list argument.
+% This command compares each item in the list with <parameter>, and if they
+% have the same meta, it means we're in a meta-loop, we break and execute <or>.
+% If no match obtains, we rerun the original loop (with #3 turned to its meta).
+% Or, if <parameter> had no meta in the first place, we break and execute <or>.
+%
+\newwhile\yax@ifattribute_noarg4{#1{#3}}{#2}{\usecs{yax@#3:meta}}{#4}{%
+  \ifcs{yax@#3:#4}
+       {\breakwhile{#2{yax@#3:#4}}}
+       {\ifcs{yax@#3:meta}% <parameter> has no <attribute>.
+             {\yax@ifattribute_checkmeta{}{#3}{#1}}% It has a meta, though. We do some testing (see next macro).
+             {\breakwhile{}}}% No meta, we break the loop, gobble <true> and release <false>  
+  }
+\newwhile\yax@ifattribute_or5{#1{#3}}{#2}{\usecs{yax@#3:meta}}{#4}{#5}{%
+  \ifcs{yax@#3:#4}
+       {\breakwhile{#2{yax@#3:#4}}}
+       {\ifcs{yax@#3:meta}
+             {\yax@ifattribute_checkmeta{#5}{#3}{#1}}
+             {\breakwhile{#5}}}%
+  }
+\newwhile\yax@ifattribute_and6{#1{#3}}{#2}{\usecs{yax@#3:meta}}{#4}{#5}{#6}{%
+  \ifcs{yax@#3:#4}
+       {\breakwhile{#2{yax@#3:#4}#5}}
+       {\ifcs{yax@#3:meta}
+             {\yax@ifattribute_checkmeta{#6}{#3}{#1}}
+             {\breakwhile{#6}}}%
+  }
+% The _if version pass <or> to the execution of the parameter,
+% since a test is supposed to happen.
+\newwhile\yax@ifattribute_if6{#1{#3}}{#2}{\usecs{yax@#3:meta}}{#4}{#5}{#6}{%
+  \ifcs{yax@#3:#4}
+       {\breakwhile{#2{yax@#3:#4}{#5}{#6}}}
+       {\ifcs{yax@#3:meta}
+             {\yax@ifattribute_checkmeta{#6}{#3}{#1}}
+             {\breakwhile{#6}}}%
+  }
+\newfor\yax@ifattribute_checkmeta{2}#3{%
+  \iffxcscs{yax@#2:meta}{yax@#3:meta}% Both parameters have the same meta. So we're in a meta-loop, and we break.
+           {\breakfor{\breakwhile{#1}}}%
+  }
+%
+% The  nometa version are definitely simpler.
+%
+\long\def\yax@ifattributenometa_and#1#2#3#4#5{%
+  \ifcs{yax@#2:#3}{#1{yax@#2:#3}#4}{#5}%
+  }
+\long\def\yax@ifattributenometa_or#1#2#3#4{%
+  \ifcs{yax@#2:#3}{#1{yax@#2:#3}}{#4}%
+  }
+\def\yax@ifattributenometa_noarg#1#2#3{%
+  \iffcs{yax@#2:#3}{#1{yax@#2:#3}}%
+  }
+%
+%
+%
+%
+% \nometa
+%
+\def\nometa#1{%
+  \ifcs{yax@\commandtoname#1_nometa}
+       {\usecs{yax@\commandtoname#1_nometa}}
+       {\yax@error{You can't use \noexpand\nometa before \string#1}}%
+  }
+%
+%
+%
+% Defining \<com>, \<com>or and \<com>and at once, 
+% with the \nometa-variant.
+%
+\def\yax@def_noarg#1#2{%
+  \def#1{\yax@getall{\yax@ifattribute_noarg{}{#2}}}%
+  \defcs{\commandtoname#1or}{\yax@getall{\yax@ifattribute_or{}{#2}}}%
+  \defcs{\commandtoname#1and}{\yax@getall{\yax@ifattribute_and{}{#2}}}%
+%
+  \defcs{yax@\commandtoname#1_nometa}{\yax@getall{\yax@ifattributenometa_noarg{#2}}}%
+  \defcs{yax@\commandtoname#1or_nometa}{\yax@getall{\yax@ifattributenometa_or{#2}}}%
+  \defcs{yax@\commandtoname#1and_nometa}{\yax@getall{\yax@ifattributenometa_and{#2}}}%
+  }
+\def\yax@def_onearg#1#2{%
+  \def#1##1{\yax@getall{\yax@ifattribute_noarg{}{#2{##1}}}}%
+  \defcs{\commandtoname#1or}##1{\yax@getall{\yax@ifattribute_or{}{#2{##1}}}}%
+  \defcs{\commandtoname#1and}##1{\yax@getall{\yax@ifattribute_and{}{#2{##1}}}}%
+%
+  \defcs{yax@\commandtoname#1_nometa}##1{\yax@getall{\yax@ifattributenometa_noarg{#2{##1}}}}%
+  \defcs{yax@\commandtoname#1or_nometa}##1{\yax@getall{\yax@ifattributenometa_or{#2{##1}}}}%
+  \defcs{yax@\commandtoname#1and_nometa}##1{\yax@getall{\yax@ifattributenometa_and{#2{##1}}}}%
+  }
+%
+%
+%
+%
+% \ifattribute
+%
+\def\ifattribute{%
+  \yax@getall{\yax@ifattribute_and{}\gobbleone}%
+  }%
+\def\yax@ifattribute_nometa{%
+  \yax@getall{\yax@ifattributenometa_and\gobbleone}%
+  }
+%
+%
+%
+%
+% \passvalue
+%
+\yax@def_onearg\passvalue\yax@passvalue
+\def\yax@passvalue#1#2{%
+  \passexpandedcs{#1}{#2}%
+  }
+\yax@def_onearg\passvaluenobraces\yax@passvalue_nobrace
+\def\yax@passvalue_nobrace#1#2{%
+  \passexpandedcs\swapargs{#2}{#1}%
+  }
+%
+%
+%
+%
+% \usevalue 
+%
+\yax@def_noarg\usevalue\usecs
+%
+%
+%
+%
+% \settovalue (not expandable, obviously,
+% although it leaves nothing in the input but
+% the assignment.
+%
+\yax@def_onearg\settovalue\yax@settovalue
+\def\yax@settovalue#1#2{%
+  #1 \usecs{#2}\relax
+  }
+%
+%
+%
+%
+% \storevalue  (like \settovalue, basically).
+%
+\yax@def_onearg\storevalue\yax@storevalue
+\def\yax@storevalue#1#2{%
+  \lettocs#1{#2}%
+  }%
+%
+%
+%
+%
+% \ifvalue 
+%
+\def\ifvalue{%
+  \yax@getall{\yax@removesign\yax@ifvalue_getvalue}%
+  }%
+
+\def\yax@ifvalue_nometa{%
+  \yax@getall{\yax@removesign\yax@ifvaluenometa_getvalue}%
+  }%
+\long\def\yax@ifvalue_getvalue#1#2#3 {%
+  \ifemptystring{#3}
+                {\yax@ifvalue_getvalue{#1}{#2}}
+                {\yax@ifattribute_if{}{\passexpandedcs{\ifstring{#3}}}{#1}{#2}}%
+  }
+\def\yax@ifvaluenometa_getvalue#1#2#3 {%
+  \ifemptystring{#3}
+                {\yax@ifvaluenometa_getvalue{#1}{#2}}
+                {\ifcs{yax@#1:#2}{\passexpandedcs{\ifstring{#3}}{yax@#1:#2}}\secondoftwo}%
+  }
+%
+%
+%
+%
+% \ifcasevalue
+%
+\let\yax@ifcasevalue_passvalueor\passvalueor % just in case \passvalue is redefined by a \newsyntax.
+\let\yax@yax@ifcasevalue_passvalueor_nometa\yax@passvalueor_nometa
+\letcstocs{yax@yax@ifcasevalue_passvalueor_nometa}{yax@passvalueor_nometa}
+
+\def\ifcasevalue{%
+  \yax@getall\yax@ifcasevalue_getvalue
+  }
+\def\yax@ifcasevalue_nometa{%
+  \yax@getall{\expandafter\nometa\yax@ifcasevalue_getvalue}%
+  }
+\def\yax@ifcasevalue_getvalue#1#2{%
+  \yax@ifcasevalue_passvalueor\yax@ifcasevalue_scan#1:#2 \yax@ifcasevalue_novalue
+  }
+\newstring\val \newstring\elseval
+\long\def\yax@ifcasevalue_novalue#1\endval{%
+  \iffcontains{\elseval}{#1}{\splitstringat{\elseval}{#1}\yax@ifcasevalue_doelse}%
+  }
+\def\yax@ifcasevalue_doelse#1#2{\trim{#2}}
+\def\yax@ifcasevalue_scan#1#2\endval{%
+  \ifcontains{\elseval}{#2}
+             {\splitstringat{\elseval}{#2}\yax@ifcasevalue_dotest{#1}}
+             {\yax@ifcasevalue_dotest{#2}{}{#1}}%
+  }
+\def\yax@ifcasevalue_dotest#1#2#3{%
+  \yax@ifcasevalue_loop{#3}{#2}{{yax@dummy_value} #1\val}%
+  }
+\newfor\yax@ifcasevalue_loop{2}#3 #4\val{%
+  \iffstring{#1}{#3}{\passtrim{#4}\breakfor}%
+  }[\passtrim{#2}\unbrace]
+%
+%
+%
+%
+% \parameterloop<list of parameters>:<command>
+%
+\def\parameterloop{%
+  \yax@getparameter\yax@parameterloop
+  }
+\long\def\yax@parameterloop#1#2{%
+  \yax@space_loop{\yax@parameterloop_launch{#2}}{#1 }%
+  }
+\long\def\yax@parameterloop_launch#1#2{%
+  \iffcs{yax@#2@attributelist}
+    {\passexpandedcs{\yax@parameterloop_do{#1}{#2}}{yax@#2@attributelist}}%
+  }
+\newfor\yax@parameterloop_do{2}#3{%
+  \passvalue{#1{#2}{#3}}{#2}:{#3}
+  }
+%
+%
+%
+%
+% \newsyntax
+%
+\long\def\newsyntax#1#{%
+  \yax@newsyntax{#1}%
+  }
+\long\def\yax@newsyntax_noarg#1#2#3{%
+  \defcs{#1}#2{\yax@ifattribute_noarg{}{#3}{##1}{##2}}%
+  \defcs{#1or}#2{\yax@ifattribute_or{}{#3}{##1}{##2}}%
+  \defcs{#1and}#2{\yax@ifattribute_and{}{#3}{##1}{##2}}%
+%
+  \defcs{yax@#1_nometa}#2{\yax@ifattributenometa_noarg{#3}{##1}{##2}}%
+  \defcs{yax@#1or_nometa}#2{\yax@ifattributenometa_or{#3}{##1}{##2}}%
+  \defcs{yax@#1and_nometa}#2{\yax@ifattributenometa_and{#3}{##1}{##2}}%
+  }
+\long\def\yax@newsyntax_onearg#1#2#3{%
+  \defcs{#1}##1#2{\yax@ifattribute_noarg{}{#3{##1}}{##2}{##3}}%
+  \defcs{#1or}##1#2{\yax@ifattribute_or{}{#3{##1}}{##2}{##3}}%
+  \defcs{#1and}##1#2{\yax@ifattribute_and{}{#3{##1}}{##2}{##3}}%
+%
+  \defcs{yax@#1_nometa}##1#2{\yax@ifattributenometa_noarg{#3{##1}}{##2}{##3}}%
+  \defcs{yax@#1or_nometa}##1#2{\yax@ifattributenometa_or{#3{##1}}{##2}{##3}}%
+  \defcs{yax@#1and_nometa}##1#2{\yax@ifattributenometa_and{#3{##1}}{##2}{##3}}%
+  }
+\long\def\yax@newsyntax#1#2{%
+  \defcs{#2restrictattribute}#1{\yax@restrictattribute_getrestrictions{##1}{##2}}%
+  \defcs{#2deleteattribute}#1{\letcs{yax@##1:##2}\yax@undefined}%
+  \defcs{#2setattribute}#1{\yax@removesign{\skipspace{\yax@setattribute\defcs}}{##1}{##2}}%
+  \defcs{#2esetattribute}#1{\yax@removesign{\skipspace{\yax@setattribute\edefcs}}{##1}{##2}}%
+  \defcs{#2gsetattribute}#1{\yax@removesign{\skipspace{\yax@setattribute\gdefcs}}{##1}{##2}}%
+  \defcs{#2xsetattribute}#1{\yax@removesign{\skipspace{\yax@setattribute\xdefcs}}{##1}{##2}}%
+  \defcs{#2ifattribute}#1{\yax@ifattribute_and{}\gobbleone{##1}{##2}}%
+  \defcs{yax@#2ifattribute_nometa}#1{\yax@ifattributenometa_and\gobbleone{##1}{##2}}%
+  \yax@newsyntax_noarg{#2usevalue}{#1}\usecs
+  \def\yax@temp##1##2{#1}%
+  \passexpanded{\yax@newsyntax_onearg{#2passvalue}}{\yax@temp{##2}{##3}}\yax@passvalue
+  \passexpanded{\yax@newsyntax_onearg{#2passvaluenobraces}}{\yax@temp{##2}{##3}}\yax@passvalue_nobrace
+  \passexpanded{\yax@newsyntax_onearg{#2settovalue}}{\yax@temp{##2}{##3}}\yax@settovalue
+  \passexpanded{\yax@newsyntax_onearg{#2storevalue}}{\yax@temp{##2}{##3}}\yax@storevalue
+  \defcs{#2ifvalue}#1{\yax@removesign\yax@ifvalue_getvalue{##1}{##2}}%
+  \defcs{yax@#2ifvalue_nometa}#1{\yax@removesign\yax@ifvaluenometa_getvalue{##1}{##2}}%
+  \defcs{#2ifcasevalue}#1{\yax@ifcasevalue_getvalue{##1}{##2}}%
+  \defcs{yax@#2ifcasevalue_nometa}#1{\expandafter\nometa\yax@ifcasevalue_getvalue{##1}{##2}}%
+  }
+
+\def\yax@let#1#2#3{%
+  \letcstocs{#2#1}{#3#1}%
+  \letcstocs{yax@#2#1_nometa}{yax@#3#1_nometa}%
+  }
+\def\yax@let_all#1#2#3{%
+  \yax@let{#1}{#2}{#3}\yax@let{#1or}{#2}{#3}\yax@let{#1and}{#2}{#3}%
+  }
+\def\copysyntax#1#2{%
+  \letcstocs{#1restrictattribute}{#2restrictattribute}%
+  \letcstocs{#1deleteattribute}{#2deleteattribute}%
+  \letcstocs{#1setattribute}{#2setattribute}%
+  \letcstocs{#1esetattribute}{#2esetattribute}%
+  \letcstocs{#1gsetattribute}{#2gsetattribute}%
+  \letcstocs{#1xsetattribute}{#2xsetattribute}%
+  \yax@let{ifattribute}{#1}{#2}%
+  \yax@let_all{usevalue}{#1}{#2}\yax@let_all{passvalue}{#1}{#2}\yax@let_all{passvaluenobraces}{#1}{#2}%
+  \yax@let_all{settovalue}{#1}{#2}\yax@let_all{storevalue}{#1}{#2}%
+  \yax@let{ifvalue}{#1}{#2}%
+  \yax@let{ifcasevalue}{#1}{#2}%
+  }
+
+\def\letyaxcommand#1#2{%
+  \let#1#2% Base \let.
+  \ifcs{yax@\commandtoname#2and_nometa} % #2 is a YaX command with -and -or variants.
+       {\letcstocs{\commandtoname#1or}{\commandtoname#2or}%
+        \letcstocs{\commandtoname#1and}{\commandtoname#2and}%
+        \letcstocs{yax@\commandtoname#1_nometa}{yax@\commandtoname#2_nometa}%
+        \letcstocs{yax@\commandtoname#1or_nometa}{yax@\commandtoname#2or_nometa}%
+        \letcstocs{yax@\commandtoname#1and_nometa}{yax@\commandtoname#2and_nometa}}%
+       {\iffcs{yax@\commandtoname#2_nometa}% #2 is a YaX command without variants but with \nometa (i.e. the \if...).
+              {\letcstocs{yax@\commandtoname#1_nometa}{yax@\commandtoname#2_nometa}}}%
+  }
+
+\restorecatcodes
+\endinput

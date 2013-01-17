@@ -1,0 +1,122 @@
+%--------------------------------------------
+% $Header: /cvsroot/pgfplots/pgfplots/generic/pgfplots/sys/pgflibrarysurfshading.pgfsys-pdftex.def,v 1.1 2009/06/11 07:14:52 ludewich Exp $
+%
+% Package pgfplots
+%
+% Provides a user-friendly interface to create function plots (normal
+% plots, semi-logplots and double-logplots).
+% 
+% It is based on Till Tantau's PGF package.
+%
+% Copyright 2007/2008 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%--------------------------------------------
+
+
+% The lowlevel call for surface shadings. It uses a pattern type 2
+% dictionary as fill color and has thus several things to do. This is
+% a little bit more complicated than using the '/sh' operator (as
+% other pgf shadings do): the surface shading must be positioned
+% exactly at the requested coordinates, otherwise it is quite useless.
+%
+% Since shadings are *not* affected by changes in the canvas
+% transformation matrix (shifts, rotations etc), it is necessary to
+% pack the shading into a separate xform object which is then rotated
+% and translated correctly. 
+%
+% There is just one more transformation necessary: the shift inside of
+% the xform. This shift is done using changes in the canvas
+% transformation matrix and it is UNDONE in the /Matrix argument of
+% the pattern dictionary. This last step can't be done with the /sh
+% operator which is why I am using pattern dictionaries.
+\def\pgfplotslibrarysurfdraw{%
+	\begingroup
+	\setbox\pgfutil@tempboxa=\hbox{%
+		\pgfpicture
+		\pgfplotssys@do@surfshading@fillpaths\pgfplots@loc@TMPa%
+		\global\let\pgfplots@glob@TMPa=\pgfplots@loc@TMPa
+		\pgfpathrectanglecorners
+			{\pgfplotslibrarysurf@corner@sw}
+			{\pgfplotslibrarysurf@corner@ne}%
+		\pgfusepath{fill}%
+		\endpgfpicture
+	}%
+	\pdfxform resources{
+		/Pattern << \pgfplots@glob@TMPa >> % write the pattern resource dictionary
+	}\pgfutil@tempboxa
+	\leavevmode
+	\pdfrefxform\pdflastxform
+	\endgroup
+}
+
+% To be used inside of a pgfpicture.
+%
+% #1: a macro name. The contents of this macro needs to be written
+% into the pdf pattern dictionary contained in the pdf resources of
+% the current context. The current context is either the current page
+% or an xform object.
+%
+%
+\def\pgfplotssys@do@surfshading@fillpaths#1{%
+	\immediate\pdfobj stream attr {%
+		% stream length will be computed automatically
+		/ShadingType \pgfplotslibrarysurf@type\space
+		/BitsPerCoordinate \pgfplotslibrarysurf@bitspercoordinate\space
+		/BitsPerComponent 16
+		\if5\pgfplotslibrarysurf@type
+			/VerticesPerRow \pgfkeysvalueof{/pgfplots/surf shading/cols}
+		\else
+			/BitsPerFlag 8
+		\fi
+		/ColorSpace /Device\pgfplotslibrarysurf@colorspace
+		/Decode [\pgfplotslibrarysurf@decode]
+		/Function \pgfkeysvalueof{/pgfplots/surf shading/colormap}
+		\ifx\pgfplotslibrarysurf@filter@decode\pgfutil@empty
+		\else
+			/Filter /\pgfplotslibrarysurf@filter@decode\space
+		\fi
+	} {%
+		\pgfplotslibrarysurf@binarystream
+	}%
+	\edef\pgfplots@loc@TMPa{\the\pdflastobj}%
+	\pgf@process{\pgfpointdiff{\pgfplotslibrarysurf@corner@sw}{\pgfkeysvalueof{/pgfplots/surf shading/anchor}}}%
+	\pgf@sys@bp@correct\pgf@x%
+	\pgf@sys@bp@correct\pgf@y%
+	\immediate\pdfobj {<<
+		/Type /Pattern
+		/PatternType 2
+%		/Matrix [\pgf@pt@aa\space\pgf@pt@ab\space\pgf@pt@ba\space\pgf@pt@bb\space\pgf@sys@tonumber\pgf@pt@x\space\pgf@sys@tonumber\pgf@pt@y]
+		% FIXME: INCORPORATE TIKZ CM
+		/Matrix [1 0 0 1 \pgf@sys@tonumber\pgf@x\space \pgf@sys@tonumber\pgf@y] %226.533 518.141] 
+		%--------------------------------------------------
+		% /ExtGState 
+		% 	<<
+		% 		/LW 2
+		% 		/OP true
+		% 		/OPM 1
+		% 	>>
+		%-------------------------------------------------- 
+		/Shading \pgfplots@loc@TMPa\space 0 R 
+	>>}%
+	\edef#1{%
+		/pgfpatPlotsurface\pgfplotslibrarysurf@count\space \the\pdflastobj\space 0 R
+	}%
+	\pgfsys@setpatterncolored{Plotsurface\pgfplotslibrarysurf@count}%
+	\pgfplotsutil@advancestringcounter@global\pgfplotslibrarysurf@count
+}
+
+\endinput
+% vi: ft=tex

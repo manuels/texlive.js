@@ -1,0 +1,218 @@
+%%
+%% This is file `pst-gantt.tex',
+%% 
+%% IMPORTANT NOTICE:
+%% 
+%% Package `pst-gantt.tex'
+%%
+%% Denis Girou, Herbert Voss
+%%
+%% This program can be redistributed and/or modified under the terms
+%% of the LaTeX Project Public License Distributed from CTAN archives
+%% in directory macros/latex/base/lppl.txt.
+%%
+%% DESCRIPTION:
+%%   `pst-gantt' is a PSTricks package to draw GANTT diagrams and timelines
+%%
+\csname PSTganttLoaded\endcsname
+\let\PSTganttLoaded\endinput
+% Require PSTricks, pst-node, pstcol, pst-plot, pst-3d packages
+\ifx\PSTricksLoaded\endinput\else\input pstricks.tex\fi
+\ifx\PSTnodesLoaded\endinput\else\input pst-node.tex\fi
+\ifx\PSTplotLoaded\endinput\else \input pst-grad.tex\fi
+\ifx\PSTXKeyLoaded\endinput\else \input pst-xkey.tex\fi
+\ifx\MultidoLoaded\endinput\else \input multido.tex \fi
+%
+\edef\PstAtCode{\the\catcode`\@} 
+\catcode`\@=11\relax
+%
+% interface to the `xkeyval' package
+\pst@addfams{pst-gantt}
+%
+\def\fileversion{0.21}
+\def\filedate{2010/02/23}
+\message{`pst-gantt' v\fileversion, \filedate\space (Denis Girou and Herbert Voss)}
+%
+% "pspicture" environment or not?
+\define@boolkey[psset]{pst-gantt}[Pst@]{PstPicture}[true]{}
+\psset[pst-gantt]{PstPicture=true}
+% Intervals to show?
+\define@boolkey[psset]{pst-gantt}[Pst@]{ChartShowIntervals}[true]{}
+\psset[pst-gantt]{ChartShowIntervals=false}
+\define@key[psset]{pst-gantt}{ChartStartInterval}[1]{\def\psk@GanttStartInterval{#1}}
+\psset[pst-gantt]{ChartStartInterval=1}
+%
+\define@boolkey[psset]{pst-gantt}[Pst@]{ChartModulo}[true]{}
+\psset[pst-gantt]{ChartModulo=false}
+\define@key[psset]{pst-gantt}{ChartModuloValue}[52]{\def\psk@ChartModuloValue{#1}}
+\psset[pst-gantt]{ChartModuloValue=52}
+%
+% Style for the tasks
+\define@key[psset]{pst-gantt}{TaskStyle}[TaskStyleDefault]{\def\psk@GanttTaskStyle{#1}}
+\psset[pst-gantt]{TaskStyle=TaskStyleDefault}
+% Name for unit interval
+\define@key[psset]{pst-gantt}{ChartUnitIntervalName}[Week]{\def\psk@GanttChartUnitIntervalName{#1}}
+% Name for basic unit
+\define@key[psset]{pst-gantt}{ChartUnitBasicIntervalName}[Day]{%
+  \def\psk@GanttChartUnitBasicIntervalName{#1}}
+% Unit interval for the tasks (7 for a week, 30 for a month, etc.)
+% Warning: define it before "TaskUnitType"!
+\define@key[psset]{pst-gantt}{TaskUnitIntervalValue}[7]{%
+  \pst@cntg=#1\relax
+  \edef\psk@GanttTaskUnitIntervalValue{\the\pst@cntg}}
+% Unit type for the tasks (UnitIntervalName or UnitBasicIntervalName)
+\define@key[psset]{pst-gantt}{TaskUnitType}[Week]{%
+  \def\psk@GanttTaskUnitValue{#1}%
+% Validation of the parameter
+  \ifx\psk@GanttTaskUnitValue\psk@GanttChartUnitIntervalName
+    \edef\psk@GanttTaskUnitValue{\psk@GanttTaskUnitIntervalValue}%
+  \else
+    \ifx\psk@GanttTaskUnitValue\psk@GanttChartUnitBasicIntervalName
+      \def\psk@GanttTaskUnitValue{1}%
+    \else
+      {\@pstrickserr{GanttTaskUnitType must be `\psk@GanttChartUnitIntervalName'
+                   or `\psk@GanttChartUnitBasicIntervalName'
+                  (and not `\psk@GanttTaskUnitValue')}\@eha}%
+    \fi
+  \fi}
+% Outside label for the tasks
+\define@key[psset]{pst-gantt}{TaskOutsideLabel}[]{\def\psk@GanttTaskOutsideLabel{#1}}
+% Inside label for the tasks
+\define@key[psset]{pst-gantt}{TaskInsideLabel}[]{\def\psk@GanttTaskInsideLabel{#1}}
+% Maximum outside size label for the tasks (in unit TaskUnitType !)
+\define@key[psset]{pst-gantt}{TaskOutsideLabelMaxSize}[0]{%
+  \pst@cntg=#1\relax
+  \edef\psk@GanttTaskOutsideLabelMaxSize{\the\pst@cntg}}
+% Default values
+% --------------
+% pspicture environment, don't show intervals, default task style,
+% unit for tasks is a week (so 7 days), no outside and inside labels
+\psset[pst-gantt]{ChartUnitIntervalName=Week,ChartUnitBasicIntervalName=Day,
+  TaskUnitIntervalValue=7,TaskUnitType=Week,
+  TaskOutsideLabel=,TaskInsideLabel=,TaskOutsideLabelMaxSize=0}
+\newpsstyle{TaskStyleDefault}{fillstyle=solid,fillcolor=yellow}
+% The environment \PstGanttChart
+% ------------------------------
+\SpecialCoor
+%
+% Syntax: \PstGanttChart[parameters]{Number of tasks}{Number of days}
+\def\PstGanttChart{\@ifnextchar[\PstGanttChart@i{\PstGanttChart@i[]}}
+\def\PstGanttChart@i[#1]#2#3{%
+\begingroup
+\psset{unit=0.1,#1}    % Affectation of local parameters
+%
+\ifPst@PstPicture               % "pspicture" environment
+  \pst@cnta=\psk@GanttTaskOutsideLabelMaxSize
+  \multiply\pst@cnta\psk@GanttTaskUnitValue
+  %
+  \pst@cntb=#2
+  \multiply\pst@cntb by 5
+  \advance\pst@cntb\@ne
+  %
+  \pst@cntc=#3
+  \multiply\pst@cntc\psk@GanttTaskUnitValue
+  \advance\pst@cntc\tw@
+  %
+  \ifPst@ChartShowIntervals
+    \pspicture(-\pst@cnta,-\pst@cntb)(\pst@cntc,2)
+  \else
+    \pspicture(-\pst@cnta,-\pst@cntb)(\pst@cntc,0)
+  \fi
+\fi
+\psframe(0,-\pst@cntb)(\pst@cntc,0)
+%
+\ifPst@ChartShowIntervals
+  % We will show the intervals
+  \pst@cnta=#3
+  \multiply\pst@cnta\psk@GanttTaskUnitValue
+  \divide\pst@cnta\psk@GanttTaskUnitIntervalValue
+  \advance\pst@cnta\@ne
+  %
+  \pst@cntb=#2
+  \multiply\pst@cntb by 5
+  \advance\pst@cntb\@ne
+  %
+  \pst@dima=\psk@GanttTaskUnitIntervalValue pt
+  \divide\pst@dima\tw@
+  \advance\pst@dima\@ne pt
+  \pst@dimtonum{\pst@dima}{\pst@tempa}
+  %
+  \multido{\iStartInterval=\psk@GanttStartInterval+1,\iInterval=1+1,
+           \iIntervalPos=1+\psk@GanttTaskUnitIntervalValue,
+           \nIntervalPos=\pst@tempa+\psk@GanttTaskUnitIntervalValue.0}{\pst@cnta}{%
+    \ifnum\iInterval=\pst@cnta
+      \psline(\iIntervalPos,0)(\iIntervalPos,1.5)
+      \psline[linestyle=dotted](\iIntervalPos,-\pst@cntb)(\iIntervalPos,0)
+    \else
+      \ifPst@ChartModulo
+        \pst@mod{\iStartInterval}{\psk@ChartModuloValue}\pst@iInterval%
+        \pst@cntm=\pst@iInterval \advance\pst@cntm by \@ne
+        \rput(\nIntervalPos,1){\psk@GanttChartUnitIntervalName\space\the\pst@cntm}
+      \else
+        \rput(\nIntervalPos,1){\psk@GanttChartUnitIntervalName\space\iStartInterval}
+      \fi
+      \psline(\iIntervalPos,0)(\iIntervalPos,1.5)
+      \psline[linestyle=dotted](\iIntervalPos,-\pst@cntb)(\iIntervalPos,0)
+    \fi}
+\fi}
+\def\endPstGanttChart{%
+\ifPst@PstPicture
+  \endpspicture                 % End of "pspicture" environment
+\fi
+\endgroup}
+% The macro \PstGanttTask
+% -----------------------
+\newcount\pst@GanttTaskCnt
+\pst@GanttTaskCnt=\z@
+% Syntax: \PstGanttTask[parameters]{Start}{Length}
+\def\PstGanttTask{\@ifnextchar[\PstGanttTask@i{\PstGanttTask@i[]}}
+\def\PstGanttTask@i[#1]#2#3{
+\advance\pst@GanttTaskCnt\m@ne
+\begingroup
+\psset{#1}%            % Affectation of local parameters
+% Frame
+\pst@cnta=\psk@GanttTaskUnitValue
+\multiply\pst@cnta by #2
+\advance\pst@cnta\@ne
+%
+\pst@cntb=\psk@GanttTaskUnitValue
+\multiply\pst@cntb by #3
+\advance\pst@cntb\pst@cnta
+%
+\pst@cntc=\pst@GanttTaskCnt
+\multiply\pst@cntc by 5
+%
+\pst@cntd=\pst@cntc
+\advance\pst@cntd by 4
+%
+\psframe[style=\psk@GanttTaskStyle](\pst@cnta,\pst@cntc)(\pst@cntb,\pst@cntd)
+% Inside label
+\ifx\psk@GanttTaskInsideLabel\empty
+\else
+  \pst@dima=\pst@cnta pt
+  \advance\pst@dima\pst@cntb pt
+  \divide\pst@dima\tw@
+  \pst@dimtonum{\pst@dima}{\pst@tempa}
+  %
+  \pst@dimb=\pst@cntc pt
+  \advance\pst@dimb\pst@cntd pt
+  \divide\pst@dimb\tw@
+  \pst@dimtonum{\pst@dimb}{\pst@tempb}
+  %
+  \rput(\pst@tempa,\pst@tempb){\psk@GanttTaskInsideLabel}
+\fi
+% Outside label
+\ifx\psk@GanttTaskOutsideLabel\empty
+\else
+  \pst@dimb=\pst@cntc pt
+  \advance\pst@dimb\pst@cntd pt
+  \divide\pst@dimb\tw@
+  \pst@dimtonum{\pst@dimb}{\pst@tempb}
+  \rput[r](-1.5,\pst@tempb){\psk@GanttTaskOutsideLabel}
+\fi
+\endgroup}
+%
+\catcode`\@=\PstAtCode\relax
+%% END: pst-gantt.tex
+\endinput
+

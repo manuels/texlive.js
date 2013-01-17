@@ -1,0 +1,125 @@
+# -*- CPERL -*-
+package LaTeXML::Package::Pool;
+use strict;
+use LaTeXML::Package;
+RequirePackage('sref');
+DeclareOption('showmeta','');
+DefConstructor('\sproofend',"");
+DefConstructor('\spfsketch OptionalKeyVals:pf{}',
+       "<omdoc:proof "
+               .  "?&defined(&KeyVal(#1,'id'))(xml:id='&KeyVal(#1,'id')')()>\n"
+       . "?#2(<omdoc:omtext><omdoc:CMP>#2\n)()"
+               . "</omdoc:proof>\n");
+DefConstructor('\sProofEndSymbol {}','');
+DefEnvironment('{sproof} OptionalKeyVals:pf{}',
+       "<omdoc:proof "
+               . "?&KeyVal(#1,'for')(for='&hash_wrapper(&KeyVal(#1,'for'))')()"
+               .  "?&defined(&KeyVal(#1,'id'))(xml:id='&KeyVal(#1,'id')')()>\n"
+       . "?#2(<omdoc:omtext>"
+              .       "<omdoc:CMP>#2</omdoc:CMP>"
+               .     "</omdoc:omtext>\n)()"
+               . "#body"
+             . "</omdoc:proof>\n");
+DefMacro('\sProof','\sproof');
+DefMacro('\endsProof','\endsproof');
+DefConstructor('\spfidea OptionalKeyVals:pf {}',
+       "<omdoc:proof "
+             .      "?&defined(&KeyVal(#1,'id'))(xml:id='&KeyVal(#1,'id')')()"
+             . "?&KeyVal(#1,'for')(for='&hash_wrapper(&KeyVal(#1,'for'))')()>\n"
+     .   "<omdoc:omtext><omdoc:CMP>#2</omdoc:omtext>\n"
+     . "</omdoc:proof>\n");
+DefEnvironment('{spfstep} OptionalKeyVals:pf',
+             "<omdoc:derive "
+                 .   "?&defined(&KeyVal(#1,'id'))(xml:id='&KeyVal(#1,'id')')()>"
+        .  "<omdoc:CMP>#body</omdoc:derive>\n",
+         beforeConstruct=>sub {
+          $_[0]->maybeCloseElement('omdoc:CMP');
+         });#$
+DefEnvironment('{sproofcomment} OptionalKeyVals:pf',
+       "<omdoc:omtext "
+               .   "?&defined(&KeyVal(#1,'id'))(xml:id='&KeyVal(#1,'id')')()>"
+       . "<omdoc:CMP>#body</omdoc:CMP>"
+     . "</omdoc:omtext>");
+DefEnvironment('{spfcases} OptionalKeyVals:pf {}',
+       "<omdoc:derive "
+              .     "?&defined(&KeyVal(#1,'id'))(xml:id='&KeyVal(#1,'id')')()>\n"
+      .  "<omdoc:CMP>#2</omdoc:CMP>\n"
+      .  "<omdoc:method xref='#proof-by-cases'>#body</omdoc:method>"
+     . "</omdoc:derive>\n");
+DefEnvironment('{spfcase} OptionalKeyVals:pf{}',
+       "<omdoc:proof "
+               .  "?&defined(&KeyVal(#1,'id'))(xml:id='&KeyVal(#1,'id')')()>\n"
+       .  "?#2(<omdoc:omtext>"
+              .        "<omdoc:CMP>#2</omdoc:CMP>"
+               .      "</omdoc:omtext>\n)()"
+       . "#body"
+     . "</omdoc:proof>\n");
+DefEnvironment('{subproof}[]',
+       "<omdoc:derive>"
+             .   "?#1(<omdoc:CMP>#1</omdoc:CMP>)()"
+      .   "<omdoc:method>"
+              .     "<omdoc:proof>\n #body\n</omdoc:proof>"
+      .   "</omdoc:method>"
+              ."</omdoc:derive>");
+DefKeyVal('just','id','Semiverbatim');
+DefKeyVal('just','method','Semiverbatim');
+DefKeyVal('just','premises','Semiverbatim');
+DefKeyVal('just','args','Semiverbatim');
+sub extractBodyText {
+  my ($box, $remove) = @_;
+  my $str = '';
+  my @boxes = $box->unlist;
+  foreach my $b(@boxes) {
+    my $s = '';
+    if ($b =~ /LaTeXML::Whatsit/) {
+      my $body = $b->getBody;
+      $s = $body ? extractBodyText($body, $remove) : '';
+    } elsif ($b =~ /LaTeXML::Box/) {
+      $s = $b->toString || '';
+      @{$b}[0] = '' if $remove; }
+    $str .= $s; }
+  $str =~ s/\s+/ /g;
+  $str; }
+
+DefEnvironment('{justification} OptionalKeyVals:just', sub {
+ my ($doc, $keys, %props) = @_;
+ my $text = extractBodyText($props{body}, 1);
+ my $node = LookupValue('_LastSeenCMP');
+ #$node->appendText($text) if $node;
+ my $method = $keys ? $keys->getValue('method') : undef;
+ $doc->openElement("omdoc:method", $method ? (xref => $method) : ());
+ $doc->absorb($props{body}) if $props{body};
+ $doc->closeElement("omdoc:method");
+ return; });
+DefMacro('\premise[]{}', sub {
+   my ($xref, $text) = ($_[1], $_[2]);
+   my @res = (T_CS('\premise@content'));
+   push(@res, T_OTHER('['), $xref->unlist, T_OTHER(']')) if $xref;
+   push(@res, T_SPACE, $text->unlist) if $text;
+   @res; });
+DefConstructor('\premise@content[]',
+               "<omdoc:premise xref='#1'/>");
+DefMacro('\justarg[]{}', sub { (($_[1] ? $_[1]->unlist : ()),
+T_SPACE, $_[2]->unlist, T_SPACE); });
+Tag('omdoc:derive', afterClose=>sub {
+      my ($doc, $node) = @_;
+      my @children = grep($_->nodeType == XML_ELEMENT_NODE, $node->childNodes);
+      my $firstCMP = undef;
+      foreach my $child(@children) {
+        next unless ($child->localname || '') eq 'CMP';
+        if ($child->hasChildNodes()) {
+          next unless $#{$child->childNodes} == 0;
+          next unless $child->firstChild->nodeType == XML_TEXT_NODE; }
+
+        if ($firstCMP) {
+          $firstCMP->appendText($child->textContent);
+          $node->removeChild($child);
+        } else { $firstCMP = $child; }
+      }
+    });#$
+Tag('omdoc:proof',afterOpen=>\&numberIt,afterClose=>\&locateIt);
+Tag('omdoc:derive',afterOpen=>\&numberIt,afterClose=>\&locateIt);
+Tag('omdoc:method',afterOpen=>\&numberIt,afterClose=>\&locateIt);
+Tag('omdoc:premise',afterOpen=>\&numberIt,afterClose=>\&locateIt);
+Tag('omdoc:derive',afterOpen=>\&numberIt,afterClose=>\&locateIt);
+1;

@@ -1,0 +1,163 @@
+
+% bbox.sty -- bounding box extension for fontinst
+% 
+% This file defines the following commands for setting, resetting, 
+% and unsetting the bounding boxes of glyphs:
+% 
+%    \setglyphbb{GLYPH}{LEFT}{BOTTOM}{RIGHT}{TOP}
+%    \resetglyphbb{GLYPH}{LEFT}{BOTTOM}{RIGHT}{TOP}
+%    \unsetglyphbb{GLYPH}
+% 
+% It also defines the following four integer expressions for 
+% quering bounding box metrics:
+% 
+%    \bbleft{GLYPH}
+%    \bbbottom{GLYPH}
+%    \bbright{GLYPH}
+%    \bbtop{GLYPH}
+% 
+% For glyphs that do not have a bounding box set, they default 
+% to using the "TeX box" of the glyph.
+% 
+% Finally, the file changes AFM-to-MTX conversions so that bounding 
+% box information is converted to \setglyphbb commands and augments 
+% font transformation and reglyphing to preserve this information.
+
+
+\needsfontinstversion{1.927}
+
+\fontinstcc
+
+\def\resetglyphbb#1#2#3#4#5{
+   \eval_expr_to\a_count{#2}
+   \eval_expr_to\b_count{#3}
+   \eval_expr_to\c_count{#4}
+   \eval_expr_to\d_count{#5}
+   \x_cs\edef{gb-#1}{
+      {\the\a_count}{\the\b_count}{\the\c_count}{\the\d_count}
+   }
+}
+\def\setglyphbb#1#2#3#4#5{
+   \if_undefined{gb-\glyph_name_modifier{#1}}\then
+      \resetglyphbb{\glyph_name_modifier{#1}}{#2}{#3}{#4}{#5}
+   \fi
+}
+\def\unsetglyphbb#1{\x_cs\let{gb-#1}=\x_relax}
+
+\def\first_of_four#1#2#3#4{#1}
+\def\second_of_four#1#2#3#4{#2}
+\def\third_of_four#1#2#3#4{#3}
+\def\fourth_of_four#1#2#3#4{#4}
+
+\def\bbleft#1{
+   \if_defined{gb-#1}\then
+      \expandafter\expandafter \expandafter\first_of_four
+      \csname gb-#1\endcsname
+   \else
+      0
+   \fi
+}
+\def\bbbottom#1{
+   \if_defined{gb-#1}\then
+      \expandafter\expandafter \expandafter\second_of_four
+      \csname gb-#1\endcsname
+   \else
+      \neg{\depth{#1}}
+   \fi
+}
+\def\bbright#1{
+   \if_defined{gb-#1}\then
+      \expandafter\expandafter \expandafter\third_of_four
+      \csname gb-#1\endcsname
+   \else
+      \width{#1}
+   \fi
+}
+\def\bbtop#1{
+   \if_defined{gb-#1}\then
+      \expandafter\expandafter \expandafter\fourth_of_four
+      \csname gb-#1\endcsname
+   \else
+      \height{#1}
+   \fi
+}
+
+
+% Make \afmtomtx generate \setglyphbb commands:
+\def\afm_char{
+   \a_count=-\bbox_lly
+   \eval_expr{
+      \italcorr_expression\x_width\bbox_llx\bbox_urx\bbox_lly\bbox_ury
+   }
+   \out_line{
+      \ifnum -1<\char_slot
+         \string\setrawglyph
+      \else
+         \string\setnotglyph
+      \fi
+      {\char_name}
+      {\raw_font_name}
+      {10pt}
+      {\the\char_slot}
+      {\the\x_width}
+      {\the\bbox_ury}
+      {\the\a_count}
+      {\the\result}
+   }
+   \out_line{
+      \string\setglyphbb{\char_name}
+      {\the\bbox_llx}{\the\bbox_lly}{\the\bbox_urx}{\the\bbox_ury}
+   }
+}
+
+
+% Make sure \setglyphbb is transformed OK.
+% Slanting of course cannot be done exactly when only the bbox 
+% is known.
+\def\mtxtomtx_setglyphbb#1#2#3#4#5{
+   \eval_expr_to\a_count{\add{
+      \scale{#2}{\int{x-scale}}
+   }{
+      \scale{#3}{\int{slant-scale}}
+   }}
+   \eval_expr_to\b_count{\scale{#3}{\int{y-scale}}}
+   \eval_expr_to\c_count{\add{
+      \scale{#4}{\int{x-scale}}
+   }{
+      \scale{#5}{\int{slant-scale}}
+   }}
+   \eval_expr_to\d_count{\scale{#5}{\int{y-scale}}}
+   \out_line{
+      \string\setglyphbb{#1}
+         {\the\a_count}{\the\b_count}{\the\c_count}{\the\d_count}
+   }
+}
+
+\add_to\mtxtomtx_redefinitions{
+   \let\setglyphbb=\mtxtomtx_setglyphbb 
+}
+
+% Finally, for completeness, the analogous thing for reglyphing.
+
+\def\reglyph_setglyphbb#1#2#3#4#5{
+   \command_survivance=0
+   \def\glyphname{#1}
+   \csname slots-#1\endcsname
+   \iftokeep\command_survivance\then
+      \out_line{
+         \string\setglyphbb{\glyphname}{#2}{#3}{#4}{#5}
+      }
+   \fi
+}
+
+\add_to\reglyph_redefinitions{
+   \let\setglyphbb=\reglyph_setglyphbb
+}
+
+
+\normalcc
+
+
+\endinput
+
+

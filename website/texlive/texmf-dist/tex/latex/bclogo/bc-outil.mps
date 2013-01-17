@@ -1,0 +1,47 @@
+%!PS-Adobe-3.0 EPSF-3.0
+%%BoundingBox: -1 0 17 18 
+%%HiResBoundingBox: -0.00009 0.00003 16.93637 17.61465 
+%%Creator: MetaPost 1.504
+%%CreationDate: 2011.07.26:0937
+%%Pages: 1
+%%BeginProlog
+%%EndProlog
+%%Page: 1 1
+gsave newpath -0.00009 17.61465 moveto
+16.93637 17.61465 lineto
+16.93637 0.00003 lineto
+-0.00009 0.00003 lineto
+ closepath clip
+ 0.5 0.5 0.5 setrgbcolor
+newpath 1.4656 0.63045 moveto
+2.3498 0.418 lineto
+11.57602 10.0141 lineto
+12.97626 9.37245 14.67667 9.64682 15.82231 10.83633 curveto
+16.7753 11.82976 17.11761 13.22397 16.84668 14.50378 curveto
+15.70705 13.31772 lineto
+15.4301 13.02959 lineto
+14.56483 12.13078 lineto
+13.40715 12.4344 lineto
+12.24947 12.73888 lineto
+11.66376 15.14714 lineto
+12.80597 16.33578 lineto
+13.39426 16.94818 lineto
+13.94557 17.521 lineto
+12.71565 17.80312 11.3739 17.44789 10.41919 16.45534 curveto
+9.27527 15.26495 9.01208 13.49576 9.62962 12.03876 curveto
+0.40166 2.44354 lineto
+-0.13417 1.88618 -0.13417 0.97534 0.40166 0.418 curveto
+0.9375 -0.13933 1.81308 -0.13933 2.3498 0.418 curveto
+1.4656 0.63045 lineto
+0.97345 0.63054 0.58739 1.05283 0.63132 1.54301 curveto
+0.66978 1.97238 1.03331 2.29839 1.4656 2.29817 curveto
+1.89757 2.29796 2.26059 1.97206 2.29903 1.54301 curveto
+2.34293 1.05316 1.95741 0.63104 1.4656 0.63045 curveto
+ closepath fill
+ 0 0 0 setrgbcolor 0 0.5 dtransform truncate idtransform setlinewidth pop [] 0 setdash 0 setlinecap
+ 0 setlinejoin 10 setmiterlimit
+newpath 18.96814 19.61465 moveto 0 0 rlineto stroke
+newpath -2.03186 -1.99997 moveto 0 0 rlineto stroke
+grestore
+showpage
+%%EOF

@@ -1,0 +1,143 @@
+%  nolbreaks.sty  by Donald Arseneau
+%  Public domain software -- please submit any improvements to CTAN
+
+\ProvidesPackage{nolbreaks}[2012/05/31 \space v 1.2 \space 
+   - no linebreaks in text]
+
+%  Use \nolbreaks{some text} to prevent linebreaks in "some text".
+%  This has the advantage over \mbox{} that glue (rubber space) 
+%  remains flexible.  It has the disadvantage of not working in 
+%  all cases!  Most common cases are handled here (\linebreak is 
+%  disabled, for example) but spaces hidden in macros or braces 
+%  can still create break-points.  Conversely, syntactic space
+%  characters not so hidden may cause command errors, so try to
+%  avoid such complexity by using simple text.
+%
+%  Large pieces of text with no breaks can cause problems with
+%  paragraph justification.  Using the alternate \nolbreaks*
+%  allows a line before the unbreakable text to be cut short
+%  (like ragged-right).  Giving the package option [ragged]
+%  converts all \nolbreaks commands to \nolbreaks*.
+%  
+%  You should declare \sloppy or set a raised \tolerance in 
+%  your document when you have large non-breaking chunks.
+%
+%  The command name "\nolbreaks" is long to type, so you should 
+%  probably declare a shorter name if you use it a lot, like
+%     \newcommand\n{\nolbreaks}
+%  or define commands for the text you want unbroken.
+%
+%  I, Donald Arseneau, have dedicated the nolbreaks package to the 
+%  public domain by waiving all rights to the work worldwide under 
+%  copyright law, including all related and neighboring rights, to 
+%  the extent allowed by law.
+%
+%  You can copy, modify, and distribute this work, including for
+%  commercial purposes, without restriction and without asking
+%  permission. 
+
+\DeclareOption{ragged}{
+  \let\nb@ragged Y
+}
+\ProcessOptions
+
+\let\nb@@iwspace=\ %
+\let\nb@@hskip=\hskip
+\let\nb@@penalty=\penalty
+\newcount\nb@counter
+\ifx\langwohyphens\undefined
+ \newlanguage\nb@lang
+\else
+ \let\nb@lang\langwohyphens
+\fi
+
+\ifx\nb@ragged Y
+  \DeclareRobustCommand{\nolbreaks}{%
+    \leavevmode 
+    \begingroup
+    \@ifstar {\nb@ragged\nb@nolb}{\nb@ragged\nb@nolb}%
+  }
+\else
+  \DeclareRobustCommand{\nolbreaks}{%
+    \leavevmode 
+    \begingroup
+    \@ifstar {\nb@ragged\nb@nolb}\nb@nolb
+  }
+\fi
+
+\def\nb@ragged{%
+  \skip@\lastskip \unskip
+  \nb@counter\lastpenalty
+  \ifnum\nb@counter<99 \nb@counter99 \fi
+  \hskip \z@ \@plus 2cm\relax
+  \penalty\nb@counter
+  \advance\skip@ \z@ \@plus -2cm\relax
+  \hskip\skip@
+}
+
+\newcommand\nb@nolb[1]{%
+  %  Prevent automatic hyphenation
+  \language\nb@lang
+  \let\language\nb@counter
+  %  Want to prevent breaks after hyphen char, but this doesn't
+  %  work whan applied locally.  What to do? 
+  \exhyphenpenalty\@M
+  %  In order to handle explicit hyphens, we disable the hyphenchar 
+  %  of the font, and any other selected fonts,  and then restore
+  %  the original settings at the end.
+  \global\nb@RestHyph\expandafter{\selectfont}%
+  \def\selectfont{\the\nb@RestHyph \nb@SaveHChar}%
+  \global\nb@RestHyph{}\nb@SaveHChar
+  %  Disable commands that give breakpoints
+  \let\ \nb@iwspace
+  \let\hskip\nb@hskip
+  \let\penalty\nb@penalty
+  \let\discretionary\nb@discretionary
+  \let\\\nb@eol % also remove \hfill effect.
+  %  Prevent breaks in math
+  \relpenalty\@M
+  \binoppenalty\@M
+  %  Prevent breaks at spaces (only outermost visible spaces)
+  \nb@MarkSpaces {\nb@@penalty\@M}{}#1 \nb@MarkSpaces\nb@MarkSpaces\relax
+  %  Restore previous \hyphenchar settings
+  \the\nb@RestHyph \global\nb@RestHyph{}%
+  \endgroup
+}
+
+% Insert penalties (or any marker) before all spaces.  This should 
+% be invoked like it is a few lines above.  This version gathers the 
+% argument, with inserted penalties, before finally handing
+% the entire text over for further processing.
+% #1 = the penalty or other material to insert before spaces
+% #2 = accumulated processed argument
+% #3 = argument up to the next space.
+% #4,#5 = remaining argument, yet to process
+% \nb@MarkSpaces is a sentinal token, so don't mix recursively.
+% #6 = trailing signal token, either \nb@MarkSpaces or \relax
+% Multiple adjacent spaces are converted to a single penalty,space pair.
+%
+\def\nb@MarkSpaces#1#2#3 #4#5\nb@MarkSpaces#6{%
+  \ifx\nb@MarkSpaces#6\expandafter\@firstoftwo % accumulate
+  \else \expandafter\@secondoftwo % finished
+  \fi
+  {\nb@MarkSpaces {#1}{#2#3#1 }#4#5\nb@MarkSpaces#6}%
+  {#2#3}%
+}
+
+\def\nb@iwspace{\nb@@penalty\@M \nb@@iwspace}
+\def\nb@hskip  {\nb@@penalty\@M \nb@@hskip}
+\def\nb@penalty{\nb@@penalty\@M \nb@counter}
+\long\def\nb@discretionary#1#2#3{\mbox{#3}}%
+\def\nb@eol{\@ifstar\nb@eoL\nb@eoL}
+\newcommand\nb@eoL[1][]{}
+
+% we save (implicit global) hyphenchar settings for each font on a 
+% manual stack -- the token register \nb@RestHyph -- before changing
+% them.  Then eventually execute \nb@RestHyph to restore them.
+\newtoks\nb@RestHyph \global\nb@RestHyph{}
+
+\def\nb@SaveHChar{\begingroup
+  \edef\@tempa{\hyphenchar\the\font=\the\hyphenchar\font\relax \the\nb@RestHyph}%
+  \global\nb@RestHyph\expandafter{\@tempa}%
+  \hyphenchar\font\m@ne
+  \endgroup}

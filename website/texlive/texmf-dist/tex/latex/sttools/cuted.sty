@@ -1,0 +1,474 @@
+%% cuted.sty
+%% Copyright 1997 Sigitas Tolu\v sis
+%% VTeX Ltd., Akademijos 4, Vilnius, Lithuania
+%% e-mail sigitas@vtex.lt
+%% http://www.vtex.lt/tex/download/macros/
+%%
+% This program can redistributed and/or modified under the terms
+% of the LaTeX Project Public License Distributed from CTAN
+% archives in directory macros/latex/base/lppl.txt; either
+% version 1 of the License, or (at your option) any later version.
+%
+% PURPOSE:   Insert some onecolumn material in full-width on double-column page.
+%
+% SHORT DESCRIPTION:
+%
+%   It is denoted to place some material in full-width at any place 
+%   on double-column page (\twocolumn mode). The part of material
+%   can be placed on the next page. Existing text is placed
+%   under inserted material in two columns (it is reformatted).
+%
+% Provides new environment:
+%
+%  \begin{strip} ... \end{strip}
+%  -----------------------------
+%
+%   Puts \vbox{...} in full-width on double-column page.
+%   Adds \stripsep glue before and after
+%   (By default \stripsep=15pt plus2pt minus 2pt).
+%   It can be problems with floats and footnotes. In the case of 
+%   problems with footnotes it is possible to correct the situation
+%   using commands \footnotemark and \footnotetext.
+%
+% Provides new command:
+%  \oldcolsbreak{#1}
+%
+%   Adds #1 in place of original column break if strip is placed 
+%   on the right column.
+%
+% \changes{1997/09/02}{improved column balancing}
+% \changes{1997/09/03}{float control for \@colroom setting}
+% \changes{1997/09/04}{improved \@colroom setting}
+% \changes{1997/09/05}{checking for \@viper and \hold@viper}
+% \changes{1997/09/09}{compatibility with flushend.sty}
+% \changes{1997/09/22}{improved \output ir \@specialoutput}
+% \changes{1997/10/01}{improved \output ir \@addviper}
+%
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{cuted}[1997/10/01]
+%
+\newtoks\At@ViperColsBreak \At@ViperColsBreak{}
+\def\oldcolsbreak#1{\global\At@ViperColsBreak{#1}}
+\newbox\v@aaa
+\newbox\v@ccc
+\@ifundefined{stripsep}{\newskip\stripsep\stripsep 15pt plus 2pt minus 2pt}{}
+%
+\@ifundefined{@viper}{\newbox\@viper}{}
+\newif\if@lastviper \@lastviperfalse
+\def\@outputdblcol{%
+  \if@firstcolumn
+    \global \@firstcolumnfalse
+    \global \setbox\@leftcolumn \box\@outputbox
+  \else
+    \global \@firstcolumntrue
+    \setbox\@outputbox \vbox {%
+                         \hb@xt@\textwidth {%
+                           \hb@xt@\columnwidth {%
+                             \box\@leftcolumn \hss}%
+                           \hfil
+                           \vrule \@width\columnseprule
+                           \hfil
+                           \hb@xt@\columnwidth {%
+                             \box\@outputbox \hss}%
+                                             }%
+                              }%
+    \ifvoid\hold@viper
+    \else
+      \setbox\@outputbox \vbox{\box\hold@viper\box\@outputbox}%
+    \fi
+    \@combinedblfloats
+    \@outputpage
+    \begingroup
+      \@dblfloatplacement
+      \@startdblcolumn
+      \@whilesw\if@fcolmade \fi
+        {\@outputpage
+         \@startdblcolumn}%
+      \ifvoid\@viper
+      \else
+        \global\setbox\@viper\vbox{%
+                \vskip-\stripsep\unvbox\@viper}\@viperoutput
+      \fi
+    \endgroup
+  \fi
+}
+\mathchardef\@Mv=10005
+\newcount\viper@penalty
+\def\strip{%
+  \ifinner
+     \@parmoderr\viper@penalty\z@
+  \else
+     \viper@penalty=-\@Mv\relax
+  \fi
+  \global \setbox\@viper\vbox\bgroup%
+        \hsize\textwidth
+        \@parboxrestore
+        \col@number \@ne
+        \vrule height\topskip width0pt depth0pt
+}
+\def\endstrip{%
+        \egroup
+    \ifnum\viper@penalty <-\@Mii
+      \penalty -\@Miv
+      \@tempdima\prevdepth    %% saving and restoring \prevdepth added
+      \vbox{}%                %% 26 May 87 to prevent extra vertical
+      \prevdepth \@tempdima   %% space when used in vertical mode
+      \penalty-\@Mv\relax
+    \fi
+}
+\gdef\@viperoutput{%
+               \global \setbox\@holdpg \vbox{%
+                      \unvbox\@holdpg
+                      \unvbox\@cclv
+                      \setbox\@tempboxa \lastbox
+                      \unskip
+                                     }%
+               \@pagedp \dp\@holdpg
+               \@pageht \ht\@holdpg
+               \ifvoid\@viper\else
+                   \advance \@pageht \@pagedp
+                   \ifvoid\footins \else
+                     \advance \@pageht \ht\footins
+                     \advance \@pageht \skip\footins
+                     \advance \@pageht \dp\footins
+                   \fi
+                   \ifvbox \@kludgeins
+                     \ifdim \wd\@kludgeins=\z@
+                       \advance \@pageht \ht\@kludgeins
+                     \fi
+                   \fi
+                   \@reinserts
+                   \@addviper
+               \fi
+}
+\gdef\@specialoutput{%
+   \ifnum \outputpenalty>-\@Mii
+     \@doclearpage
+   \else
+     \ifnum \outputpenalty<-\@Miii
+       \ifnum \outputpenalty<-\@MM \deadcycles \z@ \fi
+       \ifnum \outputpenalty=-10005
+              \@viperoutput
+               \ifnum \outputpenalty<\z@
+                 \if@nobreak
+                 \else
+                   \addpenalty \interlinepenalty
+                 \fi
+               \fi
+       \else
+              \global \setbox\@holdpg \vbox {\unvbox\@cclv}%
+       \fi
+     \else
+       \global \setbox\@holdpg \vbox{%
+                      \unvbox\@holdpg
+                      \unvbox\@cclv
+                      \setbox\@tempboxa \lastbox
+                      \unskip
+                                     }%
+       \@pagedp \dp\@holdpg
+       \@pageht \ht\@holdpg
+       \unvbox \@holdpg
+       \@next\@currbox\@currlist{%
+         \ifnum \count\@currbox>\z@
+           \advance \@pageht \@pagedp
+           \ifvoid\footins \else
+             \advance \@pageht \ht\footins
+             \advance \@pageht \skip\footins
+             \advance \@pageht \dp\footins
+           \fi
+           \ifvbox \@kludgeins
+             \ifdim \wd\@kludgeins=\z@
+               \advance \@pageht \ht\@kludgeins
+             \fi
+           \fi
+           \@reinserts
+           \@addtocurcol
+         \else
+           \@reinserts
+           \@addmarginpar
+         \fi
+         }\@latexbug
+       \ifnum \outputpenalty<\z@
+         \if@nobreak
+         \else
+           \addpenalty \interlinepenalty
+         \fi
+       \fi
+     \fi
+   \fi
+}
+\@ifundefined{hold@viper}{\newbox\hold@viper}{}
+\newdimen\ht@viper 
+\def \@addviper {%
+   \if@firstcolumn
+     \@insertfalse
+     \@reqcolroom .5\@pageht
+     \ht@viper\@reqcolroom
+     \advance \@reqcolroom \ht\@viper
+     \advance \@reqcolroom \stripsep
+     \ifvoid\hold@viper\@tempdima=\z@\else\@tempdima\ht\hold@viper\fi
+%
+     \@tempdimb \ht@viper
+     \loop
+     \setbox\v@aaa\copy\@holdpg
+     \setbox\v@ccc\vbox to\@tempdimb{%
+                \vsplit\v@aaa to\@tempdimb\vss\vsplit\v@aaa to\@tempdimb}%
+     \wlog{Extra height:\the\ht\v@aaa\space when \the\@tempdimb}%
+     \ifvoid\v@aaa \else \advance\@tempdimb 1pt \repeat%
+     \loop
+     \setbox\v@aaa\copy\@holdpg
+     \setbox\v@ccc\vbox to\@tempdimb{%
+                \vsplit\v@aaa to\@tempdimb\vss}%
+     \wlog{(2)Left:\the\ht\v@ccc\space Right:\the\ht\v@aaa\space Output:\the\@tempdimb}%
+     \ifdim \ht\v@ccc<\ht\v@aaa \@tempdimb \the\ht\v@aaa \repeat%
+     \wlog{- LAST -^^JLeft:\the\ht\v@ccc^^JRight:\the\ht\v@aaa^^JOutput:\the\@tempdimb}%
+     \setbox\v@ccc\vbox to\@tempdimb{%
+                \vsplit\@holdpg to\@tempdimb\vss}%
+%
+     \setbox\@tempboxa \vbox {%
+        \hb@xt@\textwidth {%
+                \hb@xt@\columnwidth {%
+%                    \vbox to\ht@viper{\vsplit\@holdpg to\ht@viper\vss} \hss}%
+                    \vbox to\ht@viper{\box\v@ccc\vss} \hss}%
+                    \hfil
+                    \vrule \@width\columnseprule
+                    \hfil
+                    \hb@xt@\columnwidth {%
+                    \vbox to\ht@viper{\box\@holdpg\vss} \hss}%
+                          }%
+                       }%
+     \ifvoid\hold@viper
+        \global\setbox\hold@viper \vbox {%
+                \unvbox\@tempboxa
+                \penalty\interlinepenalty
+                \vskip\stripsep
+                \ifnum\outputpenalty <-\@Mii \vskip -\parskip\fi
+                \outputpenalty \z@
+                        }%
+     \else
+        \global\setbox\hold@viper \vbox {%
+                \unvbox\hold@viper
+                \unvbox\@tempboxa
+                \penalty\interlinepenalty
+                \vskip\stripsep
+                \ifnum\outputpenalty <-\@Mii \vskip -\parskip\fi
+                \outputpenalty \z@
+                        }%
+     \fi
+     \ifdim \@colroom>\@reqcolroom
+        \global\setbox\hold@viper \vbox {%
+                \unvbox\hold@viper
+                \box\@viper
+                \penalty\interlinepenalty
+                \vskip\stripsep
+                \ifnum\outputpenalty <-\@Mii \vskip -\parskip\fi
+                \outputpenalty \z@
+                        }%
+        \@inserttrue
+        \advance\@tempdima by-\ht\hold@viper
+        \global \advance \@colht \@tempdima
+        \ifdim \@colht<2.5\baselineskip
+           \@latex@warning@no@line {Optional argument of \noexpand\twocolumn
+                too tall on page \thepage (1 stulpelis)}%
+           \@emptycol
+           \if@firstcolumn
+           \else
+             \@emptycol
+           \fi
+           \global\@lastvipertrue
+        \else
+           \global \vsize \@colht
+           \global \@colroom \@colht
+           \check@floats
+           \ifdim\@tempdima>\z@
+                   \global\advance\@colroom by-\@tempdima
+           \fi
+           \ifdim\@colroom<\z@
+                   \global\@colroom 1pt
+                   \ifdim\@tempdima>\@colht
+                      \@latex@warning@no@line {TOP ir/ar BOT FLOAT's
+                                 netelpa lape \thepage (1 stulpelis)}%
+                   \fi
+                   \@emptycol
+                   \if@firstcolumn
+                   \else
+                     \@emptycol
+                   \fi
+                   \global\@lastvipertrue
+           \fi
+        \fi
+     \fi
+   \else
+     \@insertfalse
+     \@reqcolroom\@colht
+     \advance\@reqcolroom \@pageht
+     \ht@viper.5\@reqcolroom
+     \@reqcolroom\ht@viper
+     \advance \@reqcolroom \ht\@viper
+     \advance \@reqcolroom \stripsep
+     \global\setbox\@holdpg\vbox{\unvbox\@leftcolumn
+                \setbox\@tempboxa\lastbox\unskip\the\At@ViperColsBreak\unvbox\@holdpg}%
+     \global\At@ViperColsBreak{}%
+     \ht@viper .5\ht\@holdpg
+     \ifvoid\hold@viper\@tempdima=\z@\else\@tempdima\ht\hold@viper\fi
+%
+     \@tempdimb \ht@viper
+     \loop
+     \setbox\v@aaa\copy\@holdpg
+     \setbox\v@ccc\vbox to\@tempdimb{%
+                \vsplit\v@aaa to\@tempdimb\vss\vsplit\v@aaa to\@tempdimb}%
+     \wlog{Extra height:\the\ht\v@aaa\space when \the\@tempdimb}%
+     \ifvoid\v@aaa \else \advance\@tempdimb 1pt \repeat%
+     \loop
+     \setbox\v@aaa\copy\@holdpg
+     \setbox\v@ccc\vbox to\@tempdimb{%
+                \vsplit\v@aaa to\@tempdimb\vss}%
+     \wlog{(2)Left:\the\ht\v@ccc\space Right:\the\ht\v@aaa\space Output:\the\@tempdimb}%
+     \ifdim \ht\v@ccc<\ht\v@aaa \@tempdimb \the\ht\v@aaa \repeat%
+     \wlog{- LAST -^^JLeft:\the\ht\v@ccc^^JRight:\the\ht\v@aaa^^JOutput:\the\@tempdimb}%
+     \setbox\v@ccc\vbox to\@tempdimb{%
+                \vsplit\@holdpg to\@tempdimb\vss}%
+%
+     \setbox\@tempboxa\vbox{%
+        \hb@xt@\textwidth {%
+                \hb@xt@\columnwidth {%
+%                   \vbox to\ht@viper{\vsplit\@holdpg to \ht@viper\vss} \hss}%
+                   \vbox to\ht@viper{\box\v@ccc\vss} \hss}%
+                \hfil
+                \vrule \@width\columnseprule
+                \hfil
+                \hb@xt@\columnwidth {%
+                   \vbox to\ht@viper{\box\@holdpg\vss} \hss}%
+                          }%
+                       }%
+     \ifvoid\hold@viper
+        \global\setbox\hold@viper \vbox {%
+                \unvbox\@tempboxa
+                \penalty\interlinepenalty
+                \vskip\stripsep
+                \ifnum\outputpenalty <-\@Mii \vskip -\parskip\fi
+                \outputpenalty \z@
+                        }%
+     \else
+        \global\setbox\hold@viper \vbox {%
+                \unvbox\hold@viper       
+                \unvbox\@tempboxa
+                \penalty\interlinepenalty
+                \vskip\stripsep
+                \ifnum\outputpenalty <-\@Mii \vskip -\parskip\fi
+                \outputpenalty \z@
+                        }%
+     \fi
+     \ifdim \@colht>\@reqcolroom
+        \global\setbox\hold@viper \vbox {%
+                \unvbox\hold@viper
+                \box\@viper
+                \penalty\interlinepenalty
+                \vskip\stripsep
+                \ifnum\outputpenalty <-\@Mii \vskip -\parskip\fi
+                \outputpenalty \z@
+                        }%
+        \@inserttrue
+        \global\@firstcolumntrue
+        \advance\@tempdima by-\ht\hold@viper
+        \global \advance \@colht \@tempdima
+        \ifdim \@colht<2.5\baselineskip
+                \@latex@warning@no@line {Optional argument of \noexpand\twocolumn
+                        too tall on page \thepage (2 stulpelis)}%
+                \@emptycol
+                \if@firstcolumn
+                \else
+                  \@emptycol
+                \fi
+                \global\@lastvipertrue
+        \else
+                \global \vsize \@colht
+                \global \@colroom \@colht
+                \check@floats
+                \ifdim\@tempdima>\z@
+                        \global\advance\@colroom by-\@tempdima
+                \fi
+                \ifdim\@colroom<\z@
+                         \global\@colroom 1pt
+                         \ifdim\@tempdima>\@colht
+                         \@latex@warning@no@line {TOP ir/ar BOT FLOAT's
+                                 netelpa lape \thepage (2 stulpelis)}%
+                         \fi
+                         \@emptycol
+                         \if@firstcolumn
+                         \else
+                           \@emptycol
+                         \fi
+                         \global\@lastvipertrue
+                \fi
+        \fi
+      \fi
+  \fi
+  \if@insert
+  \else
+        \advance\@tempdima by-\ht\hold@viper
+        \global \advance \@colht \@tempdima
+        \global\setbox\hold@viper \vbox {%
+                \unvbox\hold@viper
+                \vsplit\@viper to \@colht
+                \vss
+                }%
+        \vbox{}%
+        \global\@firstcolumnfalse
+        \newpage
+  \fi
+}
+
+\def \check@floats {%
+    \global\@tempdima\z@
+    \let \@elt \ht@comflelt
+    \ifx \@toplist\@empty \else\@toplist \fi
+    \ifx \@botlist\@empty \else\@botlist \fi
+}
+\def\ht@comflelt#1{\setbox\@tempboxa\vbox{\copy #1\vskip\floatsep}%
+\global\advance\@tempdima\ht\@tempboxa}
+
+\output {%
+  \let \par \@@par
+  \ifnum \outputpenalty<-\@M
+    \@specialoutput
+  \else
+    \@makecol
+    \@opcol
+    \@startcolumn
+    \@whilesw \if@fcolmade \fi
+      {%
+       \@opcol\@startcolumn}%
+  \fi
+  \ifnum \outputpenalty>-\@Miv
+    \ifdim \@colroom<1.5\baselineskip
+      \ifdim \@colroom<\textheight
+        \@latex@warning@no@line {Text page \thepage\space
+                               contains only floats}%
+        \if@lastviper\else\@emptycol\fi
+        \if@twocolumn
+          \if@firstcolumn
+          \else
+            \@emptycol
+          \fi
+        \fi
+        \global\@lastviperfalse
+      \else
+        \global \vsize \@colroom
+      \fi
+    \else
+      \global \vsize \@colroom
+    \fi
+  \else
+    \ifnum\outputpenalty<-100005
+      \global \vsize \maxdimen
+    \else
+      \global \vsize \@colroom
+    \fi
+  \fi
+}
+\endinput
+
+
+
+

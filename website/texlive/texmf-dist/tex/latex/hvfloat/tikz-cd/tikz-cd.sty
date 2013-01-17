@@ -1,0 +1,597 @@
+% Copyright 2011, 2012 by Florêncio Neves
+%
+% This file may be distributed and/or modified
+%
+% 1. under the LaTeX Project Public License and/or
+% 2. under the GNU Public License.
+%
+\ProvidesPackage{tikz-cd}[2012/03/18 v0.2b Commutative diagrams with tikz.]
+\RequirePackage{tikz}
+
+\usetikzlibrary{matrix}
+\usepgflibrary{arrows}
+\usetikzlibrary{decorations.pathmorphing}
+
+\newtoks\tikzcd@temptoksa
+\newtoks\tikzcd@temptoksb
+\newtoks\tikzcd@temptoksc
+
+\newif\iftikzcd@mathmode
+
+\newcount\tikzcd@currcol
+\newcount\tikzcd@currrow
+\newcount\tikzcd@targetrow
+\newcount\tikzcd@targetcol
+
+\pgfqkeys{/tikz/commutative diagrams}{
+  /tikz/commutative diagrams/.search also={/tikz},
+  arrows/.style={
+    /tikz/commutative diagrams/every arrow/.append style={#1}},
+  labels/.style={
+    /tikz/commutative diagrams/every label/.append style={#1}},
+  diagrams/.style={
+    /tikz/commutative diagrams/every diagram/.append style={#1}},
+  description/.style={
+    /tikz/anchor=center,
+    /tikz/fill=\pgfkeysvalueof{/tikz/commutative diagrams/background color},
+    /tikz/inner sep=%
+      \pgfkeysvalueof{/tikz/commutative diagrams/description clearance}},
+  crossing over/.style={
+    /tikz/preaction={
+      /tikz/draw=\pgfkeysvalueof{/tikz/commutative diagrams/background color},
+      /tikz/arrows=-,
+      /tikz/line width=%
+        \pgfkeysvalueof{/tikz/commutative diagrams/crossing over clearance}}},
+  row sep/.code={\tikzcd@sep{row}{#1}},
+  column sep/.code={\tikzcd@sep{column}{#1}},
+  math mode/.is if=tikzcd@mathmode,
+  matrix of math nodes maybe/.style={%
+    /tikz/matrix of nodes,
+    /tikz/nodes={
+      execute at begin node=\iftikzcd@mathmode$\fi, %$
+      execute at end node=\iftikzcd@mathmode$\fi}}, %$
+  start anchor/.code={%
+    \ifx#1\pgfkeysnovalue\let\tikzcd@sourceanchor\empty%
+    \else\def\tikzcd@sourceanchor{.#1}\fi},
+  end anchor/.code={%
+    \ifx#1\pgfkeysnovalue\let\tikzcd@targetanchor\empty%
+    \else\def\tikzcd@targetanchor{.#1}\fi},
+  arrow style/.is choice}
+
+% The Computer Modern arrow style
+\pgfkeys{/tikz/commutative diagrams/arrow style/computer modern/.style={
+    /tikz/commutative diagrams/.cd,
+    default arrow/.style={
+      /tikz/line join=round,
+      /tikz/arrows=cm cap-cm to,
+      /tikz/line width=0.0929ex},
+    rightarrow/.style={/tikz/arrows=cm cap-cm to},
+    Rightarrow/.style={
+      /tikz/arrows=cm implies cap-cm implies,
+      /tikz/commutative diagrams/double line},
+    leftarrow/.style={/tikz/arrows=cm to-cm cap},
+    Leftarrow/.style={
+      /tikz/arrows=cm implies-cm implies cap,
+      /tikz/commutative diagrams/double line},
+    leftrightarrow/.style={/tikz/arrows=cm to-cm to},
+    Leftrightarrow/.style={
+      /tikz/arrows=cm implies-cm implies,
+      /tikz/commutative diagrams/double line},
+    mapsto/.style={/tikz/arrows=cm |-cm to},
+    hookrightarrow/.style={/tikz/arrows=cm right hook-cm to},
+    hookleftarrow/.style={/tikz/arrows=cm to-cm left hook},
+    rightharpoonup/.style={/tikz/arrows=cm cap-cm left to},
+    rightharpoondown/.style={/tikz/arrows=cm cap-cm right to},
+    leftharpoonup/.style={/tikz/arrows=cm right to-cm cap},
+    leftharpoondown/.style={/tikz/arrows=cm left to-cm cap},
+    dashrightarrow/.style={/tikz/commutative diagrams/.cd,rightarrow,dashed},
+    dashleftarrow/.style={/tikz/commutative diagrams/.cd,leftarrow,dashed},
+    rightarrowtail/.style={/tikz/arrows=cm to reversed-cm to},
+    leftarrowtail/.style={/tikz/arrows=cm to-cm to reversed},
+    twoheadrightarrow/.style={/tikz/arrows=cm cap-cm double to},
+    twoheadleftarrow/.style={/tikz/arrows=cm double to-cm cap},
+    rightsquigarrow/.style={
+      /tikz/commutative diagrams/.cd,rightarrow,squiggly},
+    leftsquigarrow/.style={/tikz/commutative diagrams/.cd,leftarrow,squiggly},
+    leftrightsquigarrow/.style={
+      /tikz/commutative diagrams/.cd,leftrightarrow,squiggly},
+    equals/.style={
+      /tikz/arrows=cm implies cap-cm implies cap,
+      /tikz/commutative diagrams/double line},
+    maps to/.code={\pgfsetarrowsstart{cm |}},
+    hook/.code={\pgfsetarrowsstart{cm right hook}},
+    two heads/.code={\pgfsetarrowsend{cm double to}},
+    tail/.code={\pgfsetarrowsstart{cm to reversed}},
+    squiggly/.style={
+      %http://tex.stackexchange.com/questions/12678/
+      decorate,
+      decoration={
+        zigzag,
+        segment length=4,
+        amplitude=.9,
+        post=lineto, post length=2pt,
+        pre=lineto, pre length=2pt}},
+    double line/.style={
+      /tikz/double=\pgfkeysvalueof{/tikz/commutative diagrams/background color},
+      /tikz/double distance=3.643\pgflinewidth},
+    dashed/.style={/tikz/densely dashed}}}
+
+% The tikz arrow style
+\pgfkeys{/tikz/commutative diagrams/arrow style/tikz/.style={
+    /tikz/commutative diagrams/.cd,
+    default arrow/.style={/tikz/arrows=->},
+    rightarrow/.style={/tikz/arrows=->},
+    Rightarrow/.style={
+      /tikz/arrows=-implies,
+      /tikz/commutative diagrams/double line},
+    leftarrow/.style={/tikz/arrows=<-},
+    Leftarrow/.style={
+      /tikz/arrows=implies-,
+      /tikz/commutative diagrams/double line},
+    leftrightarrow/.style={/tikz/arrows=<->},
+    Leftrightarrow/.style={
+      /tikz/arrows=implies-implies,
+      /tikz/commutative diagrams/double line},
+    mapsto/.style={/tikz/arrows=|->},
+    hookrightarrow/.style={/tikz/arrows=right hook->},
+    hookleftarrow/.style={/tikz/arrows=<-left hook},
+    rightharpoonup/.style={/tikz/arrows=-left to},
+    rightharpoondown/.style={/tikz/arrows=-right to},
+    leftharpoonup/.style={/tikz/arrows=right to-},
+    leftharpoondown/.style={/tikz/arrows=left to-},
+    dashrightarrow/.style={/tikz/commutative diagrams/.cd,rightarrow,dashed},
+    dashleftarrow/.style={/tikz/commutative diagrams/.cd,leftarrow,dashed},
+    rightarrowtail/.style={/tikz/arrows=>->},
+    leftarrowtail/.style={/tikz/arrows=<-<},
+    twoheadrightarrow/.style={/tikz/arrows=->>},
+    twoheadleftarrow/.style={/tikz/arrows=<<-}, %>>
+    rightsquigarrow/.style={
+      /tikz/commutative diagrams/.cd,
+      rightarrow,
+      squiggly},
+    leftsquigarrow/.style={
+      /tikz/commutative diagrams/.cd,
+      leftarrow,
+      squiggly},
+    leftrightsquigarrow/.style={
+      /tikz/commutative diagrams/.cd,
+      leftrightarrow,
+      squiggly},
+    equals/.style={
+      /tikz/arrows=-,
+      /tikz/commutative diagrams/double line},
+    maps to/.code={\pgfsetarrowsstart{|}},
+    hook/.code={\pgfsetarrowsstart{right hook}},
+    two heads/.code={
+      \pgfsetarrowsend{\csname tikz@special@arrow@end>>\endcsname}},
+    tail/.code={
+      \pgfsetarrowsstart{\csname tikz@special@arrow@start>\endcsname}},
+    squiggly/.style={
+      %http://tex.stackexchange.com/questions/12678/
+      decorate,
+      decoration={
+        zigzag,
+        segment length=4,
+        amplitude=.9,
+        post=lineto, post length=2pt,
+        pre=lineto, pre length=2pt}},
+    dashed/.style={/tikz/dashed},
+    double line/.style={
+      /tikz/double equal sign distance,
+      /tikz/double=%
+        \pgfkeysvalueof{/tikz/commutative diagrams/background color}}}}
+
+% Default settings
+\pgfqkeys{/tikz/commutative diagrams}{
+  every arrow/.style={
+    /tikz/commutative diagrams/.cd,
+    /tikz/draw,
+    /tikz/commutative diagrams/default arrow},
+  every label/.style={
+    /tikz/commutative diagrams/.cd,
+    /tikz/auto,
+    /tikz/font=\scriptsize,
+    /tikz/inner sep=0.5ex},
+  every diagram/.style={
+    /tikz/commutative diagrams/.cd,
+    /tikz/cells={/tikz/nodes={/tikz/shape={asymmetrical rectangle}}},
+    row sep=normal,
+    column sep=normal,
+    /tikz/baseline=0pt},
+  math mode=true,
+  center shift/.initial=0.575ex,
+  row sep/huge/.initial=10ex,
+  row sep/large/.initial=7.5ex,
+  row sep/normal/.initial=5ex,
+  row sep/scriptsize/.initial=3.75ex,
+  row sep/small/.initial=2.5ex,
+  row sep/tiny/.initial=1.25ex,
+  column sep/huge/.initial=12ex,
+  column sep/large/.initial=9ex,
+  column sep/normal/.initial=6ex,
+  column sep/scriptsize/.initial=4.5ex,
+  column sep/small/.initial=3ex,
+  column sep/tiny/.initial=1.5ex,
+  arrow style=computer modern,
+  start anchor,
+  end anchor,
+  description clearance/.initial=1.5pt,
+  crossing over clearance/.initial=6pt,
+  background color/.initial=white}
+
+% The shape used inside matrices
+\pgfdeclareshape{asymmetrical rectangle} {
+  \inheritsavedanchors[from={rectangle}]
+  \inheritanchor[from={rectangle}]{base}
+  \inheritanchor[from={rectangle}]{north}
+  \inheritanchor[from={rectangle}]{south}
+  \inheritanchor[from={rectangle}]{base west}
+  \inheritanchor[from={rectangle}]{north west}
+  \inheritanchor[from={rectangle}]{south west}
+  \inheritanchor[from={rectangle}]{base east}
+  \inheritanchor[from={rectangle}]{north east}
+  \inheritanchor[from={rectangle}]{south east}
+  \inheritanchor[from={rectangle}]{mid}
+  \inheritanchor[from={rectangle}]{mid west}
+  \inheritanchor[from={rectangle}]{mid east}
+  \inheritbackgroundpath[from={rectangle}]
+  \anchor{center}{\pgf@anchor@rectangle@center\pgfmathsetlength\pgf@y%
+    {\pgfkeysvalueof{/tikz/commutative diagrams/center shift}}}
+  \anchor{west}{\pgf@anchor@rectangle@west\pgfmathsetlength\pgf@y%
+    {\pgfkeysvalueof{/tikz/commutative diagrams/center shift}}}
+  \anchor{east}{\pgf@anchor@rectangle@east\pgfmathsetlength\pgf@y%
+    {\pgfkeysvalueof{/tikz/commutative diagrams/center shift}}}
+  \anchor{real center}{\pgf@anchor@rectangle@center}
+  \anchor{real west}{\pgf@anchor@rectangle@west}
+  \anchor{real east}{\pgf@anchor@rectangle@east}
+  \anchorborder{%
+    \pgfmathsetlength\pgfutil@tempdima%
+      {\pgfkeysvalueof{/tikz/commutative diagrams/center shift}}%
+    \pgf@xb=\pgf@x% xb/yb is target
+    \pgf@yb=\pgf@y%
+    \southwest%
+    \pgf@xa=\pgf@x% xa/ya is se
+    \pgf@ya=\pgf@y%
+    \northeast%
+    \advance\pgf@x by-\pgf@xa%
+    \advance\pgf@y by-\pgf@ya%
+    \pgf@xc=.5\pgf@x% x/y is half width/height
+    \pgf@yc=.5\pgf@y%
+    \advance\pgf@xa by\pgf@xc% xa/ya becomes center
+    \advance\pgf@ya by\pgf@yc%
+    \ifdim\pgf@yb>0pt%
+      \northeast%
+      \pgf@yc=\pgf@y%
+      \advance\pgf@yc by-\pgfutil@tempdima%
+    \else%
+      \southwest%
+      \pgf@yc=-\pgf@y%
+      \advance\pgf@yc by\pgfutil@tempdima%
+    \fi
+    \edef\pgf@marshal{%
+      \noexpand\pgfpointborderrectangle
+      {\noexpand\pgfqpoint{\the\pgf@xb}{\the\pgf@yb}}
+      {\noexpand\pgfqpoint{\the\pgf@xc}{\the\pgf@yc}}%
+    }%
+    \pgf@process{\pgf@marshal}%
+    \advance\pgf@x by\pgf@xa%
+    \advance\pgf@y by\pgfutil@tempdima%
+  }
+}
+
+% Branch depending on whether the next character is [, { or none of those.
+\def\tikzcd@threefold#1#2#3{%
+ \def\tikzcd@tempa{#1}%
+ \def\tikzcd@tempb{#2}%
+ \def\tikzcd@tempc{#3}%
+ \futurelet\next\tikzcd@@threefold}
+\def\tikzcd@@threefold{%
+ \ifx[\next\let\tikzcd@tempd\tikzcd@tempa%
+  \else\ifx\bgroup\next\let\tikzcd@tempd\tikzcd@tempb%
+   \else\let\tikzcd@tempd\tikzcd@tempc\fi\fi%
+ \tikzcd@tempd}
+
+%The arrow commands
+\def\tikzcd@arrow{%
+  \tikzcd@targetrow\tikzcd@currrow%
+  \tikzcd@targetcol\tikzcd@currcol%
+  \tikzcd@threefold{\tikzcd@ar@getdir}{\tikzcd@ar@getdir[]}{}}
+
+\def\tikzcd@ar@getdir[#1]#2{%
+  \tikzcd@temptoksa{\path[/tikz/commutative diagrams/every arrow,#1]}%
+  \tikzcd@parse#2\relax%
+  \tikzcd@temptoksb{}% this will store the labels
+  \tikzcd@threefold{\tikzcd@ar@getlabel}{\tikzcd@ar@getlabel[]}{\tikzcd@ar@final}}
+
+\def\tikzcd@ar@getlabel[#1]#2{%
+  \tikzcd@temptoksb\expandafter{\the\tikzcd@temptoksb %
+    node[/tikz/commutative diagrams/every label,#1]{\tikzcd@mathmaybe{#2}}}%
+  \tikzcd@threefold{\tikzcd@ar@getlabel}{\tikzcd@ar@getlabel[]}{\tikzcd@ar@final}}
+
+\def\tikzcd@ar@final{%
+  \tikzcd@temptoksc\expandafter{\tikzcd@savedpaths}%
+  \global\edef\tikzcd@savedpaths{%
+    \the\tikzcd@temptoksc% the previously saved stuff
+    \the\tikzcd@temptoksa% the current arrow
+    (\tikzmatrixname-\the\tikzcd@currrow-\the\tikzcd@currcol%
+    \noexpand\tikzcd@sourceanchor)%
+    to%
+    \the\tikzcd@temptoksb% the current labels
+    (\tikzmatrixname-\the\tikzcd@targetrow-\the\tikzcd@targetcol%
+    \noexpand\tikzcd@targetanchor);}}
+
+\def\tikzcd@xar#1#2{%
+  \tikzcd@targetrow\tikzcd@currrow%
+  \advance\tikzcd@targetrow by#1%
+  \tikzcd@targetcol\tikzcd@currcol%
+  \advance\tikzcd@targetcol by#2%
+  \tikzcd@threefold{\tikzcd@@xar}{\tikzcd@@xar[]}{\tikzcd@@xar[]}}
+
+\def\tikzcd@@xar[#1]{%
+  \tikzcd@temptoksa{\path[/tikz/commutative diagrams/every arrow,#1]}%
+  \tikzcd@temptoksb{}% this will store the labels
+  \tikzcd@threefold{\tikzcd@ar@getlabel}{\tikzcd@ar@getlabel[]}{\tikzcd@ar@final}}
+
+% Parser for arrow direction argument
+\def\tikzcd@parse#1{%
+ \def\tikzcd@tempa{\tikzcd@parse}%
+ \ifx#1r\advance\tikzcd@targetcol by1\else%
+  \ifx#1d\advance\tikzcd@targetrow by1\else%
+   \ifx#1l\advance\tikzcd@targetcol by-1\else%
+    \ifx#1u\advance\tikzcd@targetrow by-1\else%
+     \ifx#1\relax\let\tikzcd@tempa\empty%
+      \else\errmessage{Arrow direction argument must contain %
+                       only the characters l, r, u or d}\fi\fi\fi\fi\fi%
+ \tikzcd@tempa}
+
+%The tikzcd environment
+\def\tikzcd{\tikzcd@threefold{\tikzcd@}{\tikzcd@[]}{\tikzcd@[]}}
+
+\def\tikzcd@[#1]{%
+  \tikzpicture[/tikz/commutative diagrams/every diagram,#1]%
+  \tikzcd@initialize%
+  \matrix[/tikz/commutative diagrams/matrix of math nodes maybe,%
+          /tikz/execute at begin cell=%
+            \tikzcd@currcol\pgfmatrixcurrentcolumn%
+            \tikzcd@currrow\pgfmatrixcurrentrow]%
+    \bgroup}
+
+\def\endtikzcd{%
+  \pgfmatrixendrow\egroup;%
+  \tikzcd@finalize%
+  \endtikzpicture}
+
+\def\tikzcd@initialize{%
+  \def\arrow{\tikzcd@arrow}%
+  \def\ar{\tikzcd@arrow}%
+  \def\rar{\tikzcd@xar{0}{1}}%
+  \def\lar{\tikzcd@xar{0}{-1}}%
+  \def\dar{\tikzcd@xar{1}{0}}%
+  \def\uar{\tikzcd@xar{-1}{0}}%
+  \def\urar{\tikzcd@xar{-1}{1}}%
+  \def\ular{\tikzcd@xar{-1}{-1}}%
+  \def\drar{\tikzcd@xar{1}{1}}%
+  \def\dlar{\tikzcd@xar{1}{-1}}%
+  \global\let\tikzcd@savedpaths\empty}
+
+\def\tikzcd@finalize{\tikzcd@savedpaths}
+
+\def\tikzcd@mathmaybe#1{\iftikzcd@mathmode$#1$\else#1\fi}
+
+\def\tikzcd@sep#1#2{
+  \pgfkeysifdefined{/tikz/commutative diagrams/#1 sep/#2}%
+    {\tikzset{#1 sep=\pgfkeysvalueof{/tikz/commutative diagrams/#1 sep/#2}}}%
+    {\tikzset{#1 sep=#2}}}
+
+%Computer modern arrow tips
+\pgfarrowsdeclare{cm to}{cm to}
+{
+  \pgfarrowsleftextend{-5.833\pgflinewidth}
+  \pgfarrowsrightextend{0.5\pgflinewidth}
+}
+{
+  \pgfutil@tempdima=\pgflinewidth
+  \pgfsetdash{}{+0pt}
+  \pgfsetroundcap
+  \pgfsetroundjoin
+  \pgfpathmoveto{\pgfqpoint{-5.333\pgfutil@tempdima}{6\pgfutil@tempdima}}
+  \pgfpathcurveto
+  {\pgfqpoint{-4.2\pgfutil@tempdima}{2.5\pgfutil@tempdima}}
+  {\pgfqpoint{-2.133\pgfutil@tempdima}{0.6\pgfutil@tempdima}}
+  {\pgfpointorigin}
+  \pgfpathcurveto
+  {\pgfqpoint{-2.133\pgfutil@tempdima}{-0.6\pgfutil@tempdima}}
+  {\pgfqpoint{-4.2\pgfutil@tempdima}{-2.5\pgfutil@tempdima}}
+  {\pgfqpoint{-5.333\pgfutil@tempdima}{-6\pgfutil@tempdima}}
+  \pgfusepathqstroke
+}
+
+\pgfarrowsdeclare{cm implies}{cm implies}
+{
+  \pgfmathsetlength{\pgfutil@tempdima}{-0.729\pgflinewidth+.25*\pgfinnerlinewidth}
+  \pgfarrowsleftextend{\pgfutil@tempdima}
+  \pgfmathsetlength{\pgfutil@tempdima}{1.094\pgflinewidth-.25*\pgfinnerlinewidth}
+  \pgfarrowsrightextend{\pgfutil@tempdima}
+}
+{
+  \pgfmathsetlength{\pgfutil@tempdimb}{.5\pgflinewidth-.5*\pgfinnerlinewidth}
+  \pgfutil@tempdima\pgflinewidth
+  \pgfsetlinewidth{\pgfutil@tempdimb}
+  \pgfsetdash{}{+0pt}
+  \pgfsetroundcap
+  \pgfsetroundjoin
+  \pgfpathmoveto{\pgfqpoint{-0.542\pgfutil@tempdima}{1.142\pgfutil@tempdima}}
+  \pgfpathcurveto
+  {\pgfqpoint{-0.247\pgfutil@tempdima}{0.476\pgfutil@tempdima}}
+  {\pgfqpoint{0.29\pgfutil@tempdima}{0.114\pgfutil@tempdima}}
+  {\pgfqpoint{0.844\pgfutil@tempdima}{0pt}}
+  \pgfpathcurveto
+  {\pgfqpoint{0.29\pgfutil@tempdima}{-0.114\pgfutil@tempdima}}
+  {\pgfqpoint{-0.247\pgfutil@tempdima}{-0.476\pgfutil@tempdima}}
+  {\pgfqpoint{-0.542\pgfutil@tempdima}{-1.142\pgfutil@tempdima}}
+  \pgfusepathqstroke
+}
+
+\pgfarrowsdeclare{cm bold to}{cm bold to}
+{
+  \pgfarrowsleftextend{-4.055\pgflinewidth}
+  \pgfarrowsrightextend{0.5\pgflinewidth}
+}
+{
+  \pgfutil@tempdima=0.667\pgflinewidth
+  \pgfsetdash{}{+0pt}
+  \pgfsetroundcap
+  \pgfsetroundjoin
+  \pgfpathmoveto{\pgfqpoint{-5.333\pgfutil@tempdima}{6\pgfutil@tempdima}}
+  \pgfpathcurveto
+  {\pgfqpoint{-4.2\pgfutil@tempdima}{2.5\pgfutil@tempdima}}
+  {\pgfqpoint{-2.133\pgfutil@tempdima}{0.6\pgfutil@tempdima}}
+  {\pgfpointorigin}
+  \pgfpathcurveto
+  {\pgfqpoint{-2.133\pgfutil@tempdima}{-0.6\pgfutil@tempdima}}
+  {\pgfqpoint{-4.2\pgfutil@tempdima}{-2.5\pgfutil@tempdima}}
+  {\pgfqpoint{-5.333\pgfutil@tempdima}{-6\pgfutil@tempdima}}
+  \pgfusepathqstroke
+}
+
+\pgfarrowsdeclare{cm left to}{cm left to}
+{
+  \pgfarrowsleftextend{-5.833\pgflinewidth}
+  \pgfarrowsrightextend{0.5\pgflinewidth}
+}
+{
+  \pgfutil@tempdima=\pgflinewidth
+  \pgfsetdash{}{+0pt}
+  \pgfsetroundcap
+  \pgfsetroundjoin
+  \pgfpathmoveto{\pgfqpoint{-5.333\pgfutil@tempdima}{6\pgfutil@tempdima}}
+  \pgfpathcurveto
+  {\pgfqpoint{-4.2\pgfutil@tempdima}{2.5\pgfutil@tempdima}}
+  {\pgfqpoint{-2.133\pgfutil@tempdima}{0.6\pgfutil@tempdima}}
+  {\pgfpointorigin}
+  \pgfusepathqstroke
+}
+
+\pgfarrowsdeclare{cm right to}{cm right to}
+{
+  \pgfarrowsleftextend{-5.833\pgflinewidth}
+  \pgfarrowsrightextend{0.5\pgflinewidth}
+}
+{
+  \pgfutil@tempdima=\pgflinewidth
+  \pgfsetdash{}{+0pt}
+  \pgfsetroundcap
+  \pgfsetroundjoin
+  \pgfpathmoveto{\pgfpointorigin}
+  \pgfpathcurveto
+  {\pgfqpoint{-2.133\pgfutil@tempdima}{-0.6\pgfutil@tempdima}}
+  {\pgfqpoint{-4.2\pgfutil@tempdima}{-2.5\pgfutil@tempdima}}
+  {\pgfqpoint{-5.333\pgfutil@tempdima}{-6\pgfutil@tempdima}}
+  \pgfusepathqstroke
+}
+
+\pgfarrowsdeclare{cm |}{cm |}
+{
+  \pgfarrowsleftextend{-0.5\pgflinewidth}
+  \pgfarrowsrightextend{0.5\pgflinewidth}
+}
+{
+  \pgfsetdash{}{+0pt}
+  \pgfsetroundcap
+  \pgfpathmoveto{\pgfqpoint{0pt}{-4\pgflinewidth}}
+  \pgfpathlineto{\pgfqpoint{0pt}{4\pgflinewidth}}
+  \pgfusepathqstroke
+}
+
+\pgfarrowsdeclare{cm left hook}{cm left hook}
+{
+  \pgfarrowsleftextend{-0.5\pgflinewidth}
+  \pgfarrowsrightextend{3.5\pgflinewidth}
+}
+{
+  \pgfsetdash{}{+0pt}
+  \pgfsetroundcap
+  \pgfpathmoveto{\pgfqpoint{0pt}{4.667\pgflinewidth}}
+  \pgfpathcurveto
+    {\pgfqpoint{4\pgflinewidth}{4.667\pgflinewidth}}
+    {\pgfqpoint{4\pgflinewidth}{0pt}}
+    {\pgfpointorigin}
+  \pgfusepathqstroke
+}
+
+\pgfarrowsdeclare{cm right hook}{cm right hook}
+{
+  \pgfarrowsleftextend{-0.5\pgflinewidth}
+  \pgfarrowsrightextend{3.5\pgflinewidth}
+}
+{
+  \pgfsetdash{}{+0pt}
+  \pgfsetroundcap
+  \pgfpathmoveto{\pgfqpoint{0pt}{-4.667\pgflinewidth}}
+  \pgfpathcurveto
+    {\pgfqpoint{4\pgflinewidth}{-4.667\pgflinewidth}}
+    {\pgfqpoint{4\pgflinewidth}{0pt}}
+    {\pgfpointorigin}
+  \pgfusepathqstroke
+}
+
+\pgfarrowsdeclare{cm o}{cm o}
+{
+  \pgfarrowsleftextend{+-.5\pgflinewidth}
+  \pgfarrowsrightextend{7.167\pgflinewidth}
+}
+{
+  \pgfpathcircle{\pgfqpoint{3.333\pgflinewidth}{0pt}}{3.333\pgflinewidth}
+  \pgfusepathqstroke
+}
+
+\pgfarrowsdeclare{cm *}{cm *}
+{
+  \pgfarrowsleftextend{+-.5\pgflinewidth}
+  \pgfarrowsrightextend{7.167\pgflinewidth}
+}
+{
+  \pgfpathcircle{\pgfqpoint{3.333\pgflinewidth}{0pt}}{3.333\pgflinewidth}
+  \pgfusepathqfillstroke
+}
+
+\pgfarrowsdeclare{cm cap}{cm cap}
+{
+  \pgfarrowsleftextend{+0pt}
+  \pgfarrowsrightextend{+\pgflinewidth}
+}
+{
+  \pgfsetdash{}{+0pt}
+  \pgfsetroundcap
+  \pgfpathmoveto{\pgfpointorigin}
+  \pgfpathlineto{\pgfqpoint{0.5\pgflinewidth}{0pt}}
+  \pgfusepathqstroke
+}
+
+\pgfarrowsdeclare{cm implies cap}{cm implies cap}
+{
+  \pgfmathsetlength{\pgfutil@tempdima}{.5\pgflinewidth-.5*\pgfinnerlinewidth}
+  \pgfarrowsleftextend{+0pt}
+  \pgfarrowsrightextend{+\pgfutil@tempdima}
+}
+{
+  \pgfmathsetlength{\pgfutil@tempdima}{.5\pgflinewidth-.5*\pgfinnerlinewidth}
+  \pgfmathsetlength{\pgfutil@tempdimb}{.5\pgflinewidth-.5*\pgfutil@tempdima}
+  \pgfsetlinewidth{\pgfutil@tempdima}
+  \pgfsetdash{}{+0pt}
+  \pgfsetroundcap
+  \pgfpathmoveto{\pgfqpoint{0pt}{+1\pgfutil@tempdimb}}
+  \pgfpathlineto{\pgfqpoint{0.5\pgfutil@tempdima}{+1\pgfutil@tempdimb}}
+  \pgfpathmoveto{\pgfqpoint{0pt}{-1\pgfutil@tempdimb}}
+  \pgfpathlineto{\pgfqpoint{0.5\pgfutil@tempdima}{-1\pgfutil@tempdimb}}
+  \pgfusepathqstroke
+}
+
+\pgfarrowsdeclarereversed{cm to reversed}{cm to reversed}{cm to}{cm to}
+\pgfarrowsdeclarereversed{cm left to reversed}{cm left to reversed}{cm left to}{cm left to}
+\pgfarrowsdeclarereversed{cm right to reversed}{cm right to reversed}{cm right to}{cm right to}
+
+\pgfarrowsdeclaredouble{cm double to}{cm double to}{cm to}{cm to}
+\pgfarrowsdeclaredouble{cm double to reversed}{cm double to reversed}{cm to reversed}{cm to reversed}
+
+\endinput

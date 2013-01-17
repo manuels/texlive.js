@@ -1,0 +1,185 @@
+% The parnotes package
+% Notes after every paragraph, or elsewhere
+% Copyright 2012, Michael Hughes
+%
+% This work is distributed under the LaTeX Project Public License,
+%  version 1.3 or later, available at
+%     http://www.latex-project.org/lppl.txt
+% I currently maintain this project and will receive error reports at
+%     mcrh <at> uw <dot> edu
+%
+% This package was started due to a question at the TeX Stack Exchange:
+%     http://tex.stackexchange.com/questions/34746/
+%
+% Thanks to Stack Exchange users Ahmed Musa and Bruno Le Floch
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{parnotes}[2012/01/03 rev. 1 Notes after every paragraph, or elsewhere]
+
+%
+% These are the user-modifiable format commands
+%
+
+% Format for parnotes - \PN@notes@shape is \rmfamily by default
+\providecommand{\parnotefmt}[1]{\footnotesize%
+                \PN@notes@shape\PN@narrower@optional\noindent #1}
+% Format for parnote marks - \PN@mark@set is \arabic by default
+\providecommand{\parnotemarkfmt}[1]{\textsuperscript{\PN@mark@set{#1}}}
+% Minimum vertical space before and after parnotes
+\providecommand{\parnotevskip}{\medskipamount}
+% Full command used between parnotes
+\providecommand{\parnoteintercmd}{\hspace{1em}}
+
+%
+% Internal variables below this line
+%
+
+% This holds all the parnote text
+\global\def\PN@text{}
+% Counter for parnote marks left by \parnote
+\global\newcount\c@PN@t
+% Counter for parnote marks *within* parnotes
+\global\newcount\c@PN@n
+% autopn environment name
+\def\@PN@autopn{autopn}
+% True if currently setting parnotes
+\newif\ifPN@inparnotes
+% Commands used to disable indentation for the next paragraph
+\def\PN@disable@indent{\@afterindentfalse\@afterheading}
+
+%
+% Optionally reset the counter within \parnotes
+%
+\let\PN@reset@optional\relax
+\DeclareOption{restart}{\def\PN@reset@optional{%
+    \global\c@PN@t=\z@
+    \global\c@PN@n=\z@
+}}
+%
+% Parnote marks are arabic by default, but an option changes them to roman
+%
+\let\PN@mark@set\arabic
+\DeclareOption{roman}{\let\PN@mark@set\roman}
+% breakwithin just changes \parnoteintercmd
+\DeclareOption{breakwithin}{\renewcommand{\parnoteintercmd}{\\}}
+% And indentafter just clears \PN@disable@indent
+\DeclareOption{indentafter}{\let\PN@disable@indent\relax}
+%
+% Set parnotes using \narrower if that option is specified
+%
+\let\PN@narrower@optional\relax
+\DeclareOption{narrower}{\let\PN@narrower@optional\narrower}
+%
+% Font-changing options
+%
+\let\PN@notes@shape\rmfamily
+\DeclareOption{notesrm}{\let\PN@notes@shape\rmfamily}
+\DeclareOption{notessf}{\let\PN@notes@shape\sffamily}
+\DeclareOption{notesit}{\let\PN@notes@shape\itshape}
+% Finally process the options
+\ProcessOptions\relax
+
+\long\def\PN@parnote@real#1{%
+    % Advance the counter used in TEXT immediately
+    \global\advance\c@PN@t\@ne
+    %
+    % Then add the command's argument to a macro to be called at the end
+    % of the paragraph (or wherever \parnotes gets called)
+    %
+    \g@addto@macro\PN@text{%
+        % Advance the counter used in the parnotes as the parnotes are set
+        \global\advance\c@PN@n\@ne
+        \parnotemarkfmt{PN@n}\nolinebreak\thinspace#1%
+        %
+        % This way, if the in-text counter equals the in-note counter, we
+        % know that we're at the final parnote for this batch and
+        % \parnoteintercmd shouldn't be executed
+        %
+            \unless\ifnum\c@PN@n=\c@PN@t
+                \parnoteintercmd
+            \fi
+        }%
+    \unskip\parnotemarkfmt{PN@t}%
+}
+
+%
+% \parnote calls \PN@parnote@real if in typesetting mode, but does nothing
+% elsewhere (i.e., in the table of contents) - this is based on the stable
+% option of the footmisc package
+%
+\long\def\parnote{%
+    \ifx\protect\@typeset@protect
+        \expandafter\PN@parnote@real
+    \else
+        \expandafter\@gobble
+    \fi
+}
+
+\def\PN@parnotes@real{%
+    % We call \par later, so this avoids recursion with \PN@parnotes@auto
+    \PN@inparnotestrue
+    %
+    % Get into vmode if we aren't already
+    %
+    \unless\ifvmode
+        \par
+    \fi
+    % Avoid page breaks between a paragraph and its parnotes
+    \nopagebreak\addvspace{\parnotevskip}%
+    % \parnotefmt goes in a separate group to avoid having formatting
+    % commands and local redefinitions of \parnotemarkfmt contaminate the
+    % following paragraphs
+    {\parnotefmt{\PN@text}\par}%
+    \global\def\PN@text{}%
+    \addvspace{\parnotevskip}%
+    %
+    % These can be enabled or disabled by package options
+    %
+    \PN@disable@indent
+    \PN@reset@optional
+    \PN@inparnotesfalse
+}
+
+\newenvironment{autopn}{%
+    %
+    % Insert \PN@parnotes@auto into \par and \@par
+    % We can't just do \@setpar{\PN@parnotes@auto\@@par} since autopn
+    % could be nested within a list
+    %
+    \let\PN@par\par
+    \def\par{\PN@parnotes@auto\PN@par}%
+    \def\@par{\PN@parnotes@auto\@@par}%
+}
+{\PN@parnotes@auto} % At the environment's end, set any notes we've missed
+
+%
+% If a user calls \parnotes, check that there are parnotes to set
+%
+\def\parnotes{%
+    \unless\ifx\PN@text\@empty
+        \expandafter\PN@parnotes@real
+    \fi
+}
+
+%
+% If autopn calls parnotes, check for nested environments, and that this
+% isn't a call to \par from within \PN@parnotes@real, AND that there are
+% parnotes to set
+%
+\def\PN@parnotes@auto{%
+    \ifx\@currenvir\@PN@autopn
+        \unless\ifPN@inparnotes
+            \unless\ifx\PN@text\@empty
+                \expandafter\PN@parnotes@real
+            \fi
+        \fi
+    \fi
+}
+
+%
+% Reset both mark counters to 0
+%
+\def\parnotereset{%
+    \global\c@PN@t=\z@
+    \global\c@PN@n=\z@
+}

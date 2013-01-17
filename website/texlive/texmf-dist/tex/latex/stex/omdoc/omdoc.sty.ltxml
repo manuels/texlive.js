@@ -1,0 +1,67 @@
+package LaTeXML::Package::Pool;
+use strict;
+use LaTeXML::Package;
+use Cwd qw(cwd abs_path);
+DeclareOption('report','');
+DeclareOption('book','');
+DeclareOption('chapter','');
+DeclareOption('part','');
+DeclareOption('showignores','');
+DeclareOption('extrefs','');
+RequirePackage('sref');
+RequirePackage('xspace');
+RequirePackage('omtext');
+DefEnvironment('{omgroup} OptionalKeyVals:omgroup {}',
+               "<omdoc:omgroup layout='sectioning'"
+               .   "?&KeyVal(#1,'id')(xml:id='&KeyVal(#1,'id')')()"
+               .   "?&KeyVal(#1,'type')(type='&KeyVal(#1,'type')')()>\n"
+          . "<dc:title>#2</dc:title>\n"
+       . "#body\n"
+     . "</omdoc:omgroup>");
+DefConstructor('\printindex','<omdoc:index/>');
+DefConstructor('\tableofcontents',"<omdoc:tableofcontents level='&ToString(&CounterValue('tocdepth'))'/>");
+DefConstructor('\bibliography{}',"<omdoc:bibliography files='#1'/>");
+DefKeyVal('ignore','type','Semiverbatim');
+DefKeyVal('ignore','comment','Semiverbatim');
+DefEnvironment('{ignore} OptionalKeyVals:ignore',
+               "<omdoc:ignore  %&KeyVals(#1)>#body</omdoc:ignore>");
+DefConstructor('\STRlabel{}{}', sub {
+  my($document,$label,$object)=@_;
+  $document->absorb($object);
+  $document->addAttribute('xml:id'=>ToString($label)) if $label; });
+DefConstructor('\STRcopy{}',"<omdoc:ref xref='##1'/>");
+DefConstructor('\STRsemantics[]{}{}', sub {
+  my($document,$label,$ignore,$object)=@_;
+  $document->absorb($object);
+  $document->addAttribute('xml:id'=>ToString($label)) if $label; });
+DefMacro('\STRlabeldef{}{}', "");
+sub omdocColorMacro {
+  my ($color, @args) = @_;
+  my $tok_color = TokenizeInternal($color);
+  (T_BEGIN, T_CS('\@omdoc@color'), T_BEGIN, $tok_color->unlist,
+   T_END, T_CS('\@omdoc@color@content'), T_OTHER('['), $tok_color->unlist, T_OTHER(']'),
+   T_BEGIN, $args[1]->unlist, T_END, T_END); }
+DefMacro('\@omdoc@color{}', sub { MergeFont(color=>$_[1]->toString); return; });#$
+DefConstructor('\@omdoc@color@content[]{}',
+  "?#isMath(#2)(<ltx:text ?#1(style='color:#1')()>#2</ltx:text>)");
+foreach my $color(qw(black gray blue red green cyan magenta brown yellow orange)) {
+  DefMacro("\\".$color.'{}', sub { omdocColorMacro($color, @_); }); }#$
+DefConstructor('\newpage','');
+Tag('omdoc:ignore',afterOpen=>\&numberIt,afterClose=>\&locateIt);
+Tag('omdoc:ref',afterOpen=>\&numberIt,afterClose=>\&locateIt);
+DefConstructor('\hateq',"\x{2259}");
+DefConstructor('\hatequiv',"\x{2A6F}");
+DefConstructor('\textleadsto',"\x{219D}");
+DefMacro('\baseURI []Semiverbatim', sub {
+  if (LookupValue('SOURCEFILE')!~/^(\w+):\/\//) {
+    my $baselocal = ToString(Expand($_[1]));
+    $baselocal = abs_path($baselocal) unless $baselocal=~/^(\w+):\/\//;
+    AssignValue('baselocal'=>$baselocal);
+    AssignValue('baseuri'=>ToString(Expand($_[2])));}
+  else {
+    AssignValue('baselocal'=>undef);
+    AssignValue('baseuri'=>ToString(Expand($_[2])));
+  }});
+DefConstructor('\url Semiverbatim',"<omdoc:link href='#1'>#1</omdoc:link>");
+DefConstructor('\href Semiverbatim {}',"<omdoc:link href='#1'>#2</omdoc:link>");
+1;

@@ -1,0 +1,143 @@
+%
+% randtext.sty
+%
+% Charles Duan (2004/12/20)
+%
+% Provides one useful macro, \randomize{TEXT}. Result is a typeset box that
+% looks, on paper, like TEXT, but whose letters have in fact been placed in
+% random order so that they are not copiable from the file directly.
+%
+% In other words, typing:
+%
+%   This is a \randomize{random-text} test.
+%
+% would produce output that looks like:
+%
+%   This is a random-text test.
+%
+% but if you tried to copy-paste it from the output file, you would probably get
+%
+%   This is a mdoxt-etnra test.
+%
+% The function of this odd macro is to obfuscate e-mail addresses, say on a PDF
+% document put online, so that the human reader sees the address as expected,
+% but e-mail address harvesters and spambots cannot determine the address. Since
+% this macro is done entirely using TeX typesetting commands, it requires no
+% external image generation or anything, and the typeset result is just as
+% high-quality as if no obfuscation had taken place.
+%
+% This macro does take into account kerning between character pairs, but it does
+% not account for ligatures. To make appropriate ligatures, surround the
+% ligature characters with braces.
+%
+% This package supersedes "switcheml.sty", written by the same author. (That is
+% the reason that the internal macros begin with "se@".
+%
+% Requires the file "random.tex", by Donald Arseneau. I believe that this file
+% comes as part of a standard TeX distribution.
+%
+%
+\ProvidesPackage{randtext}[2004/12/20 Obfuscate text]
+%
+% We use the random package to pick random numbers.
+\input random
+%
+% \se@count stores the number of letters/groups to typeset. For instance,
+%   \randomize{abc{de}fg{hij}kl}
+% contains 9 letters/groups.
+\newcount\se@count
+%
+% \se@random is a random number register.
+\newcount\se@random
+% 
+% \se@pos is used to store the width of each section of the randomized text.
+\newdimen\se@pos
+%
+% Randomize the text of the argument.
+\def\randomize#1{%
+    % Do nothing for empty argument.
+    \def\se@tmp{#1}\ifx\se@tmp\@empty\else
+        % Make our work local
+	\begingroup
+	    % In case this is the first thing in the paragraph, go to horizontal
+	    % mode
+	    \leavevmode
+	    % Initialize \se@count=1, \se@pos=0pt
+	    \se@count\@ne
+	    \se@pos\z@
+	    % Now iterate over the argument text. The \relax is put at the end
+	    % as an untypeset token.
+	    \se@randomize#1\relax\@stop
+	\endgroup
+    \fi
+}
+%
+% Iterator function for \randomize. Essentially, this function will be executed
+% once for each token in the list.
+\def\se@randomize#1#2#3\@stop{%
+    % Define a macro \pos@[\se@count]. Essentially, this makes a unique,
+    % numbered macro for each letter/group.
+    \expandafter\edef\csname pos@\the\se@count\endcsname{%
+	% The macro produces a zero-width box that jumps forward \se@pos and
+	% then typesets the letter/group. Note the \the\se@pos, to force current
+	% evaluation of the distance to move forward.
+	\noexpand\rlap{\hskip\the\se@pos\relax#1}%
+    }%
+    % Advance \se@pos forward by the width of the first group and the
+    % immediately subsequent group, and then backward by the width of the second
+    % group. The effect is to advance \se@pos by the first group and the kern
+    % between the first and second groups.
+    \setbox\z@\hbox{#1#2}\advance\se@pos\wd\z@
+    \setbox\z@\hbox{#2}\advance\se@pos-\wd\z@
+    %
+    % If there's nothing left to iterate over, then:
+    %   \se@pos is the width of the whole text
+    %   \se@count is the number of letters/groups, or the highest \pos@[number]
+    % so we make a box of width \se@pos, place our random letters in it with
+    % \se@rand@place, and fill up the box for good measure.
+    %
+    % Otherwise, increment \se@count and run the function again.
+    %
+    % Note two things:
+    % 1. We put braces around #2 but not #3. Since there's an extra \relax at
+    % the end of #3 at all times, we don't have the problem of TeX stripping any
+    % braces from it.
+    % 2. The other reason we needed that \relax was that, since we read
+    % letters/groups in pairs, the last letter/group would only be read if there
+    % was an extra token at the end (i.e., the \relax).
+    \def\se@tmp{#3}\ifx\se@tmp\@empty \expandafter\@firstoftwo
+                   \else              \expandafter\@secondoftwo \fi
+    {\hb@xt@\se@pos{\se@rand@place\hfill}}%
+    {\advance\se@count\@ne\se@randomize{#2}#3\@stop}%
+}
+%
+% Now all of our \pos@[number] functions are set, and we just need to randomly
+% select and place.
+\def\se@rand@place{%
+    %
+    % Pick a random number between one and \se@num. (If \se@num>3, then ensure
+    % that the number is over three. This way, the first two elements will
+    % always be typeset last, guaranteeing at least some contortion.)
+    \ifnum\se@count>\z@
+	\ifnum\se@count>\thr@@
+	    \setrannum\se@random\thr@@\se@count
+	\else
+	    \setrannum\se@random\@ne\se@count
+	\fi
+	% Execute \pos@[\se@random].
+	\csname pos@\the\se@random\endcsname
+	% Now replace \pos@[\se@random] with \pos@[\se@count] and decrement
+	% \se@count. This way, the next random number will be guaranteed to
+	% typeset an unselected value.
+	\ifnum\se@random=\se@count\else
+	    \edef\reserved@a{%
+		\let\expandafter\noexpand\csname pos@\the\se@random\endcsname
+		    \expandafter\noexpand\csname pos@\the\se@count\endcsname
+	    }\reserved@a
+	\fi
+	\advance\se@count\m@ne
+	% Repeat
+	\expandafter\se@rand@place
+    \fi
+}
+\endinput

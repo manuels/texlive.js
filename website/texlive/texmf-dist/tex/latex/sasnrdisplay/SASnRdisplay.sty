@@ -1,0 +1,705 @@
+\ProvidesPackage{SASnRdisplay}[2012/03/27 v0.91 by daleif]
+
+%% $LastChangedDate: 2012-03-27 12:21:59 +0200 (Tue, 27 Mar 2012) $
+%% $LastChangedRevision: 1480 $
+%% $LastChangedBy: daleif $
+
+%%
+%% This package can be distributed and/or modified under the
+%% conditions of the LaTeX Project Public License, either version 1.3
+%% of this license or (at your option) any later version.
+%% The latest version of this license is in
+%%   http://www.latex-project.org/lppl.txt
+%% and version 1.3 or later is part of all distributions of LaTeX
+%% version 2003/12/01 or later.
+%% 
+%% This work has the LPPL maintenance status "maintained".
+%% 
+%% The Current Maintainer of this work is Lars Madsen (daleif@imf.au.dk).
+%%
+
+
+
+\RequirePackage{listings}
+\RequirePackage{xkeyval,xcolor,etoolbox,caption,needspace}
+
+
+
+\def\SR@special@num{0}
+
+% we start by messing a little with listings
+
+\newtoggle{capactive}
+% this is a direct copy of listings caption key. We just add a toggle
+% such we can know when it is being used
+\lst@Key{caption}\relax{%
+  \lstKV@OptArg[{#1}]{#1}%
+    {\def\lst@caption{##2}\def\lst@@caption{##1}}%
+    \toggletrue{capactive}%
+    \def\SR@special@num{1}%
+     \let\lst@title\@empty}
+
+% we also need to mess with title, because, if there is not explicit
+% caption, we would still like to overwrite the auto title with a
+% simple title
+\newtoggle{titleactive}
+\lst@Key{title}\relax{%
+  \def\lst@title{#1}%
+  \toggletrue{titleactive}%
+  \def\SR@special@num{2}%
+  \let\lst@caption\relax}
+
+
+
+
+% replica of the original caption key without the toggle. We will use this
+% internally to be able to auto number our constuctions when there is
+% no direct caption.
+\lst@Key{nocaption}\relax{\lstKV@OptArg[{#1}]{#1}%
+    {\def\lst@caption{##2}\def\lst@@caption{##1}}%
+     \let\lst@title\@empty}
+
+% This next bit is caption configuration. The code is due to Ulrike Fischer
+% we define a text formatting which will eat the caption
+\DeclareCaptionTextFormat{gobble}{}
+
+% now in the numbered constructions we would like to have 'Name
+% number' when there is no caption, and 'Name number<sep> text' when
+% there is a caption.
+%
+% This can be done using \lstset{nocaption=x,#1} inside our
+% constructions, and then after \lstset issuing
+%  \iftoggle{capactive}{}{%
+%    \captionsetup[lstlisting]{labelsep=none,textformat=gobble}}
+
+
+
+
+
+
+
+
+% some default colors
+\definecolor{SnRBG}       {rgb} {0.94,0.97,1}
+\definecolor{SnRFrame}    {rgb} {0.79,0.88,1}
+\definecolor{SnRBGGray}   {gray}{0.9}
+\definecolor{SnRFrameGray}{gray}{0}
+
+
+
+\DeclareOptionX{grayscale}{
+  \colorlet{SnRBG}{SnRBGGray}
+  \colorlet{SnRFrame}{SnRFrameGray}
+}
+
+
+
+
+\newtoggle{SnRcountbysection}
+\newtoggle{SnRcountbychapter}
+\newtoggle{SnRcountconsecutive}
+\DeclareOptionX{consecutive}{\toggletrue{SnRcountconsecutive}}
+\DeclareOptionX{countbysection}{\toggletrue{SnRcountbysection}}
+\DeclareOptionX{countbychapter}{%
+  % if \chapter is not available specify section instead
+  \ifdef\chapter{
+    \toggletrue{SnRcountbychapter}
+  }{
+    \toggletrue{SnRcountbysection}
+  }
+}
+
+\let\SnRneedspaceCommand\@gobble
+\newlength\SnRneedspace
+\let\SnRneedspaceSAScode  \SnRneedspace
+\let\SnRneedspaceSASoutput\SnRneedspace
+\let\SnRneedspaceRcode    \SnRneedspace
+\let\SnRneedspaceRoutput  \SnRneedspace
+
+\DeclareOptionX{noneedspace}{
+  \let\SnRneedspaceCommand\@gobble
+}
+
+\DeclareOptionX{needspace}{
+  \setlength\SnRneedspace{#1}
+  \let\SnRneedspaceCommand\needspace
+}
+
+
+\providecommand*\SnRRcodename{}
+\providecommand*\SnRSAScodename{}
+\providecommand*\SnRRoutputname{}
+\providecommand*\SnRSASoutputname{}
+
+\DeclareOptionX{danish}{
+% danishnames
+  \renewcommand*\SnRRcodename{R-kode}
+  \renewcommand*\SnRSAScodename{SAS-kode}
+  \renewcommand*\SnRRoutputname{R-udskrift}
+  \renewcommand*\SnRSASoutputname{SAS-udskrift}
+% end danishnames
+}
+\DeclareOptionX{english}{
+% englishnames
+  \renewcommand*\SnRRcodename{R~code}
+  \renewcommand*\SnRSAScodename{SAS~code}
+  \renewcommand*\SnRRoutputname{R~output}
+  \renewcommand*\SnRSASoutputname{SAS~output}
+% end englishnames
+}
+
+\DeclareOptionX{babel}{
+  \@ifpackageloaded{babel}{
+    \addto\captionsdanish{
+      \renewcommand*\SnRRcodename{R-kode}
+      \renewcommand*\SnRSAScodename{SAS-kode}
+      \renewcommand*\SnRRoutputname{R-udskrift}
+      \renewcommand*\SnRSASoutputname{SAS-udskrift}
+    }
+    \addto\captionsenglish{
+      \renewcommand*\SnRRcodename{R~code}
+      \renewcommand*\SnRSAScodename{SAS~code}
+      \renewcommand*\SnRRoutputname{R~output}
+      \renewcommand*\SnRSASoutputname{SAS~output}
+    }
+  }{
+    \PackageError{SASnRdisplay}{To use the 'babel' option, please load
+      SASnRdisplay after babel}{}
+  }
+}
+
+
+
+
+
+\newtoggle{SnRnoautotitles-R}
+\newtoggle{SnRnoautotitles-SAS}
+\DeclareOptionX{noautotitles-r}{\toggletrue{SnRnoautotitles-R}}
+\DeclareOptionX{noautotitles-sas}{\toggletrue{SnRnoautotitles-SAS}}
+
+\newtoggle{SnRoverloadSweave}
+\DeclareOptionX{sweave}  {\toggletrue{SnRoverloadSweave}}
+\newtoggle{SnRoverloadSASweave}
+\DeclareOptionX{sasweave}{\toggletrue{SnRoverloadSASweave}}
+
+
+
+\DeclareOptionX*{
+  \PassOptionsToPackage{\CurrentOption}{listings}
+}
+\ExecuteOptionsX{danish,countbychapter,needspace=3\baselineskip} 
+\ProcessOptionsX*\relax
+
+
+\@ifpackageloaded{SasWeave}{
+  \iftoggle{SnRoverloadSASweave}{}{
+    \PackageError{SASnRdisplay}{SasWeave detected,^^J%
+      please use the 'sasweave' option to SASnRdisplay 
+      to overwrite the SASinput,^^J%
+      SASoutput and SAScode environments}{}
+  }{}
+}{}
+
+
+
+
+
+\listadd\SnRtypes{Rcode}
+\listadd\SnRtypes{Routput}
+\listadd\SnRtypes{SAScode}
+\listadd\SnRtypes{SASoutput}
+
+
+
+
+\newcommand\SnRsetupcounters[1]{
+  % #1 dominant countername
+  \def\do##1{
+    % create counter
+    \ifblank{#1}{\newcounter{##1}}{\newcounter{##1}[#1]}
+    % create \the... part, with dominator if needed
+    \csdef{the##1}{\ifblank{#1}{}{\csuse{the#1}.}\arabic{##1}}
+  }
+  \dolistloop\SnRtypes
+}
+
+
+\iftoggle{SnRcountconsecutive}{
+  \SnRsetupcounters{}% no dominant counter
+}{
+  \iftoggle{SnRcountbysection}{
+  \SnRsetupcounters{section}
+  }{ % must be after chapter
+  \SnRsetupcounters{chapter}
+  }
+}
+
+
+% This is inspired from the memoir class, it enables us to alias the
+% listings counter such that we can have different series
+% It will locally make one counter behave like another counter
+% it also handles the \the<counter>
+\newcommand*{\SnRletcountercounter}[2]{%
+   \csletcs{c@#1}{c@#2}
+   \csletcs{the#1}{the#2}
+   \SnRHrefNumber{#2}
+}
+
+
+\newcommand*{\SnRHrefNumber}[1]{%
+  \begingroup
+    \global\let\gtmp@theHlstnumber\theHlstnumber
+    \toks@\expandafter{\theHlstnumber}%
+    \xdef\gtmp@theHlstnumber{#1-\the\toks@}%
+  \endgroup
+  \let\theHlstnumber\gtmp@theHlstnumber
+  \def\theHlstlisting{%
+    lst.#1-\csname the\@ifundefined{theH#1}{}{H}#1\endcsname
+  }%
+}
+
+
+
+
+\newcommand\SnRCaptionSetupIfEmpty{%
+  \ifboolexpr{ not togl{capactive} and not togl{titleactive} }{%
+    \captionsetup[lstlisting]{labelsep=none,textformat=gobble}%
+  }{}%
+}
+
+\newcommand\SnRautocaption[1]{%
+  \iftoggle{SnRnoautotitles-#1}{}{\lstset{nocaption=x}}}
+
+% generator macro
+\newcommand\SnREnvGenerator[2]{
+  % #1 = output type
+  % #2 = env type
+  \lstnewenvironment{#1#2}[1][]{
+    \csuse{SnRInitial#1#2Setup}
+    \SnRautocaption{#1}
+    \lstset{##1}
+    \SnRCaptionSetupIfEmpty
+  }{}
+  \lstnewenvironment{#1#2*}[1][]{
+    \csuse{SnRInitial#1#2Setup}
+    \lstset{##1}
+  }{}
+}
+
+\newcommand\SnREnvGeneratorAlias[3]{
+  % #1 = output type
+  % #2 = alias output type
+  % #3 = env type
+  \typeout{Redefining #1#3}
+  \csundef{#1#3}
+  \csundef{end#1#3}
+  \csundef{#1#3*}
+  \csundef{end#1#3*}
+  \lstnewenvironment{#1#3}[1][]{
+    \csuse{SnRInitial#2#3Setup}
+    \SnRautocaption{#2}
+    \lstset{##1}
+    \SnRCaptionSetupIfEmpty
+  }{}
+  \lstnewenvironment{#1#3*}[1][]{
+    \csuse{SnRInitial#2#3Setup}
+    \lstset{##1}
+  }{}
+}
+
+
+\newcommand\SnRInputGenerator[3]{
+  % #1 = output type
+  % #2 = type
+  % #3 = extra input listings style
+  \expandafter\newcommand\csname SnRinput@#1@#2@normal\endcsname[2][]{
+    \begingroup
+    \csuse{SnRInitial#1#2Setup}[#3]
+    \SnRautocaption{#1}
+    \lstset{##1}
+    \SnRCaptionSetupIfEmpty
+    \def\SnR@args{##1}
+    \expandafter\lstinputlisting\expandafter[\SnR@args]{##2}
+    \endgroup
+  }
+  \expandafter\newcommand\csname SnRinput@#1@#2@starred\endcsname[2][]{
+    \begingroup
+    \csuse{SnRInitial#1#2Setup}[#3]
+    \def\SnR@args{##1}
+    \expandafter\lstinputlisting\expandafter[\SnR@args]{##2}
+    \endgroup
+  }
+  \expandafter\newcommand\csname input#1#2\endcsname{%
+    \@ifstar{\csuse{SnRinput@#1@#2@starred}}%
+    {\csuse{SnRinput@#1@#2@normal}}}
+}
+
+
+
+%
+% BASIC SETTINGS FOR R
+%
+
+% this is for basic configuration of the inline version
+% rinline
+\lstdefinestyle{r-inline}{
+  basicstyle = \ttfamily
+}
+% end rinline
+% Spaces above and after, plus caption and internal lineskip (note
+% lineskip is marked experimental in listings)
+% rvskips
+\lstdefinestyle{r-vskips}{
+  aboveskip        = 10pt plus 3pt minus 5pt,
+  belowskip        = 10pt plus 3pt minus 5pt,
+  belowcaptionskip = 7pt,
+  lineskip         = 0pt plus 0.1em, % help with blank lines and page stretch
+}
+% end rvskips
+% basic colors
+% rcolors
+\lstdefinestyle{r-colors}{
+  backgroundcolor = \color{SnRBG},
+  rulecolor       = \color{SnRFrame},
+}
+% end rcolors
+% basic fonts
+% rfonts
+\lstdefinestyle{r-fonts}{
+  basicstyle = \small\ttfamily,
+}
+% end rfonts
+% Columns, characters and line breaks
+% rcharsandbreaks
+\lstdefinestyle{r-chars-and-breaks}{
+  columns       = fixed,  % chars vertivally aligned
+  breaklines,             % lines can be broken
+  breakatwhitespace,      % at white space
+  extendedchars = true,   % special chars allowed, be aware of utf8
+}
+% end rcharsandbreaks
+% rmarkup
+\lstdefinestyle{r-markup}{       % this only make sense for code
+  morecomment  = [s]{\#}{\^^M},  % comment from # to the end of the line
+  commentstyle = \normalfont\slshape\ttfamily\footnotesize,
+}
+% end rmarkup
+% rframe
+\lstdefinestyle{r-frame}{
+  frame    = single,  % single frame all the way round, box broken at page break
+  framesep = 0.5em,   % sep from frame to text
+}
+% end rframe
+% general stuff from the user, applying to all R
+% ruser
+\lstdefinestyle{r-user}{}
+% end ruser
+% collector style
+% rstyle
+\lstdefinestyle{r-style}{
+  style = r-vskips,           % vertical spacing
+  style = r-fonts,            % fonts
+  style = r-colors,           % colors
+  style = r-chars-and-breaks, % special chars and line breaks
+  style = r-frame,            % framing
+  style = r-user,             % user defined configuration
+}
+% end rstyle
+% rcode
+\lstdefinestyle{r-code}{
+  style = r-style,
+  style = r-markup,           % markup only make sense for code
+  style = r-code-user,
+}
+% end rcode
+% routput
+\lstdefinestyle{r-output}{
+  style = r-style,
+  style = r-output-user,
+}
+% end routput
+% rincludecode
+\lstdefinestyle{r-include-code}{
+  style = r-code,
+  style = r-include-user,
+  style = r-include-code-user,
+}
+% end rincludecode
+% rincludeoutput
+\lstdefinestyle{r-include-output}{
+  style = r-outout,
+  style = r-include-user,
+  style = r-include-output-user,
+}
+% end rincludeoutput
+% rcodeuser
+\lstdefinestyle{r-code-user}{}
+% end rcodeuser
+% routputuser
+\lstdefinestyle{r-output-user}{}
+% end routputuser
+% rincludecodeuser
+\lstdefinestyle{r-include-code-user}{} 
+% end rincludecodeuser
+% rincludeoutputuser
+\lstdefinestyle{r-include-output-user}{}
+% end rincludeoutputuser
+% rincludeuser
+\lstdefinestyle{r-include-user}{}
+% end rincludeuser
+
+
+% just to save some code
+\newcommand\SnRInitialRcodeSetup[1][r-code]{
+  \let\lstlistingname\SnRRcodename%
+  \SnRletcountercounter{lstlisting}{Rcode}%
+  \lstset{style=#1}%
+  \SnRneedspaceCommand\SnRneedspaceRcode
+}
+
+\newcommand\SnRInitialRoutputSetup[1][r-output]{
+  \let\lstlistingname\SnRRoutputname%
+  \SnRletcountercounter{lstlisting}{Routput}%
+  \lstset{style=#1}%
+  \SnRneedspaceCommand\SnRneedspaceRcode
+}
+
+% for Sweave
+\def\SnRInitialRinputSetup{%
+  \SnRInitialRcodeSetup%
+  \lstset{style=Sinput}%
+}
+
+
+\SnREnvGenerator{R}{code}   % -> Rcode and Rcode*
+\SnREnvGenerator{R}{output} % -> Routput and Routput*
+
+\lstdefinestyle{Sinput}{}
+
+\iftoggle{SnRoverloadSweave}{
+  \AtBeginDocument{
+    % overload Sweave. There are three envs to deal with Sinput,
+    % Scode, Soutput, Sinput and Scode are more or less the same thing
+%     \let\Sinput\relax
+%     \let\endSinput\relax
+%     \let\Soutput\relax
+%     \let\endSoutput\relax
+%     \let\Scode\relax
+%     \let\endScode\relax
+%     \csundef{Sinput*}
+%     \csundef{endSinput*}
+%     \csundef{Soutput*}
+%     \csundef{endSoutput*}
+%     \csundef{Scode*}
+%     \csundef{endScode*}
+%     \let\SnRInitialScodeSetup\SnRInitialRcodeSetup
+%     \def\SnRInitialSinputSetup{%
+%       \SnRInitialRcodeSetup%
+%       \lstset{style=Sinput}%
+%     }
+%     \let\SnRInitialSoutputSetup\SnRInitialRoutputSetup
+    \SnREnvGeneratorAlias{S}{R}{code}
+    \SnREnvGeneratorAlias{S}{R}{output}
+    \SnREnvGeneratorAlias{S}{R}{input}
+  }
+}{}
+
+
+% a \verb like macro for Rcode in the normal text
+\newcommand\Rinline[1][]{\lstinline[style=r-inline,#1]}
+
+
+
+% input external R files
+% we need something a bit special here. Some options have to be given
+% to \lstinputlisting's optional argument. But we also need to know if
+% the caption has been set, thus we set the user specified options twice!
+
+
+\SnRInputGenerator{R}{code}{r-include-code}     % -> \inputRcode(*)
+\SnRInputGenerator{R}{output}{r-include-output} % -> \inputRoutput(*)
+
+
+% 
+% END R CODE SETTINGS
+% 
+
+
+
+%
+% SETUP FOR SAS
+%
+
+% sasinline
+\lstdefinestyle{sas-inline}{
+  basicstyle = \ttfamily,
+  style      = sas-more-keywords,
+  language   = SAS,
+}
+% end sasinline
+% sasvskips
+\lstdefinestyle{sas-vskips}{
+  aboveskip        = 10pt plus 3pt minus 5pt,
+  belowskip        = 10pt plus 3pt minus 5pt,
+  belowcaptionskip = 7pt,
+  lineskip         = 0pt plus 0.1em,   % help with blank lines and page stretch
+}
+% end sasvskips
+% sascolors
+\lstdefinestyle{sas-colors}{
+  backgroundcolor = \color{SnRBG},
+  rulecolor       = \color{SnRFrame},
+}
+% end sascolors
+% sascharsandbreaks
+\lstdefinestyle{sas-chars-and-breaks}{
+  columns       = fixed,  % chars vertivally aligned
+  breaklines,             % lines can be broken
+  breakatwhitespace,      % at white space
+  extendedchars = true,   % special chars allowed, be aware of utf8
+}
+% end sascharsandbreaks
+% sasmarkup
+\lstdefinestyle{sas-markup}{
+  language     = SAS,
+  keywordstyle = \bfseries,
+  comment      = [s]{/*}{*/}, 
+  commentstyle = \slshape\footnotesize,
+}
+% end sasmarkup
+% sasframe
+\lstdefinestyle{sas-frame}{
+  frame    = single,
+  framesep = 0.5em,
+}
+% end sasframe
+% sasuser
+\lstdefinestyle{sas-user}{}
+% end sasuser
+% sasstyle
+\lstdefinestyle{sas-style}{
+  style = sas-vskips,
+  style = sas-frame,
+  style = sas-colors,
+  style = sas-chars-and-breaks,
+  style = sas-user,
+}
+% end sasstyle
+% sascode
+\lstdefinestyle{sas-code}{
+  style = sas-style,
+  style = sas-code-fonts,
+  style = sas-markup,        % there is no markup of the output
+  style = sas-more-keywords, % has to come after markup when loading styles
+  style = sas-code-user,
+}
+% end sascode
+% sasoutput
+\lstdefinestyle{sas-output}{
+  style = sas-style,
+  style = sas-output-fonts,
+  style = sas-output-user,
+}
+% end sasoutput
+% sascodeuser
+\lstdefinestyle{sas-code-user}{}
+% end sascodeuser
+% sasoutputuser
+\lstdefinestyle{sas-output-user}{}
+% end sasoutputuser
+% sascodefonts
+\lstdefinestyle{sas-code-fonts}{
+  basicstyle = \ttfamily\small,
+}
+% end sascodefonts
+% sasoutputfonts
+\lstdefinestyle{sas-output-fonts}{
+  basicstyle = \ttfamily\footnotesize,
+}
+% end sasoutputfonts
+% sasinputcodeuser
+\lstdefinestyle{sas-input-code-user}{}
+% end sasinputcodeuser
+% sasinputoutputuser
+\lstdefinestyle{sas-input-output-user}{}
+% end sasinputoutputuser
+% sasincludecode
+\lstdefinestyle{sas-include-code}{
+  style = sas-code,
+  style = sas-include-user,
+  style = sas-include-code-user,
+}
+% end sasincludecode
+% sasincludeoutput
+\lstdefinestyle{sas-include-output}{
+  style = sas-output,
+  style = sas-include-user,
+  style = sas-include-output-user,
+}
+% end sasincludeoutput
+% sasincludeuser
+\lstdefinestyle{sas-include-user}{}
+% end sasincludeuser
+% sasincludecodeuser
+\lstdefinestyle{sas-include-code-user}{}
+% end sasincludecodeuser
+% sasincludeoutputuser
+\lstdefinestyle{sas-include-output-user}{}
+% end sasincludeoutputuser
+
+
+
+
+% MACROS AND ENVIRONMENTS
+
+\newcommand\SnRInitialSAScodeSetup[1][sas-code]{
+  \let\lstlistingname\SnRSAScodename%
+  \SnRletcountercounter{lstlisting}{SAScode}%
+  \lstset{style = #1}%
+  \SnRneedspaceCommand\SnRneedspaceSAScode
+}
+
+\newcommand\SnRInitialSASoutputSetup[1][sas-output]{
+  \let\lstlistingname\SnRSASoutputname%
+  \SnRletcountercounter{lstlisting}{SASoutput}%
+  \lstset{style = #1}%
+  \SnRneedspaceCommand\SnRneedspaceSASoutput
+}
+
+\iftoggle{SnRoverloadSASweave}{
+  % overload SASweave. There are three envs to deal with: SASinput,
+  % SAScode, SASoutput, SASinput and SAScode are more or less the same
+  % thing. Since we use the same names, only SASinput is missing
+  \let\SASinput\relax
+  \let\endSASinput\relax
+  \let\SASoutput\relax
+  \let\endSASoutput\relax
+  \let\SAScode\relax
+  \let\endSAScode\relax
+  \let\SnRInitialSASinputSetup\SnRInitialSAScodeSetup
+  \SnREnvGenerator{SAS}{input}
+}{}
+
+
+\SnREnvGenerator{SAS}{code}
+\SnREnvGenerator{SAS}{output}
+
+
+% a \verb like macro for SAScode in the normal text
+\newcommand\SASinline[1][]{\lstinline[style=sas-inline,#1]}
+% SASdisplay had this macro, so we add it, but do not mention it in
+% the manual.
+\newcommand\SAScodeinline[1][]{\lstinline[style=sas-inline,#1]}
+
+% inclusion macros
+\SnRInputGenerator{SAS}{code}{sas-include-code}
+\SnRInputGenerator{SAS}{output}{sas-include-output}
+
+
+\InputIfFileExists{SASnRdisplay.cfg}{}{}
+\InputIfFileExists{SASnRdisplayuser.cfg}{}{}
+\endinput
+
+
+
+

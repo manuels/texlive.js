@@ -1,0 +1,240 @@
+\def\filename{bitelist}                     \def\filedate{2012/03/29} 
+\def\fileversion{v0.1} \def\fileinfo{split lists in TeX's mouth (UL)}
+%% Copyright (C) 2012 Uwe Lueck,
+%% http://www.contact-ednotes.sty.de.vu
+%% -- author-maintained in the sense of LPPL below --
+%%
+%% This file can be redistributed and/or modified under
+%% the terms of the LaTeX Project Public License; either
+%% version 1.3c of the License, or any later version.
+%% The latest version of this license is in
+%%     http://www.latex-project.org/lppl.txt
+%% There is NO WARRANTY - this rather is somewhat experimental.
+%%
+%% Please report bugs, problems, and suggestions via
+%%
+%%   http://www.contact-ednotes.sty.de.vu
+%%
+%% === Proceeding without \LaTeX ===
+%% Some tricks from Bernd Raichle's \CtanPkgRef{ngerman}{ngerman.sty}---I
+%% need \LaTeX's `\Provides'\-`Package' for \ctanpkgref{fileinfo}, 
+%% my package version tools. With 'readprov.sty', it issues `\endinput', 
+%% close conditional before:
+\begingroup\expandafter\expandafter\expandafter\endgroup
+\expandafter\ifx\csname ProvidesPackage\endcsname\relax \else
+    \edef\fileinfo{\noexpand\ProvidesPackage{\filename}%
+        [\filedate\space \fileversion\space \fileinfo]}
+    \expandafter\fileinfo
+\fi
+\chardef\atcode=\catcode`\@
+\catcode`\@=11 % \makeatletter
+%% Providing \LaTeX's `\@firstoftwo' and `\@secondoftwo': 
+\long\def\@firstoftwo #1#2{#1}
+\long\def\@secondoftwo#1#2{#2}
+%% 
+%% === Basic Parsing (No Braces) ===
+%%
+%% |\BiteMake{<def>}{<cmd>}{<find>}| provides the parameter text 
+%% (\TeX book p.~203) for defining (by <def>) a macro <cmd> that will 
+%% search for <find>:
+\def\BiteMake#1#2#3{#1#2##1#3##2\BiteSep##3\BiteStop}
+%% With |\BiteFindByIn{<find>}{<cmd>}{<list>}|, 
+%% you can use a <cmd> (perhaps defined by &\BiteMake) 
+%% in order to search <find> in <list>. 
+%% This is expandable as promised:
+\def\BiteFindByIn#1#2#3{%
+    #2#3\BiteSep#1\BiteCrit\BiteSep\BiteStop}
+%% Preparing a possible &\edef as <def>:
+\let\BiteSep\relax  \let\BiteStop\relax
+%% And this is important in any case for correct testing of 
+%% occurrence:\footnote{The idea for the ``funny `Q'" 
+%%                      is from the \ctanpkgref{ifmtarg} package.}
+\catcode`\Q=7 \let\BiteCrit=Q \catcode`\Q=11
+%% Perhaps you could increase safety of tests by using something similar to the funny `Q' 
+%% for &\BiteSep and &\BiteStop.
+%% %% 2012/03/28:
+%% However, this would additionally require reimplementation of 
+%% the macros for keeping braces (Section~\ref{sec:braces}) using `\edef'.
+%% % It appears to me, however, that expandable tests like this one 
+%% % never are perfectly safe; you only can say that it is safe with a 
+%% % source meeting certain conditions. \ctanpkgref{fifinddo} originally 
+%% % was made for ``plain text," to be read from files without assigning 
+%% % \TeX's special category codes. \emph{Here} we assume that the source 
+%% % (text in \cs{Provides.\empty..} arguments) will never contain such a 
+%% % ``funny `Q'".
+%%
+%% === Simple Conditionals ===
+%% By |\BiteMakeIfOnly{<def>}{<cmd>}{<find>}|, you can make a command <cmd>
+%% that with
+%% \[|\BiteFindByIn{<find>}{<cmd>}{<list>}{<yes>}{<no>}|\]
+%% chooses <yes> if <find> occurs in <list> and <no> otherwise.
+\def\BiteMakeIfOnly#1#2#3{\BiteMake{#1}{#2}{#3}{\BiteIfCrit{##2}}}
+%% |\BiteIfCrit{<suffix>}{<yes>}{<no>}| 
+%% is the basic test for occurrence of <find> in <list>:
+\def\BiteIfCrit#1{\ifx\BiteCrit#1\expandafter\@secondoftwo
+%% If <cmd>'s second argument---same as &\BiteIfCrit's first argument---is 
+%% empty, &\BiteCrit is compared with &\expandafter, so <yes> is chosen.
+%% That is correct, it happens when <find> is a suffix of <list>.
+                           \else \expandafter\@firstoftwo \fi }
+%%
+%% === Passing Results Completely---No Braces ===
+%% So the previous `\BiteMakeIfOnly' generates pure tests on occurrence, 
+%% giving away information about prefix and suffix. 
+%% It may be considered a didactical step fostering understanding of the following. 
+%% % \medskip\noindent
+%% % ** Generic Fundamental Splitter---No Braces **
+%% %% Wrong:
+%% % With the above `\BiteMakeIfOnly', the user can choose on her own
+%% % information about the composition of <list> to use. 
+%% % Perhaps it is not easy to understand. 
+%% % `\BiteMakeIfOnlySplit{<def>}{<cmd>}{<find>}' by contrast, 
+%% % should satisfy ``all needs" by providing \emph{all} the information 
+%% % about splitting a <list>. It may also be a template for using 
+%% % `\BiteMakeIfOnly'. 
+%% When, by contrast \[|\BiteMakeIf{<def>}{<cmd>}{<find>}|\]
+%% has been issued, a later 
+%% $$|\BiteFindByIn{<find>}{<cmd>}{<list>}{<list>}{<yes>}{<no>}|\eqno(*)$$
+%% will expand to 
+%% \[`<yes>{<prefix>}{<find>}{<suffix>}'\]
+%% if <list> is composed as <prefix><find><suffix>
+%% and <prefix> is the shortest $\alpha$ such that there is some $\beta$
+%% with $<list>=\alpha<find>\beta$. Otherwise, $(*)$ will expand to
+%% \[`<no>{<list>}'\]
+%% This gives all the information available. 
+%% For actual applications, it may be too much, and the macro programmer 
+%% may do something in between of `\BiteMakeIfOnly' and `\BiteMakeIf':
+\def\BiteMakeIf#1#2#3{%
+    \BiteMake{#1}{#2}{#3}##4##5##6{%
+%% In the replacement text, we first do the same as with `\BiteMakeIfOnly':
+      \BiteIfCrit{##2}%
+%% What follows is new. <cmd>'s third argument is ignored. 
+%% The fourth keeps the original <list>. 
+%% <yes> is <cmd>'s fifth and <no> is its sixth argument.
+      {##5{##1}{#3}{##2}}%  %% if #3 in ##4
+      {##6{##4}}%           %% otherwise
+    }%
+}
+%% In $(*)$, <list> has been doubled. That was no mistake. 
+%% It is due to a shortcoming of `\BiteFindByIn'.
+%% With
+%% \[|\BiteFindByInIn{<find>}{<cmd>}{<list>}{<yes>}{<no>}|\]
+%% you get the same result as with $(*)$:
+\def\BiteFindByInIn#1#2#3{\BiteFindByIn{#1}{#2}{#3}{#3}}
+%% TODO not sure about command names yet
+%%
+%% == Example Applications == 
+%% === Splitting at Space ===
+%% \label{sec:space}
+%% This work actually arose from modifying `\GetFileInfo'
+%% as provided by \LaTeX's \ctanpkgref{doc} package
+%% so that it would deal reasonably with ``incomplete" file info---for
+%% the \ctanpkgref{nicefilelist} package. 
+%% `\GetFileInfo' works best when the file info contains 
+%% at least \emph{two} blank spaces. But how many are there indeed?---And 
+%% I wanted to do it \emph{expandably:} while `\GetFileInfo' issues 
+%% \emph{definitions} of `\filedate', `\fileversion', and `\fileinfo', 
+%% date, version, and info should be passed as \emph{macro arguments}.
+%% \medbreak\noindent
+%% |\BiteIfSpace| tries splitting at the next blank space passes results:
+\BiteMake{\def}{\BiteIfSpace}{ }#4#5#6{%
+    \BiteIfCrit{#2}{#5{#1}{#2}}{#6{#4}}}
+%% The difference to the `\BiteMakeIf' construction is that we do not 
+%% pass <find>, the space---it's not essential. 
+%% (TODO names may change ...)
+%%
+%% Now \[|\BiteFindByInIn{ }{\BiteIfSpace}{<list>}{<yes>}{<no>}|\]
+%% will pass prefix/suffix to <yes> or <list> to <no>.
+%% If this is needed frequently, here is a shorthand 
+%% |\BiteGetNextWord{<list>}{<yes>}{<no>}|:
+\def\BiteGetNextWord{\BiteFindByInIn{ }\BiteIfSpace}
+%% See a test in `bitedemo.tex' (Section~\ref{sec:demo}).
+%% 
+%% === Splitting at Comma ===
+%% ... left as an exercise to the reader ...
+%%
+%% == Keeping Braces: Reasoning ==
+%% \label{sec:braces}
+%% Now we want to generalize task (Section~\ref{sec:task})
+%% and solution (Section~\ref{sec:trick}) for the case that
+%% $\tau=<list>$ has (balanced) braces 
+%% (with category codes for argument delimiters), 
+%% while $\sigma=<find>$ still has not (does not work with our method). 
+%% So with $\tau=\alpha\sigma\beta$, 
+%% $\alpha$ (``prefix") or $\beta$ (``suffix") or both 
+%% may contain braces. But we consider another restriction: 
+%% braces must be balanced in $\alpha$ and in $\beta$, 
+%% we don't try parsing inside braces 
+%% (as opposed to the search for asterisks in Appendix~D 
+%%  of The~\TeX book).
+%%
+%% According to \TeX book p.~204, when a macro <cmd> finds an argument 
+%% formed as `{<tokens>}', in <cmd>'s replacement text only <tokens>
+%% is used, i.e., outer braces are removed. 
+%% So when $\alpha=`{<tokens>}'$, a parser <cmd> as defined by our 
+%% methods above will return <tokens> instead of `{<tokens>}'---likewise 
+%% for $\beta$. We are now trying to \emph{keep} outer braces in prefix/suffix
+%% by a more elaborate method.
+%% 
+%% The idea is to present $\tau=<list>$ with context\footnote{Perhaps 
+%%      I am confusing `&\empty' and the token list containing just `&\empty' here?}
+%% \[`<cmd>\empty<list><stop><sep><find><crit><sep><stop>'\]
+%% or in the notation of Section~\ref{sec:trick}
+%% \[`<cmd>\empty'\tau\theta\zeta\sigma\rho\zeta\theta\]
+%% Then, if <find> occurs in <list>, we must remove the `\empty'
+%% from the prefix that we get with the earlier method (easy)
+%% and <stop> from the suffix (tricky, similar problem recurs).
+%% Using old $\theta$ for a new purpose works here because 
+%% <cmd> will look for $\theta$ only when it has found $\zeta$ before.
+%%
+%% Mere testing for occurrence is not affected. 
+%% \[`\BiteMakeIfOnly' \quad \mbox{and} \quad `\BiteFindByIn'\] 
+%% still can be used. 
+%% We provide an improved version of 
+%% \[`\BiteMakeIf'   \quad (`\BiteMakeIfBraces')\] and of
+%% \[`\BiteFindInIn' \quad (`\BiteFindInBraces').\]
+%%
+%% == Implementation Part II    ==
+%% === Keeping Braces           ===
+%% \[|\BiteFindByInBraces{<find>}{<cmd>}{<list>}{<yes>}{<no>}|\] 
+%% varies `\BiteFindByInIn' according to the previous:
+\def\BiteFindByInBraces#1#2#3{%
+    #2\empty#3\BiteStop\BiteSep#1\BiteCrit\BiteSep\BiteStop{#3}}
+%% Such a <cmd> can be made by |\BiteMakeIfBraces{<def>}{<cmd>}{<find>}|:
+\def\BiteMakeIfBraces#1#2#3{%
+    \BiteMake{#1}{#2}{#3}##4##5##6{%
+      \BiteIfCrit{##2}%
+%% <no> works as before. For <yes>, first the `\empty' in the prefix
+%% is expanded for vanishing. 
+%% `\BiteTidyI' and `\BiteTidyII' continue tidying.
+      {\expandafter \BiteTidyI                      %% if #3 in ##4
+            \expandafter{##1}%                      %% prefix
+%% Another `\empty' avoids that removal of `\BiteStop' in suffix 
+%% by `\BiteTideII' removes outer braces:
+                        {\BiteTidyII\empty##2}%     %% suffix
+                        {#3}%                       %% find
+                        {##5}}%                     %% yes
+      {##6{##4}}%                                   %% otherwise
+    }%
+}
+%% |\BiteTidyI{<prefix>}{<suffix>}| \ first expands `\BiteTidyII'
+%% for removing `\BiteStop' in <suffix>. 
+%% `\empty' from `\BiteFindByInBraces' remains and is expanded next 
+%% for vanishing. Finally, `\BiteTidied' reorders arguments
+%% for operation of <yes>:
+\def\BiteTidyI#1#2{%
+    \expandafter\expandafter\expandafter \BiteTidied 
+        \expandafter\expandafter\expandafter {#2}{#1}}
+\def\BiteTidyII#1\BiteStop{#1}
+\def\BiteTidied#1#2#3#4{#4{#2}{#3}{#1}}
+%% 
+%% === Leaving the Package File ===
+\catcode`\@=\atcode
+\endinput
+%%
+%% === VERSION HISTORY ===
+
+v0.1   2012/03/26   started
+       2012/03/27   continued, restructured
+       2012/03/28   continued, separate sections for "Mere Occurrence" 
+                    vs. ...; keeping braces, \BiteIfCrit
+       2012/03/29   proceeding without LaTeX corrected, restructured

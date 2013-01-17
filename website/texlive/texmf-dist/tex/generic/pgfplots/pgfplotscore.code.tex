@@ -1,0 +1,170 @@
+%--------------------------------------------
+%
+% Package pgfplots
+%
+% Provides a user-friendly interface to create function plots (normal
+% plots, semi-logplots and double-logplots).
+% 
+% It is based on Till Tantau's PGF package.
+%
+% Copyright 2007/2008 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%--------------------------------------------
+
+\def\pgfplotsset#{\pgfqkeys{/pgfplots}}
+
+
+\def\pgfplots@error#1{\PackageError{pgfplots}{#1}{}}%
+\def\pgfplotstable@error@pkg#1{\PackageError{pgfplotstable}{#1}{}}%
+\def\pgfplots@warning#1{\pgfplots@message{! Package pgfplots Warning: #1}}%
+\def\pgfplots@message#1{%
+	\immediate\write16{#1}%
+}%
+
+
+\pgfutil@ifundefined{pgfkeys}{%
+	\pgfplots@error{It seems your version of PGF/Tikz is older than 2.00. Unfortunately, pgfplots requires at least version 2.00 ... you may need to update your TeX-Distribution or install PGF manually, sorry}%
+}{\relax}
+
+% Throws exception `#1' with arguments `#2'.
+%
+% #1 : the exception name
+% #2: all what comes after the exception name is considered to be argument
+%    (or arguments) for the exception '#1'.
+%    the \pgfeov is IMPORTANT as it delimits the argument.
+%
+% Note that all standard pgfplots exceptions provide a feature to
+% exchange the error message text: define \pgfplotsexceptionmsg
+% set a replacement.
+\def\pgfplotsthrow#1#2\pgfeov{%
+	\pgfkeysvalueof{/pgfplots/exception/#1/.@cmd}#2\pgfeov
+}%
+\let\pgfplotsthrow@orig=\pgfplotsthrow
+
+% A primitive try #1 catch #2 end  block.
+%
+% It tries code #1. If any exception occurs within, it suppresses the
+% exception and tries to continue. It then invokes #2 as soon as it
+% can.
+%
+% You can use \pgfplotsrethrow in #2.
+%
+% ATTENTION: this is a simple attempt to simulate error control. Don't
+% rely on it too heavily! In the moment, I am not even sure if it can
+% be nested (perhaps you need to introduce extra scopes since
+% \pgfplotstry doesn't).
+\long\def\pgfplotstry#1\catch#2\endpgfplotstry{%
+	\global\let\pgfplotstry@exception\pgfutil@empty
+	\def\pgfplotsthrow##1##2\pgfeov{\gdef\pgfplotstry@exception{{##1}{##2}}}%
+	#1\relax%
+	\let\pgfplotsthrow=\pgfplotsthrow@orig
+	\ifx\pgfplotstry@exception\pgfutil@empty
+	\else
+		#2%
+	\fi
+	\global\let\pgfplotstry@exception\pgfutil@empty
+}%
+\def\pgfplotsrethrow{\expandafter\pgfplotsthrow\pgfplotstry@exception\pgfeov}%
+
+\pgfkeys{
+	% #1: the argument which should have been assigned.
+	% #2: an error message. 
+	/pgfplots/exception/invalid argument/.code 2 args={%
+		\ifx\pgfplotsexceptionmsg\relax
+			\pgfplots@error{#2}%
+		\else
+			\pgfplots@error{\pgfplotsexceptionmsg}%
+		\fi
+		\let#1=\pgfutil@empty
+	},%
+	% #1: the argument which should have been assigned.
+	% #2: an error message. 
+	/pgfplots/exception/no such element/.code 2 args={%
+		\ifx\pgfplotsexceptionmsg\relax
+			\pgfplots@error{#2}%
+		\else
+			\pgfplots@error{\pgfplotsexceptionmsg}%
+		\fi
+		\let#1=\pgfutil@empty
+	},%
+	% #1: an error message
+	/pgfplots/exception/unsupported operation/.code={%
+		\ifx\pgfplotsexceptionmsg\relax
+			\pgfplots@error{#1}%
+		\else
+			\pgfplots@error{\pgfplotsexceptionmsg}%
+		\fi
+	},%
+	% #1: the argument which should have been assigned.
+	% #2: the file name
+	% #3: the error message
+	/pgfplots/exception/no such table file/.code args={#1#2#3}{%
+		\ifx\pgfplotsexceptionmsg\relax
+			\pgfplots@error{#3}%
+		\else
+			\pgfplots@error{\pgfplotsexceptionmsg}%
+		\fi
+		\let#1=\relax
+	},
+}
+\let\pgfplotsexceptionmsg=\relax
+
+\def\pgfplots@EOI{\pgfplots@EOI}%
+
+\newif\ifpgfplots@loc@tmp
+\newtoks\t@pgfplots@toka
+\newtoks\t@pgfplots@tokb
+\newtoks\t@pgfplots@tokc
+\newdimen\pgfplots@tmpa
+\newcount\c@pgfplots@coordindex
+\newcount\c@pgfplots@scanlineindex
+\pgfutil@ifundefined{r@pgf@reada}{%
+	\csname newread\endcsname\r@pgfplots@reada
+}{%
+	\let\r@pgfplots@reada=\r@pgf@reada
+}
+
+% use these macros for GLOBAL temporary assignments.
+% you can NEVER rely on their values unless you know exactly what you are doing.
+\gdef\pgfplots@glob@TMPa{}%
+\gdef\pgfplots@glob@TMPb{}%
+\gdef\pgfplots@glob@TMPc{}%
+
+% use these macros for LOCAL temporary assigments.
+% you can NEVER rely on their values unless you know exactly what you are doing.
+\def\pgfplots@loc@TMPa{}%
+\def\pgfplots@loc@TMPb{}%
+\def\pgfplots@loc@TMPc{}%
+
+
+% Invokes code #2 if file '#1' exists and #3 if not.
+\long\def\pgfplots@iffileexists#1#2#3{%
+	\openin\r@pgfplots@reada=#1
+	\ifeof\r@pgfplots@reada
+		#3\relax
+	\else
+		\closein\r@pgfplots@reada
+		#2\relax
+	\fi
+}
+\let\pgfplotsiffileexists=\pgfplots@iffileexists
+
+\pgfutil@ifundefined{pgfplots@texdist@protect}{%
+	\def\pgfplots@texdist@protect{}%
+}{}
+
+\input pgfplotssysgeneric.code.tex
+\endinput

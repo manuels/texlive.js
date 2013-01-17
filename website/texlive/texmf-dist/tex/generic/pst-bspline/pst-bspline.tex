@@ -1,0 +1,780 @@
+%% BEGIN pst-bspline.tex
+%% Author: Michael Sharpe (msharpe at ucsd.edu)
+%%
+%\message{ v\fileversion, \filedate}
+\csname PSTBsplineLoaded\endcsname
+\let\PSTBsplineLoaded\endinput
+
+\ifx\PSTricksLoaded\endinput  \else\input pstricks \fi
+\ifx\PSTnodeLoaded\endinput   \else\input pst-node \fi
+\ifx\PSTXKeyLoaded\endinput   \else\input pst-xkey \fi
+\def\fileversion{1.61}
+\def\filedate{2012/03/06}
+
+\message{`pst-bspline' v\fileversion, \filedate\space Bspline routines for pstricks (ms)}
+%
+\edef\TheAtCode{\the\catcode`\@} \catcode`\@=11\relax
+\pst@addfams{pst-bspline}
+\pstheader{pst-bspline.pro}
+
+\SpecialCoor
+
+%\newcount\pst@args%used in several macros--now defined in pst-node.tex
+\def\PST@root{}
+\newcount\bsp@args
+\newcount\bsp@cntA
+\newcount\bsp@cntB
+\newif\ifbsp@omitends
+\newif\ifbsp@closed
+%\newif\ifbsp@showpoints
+%\newif\ifbsp@doubleline
+\newif\ifbsp@seq
+\newif\ifbsp@per %flag for periodic interpolation
+%
+\def\bsp@init{%these items are used only within the plotting macros
+\def\bsp@arrowA{}%
+\def\bsp@arrowB{}%
+}%
+\def\refreshbspopts{%
+\bsp@closedfalse%
+\bsp@omitendsfalse%
+\bsp@seqfalse%
+}%
+% showframe key and its default are global
+\define@boolkey[psset]{pst-bspline}[Pst@]{showframe}[true]{}
+\psset[pst-bspline]{showframe=false}%
+\define@boolkey[psset]{pst-bspline}[Pst@]{reverseclip}[true]{}
+\psset[pst-bspline]{reverseclip=false}%
+%
+%Bspline drawing macros
+\def\psBsplineNodes{\def\pst@par{}\pst@object{psBsplineNodes}}%
+\def\psBsplineNodesC{\def\pst@par{}\pst@object{psBsplineCNodes}}%
+\def\psBsplineNodesE{\def\pst@par{}\pst@object{psBsplineENodes}}%
+\def\psBsplineC{\def\pst@par{}\pst@object{psBsplineC}}%
+\def\psBsplineE{\def\pst@par{}\pst@object{psBsplineE}}%
+\def\psBspline{\def\pst@par{}\pst@object{psBspline}}%
+%Bspline internal macros, level 1
+\def\psBsplineC@i{\bsp@init\refreshbspopts\bsp@closedtrue\ps@bspline}%
+\def\psBsplineE@i{\bsp@init\refreshbspopts\bsp@omitendstrue\ps@bspline}%
+\def\psBspline@i{\bsp@init\refreshbspopts\ps@bspline}%
+\def\psBsplineNodes@i{\bsp@init\refreshbspopts\bsp@seqtrue\ps@bsplineNodes}%
+\def\psBsplineCNodes@i{\bsp@init\refreshbspopts\bsp@seqtrue\bsp@closedtrue%
+\ps@bsplineNodes}%
+\def\psBsplineENodes@i{\bsp@init\refreshbspopts\bsp@seqtrue\bsp@omitendstrue%
+\ps@bsplineNodes}%
+%Bspline internal macros, level 2
+\def\ps@bsplineNodes#1#2{%noderoot, endindex
+\def\bsp@root{#1}%
+\bsp@args=#2\relax%
+\next@Point%
+}%
+%
+\def\ps@bspline{\bsp@args=0\relax%
+\@ifnextchar({\psBspline@read{pn@de}}{\psBspline@read}}%
+%   
+\def\psBspline@read#1{%
+\def\bsp@root{#1}%
+\next@Point%
+}%
+%
+\def\next@Point{\@ifnextchar({\next@Point@i}{\psBsplineMain}}%
+\def\next@Point@i(#1){%
+\pnode(#1){\bsp@root\the\bsp@args}%
+\advance\bsp@args by \@ne%
+\next@Point}%
+% The main drawing routine
+\def\psBsplineMain{%done reading nodes
+\pst@killglue%
+\begingroup%
+\use@par%
+\ifbsp@closed\begin@ClosedObj \else \begin@OpenObj \fi%
+\let\bsp@linecolor\pslinecolor%
+\let\bsp@arrowA\psk@arrowA%
+\let\bsp@arrowB\psk@arrowB%
+\let\bsp@linestyle\pslinestyle%
+\ifbsp@seq\advance\bsp@args by \@ne\fi%
+\ifbsp@closed%
+  \psset{doubleline=false}%
+  \pnode(\bsp@root0){\bsp@root\the\bsp@args}%
+  \advance\bsp@args by \@ne%
+  \pnode(\bsp@root1){\bsp@root\the\bsp@args}%
+  \advance\bsp@args by \@ne%
+\fi%
+\advance\bsp@args by \m@ne%
+% Define the left and right bezier control points in each interval. These are 
+% denoted (root+) R0, L1, R1, L2, R2, etc
+\multido{\ia=0+1,\ib=1+1}{\bsp@args}{%
+\ifPst@showframe%
+  \ncline[linestyle=dashed,linecolor=gray,arrows=*-*]{\bsp@root\ia}{\bsp@root\ib}%
+\fi%
+  \nodexn{.667(\bsp@root\ia)+.333(\bsp@root\ib)}{\bsp@root R\ia}%
+  \nodexn{.333(\bsp@root\ia)+.667(\bsp@root\ib)}{\bsp@root L\ib}%
+  }%
+%Finally, define the bezier endpoints for each interval
+\advance\bsp@args by \m@ne%
+\mmultido{\ia=0+1}{\bsp@args}{%
+\ifPst@showframe%
+  \ncline[linestyle=solid,linecolor=red]{\bsp@root L\ia}{\bsp@root R\ia}%
+\fi%
+\midAB(\bsp@root L\ia)(\bsp@root R\ia){\bsp@root S\ia}%
+\ifPst@showframe%
+  \psdot[linecolor=red](\bsp@root S\ia)%
+\fi%
+}%
+\ifbsp@closed%
+  \pnode(\bsp@root S\the\bsp@args){\bsp@root S0}%
+ \else%
+   \advance\bsp@args by \@ne%
+   \pnode(\bsp@root0){\bsp@root S0}%
+   \pnode(\bsp@root\the\bsp@args){\bsp@root S\the\bsp@args}%
+ \fi%
+\advance\bsp@args by \m@ne%
+%the pieces of bezier curve
+\ifbsp@closed%
+\pscustom[arrows=-]{%
+\psbezier[showpoints=false](\bsp@root S0)(\bsp@root R0)(\bsp@root L1)(\bsp@root S1)%
+\multido{\ia=1+1,\ib=2+1}{\bsp@args}{\psbezier(\bsp@root R\ia)(\bsp@root L\ib)%
+(\bsp@root S\ib)}%
+%within \pscustom, \psbezier takes 3 args, using last point of previous
+}%
+\else %open curve---make arrows, don't use \pscustom
+ \advance\bsp@args by \m@ne%
+ \ifbsp@omitends \bsp@cntA=2\relax \bsp@cntB=\@ne \advance\bsp@args by -2\relax%
+ \else \bsp@cntA=\@ne\bsp@cntB=\z@ \fi%
+ \psbezier[arrows=-\bsp@arrowA,showpoints=false](\bsp@root S\the\bsp@cntA)%
+ (\bsp@root L\the\bsp@cntA)(\bsp@root R\the\bsp@cntB)(\bsp@root S\the\bsp@cntB)%
+ \mmultido{\ia=\the\bsp@cntA+1,\ib=\the\bsp@cntB+1}{\bsp@args}%
+ {\psbezier[arrows=-,showpoints=false](\bsp@root S\ib)(\bsp@root R\ib)%
+ (\bsp@root L\ia)(\bsp@root S\ia)}%
+ %
+ \ifbsp@omitends \advance\bsp@args by \@ne \fi%
+ \advance\bsp@args by \@ne%
+ \bsp@cntA=\bsp@args%
+ \bsp@cntB=\bsp@cntA%
+ \advance\bsp@cntB by \@ne%
+ \psbezier[arrows=-\bsp@arrowB,showpoints=false](\bsp@root S\the\bsp@cntA)%
+ (\bsp@root R\the\bsp@cntA)(\bsp@root L\the\bsp@cntB)(\bsp@root S\the\bsp@cntB)%
+% \ifPst@showframe \psdot[linecolor=red](\bsp@root L\the\bsp@cntB) \fi%
+\fi% end \ifbsp@closed
+%\ifPst@showframe% 
+%  \psdot[linecolor=red](\bsp@root R0)%
+%  \psdot[linecolor=red](\bsp@root L\the\bsp@args)%
+%\fi%
+\ifshowpoints%
+  \multido{\i=0+1}{\bsp@args}{\psdot(\bsp@root S\i)}%
+\fi%
+ \ifbsp@closed%
+   \end@ClosedObj%
+ \else%
+   \end@OpenObj%
+ \fi%
+\endgroup%
+\ignorespaces%
+}
+%
+\def\psbspline{\def\pst@par{}\pst@object{psbspline}}%
+\def\psbspline@i{\pst@getarrows\psbspline@ii}%
+\def\psbspline@ii{%
+\pnodesX%make the following sequences into nodes named S@0,...
+%last index=\pst@args
+}%
+\def\psbspline@iii{%
+\pst@killglue%
+\psBsplineInterp{S@}{\the\pst@args}%creates S@B0...
+\begingroup%
+\use@par%
+\psBsplineNodes{S@B}{\the\pst@args}%draw curve
+\endgroup\ignorespaces}%
+%
+\def\pnodesX{%version of \pnodes where the last step moves to \psbspline@iii
+\pst@args=\z@%
+\def\PST@root{S@}%
+\next@NodeX}%
+%
+\def\next@NodeX{\@ifnextchar({\next@NodeX@i}{\advance\pst@args by \m@ne\typeout{Defined nodes \PST@root0 ..  \PST@root\the\pst@args.}\psbspline@iii}}%
+%
+\def\next@NodeX@i(#1){%
+\pnode(#1){\PST@root\the\pst@args}%
+\advance\pst@args\@ne%
+\next@NodeX}%
+%
+\def\make@mcoeff#1{%
+\pstVerb{ tx@Dict begin /mcoeff #1\space 1 add array def %
+ mcoeff 1 0.25 put %
+ 1 1 #1\space 1 sub %
+ {/j exch def %j is counter
+ mcoeff j 1 add 1 4 mcoeff j get sub div put  } for  end }}%
+ %
+\def\psBsplineInterp#1#2{{%
+% #1=node name root to interpolate, #2=end index, 
+% eg, if we want to interpolate S0,..., S100,  #1=S, #2=100,
+\pst@killglue
+\global\bsp@perfalse %
+\newcount\top@mone \top@mone=#2\relax%100
+\newcount\top@ndx \top@ndx=\top@mone% 
+\advance\top@ndx by -1\relax%99
+\advance\top@mone by -2\relax%98
+\newcount\top@mtwo \top@mtwo=\top@mone \advance\top@mtwo by \m@ne%97
+\make@mcoeff{#2}%
+\def\noderoot{#1}%
+\pnode(\noderoot 0){\noderoot B0}%
+\pnode(\noderoot #2){\noderoot B#2}%
+\ifnum\top@mone>\m@ne% at least 3 points to interpolate
+  \ifnum\top@mone>\z@% we started with 4 or more points to interpolate
+	\psLCNode(\noderoot 1){6}(\noderoot 0){-1}{\noderoot B1}% 6*S1-S0->SB1
+	\multido{\iA=2+1,\iAA=1+1}{\top@mone}{\psLCNodeVar(\noderoot\iA)(\noderoot B\iAA)(! 6 mcoeff \iAA\space get neg ){\noderoot B\iA}}%2 to n-2, 6*S_k-m_{k-1}*SB_{k-1}->SB_k
+	\psLCNodeVar(\noderoot \the\top@ndx)(\noderoot #2)(! mcoeff \the\top@ndx\space get dup 6 mul exch neg  ){tmp@node}%m_{99}*(6*S99-S100)->tmp@node
+	\psLCNodeVar(tmp@node)(\noderoot B\the\top@mone)(! 1 mcoeff \the\top@ndx\space get mcoeff \the\top@mone\space get mul neg ){\noderoot B\the\top@ndx}% temp@node -m_{98}*m_{99}*SB98->SB99
+	\multido{\iA=\the\top@mone+-1,\iAA=\the\top@ndx+-1}{\the\top@mone}{\psLCNodeVar(\noderoot B\iA)(\noderoot B\iAA)(! mcoeff \iA\space get dup neg ){\noderoot B\iA}% m_k*SB_k-m_k*SB_{k+1}->SB_k, k=98 downto 1
+	}% end multido
+  \else% exactly 3 points to interpolate
+    \nodexn{1.5(\noderoot1)-.25(\noderoot0)-.25(\noderoot2)}{\noderoot B1}%
+\fi\fi%
+}\ignorespaces}% end def
+%
+\def\psBsplineInterpC#1#2{{%
+ % #1=node name root, #2=top index,
+ % eg, if we want to interpolate S0,..., S100, #1=S, #2=100
+ % interpolation in this case is periodic (closed curve)
+\pst@killglue
+\global\bsp@pertrue %
+\pst@cnta=\csname#1nodecount\endcsname\advance\pst@cnta \@ne %
+\newcount\top@mone \top@mone=#2\relax%
+\ifnum \top@mone<\pst@cnta %
+  \expandafter\xdef \csname #1nodecount\endcsname {\the\pst@cnta}%
+  \typeout{Changed #1nodecount to \the\pst@cnta}%
+  %\top@mone=\pst@cnta %
+\else%
+  \ifnum \top@mone>\pst@cnta \top@mone=\pst@cnta\advance\top@mone \m@ne\fi 
+\fi%
+\newcount\top@ndx \top@ndx=\top@mone% 
+\advance\top@ndx by \@ne%number of nodes to interpolate
+%\
+\newcount\top@mtwo \top@mtwo=\top@mone \advance\top@mtwo\m@ne%
+% After copying S0 to S101, \top@ndx, \top@mone, \top@mtwo are top index, top index-1, top index-two---101, 100, 99 in the example
+\make@mcoeff{\the\top@ndx}%
+\def\noderoot{#1}%
+\pstVerb{ tx@Dict begin /bcoeff #2\space 2 add array def  /ccoeff #2\space 2 add array def /xcoeff #2\space 2 add array def /ycoeff #2\space 2 add array def %
+%% initialize b, c, x ,y values
+ 1 1 \the\top@ndx\space %1 add
+ {/j exch def %j is counter
+ ccoeff j 0 put bcoeff j 0 put } for %
+ bcoeff 1 1 put bcoeff #2\space 1 put bcoeff #2\space 1 add  4 put %
+ ccoeff 1 0.25 put ccoeff #2\space 1 put end }%
+%end \pstVerb
+\pnode(\noderoot 0){\noderoot\the\top@ndx}%copy node 0 to top end
+\pstVerb{ tx@Dict begin xcoeff 1 1 put ycoeff 1 1.5 put end }%
+\pnode(! \psGetNodeCenter{\noderoot 1} xcoeff  1 \noderoot 1.x 1.5 mul put ycoeff 1  \noderoot 1.y 1.5 mul put 1 1){temp@}% 1.5=6*0.25
+\multido{\iA=2+1}{\the\top@mone}{\pnode(! ycoeff \iA\space xcoeff  \iA\space \psGetNodeCenter{#1\iA} #1\iA.x 6 mul put #1\iA.y 6 mul put 1 1){temp@}}% move x, y coords times 6 to arrays
+\multido{\iA=2+1,\iB=1+1}{\the\top@mtwo}{\pstVerb{ tx@Dict begin %
+ ccoeff \iA\space ccoeff \iA\space get ccoeff \iB\space get sub mcoeff \iA\space get mul put %
+ xcoeff \iA\space xcoeff \iA\space get xcoeff \iB\space get sub mcoeff \iA\space get mul put %
+ ycoeff \iA\space ycoeff \iA\space get ycoeff \iB\space get sub mcoeff \iA\space get mul put
+ bcoeff \iA\space bcoeff \iA\space get bcoeff \iB\space get mcoeff \iB\space get mul sub put
+ bcoeff \the\top@ndx\space bcoeff \the\top@ndx\space get bcoeff \iB\space get ccoeff \iB\space get mul sub put
+ xcoeff \the\top@ndx\space xcoeff \the\top@ndx\space get xcoeff \iB\space get bcoeff \iB\space get mul sub put
+ ycoeff \the\top@ndx\space ycoeff \the\top@ndx\space get ycoeff \iB\space get bcoeff \iB\space get mul sub put end %
+}% end \pstVerb
+}% end \multido
+\pstVerb{ tx@Dict begin %
+ bcoeff \the\top@ndx\space bcoeff \the\top@ndx\space get bcoeff \the\top@mone\space get 
+ ccoeff \the\top@mone\space get mul sub put %b(n)=b(n)-b(n-1)*c(n-1)
+ xcoeff \the\top@ndx\space xcoeff \the\top@ndx\space get xcoeff \the\top@mone\space get  bcoeff \the\top@mone\space get mul sub bcoeff \the\top@ndx\space get div put %x(n)=(x(n)-x(n-1)*b(n-1))/b(n)
+ ycoeff \the\top@ndx\space ycoeff \the\top@ndx\space get ycoeff \the\top@mone\space get bcoeff \the\top@mone\space get mul sub bcoeff \the\top@ndx\space get div put %y(n)=(y(n)-y(n-1)*b(n-1))/b(n)
+ xcoeff \the\top@mone\space xcoeff \the\top@mone\space get xcoeff \the\top@ndx\space get ccoeff \the\top@mone\space get mul sub put %x(n-1)=x(n-1)-c(n-1)*x(n)
+ ycoeff \the\top@mone\space ycoeff \the\top@mone\space get ycoeff \the\top@ndx\space get ccoeff \the\top@mone\space get mul sub put end %y(n-1)=y(n-1)-c(n-1)*y(n)
+}% end pstVerb
+\mmultido{\iA=\the\top@mone+-1,\iB=\the\top@ndx+-1}{\the\top@mtwo}{%
+\pstVerb{ tx@Dict begin xcoeff \iA\space xcoeff \iA\space get mcoeff \iA\space get xcoeff \iB\space get mul sub ccoeff \iA\space get xcoeff \the\top@ndx\space get mul sub put % x(k)=x(k)-m(k)*x(k+1)-c(k)*x(n)
+ ycoeff \iA\space ycoeff \iA\space get mcoeff \iA\space get ycoeff \iB\space get mul sub ccoeff \iA\space get ycoeff \the\top@ndx\space get mul sub put end %
+}}%y(k)=...
+\multido{\iA=1+1}{\the\top@ndx}{\pnode(! xcoeff \iA\space get ycoeff \iA\space get )%
+{\noderoot B\iA}}%
+\pnode(\noderoot B\the\top@ndx){\noderoot B0}%
+}\ignorespaces}%
+%
+\def\thickBspline{\def\pst@par{}\pst@object{thickBspline}}%
+\def\thickBspline@i#1#2#3#4{{%
+% #1=root | #2=nsegments | #3=thickness | #4=items to clip
+  \pst@killglue%
+  \use@par%
+  %prepare array
+  \pssetlength{\pst@dimp}{#3}\pst@dimtonum{\pst@dimp}{\thickness}% thickness in TeX pt
+  \newcount\n@cnt%
+  \newcount\np@cnt%
+  \newcount\ary@max \ary@max=\psk@plotpoints \relax%
+  \multiply\ary@max #2\np@cnt=\ary@max \multiply\ary@max 4\relax%
+  \advance\ary@max 4\relax %
+  \n@cnt=\ary@max \advance\n@cnt \m@ne%
+  \multiply\np@cnt \tw@\advance\np@cnt \tw@% count of points in array
+  \pstVerb{ gsave tx@Dict begin %
+    /psxu \pst@number\psxunit\space def /psyu \pst@number\psyunit\space def %
+    /uratio psyu psxu div dup mul def % so that perp to a, b is -b*uratio, a
+    /nseg #2 def /nplotpt \psk@plotpoints\space def %
+    /clipary #2 nplotpt mul 4 mul 4 add array def %
+    /lindex 2 def /uindex \the\ary@max\space 1 sub def %
+    /dt 1 \psk@plotpoints\space div def %
+  end grestore }%
+  \multido{\iA=0+1,\iB=1+1}{#2}{%
+% pass control points of this segment to PostScript variables
+\pstVerb{% 
+	gsave tx@Dict begin %
+	STV CP T \psGetNodeCenter{#1\iA}\space \psGetNodeCenter{#1BR\iA}\space \psGetNodeCenter{#1BL\iB}\space \psGetNodeCenter{#1\iB}\space %
+	/bez@1.x #1\iA.x def /bez@1.y #1\iA.y def %initial point on segment
+	/bez@2.x #1BR\iA.x bez@1.x sub def %adjusted control points (less init pt)
+	/bez@2.y #1BR\iA.y bez@1.y sub def %
+	/bez@3.x #1BL\iB.x bez@1.x sub def %
+	/bez@3.y #1BL\iB.y bez@1.y sub def %
+	/bez@4.x #1\iB.x bez@1.x sub def %
+	/bez@4.y #1\iB.y bez@1.y sub def %
+	/bez@1x bez@2.x 3 mul def % for position--w1=3z1
+	/bez@1y bez@2.y 3 mul def %
+	/bez@2x bez@3.x bez@2.x 2 mul sub 3 mul def %position w2=3(z2-2z1)
+	/bez@2y bez@3.y bez@2.y 2 mul sub 3 mul def %
+	/bez@2xT bez@2x 2 mul def % for tangent
+	/bez@2yT bez@2y 2 mul def %
+	/bez@3x bez@4.x bez@2.x bez@3.x sub 3 mul add def % w3=z3+3z1-3z2
+	/bez@3y bez@4.y bez@2.y bez@3.y sub 3 mul add def %
+	/bez@3xT bez@3x 3 mul def % tangent
+	/bez@3yT bez@3y 3 mul def %
+	/Func % position
+ ( bez@3x t mul bez@2x add t mul bez@1x add t mul bez@1.x add psxu mul %
+ bez@3y t mul bez@2y add t mul bez@1y add t mul bez@1.y add psyu mul ) cvx def %
+%    /FuncT % tangent
+%      (  bez@2xT t bez@3xT mul add t mul bez@1x add  %
+%       bez@2yT t bez@3yT mul add t mul bez@1y add  ) cvx def
+/FuncN % unit normal times delta
+ ( bez@2yT t bez@3yT mul add t mul bez@1y add uratio mul neg 
+ bez@2xT t bez@3xT mul add t mul bez@1x add  2 copy Pyth dup %
+ 3 1 roll div 3 1 roll div \thickness\space 2 div dup 3 1 roll mul 3 1 roll mul ) cvx  def %
+ end grestore }%
+\ifnum\iA=\z@ %
+  \pnode(! /t 0 def FuncN /dy exch def /dx exch def Func 2 copy %
+  /y0 ED /x0 ED %
+  clipary 0 x0 dx add put clipary 1 y0 dy add put %
+  clipary uindex y0 dy sub put clipary uindex 1 sub x0 dx sub put %
+  /uindex uindex 2 sub def ){tmp@P}%
+\fi%
+\multido{\i=1+1}{\psk@plotpoints}{%
+      %make array elements for this segment using #3
+      \pnode(! /t dt \i\space mul def FuncN /dy ED /dx ED Func 2 copy /y0 ED /x0 ED %
+      clipary lindex x0 dx add put clipary lindex 1 add y0 dy add put %
+      clipary uindex y0 dy sub put clipary uindex 1 sub x0 dx sub put %
+      /lindex lindex 2 add def /uindex uindex 2 sub def ){tmp@P}%
+}% end multido \i
+}% end multido \iA
+% if periodic, we have to adjust 2 points so as not to leave a wedge in the 
+% clipping region. We have to set Q_{nk} to Q_0 and R_{nk} to R_0
+% R_{nk} is at position 2*nk, 2*nk+1 and Q_{nk} is at the next pair
+%\ifbsp@per %
+%  \pstVerb{%
+%   tx@Dict begin /itemcnt #2 nplotpt mul 2 mul def %first item to change is index 2nk
+%  clipary itemcnt clipary 0 get put /itemcnt itemcnt 1 add def %
+%  clipary itemcnt clipary 1 get put /itemcnt itemcnt 1 add def %
+%  clipary itemcnt clipary \the\n@cnt\space 1 sub get put /itemcnt itemcnt 1 add def %
+%  clipary itemcnt clipary \the\n@cnt\space get put %
+%  end }%
+%\fi%
+% make a clipping path in PS and pass commands #4
+\ifbsp@per %periodic
+ \psclip{\pscustom{%
+  \code{ clipary aload pop moveto nseg nplotpt mul %
+   { lineto } repeat closepath %
+  moveto  nseg nplotpt mul { lineto } repeat closepath }}}%
+  #4%
+ \endpsclip%
+\else % not periodic
+ \psclip{\pscustom{%
+  \code{ clipary aload pop moveto nseg nplotpt mul 2 mul %
+  1 add { lineto } repeat closepath %
+  \ifPst@reverseclip\space reversepath \fi}}}%
+  #4%
+ \endpsclip%
+\fi%
+}%
+\ignorespaces}%
+%
+\def\bsp@setup#1#2#3#4{%
+%#1=bsp root, #2=num #3=\top@ndx, #4=top@ndx-1, #4
+  \pstVerb{tx@Dict begin gsave STV CP T /bsp@desc #2 array def }%
+%  \def\num{#2}
+  \multido{\iA=#4+-1,\iB=#3+-1}{#2}{%\show\num
+    \pstVerb{% 
+	  \psGetNodeCenter{#1S\iA}\space \psGetNodeCenter{#1R\iA}\space \psGetNodeCenter{#1L\iB}\space \psGetNodeCenter{#1S\iB}\space %
+	  /bez@0x #1S\iA.x def /bez@0y #1S\iA.y def %initial point on segment
+	  /bez@1x #1R\iA.x bez@0x sub 3 mul def % for position--w1=3z1
+	  /bez@1y #1R\iA.y bez@0y sub 3 mul def
+	  /bez@2x #1L\iB.x bez@0x sub  #1R\iA.x bez@0x sub 2 mul sub 3 mul def % w2=3(z2-2z1)
+	  /bez@2y #1L\iB.y bez@0y sub  #1R\iA.y bez@0y sub 2 mul sub 3 mul def % w2=3(z2-2z1)
+	  /bez@3x #1S\iB.x bez@1x add #1L\iB.x 3 mul sub bez@0x 2 mul add def % w3=z3+3z1-3z2
+	  /bez@3y #1S\iB.y bez@1y add #1L\iB.y 3 mul sub bez@0y 2 mul add def % w3=z3+3z1-3z2
+	  bsp@desc \iA\space mark bez@2y 2 mul bez@3y 3 mul bez@2x 2 mul bez@3x 3 mul bez@0y %
+	  bez@1y bez@2y bez@3y bez@0x bez@1x bez@2x bez@3x ] put }% 
+    }% end multido
+    \pstVerb{ grestore end }% closed tx@Dict, which contains array named bsp@desc
+}% bsp@setup
+\def\bspcurvepointsE{\pst@object{bspcurvepointsE}}%
+\def\bspcurvepointsE@i#1#2#3{\bspcurvepoints@ii{#1}{#2}{E}{#3}}%
+\def\bspcurvepoints{\pst@object{bspcurvepoints}}%
+\def\bspcurvepoints@i#1#2#3{\bspcurvepoints@ii{#1}{#2}{}{#3}}%
+\def\bspcurvepoints@ii#1#2#3#4{{%optional [plotpoints=xx]
+%  #1=bsp root,#2=maxindex,#3=E/{},#4=root name for new PS arrays,
+  \pst@killglue%
+  \newcount\bsp@numndx
+  \bsp@numndx=#2 \relax%
+  \ifx#3E\relax 
+    \advance \bsp@numndx \m@ne \edef\top@ndx{\the\bsp@numndx}
+    \advance \bsp@numndx \m@ne \edef\topm@ndx{\the\bsp@numndx}%
+  \else%
+    \edef\top@ndx{\the\bsp@numndx}%
+    \pst@cntc=\bsp@numndx\advance\pst@cntc \m@ne%
+    \edef\topm@ndx{\the\pst@cntc}%
+  \fi%
+  \pst@cntb=\bsp@numndx %\advance\pst@cntb \@ne\relax%
+  % set up the bsp ps array
+  \edef\cmd{\noexpand\bsp@setup{#1}{\the\bsp@numndx}{\top@ndx}{\topm@ndx}}\cmd%
+  \use@par%
+  \pst@cntc=\psk@plotpoints\relax%\psk@plotpoints=plotpoints-1
+  \pst@cnta=\pst@cntc \multiply\pst@cnta by \pst@cntb%
+  \edef\bsp@nsegs{\the\bsp@numndx}%\show\bsp@nsegs%
+  \advance\pst@cnta by \@ne\relax%=(plotpoints-1)*nsegs+1
+  \edef\@arraysize{\the\pst@cnta}%
+  \pstVerb{ tx@Dict begin %
+    /psxu \pst@number\psxunit\space def /psyu \pst@number\psyunit\space def %
+	/unitratio \pst@number\psyunit \pst@number\psxunit div def %
+	/unitratiosq unitratio dup mul def %
+    /dt 1 \psk@plotpoints\space div def %
+    /#4.X \@arraysize\space array def %
+    /#4.Y \@arraysize\space array def %
+    /#4Delta.X \@arraysize\space array def %
+    /#4Delta.Y \@arraysize\space array def %
+    /#4Normal.X \@arraysize\space array def %
+    /#4Normal.Y \@arraysize\space array def %
+    /theseg 0 def %\the\bsp@numndx\space 1 sub def %
+    bsp@desc theseg get % the first segment
+    /cnt 1 def % counter for arrays
+    dup dup dup 8 get 4 1 roll 4 get 3 1 roll %
+    9 get exch 5 get % initial x, y, x', y'
+    unitratiosq mul neg #4Normal.X 0 3 -1 roll put #4Normal.Y 0 3 -1 roll put %
+    2 copy #4.Y 0 3 -1 roll put #4.X 0 3 -1 roll put %
+    /priory ED /priorx ED % arrays now initialized
+    \bsp@nsegs\space {% repeat nsegs times
+      bsp@desc theseg get aload pop /x3 ED /x2 ED /x1 ED /x0 ED %
+      /y3 ED /y2 ED /y1 ED /y0 ED %
+      /xT3 ED /xT2 ED /yT3 ED /yT2 ED %
+      /Func ( x3 t mul x2 add t mul x1 add t mul x0 add %
+      y3 t mul y2 add t mul y1 add t mul y0 add ) cvx def %
+      /FuncN ( yT2 t yT3 mul add t mul y1 add  unitratiosq mul neg %
+      xT2 t xT3 mul add t mul x1 add ) cvx def %
+      /theseg theseg 1 add def %
+      /j 1 def \psk@plotpoints\space {% repeat for each plotpt
+        /t j dt mul def Func 2 copy 2 copy FuncN % x y x y x y xN yN
+        #4Normal.Y cnt 3 -1 roll put %
+        #4Normal.X cnt 3 -1 roll put %
+        #4.Y cnt 3 -1 roll put %
+        #4.X cnt 3 -1 roll put % x y x y on stack
+        priory sub #4Delta.Y cnt 3 -1 roll put %
+        priorx sub #4Delta.X cnt 3 -1 roll put % x y on stack
+        /priory ED /priorx ED /j j 1 add def /cnt cnt 1 add def } repeat %
+     } repeat %#4.Y == %
+   end }% end pstVerb
+  \pst@cnta=\@arraysize \relax\advance\pst@cnta \m@ne %
+  \expandafter\xdef \csname #4pointcount\endcsname {\the\pst@cnta}%
+  \typeout{Created points #40 .. #4\the\pst@cnta}%
+}\ignorespaces}%
+\def\bspFnNode#1#2#3#4{% 
+% #1=root name for B-spline control points, #2=top index
+% #3=x value, #4=name of node to place at (x,f(x))
+% This works only for a bspline function graph, not a general bspline curve
+\pnode(! bsp@desc length /n ED %
+    /x #3 def %
+    x bsp@desc 0 get 8 get dup /xt ED lt { /x xt def } if %
+    x bsp@desc n 1 sub get 8 4 getinterval aload pop add add add %endpt of last segment
+    dup /xt ED gt { /x xt def } if %
+    /j 0 def %
+    n {% repeat
+      x bsp@desc j get 8 get dup /xt ED le { exit } if /j j 1 add def %
+    } repeat %
+    j 0 gt { /j j 1 sub def } if %j is index of bezier segment containing x
+    bsp@desc j get dup dup dup %
+    11 get exch 10 get 4 2 roll 9 get exch 8 get x sub cubic_roots %
+    /t ED pop pop %
+    t 1 gt { /t 1 def } if % zroot is the t value at which x=x(t)
+    x bsp@desc j get 4 4 getinterval aload pop % leaves y0, y1, y2, y3 on stack 
+    t mul add t mul add t mul add % x y now on stack    
+    ){#4}%
+}% end bspFnNode
+%
+\def\bspNode#1#2#3#4{%
+%src maxindex t target
+\pnode(! bsp@desc length /n ED %
+    /t #3 def %
+    t 0 lt { /t 0 def } if %
+    t n gt { /t n def } if % clamp t to [0,n]
+    /j t cvi def j n eq { /j n 1 sub def } if %
+    /t t j sub def % t in [0,1]
+    bsp@desc j get dup %
+    8 4 getinterval aload pop t mul add t mul add t mul add % desc[[j]] x(t)
+    exch 4 4 getinterval aload pop t mul add t mul add t mul add % x(t) y(t)
+    ){#4}%
+}% end bspNode
+%
+\def\bspcurvenodes#1#2{%
+%#1= basename for points on curve, #2=basename for nodes
+\bsp@cntA=\csname #1pointcount\endcsname \advance\bsp@cntA \@ne %
+\multido{\iA=0+1}{\bsp@cntA}{%
+\pnode(! #1.X \iA\space get #1.Y \iA\space get ){#2\iA}}%
+}%
+%
+% start experimental variable thickness
+\def\thickBEspline{\def\pst@par{}\pst@object{thickBEspline}}%
+\def\thickBEspline@i#1#2#3#4#5#6{{%
+% #1=root | #2=nsegments | #3=maxthickness | #4=minthickness | #5=axis angle | #6=items to clip
+% An axis angle of -45 means that lines normal to -45 will be minthickness and lines normal to 45 will be maxthickness.
+  \pst@killglue%
+  \use@par%
+  %prepare array
+  \pssetlength{\pst@dimp}{#3}\setlength{\pst@dimp}{0.5\pst@dimp}%
+  \pssetlength{\pst@dimn}{#4}\setlength{\pst@dimn}{0.5\pst@dimn}%
+  \advance\pst@dimp \pst@dimn\setlength{\pst@dimp}{0.5\pst@dimp}%
+  \pst@dimtonum{\pst@dimp}{\ctrthick}% center of thickness/2 in tex pt
+  \advance\pst@dimp -\pst@dimn%  
+  \pst@dimtonum{\pst@dimp}{\deltathick}% (max-min)/2 in tex pt
+  \newcount\n@cnt%
+  \newcount\np@cnt%
+  \newcount\ary@max \ary@max=\psk@plotpoints \relax%
+  \multiply\ary@max #2\np@cnt=\ary@max \multiply\ary@max 4\relax%
+  \advance\ary@max 4\relax %
+  \n@cnt=\ary@max \advance\n@cnt \m@ne%
+  \multiply\np@cnt \tw@\advance\np@cnt \tw@% count of points in array
+  \pstVerb{ gsave tx@Dict begin %
+    /psxu \pst@number\psxunit\space def /psyu \pst@number\psyunit\space def %
+    /uratio psyu psxu div dup mul def % so that perp to a, b is -b*uratio, a
+    /nseg #2 def /nplotpt \psk@plotpoints\space def %
+    /clipary #2 nplotpt mul 4 mul 4 add array def %
+    /lindex 2 def /uindex \the\ary@max\space 1 sub def %
+    /dt 1 \psk@plotpoints\space div def %
+  end grestore }%
+\multido{\iA=0+1,\iB=1+1}{#2}{%
+% pass control points of this segment to PostScript variables
+\pstVerb{% 
+	gsave tx@Dict begin %
+	STV CP T \psGetNodeCenter{#1\iA}\space \psGetNodeCenter{#1BR\iA}\space \psGetNodeCenter{#1BL\iB}\space \psGetNodeCenter{#1\iB}\space %
+	/bez@1.x #1\iA.x def /bez@1.y #1\iA.y def %initial point on segment
+	/bez@2.x #1BR\iA.x bez@1.x sub def %adjusted control points (less init pt)
+	/bez@2.y #1BR\iA.y bez@1.y sub def %
+	/bez@3.x #1BL\iB.x bez@1.x sub def %
+	/bez@3.y #1BL\iB.y bez@1.y sub def %
+	/bez@4.x #1\iB.x bez@1.x sub def %
+	/bez@4.y #1\iB.y bez@1.y sub def %
+	/bez@1x bez@2.x 3 mul def % for position--w1=3z1
+	/bez@1y bez@2.y 3 mul def %
+	/bez@2x bez@3.x bez@2.x 2 mul sub 3 mul def %position w2=3(z2-2z1)
+	/bez@2y bez@3.y bez@2.y 2 mul sub 3 mul def %
+	/bez@2xT bez@2x 2 mul def % for tangent
+	/bez@2yT bez@2y 2 mul def %
+	/bez@3x bez@4.x bez@2.x bez@3.x sub 3 mul add def % w3=z3+3z1-3z2
+	/bez@3y bez@4.y bez@2.y bez@3.y sub 3 mul add def %
+	/bez@3xT bez@3x 3 mul def % tangent
+	/bez@3yT bez@3y 3 mul def %
+	/Func % position
+ ( bez@3x t mul bez@2x add t mul bez@1x add t mul bez@1.x add psxu mul %
+ bez@3y t mul bez@2y add t mul bez@1y add t mul bez@1.y add psyu mul ) cvx def %
+%    /FuncT % tangent
+%      (  bez@2xT t bez@3xT mul add t mul bez@1x add  %
+%       bez@2yT t bez@3yT mul add t mul bez@1y add  ) cvx def
+/FuncN % unit normal times delta
+ ( bez@2yT t bez@3yT mul add t mul bez@1y add uratio mul neg 
+ bez@2xT t bez@3xT mul add t mul bez@1x add  2 copy Pyth dup %
+ 3 1 roll div 3 1 roll div 2 copy Atan #5 sub 2 mul cos \deltathick\space mul neg \ctrthick\space add dup 3 1 roll mul 3 1 roll mul ) cvx  def %
+ end grestore }%
+\ifnum\iA=\z@%
+  \pnode(! /t 0 def FuncN /dy exch def /dx exch def Func 2 copy %
+  /y0 ED /x0 ED %
+  clipary 0 x0 dx add put clipary 1 y0 dy add put %
+  clipary uindex y0 dy sub put clipary uindex 1 sub x0 dx sub put %
+  /uindex uindex 2 sub def ){tmp@P}%
+\fi%
+\multido{\i=1+1}{\psk@plotpoints}{%
+      %make array elements for this segment
+      \pnode(! /t dt \i\space mul def FuncN /dy ED /dx ED Func 2 copy /y0 ED /x0 ED %
+      clipary lindex x0 dx add put clipary lindex 1 add y0 dy add put %
+      clipary uindex y0 dy sub put clipary uindex 1 sub x0 dx sub put %
+      /lindex lindex 2 add def /uindex uindex 2 sub def ){tmp@P}%
+}% end multido \i
+}% end multido \iA
+% if periodic, we have to adjust 2 points so as not to leave a wedge in the 
+% clipping region. We have to set Q_{nk} to Q_0 and R_{nk} to R_0
+% R_{nk} is at position 2*nk, 2*nk+1 and Q_{nk} is at the next pair
+%\ifbsp@per %
+%  \pstVerb{%
+%   tx@Dict begin /itemcnt #2 nplotpt mul 2 mul def %first item to change is index 2nk
+%  clipary itemcnt clipary 0 get put /itemcnt itemcnt 1 add def %
+%  clipary itemcnt clipary 1 get put /itemcnt itemcnt 1 add def %
+%  clipary itemcnt clipary \the\n@cnt\space 1 sub get put /itemcnt itemcnt 1 add def %
+%  clipary itemcnt clipary \the\n@cnt\space get put %
+%  end }%
+%\fi%
+% make a clipping path in PS and pass commands #6
+\ifbsp@per %periodic
+ \psclip{\pscustom{%
+  \code{ clipary aload pop moveto nseg nplotpt mul %
+   { lineto } repeat closepath %
+  moveto  nseg nplotpt mul { lineto } repeat closepath }}}%
+  #6%
+ \endpsclip%
+\else % not periodic
+ \psclip{\pscustom{%
+  \code{ clipary aload pop moveto nseg nplotpt mul 2 mul %
+  1 add { lineto } repeat closepath %
+  \ifPst@reverseclip\space reversepath \fi}}}%
+  #6%
+ \endpsclip%
+\fi%
+}%
+\ignorespaces}%
+%
+\def\thickBdraw#1#2#3#4#5{\edef\n@decnt{\csname #1nodecount\endcsname}%
+\psBsplineInterp{#1}{\n@decnt}%
+\psBsplineNodes[linestyle=none,showpoints=false]{#1B}{\n@decnt}%
+\thickBEspline{#1}{\n@decnt}{#2}{#3}{#4}{#5}%
+}%
+
+% Elliptic pen as possible in metafont/metapost
+\def\thickBsplinePen{\def\pst@par{}\pst@object{thickBsplinePen}}%
+\def\thickBsplinePen@i#1#2#3#4#5#6{%
+% #1=root | #2=nsegments | #3=semimajor | #4=semiminor | #5=inclination | #6=items to clip
+% An inclination of -45 means that lines pointing at angles -45 and 135 thinnest and lines pointing 45 and 225 will be thickest, assuming #3>#4.
+  \pst@killglue%
+  \psBsplineInterp{#1}{#2}%
+  \psBsplineNodes[linestyle=none]{#1B}{#2}%
+  \thickBsplinePen@ii{#1}{#2}{#3}{#4}{#5}{#6}%
+}%
+\def\thickBsplinePen@ii#1#2#3#4#5#6{{%
+  \pst@killglue%
+  \use@par%
+  \ifdim\psxunit=\psyunit \else \errmessage{Unequal units--must bail out from thickBsplinePen}\fi%
+  %prepare array
+  \pssetlength{\pst@dimp}{#3}\pst@dimtonum{\pst@dimp}{\bez@a}%
+  \pssetlength{\pst@dimn}{#4}\pst@dimtonum{\pst@dimn}{\bez@b}%
+  \newcount\n@cnt%
+  \newcount\np@cnt%
+  \newcount\ary@max \ary@max=\psk@plotpoints \relax%
+  \multiply\ary@max #2\np@cnt=\ary@max \multiply\ary@max 4\relax%
+  \advance\ary@max 4\relax %
+  \n@cnt=\ary@max \advance\n@cnt \m@ne%
+  \multiply\np@cnt \tw@\advance\np@cnt \tw@% count of points in array
+  \pstVerb{ gsave tx@Dict begin %
+    /psxu \pst@number\psxunit\space def /psyu \pst@number\psyunit\space def %
+    /uratio psyu psxu div dup mul def % so that perp to a, b is -b*uratio, a
+    /nseg #2 def /nplotpt \psk@plotpoints\space def %
+    /clipary #2 nplotpt mul 4 mul 4 add array def %
+    /lindex 2 def /uindex \the\ary@max\space 1 sub def %
+    /dt 1 \psk@plotpoints\space div def %
+  end grestore }%
+\multido{\iA=0+1,\iB=1+1}{#2}{%
+% pass control points of this segment to PostScript variables
+\pstVerb{% 
+	gsave tx@Dict begin %
+	STV CP T \psGetNodeCenter{#1\iA}\space \psGetNodeCenter{#1BR\iA}\space \psGetNodeCenter{#1BL\iB}\space \psGetNodeCenter{#1\iB}\space %
+	/bez@1.x #1\iA.x def /bez@1.y #1\iA.y def %initial point on segment
+	/bez@2.x #1BR\iA.x bez@1.x sub def %adjusted control points (less init pt)
+	/bez@2.y #1BR\iA.y bez@1.y sub def %
+	/bez@3.x #1BL\iB.x bez@1.x sub def %
+	/bez@3.y #1BL\iB.y bez@1.y sub def %
+	/bez@4.x #1\iB.x bez@1.x sub def %
+	/bez@4.y #1\iB.y bez@1.y sub def %
+	/bez@1x bez@2.x 3 mul def % for position--w1=3z1
+	/bez@1y bez@2.y 3 mul def %
+	/bez@2x bez@3.x bez@2.x 2 mul sub 3 mul def %position w2=3(z2-2z1)
+	/bez@2y bez@3.y bez@2.y 2 mul sub 3 mul def %
+	/bez@2xT bez@2x 2 mul def % for tangent
+	/bez@2yT bez@2y 2 mul def %
+	/bez@3x bez@4.x bez@2.x bez@3.x sub 3 mul add def % w3=z3+3z1-3z2
+	/bez@3y bez@4.y bez@2.y bez@3.y sub 3 mul add def %
+	/bez@3xT bez@3x 3 mul def % tangent
+	/bez@3yT bez@3y 3 mul def %
+	/Func % position
+ ( bez@3x t mul bez@2x add t mul bez@1x add t mul bez@1.x add psxu mul %
+ bez@3y t mul bez@2y add t mul bez@1y add t mul bez@1.y add psyu mul ) cvx def %
+%    /FuncT % tangent
+%      (  bez@2xT t bez@3xT mul add t mul bez@1x add  %
+%       bez@2yT t bez@3yT mul add t mul bez@1y add  ) cvx def
+/FuncN % leave dx, dy on stack
+ ( bez@2yT t bez@3yT mul add t mul bez@1y add dup /ty ED uratio mul neg 
+ bez@2xT t bez@3xT mul add t mul bez@1x add dup /tx ED %
+ 2 copy Pyth dup  3 1 roll div 3 1 roll div /nx ED /ny ED % unit normal to curve
+ tx ty 2 copy Pyth dup 3 1 roll div 3 1 roll div /tx ED /ty ED % unit tangent
+ #5 ty tx Atan sub dup cos /bez@c ED sin /bez@s ED %
+ \bez@a\space bez@s mul \bez@b\space bez@c mul Pyth % sqrt(aa*ss+bb*cc)
+ dup .001 lt { pop \bez@a\space tx mul \bez@a\space ty mul }{/yval ED %
+ bez@c bez@s mul \bez@a\space dup mul \bez@b\space dup mul sub mul yval div %
+ /xval ED %
+ xval tx mul yval nx mul add xval ty mul yval ny mul add } %
+ ifelse ) cvx  def %
+ end grestore }%
+\ifnum\iA=\z@%
+  \pnode(! /t 0 def FuncN /dy exch def /dx exch def Func 2 copy %
+  /y0 ED /x0 ED %
+  clipary 0 x0 dx add put clipary 1 y0 dy add put %
+  clipary uindex y0 dy sub put clipary uindex 1 sub x0 dx sub put %
+  /uindex uindex 2 sub def ){tmp@P}%
+\fi%
+\multido{\i=1+1}{\psk@plotpoints}{%
+      %make array elements for this segment
+      \pnode(! /t dt \i\space mul def FuncN /dy ED /dx ED Func 2 copy /y0 ED /x0 ED %
+      clipary lindex x0 dx add put clipary lindex 1 add y0 dy add put %
+      clipary uindex y0 dy sub put clipary uindex 1 sub x0 dx sub put %
+      /lindex lindex 2 add def /uindex uindex 2 sub def ){tmp@P}%
+}% end multido \i
+}% end multido \iA
+% if periodic, we have to adjust 2 points so as not to leave a wedge in the 
+% clipping region. We have to set Q_{nk} to Q_0 and R_{nk} to R_0
+% R_{nk} is at position 2*nk, 2*nk+1 and Q_{nk} is at the next pair
+%\ifbsp@per %
+%  \pstVerb{%
+%   tx@Dict begin /itemcnt #2 nplotpt mul 2 mul def %first item to change is index 2nk
+%  clipary itemcnt clipary 0 get put /itemcnt itemcnt 1 add def %
+%  clipary itemcnt clipary 1 get put /itemcnt itemcnt 1 add def %
+%  clipary itemcnt clipary \the\n@cnt\space 1 sub get put /itemcnt itemcnt 1 add def %
+%  clipary itemcnt clipary \the\n@cnt\space get put %
+%  end }%
+%\fi%
+% make a clipping path in PS and pass commands #6
+\ifbsp@per %periodic
+ \psclip{\pscustom{%
+  \code{ clipary aload pop moveto nseg nplotpt mul %
+   { lineto } repeat closepath %
+  moveto  nseg nplotpt mul { lineto } repeat closepath }}}%
+  #6%
+ \endpsclip%
+\else % not periodic
+ \psclip{\pscustom{%
+  \code{ clipary aload pop moveto nseg nplotpt mul 2 mul %
+  1 add { lineto } repeat closepath %
+  \ifPst@reverseclip\space reversepath \fi}}}%
+  #6%
+ \endpsclip%
+\fi%
+}%
+\ignorespaces}%
+%
+% Elliptic pen as possible in metafont/metapost, ignoring end segs
+\def\thickBsplinePenE{\def\pst@par{}\pst@object{thickBsplinePenE}}%
+\def\thickBsplinePenE@i#1#2#3#4#5#6{{%
+% #1=root | #2=nsegments | #3=semimajor | #4=semiminor | #5=inclination | #6=items to clip
+% An inclination of -45 means that lines pointing at angles -45 and 135 thinnest and lines pointing 45 and 225 will be thickest, assuming #3>#4.
+  \pst@killglue%
+  \edef\n@decnt{\csname #1nodecount\endcsname}
+  \psBsplineInterp{#1}{\n@decnt}%
+  \psBsplineNodesE[linestyle=none]{#1B}{\n@decnt}%
+  \count0=\n@decnt\advance\count0\m@ne\edef\n@decntm{\the\count0}%
+  \advance\count0\m@ne\edef\newn@decnt{\the\count0}%
+  \multido{\iA=0+1,\iB=1+1}{\n@decntm}{\pnode(#1\iB){@#1\iA}%
+  \pnode(#1B\iB){@#1B\iA}\pnode(#1BR\iB){@#1BR\iA}\pnode(#1BL\iB){@#1BL\iA}}%
+  \use@par%
+  \thickBsplinePen@ii{@#1}{\newn@decnt}{#3}{#4}{#5}{#6}%
+}\ignorespaces}%
+%
+\catcode`\@=\TheAtCode\relax
+\endinput

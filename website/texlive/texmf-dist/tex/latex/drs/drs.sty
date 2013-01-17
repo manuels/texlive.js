@@ -1,0 +1,278 @@
+%%%
+%%% Macros to typeset Discourse Representation Structures (DRSs).
+%%% Based on DRS macros in covingtn.sty 
+%%%
+%%% Written by Alexis Dimitriadis (a.dimitriadis at uu.nl)
+%%%
+%%% This package may be used, distributed and modified unter the terms of the 
+%%% LaTeX Project Public License, either version 1.3 of this license or (at your 
+%%% option) any later version.  
+%%%
+%%% The latest version of the LaTeX Project Public License can be found at this URL: 
+%%%    http://www.latex-project.org/lppl.txt
+
+\ProvidesPackage {drs} 
+	[2010/06/10 typeset Discourse Representation Structures v. 1.1b]
+
+
+% REVISION HISTORY
+%
+% 2010/06/10   v. 1.1  Small modifications for compatibility with memoir and array.sty.
+%                      Thanks to Alan Munn and Antonio Fortin for reporting the problem.
+%                      Added robustness enhancements, pict2e support, and LPPL license.
+%
+% 2004/02/17           Corrected some typos in documentation
+%
+% 2000/06/15   v. 1.0  Original stable version
+
+
+
+%% This package draws Discourse Representation Structures (DRSs).  It can draw
+%% embedded DRSs, if-then conditions and quantificational ``duplex
+%% conditions'' (with a properly scaled connecting diamond).  Formatting
+%% parameters allow the user to control the appearance and placement of DRSs,
+%% and of DRS variables and conditions.
+
+% \drs        typesets a DRS in box notation a la Kamp.
+% \drs*       Same, but typeset as a ``partial'' drs (centered on the
+%             baseline, and with no extra spacing above or below)
+%
+%             Arguments:
+%             1. List of discourse variables
+%             2. List of conditions separated by \\
+%
+%             Example:   \drs{X}{donkey(X)\\green(X)}
+%
+%             Example:   \drs{}{purple(X,Y)}   (no variables line)
+%
+%             Example:   \drs{X}
+%                            {named(X,`Pedro') \\
+%                             \drs{Y}{donkey(Y)\\owns(X,Y)}~~
+%                             {\large $\Rightarrow$}~
+%                             \drs{~}{feeds(X,Y)}
+%                            }
+
+% \ifdrs      forms 2 DRSes joined with a big arrow.
+%             Usually used for DRSes nested within another.
+%
+%             Example:   \ifdrs{X}{donkey(X)\\hungry(X)}
+%                              {~}{feeds(Pedro,X)}
+
+% \qdrs       Form a ``duplex condition'' representing a quantifier.
+%             
+%             Example:  \qdrs{}{man(x)}{every}{x}{y}{mother-of(x, y)\\
+%                                     loves(x, y)}
+
+% \negdrs     forms a DRS preceded by the negation symbol.
+%
+%             Example:   \negdrs{X}{donkey(X)\\green(X)}
+
+% \sdrs       like \drs but first argument is a sentence
+%             to be displayed above the drs.
+%
+%             Example:   \sdrs{A donkey is green.}{X}{donkey(X)\\green(X)}
+
+% \alifdrs    is like \ifdrs but shifted to the left so that an
+%             embedded `if' structure will line up with ordinary
+%             DRS conditions.
+
+% memoir-compatible definitions; if you use article.cls, \it and \rm also work
+\def\drsvarfont{\normalfont\itshape}	  % Font for variables
+\def\drscondfont{\normalfont\rmfamily}	  % Font for conditions
+
+\let\drsseparator=\hline  % Separator between variables and conditions
+
+\let\drsalignment=c	      % Alignment of material in boxes (l/c/r)
+
+\let\drsboxalignh=c       % Horizontal alignment of top-level DRS box in page 
+\let\drsboxalignv=c       % Vertical alignment (with the baseline: t/c/b)
+
+% \def\drsarraystretch{1} % undefined by default: value for \arraystretch
+
+\edef\drslinewidth{\the\arrayrulewidth}  % Line thickness: Start with default for tabular
+
+\newcount\@drslevel \@drslevel=0
+
+\def\drs@strut{{\large\strut}}
+
+
+% \drs* gives a ``partial DRS'' (treated as if it appears inside another DRS)
+% \drs begins a group that's ended by \@drs
+\newcommand{\drs}{\bgroup 
+	\@drs@set@align
+	\@ifstar{\advance\@drslevel by 1 \relax} \relax 
+	\expandafter\@drs\@drs@cleanalign }
+
+% These contortions are required because memoir and array will not accept a macro
+% as a column alignment specifier. Simpler solutions would be possible if we KNEW whether 
+% \drsalignment has been set with \def/renewcommand or with \let. Restricting the user is
+% ugly, so we \def a macro from what we're given.
+%
+\def\@drs@set@align{%
+	\def\@drs@cleanalign{c}% a default, in case of bad values
+	% \expandafter is needed in case \drsalignment was \def'ed; with \let, it's harmless
+    \expandafter\ifx \drsalignment c\def\@drs@cleanalign{c}\fi
+    \expandafter\ifx \drsalignment l\def\@drs@cleanalign{l}\fi
+    \expandafter\ifx \drsalignment r\def\@drs@cleanalign{r}\fi }
+
+\newcommand{\@drs}[3]
+{\advance\@drslevel by 1 \relax 
+  \leavevmode 
+  \ifnum\@drslevel>1
+    \let\drsboxalignv=c% Embedded boxes should be centered on the baseline
+  \else   % Alignment options for top-level boxes only:
+    \expandafter\ifx \drsboxalignh c\hbox{}\hfil \fi \fi
+  	% \expandafter is needed if \drsboxalignh was \def'ed; with \let, it's harmless
+  	\arrayrulewidth=\drslinewidth 
+    \@ifundefined{drsarraystretch} {} {\edef\arraystretch{\drsarraystretch}}%
+    \begin{tabular}[\drsboxalignv]{|@{}r@{}|}
+      \ifnum\@drslevel>1\noalign{\vskip 0.7ex}\fi  %% ??
+      \hline  
+      \drscondfont
+      {\begin{tabular}[b]{#1}
+        % Do not allocate space for variables if none are given
+        \def\@tempa{#2}\ifx\@tempa\empty \else
+	  \drs@strut 
+          \drsvarfont {\ignorespaces #2\strut\relax }\\
+          \drsseparator  % Spacing is the same whether this is \hline or \relax
+        \fi
+        \drs@strut % extra space above and below (text) condition
+        \strut     % A failsafe, in case the user selected a large font
+        \ignorespaces #3 % do not place \relax here! It confuses the next test
+        % End line unless the user already did
+        \ifvmode \else \\ \fi 
+        % (can't vspace here or the line will come out wrong)
+      \end{tabular}}%
+      \vrule height 0pt width 0pt depth \baselinestretch\dp\strutbox 
+      \drs@strut     % extra space above and below (text) conditions
+      \\[2pt] \hline
+      \ifnum\@drslevel>1\noalign{\vskip 0.7ex}\fi % extra for embedded DRSs
+    \end{tabular}\egroup}                        % close the \bgroup in \drs
+
+
+% Connect two DRSs with the middle argument (presumably a logical connective).
+% This is worth providing because centering would separate DRSs from the
+% connectives, unless everything is enclosed in an mbox as we do here.
+\newcommand\condrs[5]
+  {\mbox{\let\drsboxalignv=c\drs{#1}{#2}{\large\ \ {#3}\ \ }\drs{#4}{#5}}}
+
+\newcommand{\ifdrs}[4]{\condrs{#1}{#2}{$\Rightarrow\!\,$}{#3}{#4}}
+
+\newcommand{\qdrs}[6]
+  {\mbox{\let\drsboxalignv=c\drs{#1}{#2}\drsdiamond{#3}{#4}\drs{#5}{#6}}}
+
+\newcommand{\negdrs}[2]
+  {\mbox{{\large $\neg$ }\drs{#1}{#2}~}} % offset by a ~ for better centering
+
+% like \ifdrs but shifted to the left so that an embedded `if' structure will
+% line up with ordinary DRS conditions. (Useful for left-aligned DRSs only).
+\newcommand{\alifdrs}[4]
+  {\mbox{$\!\!\!$\ifdrs{#1}{#2}{#3}{#4}}}
+
+% A DRS with the associated sentence.
+\newcommand{\sdrs}[3]
+{\begin{tabular}{l}
+\mbox{\it #1} \\
+~ \\
+\drs{#2}{#3}
+\end{tabular}}
+
+
+
+\newbox\@drsbox
+
+% Draw a diagonal square (diamond) containing a quantifier and variable.
+%
+% Ridiculously complicated diamond algorithm: fit the smallest diamond around
+% the _trapezoid_ enclosing a longer top line and a short variable at the
+% bottom.  Special-case boxes with really, really wide top part.
+%
+% Syntax: \drsdiamond{quantifier}{variable}
+\newcommand{\drsdiamond}[2]{{%
+  \setbox\@drsbox\hbox{\def\baselinestretch{1}\@currsize
+    \begin{tabular}{@{}c@{}}
+      \drscondfont {#1}\\\drsvarfont {~#2~\null}\end{tabular}}%
+  % Compute the necessary dimensions
+  \@tempcnta=\ht\@drsbox \relax
+  \advance\@tempcnta by \dp\@drsbox \relax
+  \edef\@H{\the\@tempcnta}%        	  % height
+  %
+  \@tempcnta=\wd\@drsbox 
+  \edef\@boxdims{(\the\@tempcnta,\@H)}%	  % box dimensions
+  \divide\@tempcnta by 2
+  \edef\@A{\the\@tempcnta}%	          % 1/2 top width
+  % 
+  % Measure the bottom line separately so we can pretend we're a trapezoid
+  \setbox\@tempboxa\hbox{ \drsvarfont{#2 }}%
+  \@tempcnta=\wd\@tempboxa
+  \divide\@tempcnta by 2
+  \edef\@B{\the\@tempcnta}%        	  % 1/2 bottom row width
+  %
+  \@tempcnta=\@H
+  \advance\@tempcnta by \@B 
+  \ifnum \@A > \@tempcnta % Angle is less than 45 degrees: center on top part
+    % start over: measure just the top part
+    \setbox\@tempboxa\hbox{\def\baselinestretch{1}\@currsize
+    \begin{tabular}{@{}c@{}}\drscondfont{#1}\end{tabular}}%
+    \@tempcnta=\ht\@tempboxa
+    \advance\@tempcnta by \dp\@tempboxa
+    \divide\@tempcnta by 2
+    \edef\@topH{\the\@tempcnta}%  	  % HALF the height of the top part
+    \advance\@tempcnta by \@A
+    \edef\@D{\the\@tempcnta}%
+    \advance\@tempcnta by -\@H
+    \advance\@tempcnta by \@topH
+    \edef\@boxcoords{(\@topH,\the\@tempcnta)}%
+  \else                   % Angle over 45: diamond goes across all corners
+    \advance \@tempcnta by \@A\relax \divide \@tempcnta by 2
+    \edef\@D{\the\@tempcnta}%
+    \advance\@tempcnta by -\@A
+    \edef\@boxcoords{(\the\@tempcnta,\@B)}%
+  \fi
+  %
+  \@tempcnta=\@D
+  \multiply\@tempcnta by 2
+  \edef\@twoD{\the\@tempcnta}%
+  %
+  \unitlength=1sp % ``scaled points,'' like the counter values
+  \linethickness{\drslinewidth}% only effective if pict2e.sty is loaded
+  % If eepic is loaded, match our lines to the DRS borders
+  \@ifundefined{allinethickness}\relax{\allinethickness{\the\arrayrulewidth}}%
+    \parbox[c]{\@twoD sp}{{\vskip 2pt%
+  \begin{picture}(\@twoD,\@twoD)
+    \put(0,\@D){\line(1,-1)\@D}
+    \put(0,\@D){\line(1,1)\@D}
+    \put(\@twoD,\@D){\line(-1,1)\@D}
+    \put(\@twoD,\@D){\line(-1,-1)\@D}
+    % change \makebox to \framebox to see the placement
+    \expandafter\put\@boxcoords{\expandafter\makebox\@boxdims{\box\@drsbox}}
+  \end{picture}\vskip 2pt}}}}
+
+
+% BETTER DOUBLE SPACING: by default, tall material can come arbitrarily close
+% to the previous line.  Calling \drshacksetspace redefines setspace.sty
+% internals, causing it to adjust TeX formatting parameters that force a
+% portion of each line to stay empty.  This really should be part of
+% setspace.sty. 
+
+% setspace.sty redefines the footnotes, but they do not call setstretch, alas.
+% So the spacing will still be incorrect in footnotes.
+
+\def\drshacksetspace{\@ifundefined{setstretch}\relax {%
+  % Ensure that HALF of the lineskip above the normal (singlespacing) value
+  % will stay empty 
+  \def\adj@lineskip{%
+    \@tempdima=\baselinestretch\baselineskip
+    \advance\@tempdima by -\setspace@singlespace\baselineskip
+    \divide\@tempdima by 2
+    \lineskiplimit=\@tempdima
+    \lineskip=\lineskiplimit
+    \ifdim\@tempdima=0pt \lineskip=1pt\fi}%
+  % Arrange to recompute lineskip whenever spacing changes
+  \renewcommand{\setstretch}[1]
+    {\def\baselinestretch{##1}\@currsize\adj@lineskip}%
+  % Now run setstretch in case it's already been invoked (at the preamble)
+  \expandafter\expandafter
+         \expandafter\setstretch\expandafter{\baselinestretch}}}
+
+\endinput

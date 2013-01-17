@@ -1,0 +1,2484 @@
+%--------------------------------------------
+%
+% Package pgfplots
+%
+% Provides a user-friendly interface to create function plots (normal
+% plots, semi-logplots and double-logplots).
+% 
+% It is based on Till Tantau's PGF package.
+%
+% Copyright 2010 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%--------------------------------------------
+
+% 1. OVERVIEW
+%
+% Plot handlers are extended versions of the plot handlers of PGF with
+% backwards compatibility.
+%
+% To remind ourselfes: PGF plot handlers work like this
+% \pgfplotstreamstart
+% \pgfplotstreampoint{...}
+% \pgfplotstreampoint{...}
+% \pgfplotstreampoint{...}
+% \pgfplotstreampoint{...}
+% \pgfplotstreamend
+%
+% and that's it.
+%
+% PGFPlots plot handlers also contain these three macros. The tasks
+% are (of course) the same. In addition, they support a set of further
+% macros for every plot handler:
+%
+% \pgfplotsplothandlersurveystart
+% \pgfplotsplothandlersurveypoint
+% \pgfplotsplothandlersurveyend
+%
+% and serialization methods
+% \pgfplotsplothandlerserializepointto
+% \pgfplotsplothandlerdeserializepointfrom
+% \pgfplotsplothandlerserializestateto
+% \pgfplotsplothandlerdeserializepointfrom
+%
+% in addition, there are utility macros
+% \pgfplotsplothandlersurveydifflen#1#2
+% \pgfplotsplothandlersurveypointattime#1#2#3
+%
+% The idea is as follows:
+% During \addplot, PGFPLots performs a survey phase. Survey means:
+% nothing will be drawn, only stats will be collected. In this phase,
+% the \pgfplotsplothandlersurvey* methods will be invoked; followed by
+% a serialization.
+%
+% Then, when every plot has been surveyed, PGFPlots calls
+% \pgfplotsplothandlerdeserializestatefrom{<serialized state>}
+% \pgfplotstreamstart
+% foreach <serizalized point> {
+% 	\pgfplotsplothandlerdeserializepointfrom{<serialized point>}
+% 	apply data transformations 
+% 	handle plot marks
+% 	\pgfplotstreampoint{\pgfplotsqpointxy{<x>}{<y}}
+% }
+% \pgfplotstreamend
+%
+% See below for details about the survey phase and the visualization
+% phase and the API of an axis.
+%
+% Thus, the PGF basic level streams can (but don't need to) make use
+% of the macros assigned by the
+% \pgfplotsplothandlerdeserializepointfrom and
+% \pgfplotsplothandlerdeserializestatefrom.
+%
+% Furthermore, a plot handler *can* redefine any of the survey and/or
+% serialization methods to add further functionality. But it doesn't
+% need to, it's ok if it only relies on x,y as standard pgf plot
+% handlers do.
+%
+% If it overwrites something, it should do so in its main method, the
+% one in which it also defines the \pgf@plotstreamstart etc. methods
+% (see pgfmoduleplot.code.tex for example). BUT: do NOT overwrite
+% these methods globally!
+%
+% 2. A Description of the two phases:
+%
+% THE SURVEY PHASE:
+%   The survey phase works as follows.
+%   PRECONDITION:
+%   	- we are `inside' of an axis.
+%   	- \addplot starts the survey phase.
+%
+%   The following happens:
+%   	- the plot handler is determined and activated such that its
+%   	methods are usable ("class is instantiated")
+%   	- \pgfplots@PREPARE@COORD@STREAM is the internal, low level
+%   	entry point where pgfplots controls the survey phase.
+%   	- the coordinate input routine is initialised. It issues a
+%   	series of commands (all within the *same* TeX scope):
+%   		\pgfplots@coord@stream@start
+%   		\pgfplots@coord@stream@coord
+%   		\pgfplots@coord@stream@coord
+%   		\pgfplots@coord@stream@coord
+%   		\pgfplots@coord@stream@coord
+%   		\pgfplots@coord@stream@coord
+%   		\pgfplots@coord@stream@coord
+%   		...
+%   		\pgfplots@coord@stream@end
+%   	- \pgfplotsplothandlersurveystart is called in
+%   	\pgfplots@coord@stream@start.
+%   	- \pgfplots@coord@stream@coord calls
+%   	\pgfplotsplothandlersurveypoint
+%   	- \pgfplots@coord@stream@end calls
+%   	\pgfplotsplothandlersurveyend
+%   	\pgfplotsplothandlerserializestateto<\macro>
+%   	Furthermore, it remembers the <\macro> such that it can be
+%   	deserialized later.
+%   Then, the survey phase ends. The main point of interest is the
+%   \pgfplotsplothandlersurveypoint routine, especially its
+%   communication with the axis. It is described below.
+%
+%   POSTCONDITION:
+%   	- the state of the axis is now aware of the new plot (limits,
+%   	stacking, ...).
+%   	- The plot's survey state is stored using its serialized
+%   	representation.
+%
+% THE VISUALIZATION PHASE:
+% FIXME
+%
+% 2.1 The API of an axis
+%
+% As described above, the coordinate input routine fires a lot of
+% \pgfplots@coord@stream@coord commands, which, in turn, invoke
+% \pgfplotsplothandlersurveypoint. Somehow this should update the
+% axis' state to reflect each point. But the 'data point' is a rather
+% abstract thing. Usually, it will contain at least (x,y) (or maybe z)
+% coordinates. But it may be more complex.
+%
+% So, the coordinate input routine provides whatever the user has
+% chosen. Let's assume, we are using \addplot table. Then, we can 
+% access every cell in the current row (using \thisrow{<colname>} for
+% example). The plot handler knows how to extract its information from
+% this state. In general, the following steps are taken:
+% - the plot handler assembles coordinates.
+% - every assembled coordinate should be reported to the axis by
+%   defining \pgfplots@current@point@[xyz] to its coordinates and
+%   calling
+%   \pgfplotsaxisparsecoordinate{}
+%   This will apply coordinate filters, parse the single coordinates
+%   and apply high level transformations and any logarithms.
+%   It is some sort of advanced coordinate parser which works only for 
+%   (x,y) or for (x,y,z).
+%   It yields (x,y,z). But the axis might need to change its
+%   components! Thus, you also need to call
+%   \pgfplotsaxispreparecoordinate{}.
+%   This will, for example, apply the "stack plots" feature or the
+%   'data cs' feature.
+%
+%   If necessary, the plot handler calls
+%   \pgfplotsaxisparsecoordinate{} and
+%   \pgfplotsaxispreparecoordinate{} multiple times, once for each
+%   encountered coordinate.
+%
+%	It might occasionally be too much to call
+%	\pgfplotsaxispreparecoordinate.
+%
+%   It might happen that a coordinate filter discards a coordinate.
+%   This is returned in the \ifpgfplotsaxisparsecoordinateok boolean
+%   and has to be checked by the plot handler.
+%
+% - the plot handler knows which of the coordinates contribute to the
+%   final plot. It invokes
+%   \ifpgfplotsaxisparsecoordinateok
+%   	\pgfplotsaxisupdatelimitsforcoordinate{<x>}{<y>}{<z>}
+%   \fi
+%   for each of these coordinates. This has to be done for final
+%   coordinates only, i.e. after \pgfplotsaxispreparecoordinate.
+%
+% - eventually, the plot handler is satisfied and considers a data
+%   point as "readily surveyed". It is allowed if this does *not*
+%   happen inside of \pgfplotsplothandlersurveypoint, but it must
+%   happen before \pgfplotsplothandlersurveyend is finished.
+%   
+%   The plot handler invokes \pgfplotsaxisdatapointsurveyed.
+%   This tells the axis that it can perform its own surveying tasks
+%   (see below) and furthermore, that it can serialize the data point.
+%   Consequently, it will invoke
+%   \pgfplotsplothandlerserializepointto{<\macro>} 
+%   and it will remember that \macro internally. This serialization is
+%   employed to place plot marks and to apply z buffering techniques
+%   (that's why it is done by the axis and not by the plot handler on
+%   its own).
+%
+%   The axis does its own surveying task, initiated by
+%   \pgfplotsaxisdatapointsurveyed (which is, turn, invoked by the
+%   plot handler). This command handles the |point meta| feature, that
+%   is: it queries the |point meta| input source and updates the meta
+%   limits. Furthermore, the error bar feature is processed at this
+%   point (using the final data point's (x,y,z) coordinates as basis).
+%   The |xtick=data| feature is also prepared at this stage.
+%
+% - Later, the coordinate input routine invokes
+%   \pgfplots@coord@stream@end indicating the end-of-input. This will
+%   finalize the survey phase.
+%
+% A simple example looks like this:
+% \pgfplotsplothandlersurveystart: does nothing in the simple example.
+% \pgfplotsplothandlersurveypoint:
+%   parses the input format somehow to get (x,y,z) in raw, symbolic format
+%   calls \pgfplotsaxisparsecoordinate
+% 	calls \pgfplotsaxispreparecoordinate
+% 	calls \ifpgfplotsaxisparsecoordinateok	\pgfplotsaxisupdatelimitsforcoordinate{<x>}{<y>}{<z} \fi
+% 	calls \pgfplotsaxisdatapointsurveyed
+% \pgfplotsplothandlersurveyend: does nothing in the simple example.
+%
+% In fact, this is more or less the initial configuration used for
+% lineto or similar plot handlers.
+%
+% 2.2 Further Survey Phase API functions
+% 	\pgfplotssurveyphaseinputclass
+% 	expands to the actual name of the input method (like
+% 	'coordinates', 'expression' or 'table')
+%
+% 	\pgfplotsplothandlernotifyscanlinecomplete
+% Called whenever an end-of-scanline marker has been processed, i.e.
+% whenever the 'empty line' key has been triggered. The default is to
+% do nothing.
+%
+%   \pgfplotsaxissurveysetpointmeta
+% processes the 'point meta' key, i.e. it assigns
+% \pgfplots@current@point@meta. This macro can only be called once for
+% each coordinate (it will be deactivated afterwards). PGFPlots calls
+% it in \pgfplotsaxisdatapointsurveyed .
+%
+%   \pgfplotsplothandlersurveyaddoptions{<options>}
+% which allows to change the current plot style from within API
+% functions. It sets <options> and remembers them for the
+% visualization phase.
+%
+%   \pgfplotsaxisupdatelimitsforpointmeta{<meta>},
+% provided there is a point meta input handler (which is numeric).
+% Otherwise, the command is equal to \relax.
+%
+%
+% 3. Details about the VISUALIZATION phase
+%
+% The visualization phase consists of
+% <installation of the plot handler>
+% \pgfplotstreamstart
+% foreach serialized coordinate {
+% 	pgfplots calls \pgfplotsplothandlerdeserializestatefrom{<serialized repr>}
+% 	if coordinate is empty ("unbounded")
+% 		pgfplots call \pgfplotsplothandlervisualizejump
+% 	else
+% 		pgfplots calls \pgfplotsaxisvisphasetransformcoordinate
+% 		pgfplots calls \pgfplotsaxisvisphasepreparedatapoint
+% 		pgfplots calls either \pgfplotsqpointxyz or \pgfplotsqpointxy
+% 	fi
+% 	\pgfplotstreampoint
+% }
+% \pgfplotstreamend
+%
+% User defined plot handlers might need to invoke
+% \pgfplotsaxisvisphasetransformcoordinate on their own.
+%
+% During the visualization phase, the following macros can be used:
+%
+% - \pgfplotsaxisvisphasetransformpointmeta to set up point meta.
+% Use this only if there *is* point meta, see
+% \pgfplotsaxisifhaspointmeta{<true code>}{<false code>}.
+%
+% - \pgfplotsaxisvisphasegetpoint
+%   does not take arguments. It takes the current point as input and
+%   sets \pgf@x, \pgf@y to the final result.
+%
+% 4. API Functions of pgfplots to work with the visualization phases
+%
+% \pgfplotsifissurveyphase{<true code>}{<false code>}
+% \pgfplotsifisvisualizationphase{<true code>}{<false code>}
+%
+% \pgfplotsaxisfilteredcoordsaway
+%   This macro expands to '1' if all points have been surveyed
+%   successfully. It expands to '0' if at least one point has been
+%   filtered away (for whatever reasons). This does not apply to
+%   jumps.
+% \pgfplotsaxisplothasjumps
+% 	This macro expands to '1' if the current plot has jumps and '0'
+% 	if not.During the visualization phase, a jump is usually indicated
+% 	by an empty coordinate.
+%
+
+\def\pgfplotssurveyphaseinputclass{direct}
+
+\def\pgfplotsplothandlers@init{%
+	\def\pgfplotsplothandlers@init@##1{%
+		\expandafter\def\expandafter##1\expandafter{%
+			##1%
+			\let\pgfplotsplothandlersurveydifflen=\pgfplotsplothandlersurveydifflen@snaptonearest
+			\let\pgfplotsplothandlersurveypointattime=\pgfplotsplothandlersurveypointattime@snaptonearest
+		}%
+	}%
+	\pgfplotsutilforeachcommasep{\pgfplothandlerdiscard,\pgfplothandlerxbar,\pgfplothandlerybar,\pgfplothandlerxbarinterval,\pgfplothandlerybarinterval}\as\pgfplots@loc@TMPa{%
+		\expandafter\pgfplotsplothandlers@init@\expandafter{\pgfplots@loc@TMPa}%
+	}%
+}%
+
+% Resets the plot handler routines.
+%
+% This is necessary before installing a new plot handler!
+\def\pgfplotsresetplothandler{%
+	\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@default
+	\let\pgfplotsplothandlername=\pgfplotsplothandlername@default
+	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@default
+	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@default
+	\let\pgfplotsplothandlerpointtokeys=\pgfplotsplothandlerpointtokeys@default
+	\let\pgfplotsplothandlerserializepointto=\pgfplotsplothandlerserializepointto@default
+	\let\pgfplotsplothandlerdeserializepointfrom=\pgfplotsplothandlerdeserializepointfrom@default
+	\let\pgfplotsplothandlerserializestateto=\pgfplotsplothandlerserializestateto@default
+	\let\pgfplotsplothandlerdeserializestatefrom=\pgfplotsplothandlerdeserializestatefrom@default
+	\let\pgfplotsplothandlervisualizejump=\pgfplotsplothandlervisualizejump@default
+	\let\pgfplotsplothandlernotifyscanlinecomplete=\relax
+	\let\pgfplotsplothandlersurveydifflen=\pgfplotsplothandlersurveydifflen@default
+	\let\pgfplotsplothandlersurveypointattime=\pgfplotsplothandlersurveypointattime@default
+	\let\pgfplotsplothandlertransformslopedattime=\pgfplotsplothandlertransformslopedattime@default
+}%
+
+% \pgfplotsplothandlersurveystart
+\def\pgfplotsplothandlersurveystart@default{}%
+
+% \pgfplotsplothandlername
+\def\pgfplotsplothandlername@default{%
+	[tikz@plot@handler: \meaning\pgf@plotstreamstart]%
+}%
+
+% \pgfplotsplothandlersurveyend
+% Called at the end of each survey phase.
+\def\pgfplotsplothandlersurveyend@default{}
+\let\pgfplotsplothandlernotifyscanlinecomplete=\relax%
+
+% \pgfplotsplothandlersurveypoint is called for each encountered data
+% point.
+%
+% The data point as such is available using the current state of any
+% macros which are assigned during the survey phase (during \addplot).
+% This includes any table macros etc.
+% PGFPlots stores the x,y and z coordinates into \pgfplots@current@point@[xyz]. 
+% The point meta coordinate is in \pgfplots@current@point@meta.
+%
+% Note that since any currently assigned macro can be used here, the
+% new DV engine of PGF is also valid (and will be supported
+% eventually). This DV engine stores data point entries in keys,
+% namely those in the key path /data point. See the pgf manual.
+\def\pgfplotsplothandlersurveypoint@default{%
+	\pgfplotsaxisparsecoordinate
+	\pgfplotsaxispreparecoordinate
+	\ifpgfplotsaxisparsecoordinateok
+		\pgfplotsaxisupdatelimitsforcoordinate\pgfplots@current@point@x\pgfplots@current@point@y\pgfplots@current@point@z
+	\fi
+	\pgfplotsaxisdatapointsurveyed
+}%
+
+% \pgfplotsplothandlerserializepointto{<\macro>}
+% should save a complete data point to <\macro> such that it can be
+% de-serialized later.
+%
+% #1: a macro name. Will be filled with (expandable) data.
+% 	The format can be arbitrary, but you should be able to extra it.
+%
+% @PRECONDITION
+% 	this macro will be invoked in a context where the current data
+% 	point has been processed completely, including any preparations.
+% 	The required data which should be saved depends on the plot
+% 	handler. Usually, all plot handlers require
+% 	\pgfplots@current@point@[xyz] and \pgfplots@current@point@meta.
+%   This macro should only assign keys which have been defined or
+%   validated by any of the plot handler relevant methods (including
+%   the de-serialization or survey methods).
+\def\pgfplotsplothandlerserializepointto@default#1{%
+	% Store normalized point for list:
+	% We need
+	% xi,yi,zi,mi;
+	% where zi and mi may be empty. mi is the per-point meta
+	% information. It is used for per-coordinate marker
+	% modifications (like colormaps for scatter plots).
+	\edef#1{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z}%
+}%
+
+% \pgfplotsplothandlerdeserializepointfrom{<\macro>}
+% the counterpart for \pgfplotsplothandlerserializepointto.
+% It restores the state as it was before the serialization.
+%
+% #1: the serialized information.
+\def\pgfplotsplothandlerdeserializepointfrom@default#1{%
+	\expandafter\pgfplotsplothandlerdeserializepointfrom@default@#1\relax
+}%
+
+% \pgfplotsplothandlerpointtokeys{<key prefix>}
+%
+% Takes the current point and copies its values to a set of keys.
+%
+% For example, if the current point has the three coordinates x=1,
+% y=2, z=3,
+% \pgfplotsplothandlerpointtokeys{/data point/first/}
+% will define the keys
+% /data point/first/x/.initial=1
+% /data point/first/y/.initial=2
+% /data point/first/z/.initial=3
+%
+\def\pgfplotsplothandlerpointtokeys@default#1{%
+	\pgfkeyslet{#1/x}\pgfplots@current@point@x
+	\pgfkeyslet{#1/y}\pgfplots@current@point@y
+	\pgfkeyslet{#1/z}\pgfplots@current@point@z
+}%
+
+\def\pgfplotsplothandlerdeserializepointfrom@default@#1,#2,#3\relax{%
+	\def\pgfplots@current@point@x{#1}%
+	\def\pgfplots@current@point@y{#2}%
+	\def\pgfplots@current@point@z{#3}%
+}%
+% \pgfplotsplothandlerserializestateto{<\macro>}
+% should save the state of the current plot handler such that it can
+% be de-serialized later.
+%
+% The state does usually NOT contain a coordinate stream, this is
+% accomplished by \pgfplotsplothandlerserializepointto.
+%
+% #1: a macro name. Can be filled with anything, including
+% non-expandable macro invocations.
+\def\pgfplotsplothandlerserializestateto@default#1{%
+	\def#1{}%
+}%
+
+%
+\def\pgfplotsplothandlerdeserializestatefrom@default#1{%
+	#1%
+}%
+
+\def\pgfplotsplothandlervisualizejump@default{%
+	\pgfplotstreamend
+	\pgfplotstreamstart
+}%
+
+% \pgfplotsplothandlersurveypointattime#1#2#3
+%
+% sets the current environment to a point which is between points #2
+% and #3, using the fraction #1.
+%
+% #1 a fraction (a number between 0 and 1) in the format of
+% \pgfplotscoordmath{default}
+% #2 a serialized point denoting the start
+% #3 a serialized point denoting the end
+%
+% In other words: #1 = 0.0 should result in #2 and #1 = 1.0 should
+% result in #3.
+%
+% POSTCONDITION: the current point will be set to the point
+% in-between. The current point is set in terms of logical coordinates
+% (i.e. \pgfplots@current@point@x and its variants)
+\def\pgfplotsplothandlersurveypointattime@default#1#2#3{%
+	\begingroup
+	\pgfplotsplothandlerdeserializepointfrom{#2}%
+	\let\pgfplots@last@x=\pgfplots@current@point@x
+	\let\pgfplots@last@y=\pgfplots@current@point@y
+	\let\pgfplots@last@z=\pgfplots@current@point@z
+	\pgfplotsplothandlerdeserializepointfrom{#3}%
+	%
+	\def\pgfplots@loc@TMPa##1{%
+		\pgfplotscoordmath{##1}{op}{subtract}{{\csname pgfplots@current@point@##1\endcsname}{\csname pgfplots@last@##1\endcsname}}%
+		\let\pgfplots@diff=\pgfmathresult
+		\pgfplotscoordmath{##1}{parsenumber}{#1}%
+		\pgfplotscoordmath{##1}{op}{multiply}{{\pgfmathresult}{\pgfplots@diff}}%
+		\pgfplotscoordmath{##1}{op}{add}{{\csname pgfplots@last@##1\endcsname}{\pgfmathresult}}%
+		\expandafter\let\csname pgfplots@current@point@##1\endcsname=\pgfmathresult
+	}%
+	\pgfplots@loc@TMPa x%
+	\pgfplots@loc@TMPa y%
+	\ifpgfplots@curplot@threedim
+		\pgfplots@loc@TMPa z%
+	\fi
+	\xdef\pgfplots@glob@TMPb{%
+		\noexpand\def\noexpand\pgfplots@current@point@x{\pgfplots@current@point@x}%
+		\noexpand\def\noexpand\pgfplots@current@point@y{\pgfplots@current@point@y}%
+		\noexpand\def\noexpand\pgfplots@current@point@z{\pgfplots@current@point@z}%
+	}%
+	\endgroup
+	\pgfplots@glob@TMPb
+}%
+
+% \pgfplotsplothandlersurveydifflen#1#2
+%
+% computes the length between two points which are given in logical
+% coordinates. 
+% #1 a serialized point
+% #2 a serialized point
+%
+% The return value is assigned to \pgfmathresult in
+% \pgfplotscoordmath{default} format.
+\def\pgfplotsplothandlersurveydifflen@default#1#2{%
+	\begingroup
+		\pgfplotsplothandlerdeserializepointfrom{#1}%
+		\let\pgfplots@last@x=\pgfplots@current@point@x
+		\let\pgfplots@last@y=\pgfplots@current@point@y
+		\let\pgfplots@last@z=\pgfplots@current@point@z
+		\pgfplotsplothandlerdeserializepointfrom{#2}%
+		\pgfplotscoordmathparsemacro{default}\pgfplots@last@x
+		\pgfplotscoordmathparsemacro{default}\pgfplots@last@y
+		\pgfplotscoordmathparsemacro{default}\pgfplots@current@point@x
+		\pgfplotscoordmathparsemacro{default}\pgfplots@current@point@y
+		\ifpgfplots@curplot@threedim
+			\pgfplotscoordmathparsemacro{default}\pgfplots@last@z
+			\pgfplotscoordmathparsemacro{default}\pgfplots@current@point@z
+		\fi
+		\pgfplotscoordmath{default}{op}{subtract}{{\pgfplots@current@point@x}{\pgfplots@last@x}}%
+		\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\pgfmathresult}}%
+		\let\pgfplots@diff@x=\pgfmathresult
+		\pgfplotscoordmath{default}{op}{subtract}{{\pgfplots@current@point@y}{\pgfplots@last@y}}%
+		\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\pgfmathresult}}%
+		\let\pgfplots@diff@y=\pgfmathresult
+		\pgfplotscoordmath{default}{op}{add}{{\pgfplots@diff@x}{\pgfplots@diff@y}}%
+		\let\pgfplots@len=\pgfmathresult
+		\ifpgfplots@curplot@threedim
+			\pgfplotscoordmath{default}{op}{subtract}{{\pgfplots@current@point@z}{\pgfplots@last@z}}%
+			\pgfplotscoordmath{default}{op}{multiply}{{\pgfmathresult}{\pgfmathresult}}%
+			\let\pgfplots@diff@z=\pgfmathresult
+			\pgfplotscoordmath{default}{op}{add}{{\pgfplots@len}{\pgfplots@diff@z}}%
+			\let\pgfplots@len=\pgfmathresult
+		\fi
+		\pgfplotscoordmath{default}{op}{sqrt}{{\pgfplots@len}}%
+		\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+}%
+
+% \pgfplotsplothandlertransformslopedattime{<time fraction>}{<start>}{<end>}
+%
+% Installs a PGF rotation matrix such that it fits the gradient of the
+% current plot segment between <start> and <end>.
+%
+% #1: a fraction such that 0.0 is <start> and 1.0 is <end>
+% #2: the <start> point (a macro containing the result of \pgfplotsplothandlerserializepointto)
+% #3: the <end> point   (a macro containing the result of \pgfplotsplothandlerserializepointto)
+%
+\def\pgfplotsplothandlertransformslopedattime@default#1#2#3{%
+    \pgf@process{%
+		\pgfplotsplothandlerdeserializepointfrom{#2}%
+		\pgfplotsaxisvisphasegetpoint
+	}%
+    \pgf@xa=\pgf@x% xb/yb = start point
+    \pgf@ya=\pgf@y%
+    \pgf@process{%
+		\pgfplotsplothandlerdeserializepointfrom{#3}%
+		\pgfplotsaxisvisphasegetpoint
+	}%
+    \advance\pgf@x by-\pgf@xa%
+    \advance\pgf@y by-\pgf@ya%
+    \ifpgfallowupsidedownattime%
+    \else%
+      \ifdim\pgf@x<0pt%   
+        \pgf@x=-\pgf@x%
+        \pgf@y=-\pgf@y%
+      \fi%
+    \fi%
+    \pgfpointnormalised{}% x/y = normalised vector
+    \pgf@ya=-\pgf@y%
+    \pgftransformcm%
+    {\pgf@sys@tonumber{\pgf@x}}{\pgf@sys@tonumber{\pgf@y}}%
+    {\pgf@sys@tonumber{\pgf@ya}}{\pgf@sys@tonumber{\pgf@x}}{\pgfpointorigin}%
+}%
+
+
+
+\pgfplotsresetplothandler
+
+% The following two methods constitutes implementations for
+% 'node[pos=<faction>]' which do not interpolate. They only snap to
+% the nearest coordinate.
+%
+% For example, \addplot[scatter] ... node[pos=0.5] {}  should use a
+% unit distance and should not interpolate between scatter points.
+\def\pgfplotsplothandlersurveydifflen@snaptonearest#1#2{%
+	% FIXME : this implies that #1 and #2 are "adjacent" in the
+	% coordinate stream!
+	\pgfplotscoordmath{default}{one}%
+}%
+\def\pgfplotsplothandlersurveypointattime@snaptonearest#1#2#3{%
+	\pgfplotscoordmath{default}{parsenumber}{0.5}%
+	\let\pgfplots@loc@TMPa=\pgfmathresult
+	\pgfplotscoordmath{default}{parsenumber}{#1}%
+	\pgfplotscoordmath{default}{if less than}{\pgfmathresult}{\pgfplots@loc@TMPa}{%
+		\pgfplotsplothandlerdeserializepointfrom{#2}%
+	}{%
+		\pgfplotsplothandlerdeserializepointfrom{#3}%
+	}%
+}%
+% ==================================
+
+% Defines 
+% - a generic update limits routine,
+%   \pgfplotsaxisupdatelimitsforcoordinate#1#2#3
+%   if #3 is empty, it will assume a 2d point, otherwise a 3d point
+%   and the axis will be three dimensional as well.
+%   During \addplot, this auto-detection will be disabled in favor of
+%   the '\addplot3' versus' \addplot' syntax.
+%
+\def\pgfplots@prepare@axis@API{%
+	\pgfplots@curplot@threedimtrue
+	\pgfplots@prepare@axis@API@
+	\let\pgfplotsaxisupdatelimitsforcoordinatethreedim=\pgfplotsaxisupdatelimitsforcoordinate@
+	\let\pgfplotsaxisparsecoordinatethreedim=\pgfplotsaxisparsecoordinate@
+	%
+	\pgfplots@curplot@threedimfalse
+	\pgfplots@prepare@axis@API@
+	\let\pgfplotsaxisupdatelimitsforcoordinatetwodim=\pgfplotsaxisupdatelimitsforcoordinate@
+	\let\pgfplotsaxisparsecoordinatetwodim=\pgfplotsaxisparsecoordinate@
+	%
+	\def\pgfplotsaxisupdatelimitsforcoordinate##1##2##3{%
+		\pgfplots@ifempty{##3}{%
+			\pgfplotsaxisupdatelimitsforcoordinatetwodim{##1}{##2}{}%
+		}{%
+			\global\pgfplots@threedimtrue
+			\pgfplotsaxisupdatelimitsforcoordinatethreedim{##1}{##2}{##3}%
+		}%
+	}%
+	\def\pgfplotsaxisparsecoordinate{%
+		\ifx\pgfplots@current@point@z\pgfutil@empty
+			\pgfplotsaxisparsecoordinatetwodim
+		\else
+			\global\pgfplots@threedimtrue
+			\pgfplotsaxisparsecoordinatethreedim%
+		\fi
+	}%
+}%
+\def\pgfplots@prepare@axis@API@{%
+	\begingroup
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\let\E=\noexpand
+	% Setup Just-In-Time-Macro Compilation:
+	% I compile a set of macros which is highly optimized for this
+	% particular axis configuration.
+	%
+	% \pgfplotsaxisupdatelimitsforcoordinate
+	% Updates the current x and y limits for point (#1,#2).
+	%
+	% To eliminate all those case distinctions, it is created with
+	% 'edef' and a lot of '\noexpand' calls here:
+	%
+	%
+	% The point coordinates are given in floating point format (FIXME)
+	%
+	% Please note that if user specified limits are given, automatic
+	% limits are only applied to points which fall into the user specified
+	% clipping region.
+	%
+	% PRECONDITIONS:
+	% - the input coordinates have been parsed correctly (floating point
+	%   format for linear axis, log applied for logarithmic ones)
+	%
+	% Arguments:
+	% #1,#2,#3 the x,y and z coordinate. z is ignored for 2d plots.
+	\xdef\pgfplotsaxisupdatelimitsforcoordinate@##1##2##3{%
+%\E\tracingmacros=2\E\tracingcommands=2
+%\E\pgfplots@message{Updating limits for (##1,##2) ...}%
+		%
+		% VIM SEARCH PATTERN: 
+		%   [^E]\zs\\\ze[^E]
+		% -> this finds '\' which is neither '\E' nor is it prefixed
+		%  by 'E'.
+		%
+		%
+		%
+		\E\pgfplots@update@limits@for@one@point@ISCLIPPEDfalse
+		% check whether we need to clip limits:
+		\ifpgfplots@clip@limits
+			\ifpgfplots@autocompute@xmin
+			\else
+				\ifpgfplots@xislinear
+					\E\pgfmathfloatlessthan@{##1}{\E\pgfplots@xmin}%
+					\E\ifpgfmathfloatcomparison
+						\E\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+					\E\fi
+				\else
+					\E\pgfplotsmathlessthan{##1}{\E\pgfplots@xmin}%
+					\E\ifpgfmathfloatcomparison
+						\E\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+					\E\fi
+				\fi
+			\fi
+			\ifpgfplots@autocompute@xmax
+			\else
+				\ifpgfplots@xislinear
+					\E\pgfmathfloatlessthan@{\E\pgfplots@xmax}{##1}%
+					\E\ifpgfmathfloatcomparison
+						\E\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+					\E\fi
+				\else
+					\E\pgfplotsmathlessthan{\E\pgfplots@xmax}{##1}%
+					\E\ifpgfmathfloatcomparison
+						\E\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+					\E\fi
+				\fi
+			\fi
+			\ifpgfplots@autocompute@ymin
+			\else
+				\ifpgfplots@yislinear
+					\E\pgfmathfloatlessthan@{##2}{\E\pgfplots@ymin}%
+					\E\ifpgfmathfloatcomparison
+						\E\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+					\E\fi
+				\else
+					\E\pgfplotsmathlessthan{##2}{\E\pgfplots@ymin}%
+					\E\ifpgfmathfloatcomparison
+						\E\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+					\E\fi
+				\fi
+			\fi
+			\ifpgfplots@autocompute@ymax
+			\else
+				\ifpgfplots@yislinear
+					\E\pgfmathfloatlessthan@{\E\pgfplots@ymax}{##2}%
+					\E\ifpgfmathfloatcomparison
+						\E\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+					\E\fi
+				\else
+					\E\pgfplotsmathlessthan{\E\pgfplots@ymax}{##2}%
+					\E\ifpgfmathfloatcomparison
+						\E\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+					\E\fi
+				\fi
+			\fi
+			\ifpgfplots@curplot@threedim
+				\ifpgfplots@autocompute@zmin
+				\else
+					\ifpgfplots@zislinear
+						\E\pgfmathfloatlessthan@{##3}{\E\pgfplots@zmin}%
+						\E\ifpgfmathfloatcomparison
+							\E\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+						\E\fi
+					\else
+						\E\pgfplotsmathlessthan{##3}{\E\pgfplots@zmin}%
+						\E\ifpgfmathfloatcomparison
+							\E\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+						\E\fi
+					\fi
+				\fi
+				\ifpgfplots@autocompute@zmax
+				\else
+					\ifpgfplots@zislinear
+						\E\pgfmathfloatlessthan@{\E\pgfplots@zmax}{##3}%
+						\E\ifpgfmathfloatcomparison
+							\E\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+						\E\fi
+					\else
+						\E\pgfplotsmathlessthan{\E\pgfplots@zmax}{##3}%
+						\E\ifpgfmathfloatcomparison
+							\E\pgfplots@update@limits@for@one@point@ISCLIPPEDtrue
+						\E\fi
+					\fi
+				\fi
+			\fi
+		\fi
+		%
+		%
+		%
+		% Update limits:
+		\E\ifpgfplots@update@limits@for@one@point@ISCLIPPED
+		\E\else
+			\ifpgfplots@autocompute@xmin
+				\ifpgfplots@xislinear
+					\E\pgfplotsmathfloatmin{\E\pgfplots@xmin}{##1}%
+					\E\global\E\let\E\pgfplots@xmin=\E\pgfmathresult
+				\else
+					\E\pgfplotsmathmin{\E\pgfplots@xmin}{##1}%
+					\E\global\E\let\E\pgfplots@xmin=\E\pgfmathresult
+				\fi
+			\fi
+			\ifpgfplots@autocompute@xmax
+				\ifpgfplots@xislinear
+					\E\pgfplotsmathfloatmax{\E\pgfplots@xmax}{##1}%
+					\E\global\E\let\E\pgfplots@xmax=\E\pgfmathresult
+				\else
+					\E\pgfplotsmathmax{\E\pgfplots@xmax}{##1}%
+					\E\global\E\let\E\pgfplots@xmax=\E\pgfmathresult
+				\fi
+			\fi
+			\ifpgfplots@autocompute@ymin
+				\ifpgfplots@yislinear
+					\E\pgfplotsmathfloatmin{\E\pgfplots@ymin}{##2}%
+					\E\global\E\let\E\pgfplots@ymin=\E\pgfmathresult
+				\else
+					\E\pgfplotsmathmin{\E\pgfplots@ymin}{##2}%
+					\E\global\E\let\E\pgfplots@ymin=\E\pgfmathresult
+				\fi
+			\fi
+			\ifpgfplots@autocompute@ymax
+				\ifpgfplots@yislinear
+					\E\pgfplotsmathfloatmax{\E\pgfplots@ymax}{##2}%
+					\E\global\E\let\E\pgfplots@ymax=\E\pgfmathresult
+				\else
+					\E\pgfplotsmathmax{\E\pgfplots@ymax}{##2}%
+					\E\global\E\let\E\pgfplots@ymax=\E\pgfmathresult
+				\fi
+			\fi
+			\ifpgfplots@curplot@threedim
+				\ifpgfplots@autocompute@zmin
+					\ifpgfplots@zislinear
+						\E\pgfplotsmathfloatmin{\E\pgfplots@zmin}{##3}%
+						\E\global\E\let\E\pgfplots@zmin=\E\pgfmathresult
+					\else
+						\E\pgfplotsmathmin{\E\pgfplots@zmin}{##3}%
+						\E\global\E\let\E\pgfplots@zmin=\E\pgfmathresult
+					\fi
+				\fi
+				\ifpgfplots@autocompute@zmax
+					\ifpgfplots@zislinear
+						\E\pgfplotsmathfloatmax{\E\pgfplots@zmax}{##3}%
+						\E\global\E\let\E\pgfplots@zmax=\E\pgfmathresult
+					\else
+						\E\pgfplotsmathmax{\E\pgfplots@zmax}{##3}%
+						\E\global\E\let\E\pgfplots@zmax=\E\pgfmathresult
+					\fi
+				\fi
+			\fi
+		\E\fi
+		%
+		% Compute data range:
+		\ifpgfplots@autocompute@all@limits
+			% the data range will be acquired simply from the axis
+			% range, see below!
+		\else
+			% Attention: it is only done for linear axis!
+			\ifpgfplots@xislinear
+				\E\pgfplotsmathfloatmin{\E\pgfplots@data@xmin}{##1}%
+				\E\global\E\let\E\pgfplots@data@xmin=\E\pgfmathresult
+				\E\pgfplotsmathfloatmax{\E\pgfplots@data@xmax}{##1}%
+				\E\global\E\let\E\pgfplots@data@xmax=\E\pgfmathresult
+			\fi
+			\ifpgfplots@yislinear
+				\E\pgfplotsmathfloatmin{\E\pgfplots@data@ymin}{##2}%
+				\E\global\E\let\E\pgfplots@data@ymin=\E\pgfmathresult
+				\E\pgfplotsmathfloatmax{\E\pgfplots@data@ymax}{##2}%
+				\E\global\E\let\E\pgfplots@data@ymax=\E\pgfmathresult
+			\fi
+			\ifpgfplots@curplot@threedim
+				\ifpgfplots@zislinear
+					\E\pgfplotsmathfloatmin{\E\pgfplots@data@zmin}{##3}%
+					\E\global\E\let\E\pgfplots@data@zmin=\E\pgfmathresult
+					\E\pgfplotsmathfloatmax{\E\pgfplots@data@zmax}{##3}%
+					\E\global\E\let\E\pgfplots@data@zmax=\E\pgfmathresult
+				\fi
+			\fi
+		\fi
+%\E\pgfplots@message{Updated limits: (\E\pgfplots@xmin,\E\pgfplots@ymin) rectangle  (\E\pgfplots@xmax,\E\pgfplots@ymax).}%
+%
+%\E\tracingmacros=0\E\tracingcommands=0
+	}%
+	%
+	% A routine which parses a coordinate.
+	% Here, 'coordinate' means (x,y) for a two dimensional plot and
+	% '(x,y,z)' for a three dimensional one.
+	%
+	% The preparation consists of
+	% - filtering.
+	% - coordinate parsing and high level transformations.
+	% - logs.
+	%
+	% It might happen that \pgfplotsaxisparsecoordinate is called
+	% multiple times for a single data "point" (for example, a quiver
+	% point might call it for the point where the vector starts and
+	% where the vector ends).
+	% 
+	% @PRECONDITION
+	% 	- the plot's survey phase is running (has already been started)
+	% 	- \pgfplots@current@point@[xyz] contains the coordinates of the
+	% 	point. I assume they are unparsed.
+	%
+	%
+	% @POSTCONDITION
+	% 	- the axis' state will be updated.
+	% 	- the \pgfplots@current@point@[xyz] macros will contain parsed data.
+	% 	- \ifpgfplotsaxisparsecoordinateok will be true if and only
+	% 	if the data point has not been filtered away. If it has been
+	% 	filtered away, \pgfplots@current@point@[xyz] will be empty.
+	% 	- \pgfplots@current@point@[xyz]@unfiltered contain unparsed
+	% 	data.
+	%
+	% @see \pgfplotsaxispreparecoordinate
+	% @see \pgfplotsaxisdatapointsurveyed
+	\xdef\pgfplotsaxisparsecoordinate@{%
+		% These things are necessary for error bars and are available
+		% as public results in math parser invocations (for meta and
+		% filters)
+		\E\let\E\pgfplots@current@point@x@unfiltered=\E\pgfplots@current@point@x
+		\E\let\E\pgfplots@current@point@y@unfiltered=\E\pgfplots@current@point@y
+		\E\let\E\pgfplots@current@point@z@unfiltered=\E\pgfplots@current@point@z
+		\E\def\E\pgfplots@unbounded@dir{}%
+		%
+		\E\pgfplots@invoke@prefilter
+		%
+		\E\pgfplots@prepare@xcoord{\E\pgfplots@current@point@x}%
+		\E\expandafter\E\pgfplots@invoke@filter\E\expandafter{\E\pgfmathresult}{x}%
+		\E\let\E\pgfplots@current@point@x=\E\pgfmathresult
+		%
+		\E\pgfplots@prepare@ycoord{\E\pgfplots@current@point@y}%
+		\E\expandafter\E\pgfplots@invoke@filter\E\expandafter{\E\pgfmathresult}{y}%
+		\E\let\E\pgfplots@current@point@y=\E\pgfmathresult
+		%
+		\ifpgfplots@curplot@threedim
+			\E\pgfplots@prepare@zcoord{\E\pgfplots@current@point@z}%
+			\E\expandafter\E\pgfplots@invoke@filter\E\expandafter{\E\pgfmathresult}{z}%
+			\E\let\E\pgfplots@current@point@z=\E\pgfmathresult
+		\fi
+		%
+		\E\pgfplots@invoke@filter@xyz
+		%
+		\E\ifx\E\pgfplots@current@point@x\E\pgfutil@empty
+		\E\else
+			\ifpgfplots@xislinear
+				\E\pgfplotscoordmath{x}{parsenumber}{\E\pgfplots@current@point@x}%
+				\E\let\E\pgfplots@current@point@x=\E\pgfmathresult
+			\else
+				% logs are already parsed (in prepare routine)
+			\fi
+			\E\pgfplotscoordmath{x}{if is bounded}{\E\pgfplots@current@point@x}%
+				{}%
+				{% this clears nan, inf and -inf points.
+					\E\let\E\pgfplots@current@point@x=\E\pgfutil@empty
+					\E\def\E\pgfplots@unbounded@dir{x}%
+				}%
+		\E\fi
+		%
+		\E\ifx\E\pgfplots@current@point@y\E\pgfutil@empty
+		\E\else
+			\ifpgfplots@yislinear
+				\E\pgfplotscoordmath{y}{parsenumber}{\E\pgfplots@current@point@y}%
+				\E\let\E\pgfplots@current@point@y=\E\pgfmathresult
+			\else
+				% logs are already parsed (in prepare routine)
+			\fi
+			\E\pgfplotscoordmath{y}{if is bounded}{\E\pgfplots@current@point@y}%
+				{}%
+				{% this clears nan, inf and -inf points.
+					\E\let\E\pgfplots@current@point@y=\E\pgfutil@empty
+					\E\def\E\pgfplots@unbounded@dir{y}%
+				}%
+		\E\fi
+		%
+		\ifpgfplots@curplot@threedim
+			%
+			\E\ifx\E\pgfplots@current@point@z\E\pgfutil@empty
+			\E\else
+				\ifpgfplots@zislinear
+					\E\pgfplotscoordmath{z}{parsenumber}{\E\pgfplots@current@point@z}%
+					\E\let\E\pgfplots@current@point@z=\E\pgfmathresult
+				\else
+					% logs are already parsed (in prepare routine)
+				\fi
+				\E\pgfplotscoordmath{z}{if is bounded}{\E\pgfplots@current@point@z}%
+					{}%
+					{% this clears nan, inf and -inf points.
+						\E\let\E\pgfplots@current@point@z=\E\pgfutil@empty
+						\E\def\E\pgfplots@unbounded@dir{z}%
+					}%
+			\E\fi
+		\fi
+		%
+		% check if coordinates are bounded:
+		\E\pgfplotsaxisparsecoordinateoktrue
+		\E\ifx\E\pgfplots@current@point@x\E\pgfutil@empty
+			\E\pgfplotsaxisparsecoordinateokfalse
+		\E\else
+			\E\ifx\E\pgfplots@current@point@y\E\pgfutil@empty
+				\E\pgfplotsaxisparsecoordinateokfalse
+			\E\else
+				\ifpgfplots@curplot@threedim
+					\E\ifx\E\pgfplots@current@point@z\E\pgfutil@empty
+						\E\pgfplotsaxisparsecoordinateokfalse
+					\E\fi
+				\fi
+			\E\fi
+		\E\fi
+		%
+	}%
+	%
+	\endgroup
+}%
+
+% ==================================
+% The quiver plot handler.
+% It draws a lot of arrows.
+% Its input is (x_i,y_i); (u_i,v_i) for data point i and it draws a
+% vector in direction (u_i,v_i) starting from (x_i,y_i) .
+% It also supports 3D arrows (involving z_i and w_i).
+ 
+\newif\ifpgfplots@quiver@usetikz
+\newif\ifpgfplots@quiver@updatelimits
+
+\pgfplotsset{
+	% The 'quiver' plot handler for two- and three dimensional plots.
+	%
+	% User Interface:
+	% use /pgfplots/quiver to enable the plot handler.
+	% Then, provide `quiver/u value' or `quiver/u' to 
+	% tell where to find the 'x' coordinates of the vectors, and similarly
+	% for 'v' and 'w' instead of 'u'.
+	quiver/.code={%
+		\let\tikz@plot@handler=\pgfplotsplothandlerquiver
+		\pgfqkeys{/pgfplots/quiver}{#1}%
+	},%
+	quiver/u value*/.initial=0,
+	quiver/v value*/.initial=0,
+	quiver/w value*/.initial=0,
+	quiver/u value is expr/.initial=0,
+	quiver/v value is expr/.initial=0,
+	quiver/w value is expr/.initial=0,
+	quiver/u filter/.code=,
+	quiver/v filter/.code=,
+	quiver/w filter/.code=,
+	quiver/u value/.code	=\pgfplots@set@source@for{quiver/u}{#1}{0},%
+	quiver/u/.code			=\pgfplots@set@source@for{quiver/u}{#1}{1},%
+	quiver/v value/.code	=\pgfplots@set@source@for{quiver/v}{#1}{0},%
+	quiver/v/.code			=\pgfplots@set@source@for{quiver/v}{#1}{1},%
+	quiver/w value/.code	=\pgfplots@set@source@for{quiver/w}{#1}{0},%
+	quiver/w/.code			=\pgfplots@set@source@for{quiver/w}{#1}{1},%
+	quiver/before arrow/.code=,
+	quiver/after arrow/.code=,
+	quiver/every arrow/.style={},
+	quiver/arrow color/.initial=,
+	quiver/scale arrows/.initial=1,
+	quiver/update limits/.is if=pgfplots@quiver@updatelimits,
+	quiver/update limits=true,
+	quiver/colored/.code={%
+		\def\pgfplots@loc@TMPa{#1}%
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\else
+			\pgfkeyslet{/pgfplots/quiver/arrow color}\pgfplots@loc@TMPa
+			\pgfkeysalso{/pgfplots/set point meta if empty=f(x)}%
+		\fi
+	},%
+	quiver/colored/.default=mapped color,
+}%
+
+\def\pgfplots@set@source@for#1#2#3{%
+	\pgfkeyssetvalue{/pgfplots/#1 value*}{#2}%
+	\pgfkeyssetvalue{/pgfplots/#1 is expr}{#3}%
+}%
+% To be used to create a simple parser for keys initialised by
+% \pgfplots@set@source@for:
+%
+% #1: the key path (relative to /pgfplots/) of the data.
+%     Can be empty in which case /pgfplots/#2 is used to access data.
+% #2: the key name of the data
+% #3: a macro name which be will defined to be a parser for the data.
+%
+% The parser will check whether the '#2 is expr' key is set.
+% Furthermore, it defines /data point/#2 to be the result.
+%
+% Example:
+% \pgfplots@set@source@for{hist/data}{...}
+%
+% ->
+%  \pgfplots@prepare@source@parser@for{hist/}{data}\parser
+%
+%  then, invoking \parser
+%  will define \pgfmathresult to be the argument provided to
+%  \pgfplots@set@source@for.
+\def\pgfplots@prepare@source@parser@for#1#2#3{%
+	\pgfkeyslet{/data point/#1#2}\pgfutil@empty%
+	%
+	\pgfkeysgetvalue{/pgfplots/#1#2 value*}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		% assume the '/data point/#1#2' is set by some input
+		% routine.
+		% Invoke math parser in this case.
+		\pgfkeyssetvalue{/pgfplots/#1#2 is expr}{1}%
+	\else
+		\pgfkeyslet{/data point/#1#2}\pgfplots@loc@TMPa
+	\fi
+	\def#3{%
+		\edef\pgfmathresult{\pgfkeysvalueof{/data point/#1#2}}
+%\message{parse coordinate #1#2 (\pgfmathresult) ...^^J}%
+	}%
+	%
+	%
+	\pgfkeysifdefined{/pgfplots/#1#2 coord trafo/.@cmd}{%
+		\pgfkeysgetvalue{/pgfplots/#1#2 coord trafo/.@cmd}\pgfplots@loc@TMPa
+		\ifx\pgfplots@loc@TMPa\pgfplots@empty@command@key
+		\else
+			\t@pgfplots@toka=\expandafter{#3}%
+			\t@pgfplots@tokb={%
+				\def\pgfplots@loc@TMPa{\pgfkeysvalueof{/pgfplots/#1#2 coord trafo/.@cmd}}%
+				\expandafter\pgfplots@loc@TMPa\expandafter{\pgfmathresult}\pgfeov%
+			}%
+			\t@pgfplots@tokc={%
+				\ifx\pgfmathresult\pgfutil@empty
+				\else
+					\pgfmathfloatparsenumber{\pgfmathresult}%
+				\fi
+			}%
+			\edef#3{%
+				\the\t@pgfplots@toka
+				\the\t@pgfplots@tokb
+				\the\t@pgfplots@tokc
+			}%
+		\fi
+	}{}%
+	%
+	\t@pgfplots@toka=\expandafter{#3}%
+	\if1\pgfkeysvalueof{/pgfplots/#1#2 is expr}%
+		\t@pgfplots@tokc={%
+			\ifx\pgfmathresult\pgfutil@empty
+			\else
+				\pgfmathparse{\pgfmathresult}%
+			\fi
+		}%
+	\else
+		\t@pgfplots@tokc={%
+			\ifx\pgfmathresult\pgfutil@empty
+			\else
+				\pgfmathfloatparsenumber{\pgfmathresult}%
+			\fi
+		}%
+	\fi
+	\edef#3{%
+		\the\t@pgfplots@toka
+		\the\t@pgfplots@tokc
+	}%
+	%
+	\pgfkeysgetvalue{/pgfplots/#1#2 filter/.@cmd}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfplots@empty@command@key
+	\else
+		\t@pgfplots@toka=\expandafter{#3}%
+		\t@pgfplots@tokb={%
+			\def\pgfplots@loc@TMPa{\pgfkeysvalueof{/pgfplots/#1#2 filter/.@cmd}}%
+			\expandafter\pgfplots@loc@TMPa\expandafter{\pgfmathresult}\pgfeov%
+		}%
+		\t@pgfplots@tokc={%
+			\ifx\pgfmathresult\pgfutil@empty
+			\else
+				\pgfmathfloatparsenumber{\pgfmathresult}%
+			\fi
+		}%
+		\edef#3{%
+			\the\t@pgfplots@toka
+			\the\t@pgfplots@tokb
+			\the\t@pgfplots@tokc
+		}%
+	\fi
+	%
+	\iftrue
+		\t@pgfplots@toka=\expandafter{#3}%
+		\t@pgfplots@tokc={%
+%\message{parse coordinate (#1#2) = \pgfmathresult.^^J}%
+		}%
+		\edef#3{%
+			\the\t@pgfplots@toka
+			\the\t@pgfplots@tokc
+		}%
+	\fi
+}%
+
+% Invokes /pgfplots/#1 coord inv trafo  on \pgfmathresult if that key
+% exists.
+% #1 the argument is in float (will become the 'default' coordmath
+% eventually).
+%
+% On output, it should either '#1' if there was no coord inv trafo or
+% the result of the trafo.
+\def\pgfplots@coord@trafo@inv@for#1{%
+	\def\pgfplots@loc@TMPb{/pgfplots/#1 coord inv trafo/.@cmd}%
+	\pgfkeysifdefined{\pgfplots@loc@TMPb}{%
+		\pgfkeysgetvalue{\pgfplots@loc@TMPb}\pgfplots@loc@TMPa
+		\ifx\pgfplots@loc@TMPa\pgfplots@empty@command@key
+		\else
+			\pgfmathfloattofixed{\pgfmathresult}%
+			\expandafter\pgfplots@loc@TMPa\expandafter{\pgfmathresult}\pgfeov
+		\fi
+	}{}%
+}
+% Like \pgfplots@coord@trafo@inv@for, but for the normal trafo
+% direction
+\def\pgfplots@coord@trafo@for#1{%
+	\def\pgfplots@loc@TMPb{/pgfplots/#1 coord trafo/.@cmd}%
+	\pgfkeysifdefined{\pgfplots@loc@TMPb}{%
+		\pgfkeysgetvalue{\pgfplots@loc@TMPb}\pgfplots@loc@TMPa
+		\ifx\pgfplots@loc@TMPa\pgfplots@empty@command@key
+		\else
+			\expandafter\pgfplots@loc@TMPa\expandafter{\pgfmathresult}\pgfeov
+		\fi
+	}{}%
+}
+\def\pgfplotsplothandlerquiver{%
+	\pgfplotsresetplothandler
+	\let\pgf@plotstreamstart=\pgfplotsplothandlervisbegin@quiver
+	\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@quiver
+	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@quiver
+	\let\pgfplotsplothandlerserializepointto=\pgfplotsplothandlerserializepointto@quiver
+	\let\pgfplotsplothandlerdeserializepointfrom=\pgfplotsplothandlerdeserializepointfrom@quiver
+	\let\pgfplotsplothandlerpointtokeys=\pgfplotsplothandlerpointtokeys@quiver
+	\let\pgfplotsplothandlerquiver@vis@hook=\pgfutil@empty
+	%
+	\ifpgfplots@xislinear \else \pgfplotsplothandlerquivererror \fi
+	\ifpgfplots@yislinear \else \pgfplotsplothandlerquivererror\fi
+	\pgfplotsifcurplotthreedim{%
+		\ifpgfplots@zislinear \else \pgfplotsplothandlerquivererror \fi
+	}{}%
+}%
+\def\pgfplotsplothandlerquivererror{\pgfplots@error{Sorry, quiver plots for logarithmic axes are not yet implemented. In fact, the implementation does something -- but it will probably change in future releases. Contact the mailing list if you have questions}}%
+
+\def\pgfplotsplothandlersurveystart@quiver{%
+	\pgfkeysgetvalue{/pgfplots/quiver/scale arrows}\pgfplots@quiver@scale
+	\ifx\pgfplots@quiver@scale\pgfutil@empty
+	\else
+		\def\pgfplots@loc@TMPa{1}%
+		\ifx\pgfplots@loc@TMPa\pgfplots@quiver@scale
+			\let\pgfplots@quiver@scale=\pgfutil@empty
+		\else
+			\pgfmathparse{\pgfplots@quiver@scale}%
+			\pgfmathfloatparsenumber\pgfplots@quiver@scale
+			\let\pgfplots@quiver@scale=\pgfmathresult
+		\fi
+	\fi
+	%
+	\pgfplots@prepare@source@parser@for@quiver u\pgfplots@quiver@prepare@u%
+	\pgfplots@prepare@source@parser@for@quiver v\pgfplots@quiver@prepare@v%
+	\pgfplots@prepare@source@parser@for@quiver w\pgfplots@quiver@prepare@w%
+}%
+
+\def\pgfplots@prepare@source@parser@for@quiver#1#2{%
+	\pgfplots@prepare@source@parser@for{quiver/}{#1}{#2}%
+	\t@pgfplots@toka=\expandafter{#2}%
+	\t@pgfplots@tokb=\expandafter{\csname pgfplots@quiver@#1\endcsname}%
+	\edef#2{%
+		\the\t@pgfplots@toka
+		\noexpand\let\the\t@pgfplots@tokb=\noexpand\pgfmathresult
+		\ifx\pgfplots@quiver@scale\pgfutil@empty
+		\else
+			\noexpand\pgfmathfloatmultiply@{\pgfplots@quiver@scale}{\the\t@pgfplots@tokb}%
+			\noexpand\let\the\t@pgfplots@tokb=\noexpand\pgfmathresult
+		\fi
+	}%
+}%
+
+\def\pgfplotsplothandlersurveypoint@quiver{%
+	\pgfplots@quiver@prepare@u
+	\pgfplots@quiver@prepare@v
+	\pgfplotsifcurplotthreedim{%
+		\pgfplots@quiver@prepare@w
+	}{%
+		\let\pgfplots@quiver@w=\pgfutil@empty
+	}%
+	\pgfplotsaxisparsecoordinate
+	\pgfplotsaxispreparecoordinate
+	\ifpgfplotsaxisparsecoordinateok
+		\pgfplotsaxisupdatelimitsforcoordinate\pgfplots@current@point@x\pgfplots@current@point@y\pgfplots@current@point@z
+		%
+		\pgfmathadd@{\pgfplots@quiver@u}{\pgfplots@current@point@x}%
+		\let\pgfplots@quiver@u=\pgfmathresult
+		\pgfmathadd@{\pgfplots@quiver@v}{\pgfplots@current@point@y}%
+		\let\pgfplots@quiver@v=\pgfmathresult
+		\pgfplotsifcurplotthreedim{%
+			\pgfmathadd@{\pgfplots@quiver@w}{\pgfplots@current@point@z}%
+			\let\pgfplots@quiver@w=\pgfmathresult
+		}{}%
+		\ifpgfplots@quiver@updatelimits
+			\pgfplotsaxisupdatelimitsforcoordinate\pgfplots@quiver@u\pgfplots@quiver@v\pgfplots@quiver@w
+		\fi
+	\fi
+	\pgfplotsaxisdatapointsurveyed
+}%
+\def\pgfplotsplothandlerserializepointto@quiver#1{%
+	\edef#1{\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z>\pgfplots@quiver@u,\pgfplots@quiver@v,\pgfplots@quiver@w}%
+}%
+\def\pgfplotsplothandlerdeserializepointfrom@quiver#1{%
+	\expandafter\pgfplotsplothandlerdeserializepointfrom@quiver@#1\relax
+}%
+\def\pgfplotsplothandlerdeserializepointfrom@quiver@#1,#2,#3>#4,#5,#6\relax{%
+	\def\pgfplots@current@point@x{#1}%
+	\def\pgfplots@current@point@y{#2}%
+	\def\pgfplots@current@point@z{#3}%
+	\def\pgfplots@quiver@u{#4}%
+	\def\pgfplots@quiver@v{#5}%
+	\def\pgfplots@quiver@w{#6}%
+}%
+\def\pgfplotsplothandlerpointtokeys@quiver#1{%
+	\pgfplotsplothandlerpointtokeys@default
+	\pgfkeyslet{#1/u}\pgfplots@quiver@u
+	\pgfkeyslet{#1/v}\pgfplots@quiver@v
+	\pgfkeyslet{#1/w}\pgfplots@quiver@w
+}%
+\def\pgfplotsplothandlervisbegin@quiver{%
+	\def\pgfplots@quiver@has@handled@point@meta{0}%
+	\pgfkeysgetvalue{/pgfplots/quiver/arrow color}\pgfplots@quiver@color
+	\ifx\pgfplots@quiver@color\pgfutil@empty
+	\else
+		% prepare the color data and define 'mapped color':
+		\def\pgfplots@quiver@has@handled@point@meta{1}%
+		\expandafter\def\expandafter\pgfplotsplothandlerquiver@vis@hook\expandafter{%
+			\pgfplotsplothandlerquiver@vis@hook
+			\pgfplotsaxisvisphasetransformpointmeta
+			\pgfplotscolormapdefinemappedcolor{\pgfplotspointmetatransformed}%
+		}%
+		% SEE BELOW AS WELL FOR HOW TO ENABLE THE COLOR.
+	\fi
+	%
+	%
+	\pgfkeysgetvalue{/pgfplots/quiver/every arrow/.@cmd}\pgfplots@quiver@everyarrow
+	\ifx\pgfplots@quiver@everyarrow\pgfplots@empty@style@key
+		% use PGF basic level methods to set the 'arrow color':
+		\ifx\pgfplots@quiver@color\pgfutil@empty
+		\else
+			\expandafter\def\expandafter\pgfplotsplothandlerquiver@vis@hook\expandafter{%
+				\pgfplotsplothandlerquiver@vis@hook
+				\pgfsetstrokecolor{\pgfkeysvalueof{/pgfplots/quiver/arrow color}}%
+				% for arrow heads:
+				\pgfsetfillcolor{\pgfkeysvalueof{/pgfplots/quiver/arrow color}}%
+			}%
+		\fi
+	\else
+		% 'every arrow' should provide a high level user interface.
+		% Use tikz instead of pgf. This is slower, but more powerfull.
+		\pgfplots@quiver@usetikztrue
+		\pgfplotsaxisifhaspointmeta{%
+			% ASSERT(mapped color is available)
+			\if0\pgfplots@quiver@has@handled@point@meta%
+				% -> define mapped color
+				\expandafter\def\expandafter\pgfplotsplothandlerquiver@vis@hook\expandafter{%
+					\pgfplotsplothandlerquiver@vis@hook
+					\pgfplotsaxisvisphasetransformpointmeta
+					\pgfplotscolormapdefinemappedcolor{\pgfplotspointmetatransformed}%
+				}%
+				\def\pgfplots@quiver@has@handled@point@meta{1}%
+			\fi
+		}{}%
+		% use tikz methods to set the 'arrow color':
+		\ifx\pgfplots@quiver@color\pgfutil@empty
+		\else
+			\t@pgfplots@toka=\expandafter{\pgfplots@quiver@color}%
+			\edef\pgfplots@loc@TMPa{\noexpand\pgfkeysalso{/pgfplots/quiver/every arrow/.prefix style={\the\t@pgfplots@toka}}}%
+			\pgfplots@loc@TMPa
+		\fi
+	\fi
+	%
+	\global\let\pgf@plotstreampoint=\pgfplotsplothandlerquiver@vis%
+	\global\let\pgf@plotstreamspecial=\pgfutil@gobble%
+	\global\let\pgf@plotstreamend=\relax
+}%
+
+\def\pgfplotsplothandlerquiver@vis#1{%
+	\pgfkeysvalueof{/pgfplots/quiver/before arrow/.@cmd}\pgfeov
+	\pgfplotsplothandlerquiver@vis@hook
+	\ifpgfplots@quiver@usetikz
+		\draw[/pgfplots/quiver/every arrow] \pgfextra{\pgfplotsplothandlerquiver@vis@path{#1}};
+	\else
+		\pgfplotsplothandlerquiver@vis@path{#1}%
+		\pgfusepath{stroke}%
+	\fi
+	\pgfkeysvalueof{/pgfplots/quiver/after arrow/.@cmd}\pgfeov
+}%
+\def\pgfplotsplothandlerquiver@vis@path#1{%
+	\pgfpathmoveto{#1}%
+	\pgfplotsaxisvisphasetransformcoordinate\pgfplots@quiver@u\pgfplots@quiver@v\pgfplots@quiver@w
+	\pgfpathlineto{%
+		\pgfplotsifcurplotthreedim{%
+			\pgfplotsqpointxyz\pgfplots@quiver@u\pgfplots@quiver@v\pgfplots@quiver@w
+		}{%
+			\pgfplotsqpointxy\pgfplots@quiver@u\pgfplots@quiver@v
+		}%
+	}%
+}%
+
+\newif\ifpgfplotsplothandlerhistogram@intervals
+\newif\ifpgfplotsplothandlerhistogram@cumulative
+\pgfplotsset{
+	hist/.code={%
+		\let\tikz@plot@handler=\pgfplotsplothandlerhistogram
+		\pgfqkeys{/pgfplots/hist}{#1}%
+	},
+	hist/data value/.code	=\pgfplots@set@source@for{hist/data}{#1}{0},%
+	hist/data/.code			=\pgfplots@set@source@for{hist/data}{#1}{1},%
+	hist/data filter/.code=,
+	hist/data value=\pgfkeysvalueof{/data point/y},
+%	hist/data=y,
+	hist/data min/.initial=\pgfkeysvalueof{/pgfplots/xmin},
+	hist/data max/.initial=\pgfkeysvalueof{/pgfplots/xmax},
+	hist/bins/.initial=10,
+	hist/intervals/.is if=pgfplotsplothandlerhistogram@intervals,
+	hist/intervals/.default=true,
+	hist/intervals=true,
+	hist/cumulative/.is if=pgfplotsplothandlerhistogram@cumulative,
+	hist/cumulative/.default=true,
+	hist/handler/.style={/tikz/ybar interval},
+	hist/symbolic coords/.style={%
+		/pgfplots/symbolic coords={hist/data}{A,B,C,D,E,F,G,H,I,J},
+		/pgfplots/symbolic coords={x}{A,B,C,D,E,F,G,H,I,J},
+	},%
+}%
+\def\pgfplotsplothandlerhistogram{%
+	\pgfplotsresetplothandler
+	\def\pgf@plotstreamstart{%
+		\pgfplotsset{/pgfplots/hist/handler}%
+		\pgfplotsresetplothandler
+		\tikz@plot@handler
+		\pgf@plotstreamstart
+	}%
+	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@hist
+	\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@hist
+	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@hist
+}%
+\def\pgfplotsplothandlersurveystart@hist{%
+	\pgfplots@prepare@source@parser@for{hist/}{data}{\pgfplotsplothandlerhistogram@parse}%
+	%
+	\pgfkeysgetvalue{/pgfplots/hist/data min}\pgfmathresult
+	\edef\pgfmathresult{\pgfmathresult}%
+	\ifx\pgfmathresult\pgfutil@empty\else
+		\pgfplots@coord@trafo@for{hist/data}%
+	\fi
+	\edef\pgfplotsplothandlerhistogram@datamin{\pgfmathresult}%
+	%
+	\pgfkeysgetvalue{/pgfplots/hist/data max}\pgfmathresult
+	\edef\pgfmathresult{\pgfmathresult}%
+	\ifx\pgfmathresult\pgfutil@empty\else
+		\pgfplots@coord@trafo@for{hist/data}%
+	\fi
+	\edef\pgfplotsplothandlerhistogram@datamax{\pgfmathresult}%
+	%
+	\ifx\pgfplotsplothandlerhistogram@datamin\pgfutil@empty
+		\pgfmathfloatcreate{1}{1.0}{2147483645}%
+		\let\pgfplotsplothandlerhistogram@datamin=\pgfmathresult
+		\def\pgfplotsplothandlerhistogram@datamin@autocompute{1}%
+	\else
+		\pgfmathfloatparsenumber{\pgfplotsplothandlerhistogram@datamin}%
+		\let\pgfplotsplothandlerhistogram@datamin=\pgfmathresult
+		\def\pgfplotsplothandlerhistogram@datamin@autocompute{0}%
+	\fi
+	\ifx\pgfplotsplothandlerhistogram@datamax\pgfutil@empty
+		\pgfmathfloatcreate{2}{1.0}{2147483645}%
+		\let\pgfplotsplothandlerhistogram@datamax=\pgfmathresult
+		\def\pgfplotsplothandlerhistogram@datamax@autocompute{1}%
+	\else
+		\pgfmathfloatparsenumber{\pgfplotsplothandlerhistogram@datamax}%
+		\let\pgfplotsplothandlerhistogram@datamax=\pgfmathresult
+		\def\pgfplotsplothandlerhistogram@datamax@autocompute{0}%
+	\fi
+	%
+	\edef\pgfplotsplothandlerhistogram@Nfixed{\pgfkeysvalueof{/pgfplots/hist/bins}}%
+	\c@pgf@counta=\pgfplotsplothandlerhistogram@Nfixed\relax
+	\advance\c@pgf@counta by-1
+	\edef\pgfplotsplothandlerhistogram@Nmax{\the\c@pgf@counta}%
+	%
+	\pgfmathfloatparsenumber{\pgfplotsplothandlerhistogram@Nfixed}%
+	\let\pgfplotsplothandlerhistogram@N=\pgfmathresult
+	%
+	\pgfplotsapplistXnewempty\pgfp@hist@@
+	\def\c@pgfplotsplothandlerhistogram@num{0}%
+	\c@pgfplots@coordindex=0
+}%
+
+\def\pgfplotsplothandlersurveypoint@hist@limits{%
+	\if1\pgfplotsplothandlerhistogram@datamin@autocompute
+		\pgfplotsmathfloatmin{\pgfplots@current@point@data}{\pgfplotsplothandlerhistogram@datamin}%
+		\let\pgfplotsplothandlerhistogram@datamin=\pgfmathresult
+	\fi
+	%
+	\if1\pgfplotsplothandlerhistogram@datamax@autocompute
+		\pgfplotsmathfloatmax{\pgfplots@current@point@data}{\pgfplotsplothandlerhistogram@datamax}%
+		\let\pgfplotsplothandlerhistogram@datamax=\pgfmathresult
+	\fi
+}%
+\def\pgfplotsplothandlersurveypoint@hist{%
+	% Note that at this point, the coordinate filtering does NOT
+	% apply. Perhaps it should...
+	\pgfplotsplothandlerhistogram@parse
+	\let\pgfplots@current@point@data=\pgfmathresult
+	%
+	\ifx\pgfplots@current@point@data\pgfutil@empty
+	\else
+		\pgfmathfloatiffinite\pgfplots@current@point@data{%
+			\pgfplotsplothandlersurveypoint@hist@limits
+			%
+			\pgfplotsutil@advancestringcounter\c@pgfplotsplothandlerhistogram@num
+			%
+			% store parsed result.
+			\edef\pgfmathresult{{\pgfplots@current@point@data}}%
+			\expandafter\pgfplotsapplistXpushback\expandafter{\pgfmathresult}\to\pgfp@hist@@
+		}{%
+		}%
+	\fi
+	\advance\c@pgfplots@coordindex by1
+}%
+\def\pgfplotsplothandlersurveyend@hist{%
+	\ifnum\c@pgfplotsplothandlerhistogram@num>0
+		\expandafter\pgfplotsplothandlersurveyend@hist@
+	\fi
+}%
+\def\pgfplotsplothandlersurveyend@hist@{%
+	\pgfmathfloatsubtract@{\pgfplotsplothandlerhistogram@datamax}{\pgfplotsplothandlerhistogram@datamin}%
+	\let\pgfplotsplothandlerhistogram@range=\pgfmathresult
+	\pgfmathfloatdivide@{\pgfplotsplothandlerhistogram@range}{\pgfplotsplothandlerhistogram@N}%
+	\let\pgfplotsplothandlerhistogram@h=\pgfmathresult
+	\pgfmathfloatreciprocal@{\pgfplotsplothandlerhistogram@h}%
+	\let\pgfplotsplothandlerhistogram@invh=\pgfmathresult
+	%
+	\pgfplotsarraynewempty{pgfp@hist}%
+	\pgfplotsarrayresize{pgfp@hist}{\pgfplotsplothandlerhistogram@Nfixed}%
+	\pgfplotsarrayforeachungrouped{pgfp@hist}\as\pgfplots@hist@count{%
+		\pgfplotsarrayset{\pgfplotsarrayforeachindex}\of{pgfp@hist}\to{0}%
+	}%
+	%
+	\pgfplotsapplistXlet\pgfplots@hist@data=\pgfp@hist@@
+	\pgfplotsapplistXnewempty\pgfp@hist@@
+	\expandafter\pgfplotsplothandlersurveyend@hist@loop\pgfplots@hist@data\pgfplots@EOI
+	\let\pgfplots@hist@data=\relax
+	%
+	\ifpgfplotsplothandlerhistogram@cumulative
+		\c@pgf@counta=0
+		\pgfplotsarrayforeachungrouped{pgfp@hist}\as\pgfplots@hist@count{%
+			\advance\c@pgf@counta by\pgfplots@hist@count\relax
+			\def\pgfplots@loc@TMPa{\pgfplotsarrayset{\pgfplotsarrayforeachindex}\of{pgfp@hist}\to}%
+			\expandafter\pgfplots@loc@TMPa\expandafter{\the\c@pgf@counta}%
+		}%
+	\fi
+	%
+	\pgfplots@curplot@threedimfalse
+	%
+	\pgfplotsset{/pgfplots/hist/handler}%
+	\pgfplotsresetplothandler
+	\tikz@plot@handler
+	%
+	\pgfplotsplothandlersurveystart
+	%
+	\let\pgfplots@current@point@z=\pgfutil@empty
+	\pgfplotsarrayforeachungrouped{pgfp@hist}\as\pgfplots@hist@count{%
+		\pgfplotsplothandlerhistgetintervalstartfor\pgfplotsarrayforeachindex
+		\pgfplotsplothandlerhist@invtrafo
+		\let\pgfplots@current@point@x\pgfmathresult%
+		\let\pgfplots@current@point@y\pgfplots@hist@count%
+%\message{Survey point (\pgfplots@current@point@x,\pgfplots@current@point@y)^^J}%
+		\pgfplotsplothandlersurveypoint
+	}%
+	\ifpgfplotsplothandlerhistogram@intervals
+		% replicate last count.
+		\let\pgfmathresult\pgfplotsplothandlerhistogram@datamax%
+		\pgfplotsplothandlerhist@invtrafo
+		\let\pgfplots@current@point@x\pgfmathresult%
+		\let\pgfplots@current@point@y\pgfplots@hist@count%
+%\message{Survey point (\pgfplots@current@point@x,\pgfplots@current@point@y)^^J}%
+		\pgfplotsplothandlersurveypoint
+	\fi
+	%
+	\pgfplotsplothandlersurveyend
+}
+\def\pgfplotsplothandlerhist@invtrafo{%
+	% This here might be inefficient, because
+	% there needs to be a compatible "x coord trafo" as well -- and
+	% that transformation will (most likely) do the very same thing as
+	% the hist/data coord trafo. 
+	%
+	% But I did not find a way to combine the transformations
+	% automatically without resorting to hackery.
+	%
+	% And: the performance impact might (hopefully) be small...
+	\pgfplots@coord@trafo@inv@for{hist/data}%
+}%
+\def\pgfplotsplothandlersurveyend@hist@loop#1{%
+	\def\pgfplots@loc@TMPa{#1}%
+	\ifx\pgfplots@loc@TMPa\pgfplots@EOI
+	\else
+		\pgfplotsplothandlerhistgetbinfor@{#1}%
+		\expandafter\pgfplotsplothandlerhistadvancebin\expandafter{\pgfmathresult}%
+		%
+		\expandafter\pgfplotsplothandlersurveyend@hist@loop
+	\fi
+}%
+\def\pgfplotsplothandlerhistadvancebin#1{%
+	\pgfplotsarrayselect{#1}\of{pgfp@hist}\to\pgfplots@loc@TMPa%
+	\pgfplotsutil@advancestringcounter\pgfplots@loc@TMPa
+	\pgfplotsarrayletentry{#1}\of{pgfp@hist}=\pgfplots@loc@TMPa
+}%
+\def\pgfplotsplothandlerhistgetintervalstartfor#1{%
+	\pgfmathfloatparsenumber{#1}%
+	\expandafter\pgfplotsplothandlerhistgetintervalstartfor@\expandafter{\pgfmathresult}%
+}%
+\def\pgfplotsplothandlerhistgetintervalstartfor@#1{%
+	\pgfmathfloatmultiply@{\pgfplotsplothandlerhistogram@h}{#1}%
+	\expandafter\pgfmathfloatadd@\expandafter{\pgfmathresult}{\pgfplotsplothandlerhistogram@datamin}%
+}%
+\def\pgfplotsplothandlerhistgetbinfor#1{%
+	\pgfmathfloatparsenumber{#1}%
+	\expandafter\pgfplotsplothandlerhistgetbinfor@\expandafter{\pgfmathresult}%
+}%
+
+\def\pgfplotsplothandlerhistsettol#1{%
+	\begingroup
+	\pgfmathfloatparsenumber{#1}%
+	\global\let\pgfplotsplothandlerhisttol@parsed=\pgfmathresult
+	\endgroup
+}%
+\pgfplotsplothandlerhistsettol{1e-4}%
+
+\def\pgfplotsplothandlerhistgetbinfor@#1{%
+	\pgfmathfloatsubtract@{#1}{\pgfplotsplothandlerhistogram@datamin}%
+	\expandafter\pgfmathfloatmultiply@\expandafter{\pgfmathresult}{\pgfplotsplothandlerhistogram@invh}%
+	\expandafter\pgfmathfloatadd@\expandafter{\pgfmathresult}{\pgfplotsplothandlerhisttol@parsed}%
+	\pgfmathfloattofixed{\pgfmathresult}%
+	\afterassignment\pgfplots@gobble@until@relax
+	\c@pgf@counta=\pgfmathresult\relax
+	\ifnum\pgfplotsplothandlerhistogram@Nfixed>\c@pgf@counta
+		\ifnum\c@pgf@counta<0
+			\def\pgfmathresult{0}%
+		\else
+			\def\pgfmathresult{\the\c@pgf@counta}%
+		\fi
+	\else
+		\let\pgfmathresult=\pgfplotsplothandlerhistogram@Nmax
+	\fi
+}%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
+%
+% Contour plots
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
+
+\newif\ifpgfplotsplothandlercontour@labels
+\newif\ifpgfplotsplothandlercontour@filled
+
+\pgfplotsset{
+	contour prepared/.code={%
+		\let\tikz@plot@handler=\pgfplotsplothandlercontourprepared
+		\pgfqkeys{/pgfplots/contour}{%
+			#1,%
+		}%
+	},
+	contour prepared filled/.style={%
+		/pgfplots/contour prepared={draw color=mapped color!80!black,labels=false,filled=true},
+	},
+	% FIXME : should use \tikz@plot@handler instead of just the
+	% visualization thing!
+	contour/handler/.style={/tikz/sharp plot},
+	contour prepared format/.is choice,
+	contour prepared format/standard/.code=	{\def\pgfplotsplothandlercontourprepared@format{s}},
+	contour prepared format/matlab/.code=	{\def\pgfplotsplothandlercontourprepared@format{m}},
+	contour prepared format/standard,
+	contour/draw color/.initial=mapped color,
+	contour/fill color/.initial=mapped color,
+	contour/label distance/.initial=70pt,
+	contour/label node code/.code={%
+		\node {\pgfmathprintnumber{#1}};
+	},%
+	contour/labels/.is if=pgfplotsplothandlercontour@labels,
+	contour/labels=true,
+	contour/filled/.is if=pgfplotsplothandlercontour@filled,
+	contour/filled/.default=true,
+	% EXPERIMENTAL: WILL CHANGE EVENTUALLY!
+	% this is (only) used for contour filled:
+	% data limits={(xmin,ymin,zmin,cmin) (xmax,ymax,ymax,cmax}
+	contour/data limits/.initial=,% FIXME EXPERIMENTAL
+	contour/every contour label/.style={%
+		sloped,%
+		transform shape,%
+		inner sep=2pt,
+		font=\scriptsize,
+		every node/.style={mapped color!50!black,fill=white},%
+		/pgf/number format/relative={\pgfplotspointmetarangeexponent},%
+		%every node/.style={yshift=10pt},%
+	},
+	contour/labels over line/.style={
+		/pgfplots/contour/every contour label/.append style={%
+			every node/.append style={%
+				fill=none,
+				anchor=base,
+				yshift=1pt,
+			},
+		},
+	},
+	contour/contour label style/.style={
+		/pgfplots/contour/every contour label/.append style={#1}},
+	%
+	%
+	%  Styles to actually *compute* the contour.
+	%  These are mostly placeholders here: As long as the
+	%  algorithm is not ready, we have to resort to external tools.
+	%
+	%  Shared parameters:
+	contour/number/.initial=5,
+	%
+	%
+	% Interface to external tools:
+	contour external/.code={%
+		\edef\tikz@plot@handler{\noexpand\pgfplotsplothandlercontourexternal}%
+		\pgfqkeys{/pgfplots/contour external}{#1}%
+	},
+	contour external/scanline marks/.is choice,
+	contour external/scanline marks/false/.code={\def\pgfplotsplothandlercontourexternal@scanlinemode{0}},
+	contour external/scanline marks/if in input/.code={\def\pgfplotsplothandlercontourexternal@scanlinemode{1}},
+	contour external/scanline marks/required/.code={\def\pgfplotsplothandlercontourexternal@scanlinemode{2}},
+	contour external/scanline marks/true/.code={\def\pgfplotsplothandlercontourexternal@scanlinemode{2}},
+	contour external/scanline marks/if in input,
+	contour external/file/.initial=,% auto-generate
+	contour external/script extension/.initial=script,
+	contour external/script/.initial=,% not yet initialised
+	contour external/cmd/.initial=,% not yet initialised
+	contour external/.search also=/pgfplots/contour,
+	contour gnuplot/.style={
+		contour external={%
+			scanline marks=required,
+			script={unset surface; set cntrparam levels \pgfkeysvalueof{/pgfplots/contour/number}; set contour; set table \"\outfile\"; splot \"\infile\";},
+			cmd={gnuplot \"\script\"},
+			#1,%
+		},
+	},
+}%
+\def\pgfplotsplothandlercontourprepared{%
+	\pgfplotsresetplothandler
+	\pgfplotsset{empty line=jump}%
+	\let\pgf@plotstreamstart=\pgfplotsplothandlervisstart@contour
+	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@contour
+	\if m\pgfplotsplothandlercontourprepared@format
+		\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@contourmatlabformat
+		\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@contourmatlabformat
+		\pgfplotsaxisifhaspointmeta{}{%
+			\pgfplotsset{/pgfplots/point meta=explicit}%
+		}%
+	\fi
+	\pgfplotsplothandlercontour@prepare@point@meta
+}%
+\def\pgfplotsplothandlercontour@prepare@point@meta{%
+	\ifpgfplots@curplot@threedim
+		\pgfplotsset{/pgfplots/set point meta if empty=z}%
+	\else
+		\pgfplotsaxisifhaspointmeta{}{%
+			\pgfkeysgetvalue{/pgfplots/table/meta index}\pgfplots@loc@TMPa
+			\ifx\pgfplots@loc@TMPa\pgfutil@empty
+% FIXME : this here is reasonable, but it should be sanity checked!
+				\pgfkeyssetvalue{/pgfplots/table/meta index}{2}%
+			\fi
+			\pgfplotsset{/pgfplots/set point meta if empty=explicit}%
+		}%
+		%\pgfplots@error{Sorry, 'contour external' requires \string\addplot3 (or a non-empty `point meta' used as label data)}%
+	\fi
+	\def\pgfplotsplothandlercontour@empty@pointmeta@error@@{0}%
+}%
+\def\pgfplotsplothandlercontour@empty@pointmeta@error{%
+	\if0\pgfplotsplothandlercontour@empty@pointmeta@error@@
+		\def\pgfplotsplothandlercontour@empty@pointmeta@error@@{1}%
+		\def\pgfplots@current@point@meta{0}%
+		\pgfplotsthrow{invalid argument}{\pgfplots@current@point@meta}{Sorry, contour plots require non--empty `point meta'. Please use '\string\addplot3[contour ...] together with 'view={0}{90}' or provide a valid 'point meta=<value>' (for example `<value>=z'?)}\pgfeov%
+	\fi
+}%
+
+\def\pgfplotsplothandlersurveystart@contourmatlabformat{%
+	\def\c@pgfplotsplothandlercontourprepared@matlabformat@cur{0}%
+	\def\c@pgfplotsplothandlercontourprepared@matlabformat@count{0}%
+	\pgfmathfloatparsenumber{nan}%
+	\let\pgfplotsplothandlercontourprepared@matlabformat@meta=\pgfmathresult
+}
+\def\pgfplotsplothandlersurveypoint@contourmatlabformat{%
+	\ifnum\c@pgfplotsplothandlercontourprepared@matlabformat@cur=\c@pgfplotsplothandlercontourprepared@matlabformat@count\relax
+		\pgfmathfloatparsenumber{\pgfplots@current@point@y}%
+		\pgfmathfloattoint\pgfmathresult
+		\let\c@pgfplotsplothandlercontourprepared@matlabformat@count=\pgfmathresult
+		\def\c@pgfplotsplothandlercontourprepared@matlabformat@cur{0}%
+		%
+		\pgfmathfloatparsenumber{\pgfplots@current@point@x}%
+		\let\pgfplots@loc@TMPa=\pgfplotsplothandlercontourprepared@matlabformat@meta
+		\let\pgfplotsplothandlercontourprepared@matlabformat@meta=\pgfmathresult
+		%
+		\ifx\pgfplots@loc@TMPa\pgfplotsplothandlercontourprepared@matlabformat@meta
+			% oh. We have two successive segments of the SAME contour
+			% level. Call the jump handler:
+			\pgfplotsscanlinecomplete
+		\fi
+		%
+	\else
+		\let\pgfplots@current@point@z=\pgfplotsplothandlercontourprepared@matlabformat@meta
+		\let\pgfplots@current@point@meta=\pgfplotsplothandlercontourprepared@matlabformat@meta
+		\pgfplotsplothandlersurveypoint@default
+		\pgfplotsutil@advancestringcounter\c@pgfplotsplothandlercontourprepared@matlabformat@cur
+	\fi
+}%
+\def\pgfplotsplothandlersurveyend@contour{%
+	\pgfplotsplothandlercontour@init@limits
+	\ifx\pgfplotsplothandlercontour@limits@low@meta\pgfutil@empty
+	\else
+		\pgfplotsaxisupdatelimitsforpointmeta\pgfplotsplothandlercontour@limits@low@meta
+	\fi
+}%
+
+\def\pgfplotsplothandlervisstart@contour{%
+	%
+	\ifpgfplotsplothandlercontour@labels
+		\pgfkeysgetvalue{/pgfplots/contour/label distance}\pgfplotsplothandlercontour@labeldist
+		\pgfmathparse{\pgfplotsplothandlercontour@labeldist}%
+		\edef\pgfplotsplothandlercontour@labeldist{\pgfmathresult pt}%
+		%
+		\pgfplotsapplistXnewempty\pgfplotsplothandlercontour@storedlabels
+		\let\pgfplotsplothandlercontour@handlesplinesegment=\pgfplotsplothandlercontour@handlesplinesegment@forlabels
+	\else
+		\def\pgfplotsplothandlercontour@handlesplinesegment##1##2##3{}%
+	\fi
+	%
+	\ifpgfplotsplothandlercontour@filled
+		\pgfseteorule
+		\let\pgfplotsplothandlercontour@sequence@sort@cmp=\pgfutil@empty
+		\pgfplotsapplistXnewempty\pgfplotsplothandlercontour@stored@lastcontourpath
+		\pgfplotsplothandlercontour@init@limits
+	\fi
+	%
+	\pgfplotsresetplothandler
+	\pgfplotsset{/pgfplots/contour/handler}%
+	\tikz@plot@handler
+	%
+	\def\pgfplotsplothandlercontour@haspendingjump{0}%
+	\let\pgfplotsplothandlervisualizejump=\pgfplotsplothandlercontour@jump
+	%
+	\let\pgfplotsplothandlercontour@handler@start=\pgf@plotstreamstart
+	\let\pgfplotsplothandlercontour@lastcontour=\pgfutil@empty
+	\global\let\pgf@plotstreampoint=\pgfplotsplothandlercontour@streampoint
+	\global\let\pgf@plotstreamend=\pgfplotsplothandlercontour@streamend
+}%
+
+\def\pgfplotsplothandlercontour@jump{%
+	\def\pgfplotsplothandlercontour@haspendingjump{1}%
+}%
+
+\def\pgfplotsplothandlercontour@streamend{%
+	\ifx\pgfplotsplothandlercontour@lastcontour\pgfutil@empty
+	\else
+		%
+		\def\pgfplotsplothandlercontour@haspendingjump{0}% important! (this is a different case than a jump)
+		\pgfplotsplothandlercontour@finishcontourline
+		%
+		\ifpgfplotsplothandlercontour@filled
+			\if0\pgfplotsplothandlercontour@processed@outer
+				\pgfplotsplothandlercontour@stream@bbcontour
+				\pgfplotsplothandlercontour@finishcontourline
+			\fi
+		\fi
+		%
+		\ifpgfplotsplothandlercontour@labels
+			\scope[/pgfplots/contour/every contour label]
+			\let\pgfplots@restore@drawmodes=\relax% FIXME : necessary?
+			\pgfplotsapplistXlet\pgfplotsplothandlercontour@storedlabels@=\pgfplotsplothandlercontour@storedlabels
+			\pgfplotsapplistXnewempty\pgfplotsplothandlercontour@storedlabels
+			\expandafter\pgfplotsplothandlercontourplacelabels\pgfplotsplothandlercontour@storedlabels@\pgfplots@EOI
+			\endscope
+		\fi
+	\fi
+}%
+\def\pgfplotsplothandlercontour@check@bbcontour{%
+	\ifpgfplotsplothandlercontour@filled
+		\if0\pgfplotsplothandlercontour@processed@outer
+			\pgfplotscoordmath{meta}{if less than}
+				{\pgfplotsplothandlercontour@act@contour}
+				{\pgfplotsplothandlercontour@limits@low@meta}
+				{%
+					% TRUE!
+					\pgfplotsplothandlercontour@stream@bbcontour@inbetween
+				}{}%
+		\fi
+	\fi
+}%
+\def\pgfplotsplothandlercontour@stream@bbcontour@inbetween{%
+	\def\pgfplotsplothandlercontour@processed@outer{1}%
+}%
+
+\def\pgfplotsplothandlercontour@stream@bbcontour{%
+%\message{contour: processing OUTER data limit contour...}%
+	\def\pgfplotsplothandlercontour@haspendingjump{0}% important
+	%
+	% forbid labels:
+	\let\pgfplotsplothandlercontour@stream@bbcontour@oldlabelsetting=\pgfplotsplothandlercontour@handlesplinesegment
+	\def\pgfplotsplothandlercontour@handlesplinesegment##1##2##3{}%
+	%
+	\let\pgfplots@current@point@meta=\pgfplotsplothandlercontour@limits@low@meta
+	\pgfplotsplothandlercontour@streampoint{%
+		\pgfplotsplothandlerpointxyz
+			\pgfplotsplothandlercontour@limits@low@x
+			\pgfplotsplothandlercontour@limits@low@y
+			\pgfplotsplothandlercontour@limits@low@z
+	}%
+	\pgfplotsplothandlercontour@streampoint{%
+		\pgfplotsplothandlerpointxyz
+			\pgfplotsplothandlercontour@limits@high@x
+			\pgfplotsplothandlercontour@limits@low@y
+			\pgfplotsplothandlercontour@limits@low@z
+	}%
+	\pgfplotsplothandlercontour@streampoint{%
+		\pgfplotsplothandlerpointxyz
+			\pgfplotsplothandlercontour@limits@high@x
+			\pgfplotsplothandlercontour@limits@high@y
+			\pgfplotsplothandlercontour@limits@low@z
+	}%
+	\pgfplotsplothandlercontour@streampoint{%
+		\pgfplotsplothandlerpointxyz
+			\pgfplotsplothandlercontour@limits@low@x
+			\pgfplotsplothandlercontour@limits@high@y
+			\pgfplotsplothandlercontour@limits@low@z
+	}%
+	\pgfplotsplothandlercontour@streampoint{%
+		\pgfplotsplothandlerpointxyz
+			\pgfplotsplothandlercontour@limits@low@x
+			\pgfplotsplothandlercontour@limits@low@y
+			\pgfplotsplothandlercontour@limits@low@z
+	}%
+	\def\pgfplotsplothandlercontour@processed@outer{1}%
+	%
+	% restore labels:
+	\let\pgfplotsplothandlercontour@handlesplinesegment=\pgfplotsplothandlercontour@stream@bbcontour@oldlabelsetting
+}%
+\def\pgfplotsplothandlercontourplacelabels#1{%
+	\def\pgfplots@loc@TMPa{#1}%
+	\ifx\pgfplots@loc@TMPa\pgfplots@EOI
+	\else
+		%
+		\pgfplotsplothandlercontourplacelabels@act#1\relax
+		%
+		\expandafter\pgfplotsplothandlercontourplacelabels
+	\fi
+}%
+\def\pgfplotsplothandlercontourplacelabels@act#1,#2;#3,#4;#5\relax{%
+	\begingroup
+	\def\pgfplots@current@point@meta{#5}%
+	\pgfplotsaxisvisphasetransformpointmeta
+	\pgfplotscolormapdefinemappedcolor{\pgfplotspointmetatransformed}%
+	%
+	\pgftransformlineattime{0.5}{\pgfqpoint{#1}{#2}}{\pgfqpoint{#3}{#4}}%
+	\pgfkeysvalueof{/pgfplots/contour/label node code/.@cmd}#5\pgfeov
+	\endgroup
+}%
+
+\def\pgfplotsplothandlercontour@streampoint#1{%
+	\pgf@process{#1}%
+	% remember point:
+	\edef\pgfplotsplothandlercontour@act@canvas{\pgf@x=\the\pgf@x\space\pgf@y=\the\pgf@y\space}%
+	%
+	\let\pgfplotsplothandlercontour@act@contour=\pgfplots@current@point@meta
+	\ifx\pgfplotsplothandlercontour@act@contour\pgfutil@empty
+		% oh. No Z data!? That should not happen!
+		\pgfplotsplothandlercontour@empty@pointmeta@error
+	\fi
+	\ifx\pgfplotsplothandlercontour@lastcontour\pgfutil@empty
+		% oh. its the very first point.
+		\def\pgfplotsplothandlercontour@haspendingjump{0}% important! (this is a different case than a jump)
+		\pgfplotsplothandlercontour@preparenewcontourline
+	\else
+		\ifx\pgfplotsplothandlercontour@lastcontour\pgfplotsplothandlercontour@act@contour
+			% belongs to the same contour.
+			\if1\pgfplotsplothandlercontour@haspendingjump
+				\pgfplotsplothandlercontour@finishcontourline
+				\pgfplotsplothandlercontour@preparenewcontourline
+			\fi
+		\else
+			% oh, a new contour line.
+			\def\pgfplotsplothandlercontour@haspendingjump{0}% important! (this is a different case than a jump)
+			\pgfplotsplothandlercontour@finishcontourline
+			\pgfplotsplothandlercontour@check@bbcontour
+			\pgfplotsplothandlercontour@preparenewcontourline
+		\fi
+	\fi
+	%
+	%
+	% handle difference vector for label placement:
+	\ifx\pgfplotsplothandlercontour@lastcanvas\pgfutil@empty
+	\else
+		\pgfplotsplothandlercontour@handlesplinesegment
+			{\pgfplotsplothandlercontour@lastcanvas}
+			{\pgfplotsplothandlercontour@act@canvas}%
+			{\pgfplotsplothandlercontour@act@contour}%
+	\fi
+	%
+	\pgfplotsplothandlercontour@handler@streampoint{\pgfplotsplothandlercontour@act@canvas}%
+	\let\pgfplotsplothandlercontour@lastlastcanvas=\pgfplotsplothandlercontour@lastcanvas
+	\let\pgfplotsplothandlercontour@lastcanvas=\pgfplotsplothandlercontour@act@canvas
+	\let\pgfplotsplothandlercontour@lastcontour=\pgfplotsplothandlercontour@act@contour
+	%
+	\ifpgfplotsplothandlercontour@filled
+		\t@pgfplots@toka=\expandafter{\expandafter{\pgfplotsplothandlercontour@act@canvas}}%
+		\expandafter\pgfplotsapplistXpushback\expandafter\pgf@plotstreampoint\the\t@pgfplots@toka
+			\to\pgfplotsplothandlercontour@stored@lastcontourpath
+	\fi
+	%
+	\ifx\pgf@plotstreampoint\pgfplotsplothandlercontour@streampoint
+	\else
+		\let\pgfplotsplothandlercontour@handler@streampoint=\pgf@plotstreampoint
+	\fi
+	\global\let\pgf@plotstreampoint=\pgfplotsplothandlercontour@streampoint
+	\global\let\pgf@plotstreamend=\pgfplotsplothandlercontour@streamend
+	% ATTENTION : if the low level plot handler introduces extra
+	% levels of scopes, this *will* fail!
+}%
+
+%
+% #1 : source
+% #2 : target
+% #3 : contour value
+\def\pgfplotsplothandlercontour@handlesplinesegment@forlabels#1#2#3{%
+	#2%
+	\pgf@xb=\pgf@x
+	\pgf@yb=\pgf@y
+	#1%
+	\pgf@xc=\pgf@x
+	\pgf@yc=\pgf@y
+	\pgfpointdiff
+		{\pgf@x=\pgf@xc \pgf@y=\pgf@yc}
+		{\pgf@x=\pgf@xb \pgf@y=\pgf@yb}%
+	\edef\pgfplots@loc@TMPa{{\pgf@sys@tonumber\pgf@x}{\pgf@sys@tonumber\pgf@y}}%
+	\expandafter\pgfmath@basic@veclen@\pgfplots@loc@TMPa
+	\pgf@xa=\pgfmathresult pt
+	%
+	\advance\pgf@xa by\pgfplotsplothandlercontour@len\relax
+	\edef\pgfplotsplothandlercontour@len{\the\pgf@xa}%
+%\message{contour(\pgfplotsplothandlercontour@act@contour): cur len=\pgfplotsplothandlercontour@len > \pgfplotsplothandlercontour@labeldist ? [segment from #1--#2];}%
+	\ifdim\pgf@xa>\pgfplotsplothandlercontour@labeldist\relax
+		\def\pgfplotsplothandlercontour@haslabel{1}%
+		\edef\pgfplots@loc@TMPa{{\the\pgf@xc,\the\pgf@yc;\the\pgf@xb,\the\pgf@yb;{#3}}}%
+		\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@loc@TMPa}\to\pgfplotsplothandlercontour@storedlabels
+		\advance\pgf@xa by-\pgfplotsplothandlercontour@labeldist\relax
+		\edef\pgfplotsplothandlercontour@len{\the\pgf@xa\relax}%
+	\fi
+}%
+
+% #1: the transformed point meta of the last contour.
+\def\pgfplotsplothandlercontour@filled@assert@is@sorted#1{%
+	\ifx\pgfplotsplothandlercontour@lastcontour\pgfutil@empty
+	\else
+		\ifx\pgfplotsplothandlercontour@sequence@sort@cmp\pgfutil@empty
+			% we need to determine the sorting:
+			\pgfplotscoordmath{float}{if less than}{\pgfplotsplothandlercontour@lastcontour}{\pgfplots@current@point@meta}{%
+				\def\pgfplotsplothandlercontour@sequence@sort@cmp{+}%
+			}{%
+				\pgfplotscoordmath{float}{if less than}{\pgfplots@current@point@meta}{\pgfplotsplothandlercontour@lastcontour}{%
+					\def\pgfplotsplothandlercontour@sequence@sort@cmp{-}%
+				}{%
+					% undecided - the contours have the same label.
+				}%
+			}%
+		\else
+			\if +\pgfplotsplothandlercontour@sequence@sort@cmp
+				\pgfplotscoordmath{float}{if less than}{\pgfplots@current@point@meta}{\pgfplotsplothandlercontour@lastcontour}{%
+					\pgfplotsplothandlercontour@filled@assert@is@sorted@fail{ASCENDING}%
+				}{%
+				}%
+			\else
+				\pgfplotscoordmath{float}{if less than}{\pgfplotsplothandlercontour@lastcontour}{\pgfplots@current@point@meta}{%
+					\pgfplotsplothandlercontour@filled@assert@is@sorted@fail{DESCENDING}%
+				}{%
+				}%
+			\fi
+		\fi
+	\fi
+}%
+\def\pgfplotsplothandlercontour@filled@assert@is@sorted@fail#1{%
+	\begingroup
+	\pgfplotscoordmath{float}{tostring}{\pgfplots@current@point@meta}%
+	\let\offending=\pgfmathresult
+	\pgfplotscoordmath{float}{tostring}{\pgfplotsplothandlercontour@lastcontour}%
+	\let\lastcontour=\pgfmathresult
+	\pgfplots@error{Sorry, filled contours implicitly assume that the contour levels are SORTED (in the given case, they appear to be sorted in #1 order). Please make sure your input data has sorted contour levels. The offending level is \offending; the previous contour level is \lastcontour}%
+	\endgroup
+}
+\def\pgfplotsplothandlercontour@preparenewcontourline{%
+	\if0\pgfplotsplothandlercontour@haspendingjump
+%\message{PREPARE NEW CONTOUR LEVEL (\pgfplots@current@point@meta).}%
+		% a completely new level has been
+		% started, not due to jumps inside of one level.
+		%
+		\let\pgfplotspointmetatransformed@lastcontour=\pgfplotspointmetatransformed
+		% thus, we need to compute 'mapped color':
+		\pgfplotsaxisvisphasetransformpointmeta
+		\pgfplotscolormapdefinemappedcolor{\pgfplotspointmetatransformed}%
+		\pgfsetstrokecolor{\pgfkeysvalueof{/pgfplots/contour/draw color}}%
+		\ifpgfplotsplothandlercontour@filled
+			\pgfplotsplothandlercontour@filled@assert@is@sorted{\pgfplotspointmetatransformed@lastcontour}%
+			\pgfsetfillcolor{\pgfkeysvalueof{/pgfplots/contour/fill color}}%
+		\fi
+		%
+		% furthermore, we need to handle the 'filled' style:
+		\ifpgfplotsplothandlercontour@filled
+			\pgfplotsapplistXlet\pgfplotsplothandlercontour@stored@lastcontourpath@=\pgfplotsplothandlercontour@stored@lastcontourpath
+			% flush:
+			\pgfplotsapplistXnewempty\pgfplotsplothandlercontour@stored@lastcontourpath
+			%
+			% process it:
+			\ifx\pgfplotsplothandlercontour@stored@lastcontourpath@\pgfutil@empty
+				% oh. This here is the very first contour. Nothing to do!
+			\else
+				% ok. This here is the i'th contour level, i>0.
+				% Thus, we have the 'i-1'th contour stored.
+				% REPLICATE its path to fill the space between the (i-1)'th contour and the i'th one!
+				\let\pgf@plotstreamstart=\pgfplotsplothandlercontour@handler@start
+				\pgf@plotstreamstart
+				\pgfplotsplothandlercontour@stored@lastcontourpath@
+				\pgf@plotstreamend
+			\fi
+		\fi
+	\else
+%\message{PREPARE NEW CONTOUR for the already begun level \pgfplots@current@point@meta.}%
+		\ifpgfplotsplothandlercontour@filled
+			\pgfplotsapplistXpushback\pgf@plotstreamstart\to\pgfplotsplothandlercontour@stored@lastcontourpath
+		\fi
+	\fi
+	%
+	\let\pgfplotsplothandlercontour@lastcanvas=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@lastlastcanvas=\pgfutil@empty
+	\ifpgfplotsplothandlercontour@labels
+		\def\pgfplotsplothandlercontour@haslabel{0}%
+		% 
+		% this here means that 20% of labeldist are already there.
+		% it moves the first label nearer to its start.
+		\pgf@xa=\pgfplotsplothandlercontour@labeldist\relax
+		\pgf@xa=0.2\pgf@xa
+		\edef\pgfplotsplothandlercontour@len{\the\pgf@xa}%
+	\fi
+	\def\pgfplotsplothandlercontour@haspendingjump{0}%
+	%
+	\pgfplotsplothandlercontour@handler@start
+	\let\pgfplotsplothandlercontour@handler@end=\pgf@plotstreamend
+	\let\pgfplotsplothandlercontour@handler@streampoint=\pgf@plotstreampoint
+}%
+\def\pgfplotsplothandlercontour@finishcontourline{%
+	\ifpgfplotsplothandlercontour@labels
+		\if0\pgfplotsplothandlercontour@haslabel
+			\ifx\pgfplotsplothandlercontour@lastlastcanvas\pgfutil@empty
+			\else
+				% force a label:
+%\message{FORCING A LABEL for contour \pgfplotsplothandlercontour@lastcontour\space from (\pgfplotsplothandlercontour@lastlastcanvas --\pgfplotsplothandlercontour@lastcanvas)}%
+				\edef\pgfplotsplothandlercontour@len{\pgfplotsplothandlercontour@labeldist}%
+				\pgfplotsplothandlercontour@handlesplinesegment
+					{\pgfplotsplothandlercontour@lastlastcanvas}
+					{\pgfplotsplothandlercontour@lastcanvas}%
+					{\pgfplotsplothandlercontour@lastcontour}%
+			\fi
+		\fi
+	\fi
+	\pgfplotsplothandlercontour@handler@end
+	%
+%	\ifpgfplotsplothandlercontour@filled
+%		\pgfpathclose % FIXME  this is, in general, not good enough.
+%	\fi
+	\if0\pgfplotsplothandlercontour@haspendingjump
+%\message{usepath{} to finalize level \pgfplotsplothandlercontour@lastcontour.}%
+		% flush paths if the complete contour level is ready.
+		% do *not* flush paths if we have just a new part of the
+		% existing contour level.
+		%
+		% This makes a difference for the filled contour.
+		\ifpgfplotsplothandlercontour@filled
+			\pgfusepath{fill,stroke}%
+		\else
+			\pgfusepath{stroke}%
+		\fi
+	\else
+%\message{usepath{} for level \pgfplotsplothandlercontour@lastcontour.}%
+		\ifpgfplotsplothandlercontour@filled
+			\pgfplotsapplistXpushback\pgf@plotstreamend\to\pgfplotsplothandlercontour@stored@lastcontourpath
+		\fi
+	\fi
+}%
+
+\def\pgfplotsplothandlercontour@init@limits{%
+	\def\pgfplotsplothandlercontour@processed@outer{0}%
+	\let\pgfplotsplothandlercontour@limits@low@meta=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@limits@low@x=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@limits@low@y=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@limits@low@z=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@limits@high@meta=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@limits@high@x=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@limits@high@y=\pgfutil@empty
+	\let\pgfplotsplothandlercontour@limits@high@z=\pgfutil@empty
+	%
+	\pgfkeysgetvalue{/pgfplots/contour/data limits}\pgfplots@loc@TMPa
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\def\pgfplotsplothandlercontour@processed@outer{1}%
+	\else
+		\expandafter\pgfplotsplothandlercontour@init@limits@getboundingboxlow\pgfplots@loc@TMPa\pgfplots@EOI
+	\fi
+%\message{contour: I processed data limits to MIN = (\pgfplotsplothandlercontour@limits@low@x,\pgfplotsplothandlercontour@limits@low@y,\pgfplotsplothandlercontour@limits@low@z;\pgfplotsplothandlercontour@limits@low@meta) and MAX = (\pgfplotsplothandlercontour@limits@high@x,\pgfplotsplothandlercontour@limits@high@y,\pgfplotsplothandlercontour@limits@high@z;\pgfplotsplothandlercontour@limits@high@meta).}%
+}%
+\def\pgfplotsplothandlercontour@init@limits@getboundingboxlow(#1,#2,#3,#4){%
+	\def\pgfplotsplothandlercontour@init@limits@cur{low}%
+	\pgfplotsplothandlercontour@init@limits@read(#1,#2,#3,#4)%
+	\pgfutil@ifnextchar(%
+		\pgfplotsplothandlercontour@init@limits@getboundingboxhigh
+		{\pgfplots@error{Sorry, 'data limits=(xmin,ymin,zmin,contourmin) (xmax,ymax,zmax,contourmax)' has been expected, not \pgfkeysvalueof{/pgfplots/contour/data limits}}\pgfplots@gobble@until@EOI}%
+}%
+\def\pgfplotsplothandlercontour@init@limits@getboundingboxhigh(#1,#2,#3,#4){%
+	\def\pgfplotsplothandlercontour@init@limits@cur{high}%
+	\pgfplotsplothandlercontour@init@limits@read(#1,#2,#3,#4)%
+	\pgfutil@gobble
+}%
+\def\pgfplotsplothandlercontour@init@limits@read(#1,#2,#3,#4){%
+	% FIXME : logs and trafos and user interface!
+	\pgfplotscoordmath{x}{parsenumber}{#1}%
+	\pgfplotscoordmath{x}{datascaletrafo}\pgfmathresult
+	\expandafter\let\csname pgfplotsplothandlercontour@limits@\pgfplotsplothandlercontour@init@limits@cur @x\endcsname=\pgfmathresult
+	%
+	\pgfplotscoordmath{y}{parsenumber}{#2}%
+	\pgfplotscoordmath{y}{datascaletrafo}\pgfmathresult
+	\expandafter\let\csname pgfplotsplothandlercontour@limits@\pgfplotsplothandlercontour@init@limits@cur @y\endcsname=\pgfmathresult
+	%
+	\ifpgfplots@curplot@threedim
+		\pgfplotscoordmath{z}{parsenumber}{#3}%
+		\pgfplotscoordmath{z}{datascaletrafo}\pgfmathresult
+		\expandafter\let\csname pgfplotsplothandlercontour@limits@\pgfplotsplothandlercontour@init@limits@cur @z\endcsname=\pgfmathresult
+	\fi
+	%
+	\pgfplotscoordmath{meta}{parsenumber}{#4}%
+	\expandafter\let\csname pgfplotsplothandlercontour@limits@\pgfplotsplothandlercontour@init@limits@cur @meta\endcsname=\pgfmathresult
+}%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% contour external implementation
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\def\pgfplotsplothandlercontourexternal{%
+	\pgfplotsresetplothandler
+	\def\pgfplotsplothandlername{contour external}%
+	%
+	\pgfplotsplothandlercontour@prepare@point@meta
+	%
+	\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@contourexternal
+	\def\pgf@plotstreamstart{%
+		\pgfplotsplothandlercontourprepared
+		\pgf@plotstreamstart
+	}%
+}%
+\gdef\c@pgfplotsplothandlersurveystart@contourexternal@fileno{0}%
+\def\pgfplotsplothandlersurveystart@contourexternal{%
+	%
+	\pgfkeysgetvalue{/pgfplots/contour external/file}\pgfplotsplothandlercontourexternal@file
+	%
+	\ifx\pgfplotsplothandlercontourexternal@file\pgfutil@empty
+		\pgfutil@ifundefined{pgfactualjobname}{%
+			\let\pgfplots@loc@TMPa=\jobname
+		}{%
+			% be compatible with external lib:
+			\let\pgfplots@loc@TMPa=\pgfactualjobname
+		}%
+		\edef\pgfplotsplothandlercontourexternal@file{\pgfplots@loc@TMPa_contourtmp\c@pgfplotsplothandlersurveystart@contourexternal@fileno}%
+		\pgfplotsutil@advancestringcounter@global\c@pgfplotsplothandlersurveystart@contourexternal@fileno
+	\fi
+	%
+	\if0\pgfplotsplothandlercontourexternal@scanlinemode
+		\pgfplotsset{plot to file/scanline marks/false}%
+	\else	
+		\pgfplotsset{plot to file/scanline marks/if in input}% the choice 'always' is unaware of existing end-of-scanline marks
+	\fi
+	\pgfplotsplothandlertofile{\pgfplotsplothandlercontourexternal@file.dat}%
+	\pgfplotsplothandlersurveystart
+	\let\pgfplotsplothandlersurveypoint@tofile=\pgfplotsplothandlersurveypoint
+	\let\pgfplotsplothandlersurveyend@tofile=\pgfplotsplothandlersurveyend
+	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@contourexternal
+	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@contourexternal
+}%
+\def\pgfplotsplothandlersurveypoint@contourexternal{%
+	% temporarily disable updates to point meta limits. They should be
+	% updated during the contour prepared processing.
+	\let\pgfplotsplothandlercontourexternal@orig@perpointlimits@limits=\pgfplots@set@perpointmeta@limits
+	\let\pgfplots@set@perpointmeta@limits=\relax
+	%
+	\pgfplotsaxissurveysetpointmeta
+	\let\pgfplots@current@point@z=\pgfplots@current@point@meta
+	%
+	\let\pgfplots@set@perpointmeta@limits=\pgfplotsplothandlercontourexternal@orig@perpointlimits@limits
+	%
+%\message{contour gnuplot: collecting point (\pgfplots@current@point@x,\pgfplots@current@point@y,\pgfplots@current@point@z) [\pgfplots@current@point@meta]...}%
+	\pgfplotsplothandlersurveypoint@tofile
+}%
+
+{
+\catcode`\`=12
+\catcode`\'=12
+\catcode`\"=12
+\catcode`\|=12
+\catcode`\;=12
+\catcode`\:=12
+\catcode`\#=12
+\gdef\pgfplotsplothandlersurveyend@contourexternal{%
+	\pgfplotsplothandlersurveyend@tofile
+	\if2\pgfplotsplothandlercontourexternal@scanlinemode
+		\if0\pgfplotsplothandlertofilegeneratedscanlinemarks
+			\pgfplots@error{Sorry, processing the input stream did not lead to end-of-scanline markers; the generated temporary file for 'contour external' does not contain any of them (indicating that matrix structure is lost). To fix this, you have the following options:^^J - Insert end-of-scanline markers into your input data (i.e. empty lines),^^J - provide two of the three options 'mesh/rows=<num matrix rows>, mesh/cols=<num matrix cols>, mesh/num points=<total number points>'}%
+		\fi
+	\fi
+	%
+	\begingroup
+	\let\numcoords=\pgfplots@current@point@coordindex%
+	\pgfplotsautocompletemeshkeys
+	\def\"{"}%
+	\def\|{|}%
+	\def\;{;}%
+	\def\:{:}%
+	\def\#{#}%
+	\def\'{'}%
+	\def\`{`}%
+	\edef\ordering{\pgfplots@plot@mesh@ordering}%
+	\edef\infile{\pgfplotsplothandlercontourexternal@file.dat}%
+	\edef\outfile{\pgfplotsplothandlercontourexternal@file.table}%
+	\edef\script{\pgfplotsplothandlercontourexternal@file.\pgfkeysvalueof{/pgfplots/contour external/script extension}}%
+	\immediate\openout\w@pgf@writea=\script
+	\immediate\write\w@pgf@writea{\pgfkeysvalueof{/pgfplots/contour external/script}}%
+	\immediate\closeout\w@pgf@writea
+	%
+	\immediate\write18{\pgfkeysvalueof{/pgfplots/contour external/cmd}}%
+	\endgroup
+	%
+	%
+	\pgfplotsplothandlercontourprepared
+	\let\pgfplots@coord@stream@start=\relax% has already been done.
+	\def\pgfplots@coord@stream@end{\pgfplotsplothandlersurveyend}%
+	\ifpgfplots@curplot@threedim
+		\pgfplotssetpointmetainput{z}{}%
+	\else
+		\pgfplotssetpointmetainput{explicit}{}%
+	\fi
+	\pgfplots@addplotimpl@file@streamit{\pgfplotsplothandlercontourexternal@file.table}%
+	\closein\r@pgfplots@reada
+}%
+}
+
+		
+
+
+
+% the `plot unprocessed to file' plot handler simply copies the input data
+% UNPROCESSED to an output file.
+%
+% I use it as helper tool for `contour gnuplot'.
+%
+% this cannot be combined with other plot handlers unless the other
+% plot handlers controls that explicitly
+%
+% Immediately after the survey ends, this plot handler will set
+% \pgfplotsplothandlertofilegeneratedscanlinemarks to '1' or '0'.
+\pgfplotsset{
+	plot unprocessed to file/.code={
+		\edef\tikz@plot@handler{\noexpand\pgfplotsplothandlertofile{#1}}%
+	},
+	plot to file/scanline marks/.is choice,
+	plot to file/scanline marks/false/.code={\def\pgfplotsplothandlertofile@scanlinemarks{0}},
+	plot to file/scanline marks/if in input/.code={\def\pgfplotsplothandlertofile@scanlinemarks{1}},
+	plot to file/scanline marks/always/.code={\def\pgfplotsplothandlertofile@scanlinemarks{2}},
+	plot to file/scanline marks/true/.code={\def\pgfplotsplothandlertofile@scanlinemarks{2}},
+	plot to file/scanline marks/if in input,
+	plot to file/col sep/.initial=\pgfplots@TAB,
+	plot to file/end-of-scanline content/.initial=,
+}
+
+\def\pgfplotsplothandlertofile#1{%
+	\edef\pgfplotsplothandlertofile@name{#1}%
+	\pgfplotsresetplothandler
+	\pgfplotsset{empty line=scanline}%
+	\let\pgfplotsplothandlersurveystart=\pgfplotsplothandlersurveystart@tofile
+	\def\pgfplotsplothandlername{plot to file}%
+	\let\pgfplotsplothandlersurveyend=\pgfplotsplothandlersurveyend@tofile
+	\let\pgfplotsplothandlersurveypoint=\pgfplotsplothandlersurveypoint@tofile
+	\let\pgfplotsplothandlernotifyscanlinecomplete=\pgfplotsplothandlernotifyscanlinecomplete@tofile
+	%
+	\if1\pgfplotsplothandlertofile@scanlinemarks
+		% plot to file/scanline marks=if in input
+		% check if we have mesh input:
+		\def\pgfplots@loc@TMP@has@mesh@information{0}%
+		\pgfkeysgetvalue{/pgfplots/mesh/rows}\pgfplots@loc@TMPa
+		\pgfkeysgetvalue{/pgfplots/mesh/cols}\pgfplots@loc@TMPb
+		\pgfkeysgetvalue{/pgfplots/mesh/num points}\pgfplots@loc@TMPc
+		\ifx\pgfplots@loc@TMPa\pgfutil@empty
+			\ifx\pgfplots@loc@TMPc\pgfutil@empty
+			\else
+				% has rows and num points:
+				\def\pgfplots@loc@TMP@has@mesh@information{1}%
+			\fi
+		\else
+			\ifx\pgfplots@loc@TMPb\pgfutil@empty
+				\ifx\pgfplots@loc@TMPc\pgfutil@empty
+				\else
+					% has cols and num points:
+					\def\pgfplots@loc@TMP@has@mesh@information{1}%
+				\fi
+			\else
+				% has rows,cols:
+				\def\pgfplots@loc@TMP@has@mesh@information{1}%
+			\fi
+		\fi
+		\if1\pgfplots@loc@TMP@has@mesh@information
+			% activate 'plot to file/scanline marks=always
+			% --> we have the required information!
+			\def\pgfplotsplothandlertofile@scanlinemarks{2}%
+		\fi
+	\fi
+	% NO \else here!
+	\if2\pgfplotsplothandlertofile@scanlinemarks
+		% plot to file/scanline marks=always
+		\pgfplotsautocompletemeshkeys%
+		\def\c@pgfplotsplothandlertofile@scanlinelength{0}%
+		\if\pgfplots@plot@mesh@ordering0%
+			% ordering = x varies= rowwise -> scanline is cols!
+			\pgfkeysgetvalue{/pgfplots/mesh/cols}\c@pgfplotsplothandlertofile@expectedscanline
+		\else
+			% ordering = y varies = colwise: scanline is rows!
+			\pgfkeysgetvalue{/pgfplots/mesh/rows}\c@pgfplotsplothandlertofile@expectedscanline
+		\fi
+	\fi
+	\pgfplotsplothandlertofile@scanlinependingfalse
+	\pgfkeysgetvalue{/pgfplots/plot to file/col sep}\pgfplotsplothandlertofile@colsep
+	\pgfkeysgetvalue{/pgfplots/plot to file/end-of-scanline content}\pgfplotsplothandlertofile@scanlinemark
+	%
+	%
+	\def\pgfplotsplothandlertofilegeneratedscanlinemarks{0}%
+}%
+\def\pgfplotsplothandlertofile@scanlinemarks@check{%
+	\if2\pgfplotsplothandlertofile@scanlinemarks
+		% plot to file/scanline marks=always
+		\pgfplotsutil@advancestringcounter\c@pgfplotsplothandlertofile@scanlinelength
+		\ifnum\c@pgfplotsplothandlertofile@scanlinelength=\c@pgfplotsplothandlertofile@expectedscanline
+			\def\c@pgfplotsplothandlertofile@scanlinelength{0}%
+			\pgfplotsplothandlernotifyscanlinecomplete@tofile
+		\fi
+	\fi
+}%
+\newif\ifpgfplotsplothandlertofile@scanlinepending
+\def\pgfplotsplothandlernotifyscanlinecomplete@tofile{%
+	\if0\pgfplotsplothandlertofile@scanlinemarks
+	\else
+		\pgfplotsplothandlertofile@scanlinependingtrue
+	\fi
+}%
+\def\pgfplotsplothandlersurveypoint@tofile{%
+	\ifpgfplotsplothandlertofile@scanlinepending
+		\def\pgfplotsplothandlertofilegeneratedscanlinemarks{1}%
+		\immediate\write\w@pgf@writea{\pgfplotsplothandlertofile@scanlinemark}% end-of-scanline
+		\pgfplotsplothandlertofile@scanlinependingfalse
+	\fi
+	\pgfplotscoordmath{x}{parsenumber}{\pgfplots@current@point@x}%
+	\pgfplotscoordmath{x}{tostring}{\pgfmathresult}%
+	\let\pgfplots@current@point@x=\pgfmathresult
+	%
+	\pgfplotscoordmath{y}{parsenumber}{\pgfplots@current@point@y}%
+	\pgfplotscoordmath{y}{tostring}{\pgfmathresult}%
+	\let\pgfplots@current@point@y=\pgfmathresult
+	%
+	\ifpgfplots@curplot@threedim
+		\pgfplotscoordmath{z}{parsenumber}{\pgfplots@current@point@z}%
+		\pgfplotscoordmath{z}{tostring}{\pgfmathresult}%
+		\let\pgfplots@current@point@z=\pgfmathresult
+	\fi
+	%
+	\pgfplotsaxissurveysetpointmeta
+	\pgfplotsaxisifhaspointmeta{%
+		\pgfplotscoordmath{meta}{tostring}{\pgfplots@current@point@meta}%
+		\let\pgfplots@current@point@meta=\pgfmathresult
+	}{}%
+	%
+	\immediate\write\w@pgf@writea{%
+		\pgfplots@current@point@x\pgfplotsplothandlertofile@colsep
+		\pgfplots@current@point@y\pgfplotsplothandlertofile@colsep
+		\ifpgfplots@curplot@threedim\pgfplots@current@point@z\pgfplotsplothandlertofile@colsep\fi
+		\pgfplots@current@point@meta
+	}%
+	\advance\c@pgfplots@coordindex by1
+	\pgfplotsplothandlertofile@scanlinemarks@check
+}%
+\def\pgfplotsplothandlersurveyend@tofile{%
+	\immediate\closeout\w@pgf@writea
+}%
+\def\pgfplotsplothandlersurveystart@tofile{%
+	\immediate\openout\w@pgf@writea=\pgfplotsplothandlertofile@name\relax
+}%
+
+
+\input pgfplotsmeshplothandler.code.tex

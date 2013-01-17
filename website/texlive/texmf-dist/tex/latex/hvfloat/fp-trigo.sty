@@ -1,0 +1,1119 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{fp-trigo}[1995/04/14]
+
+%version information
+\def\FP@trigoversion{0.9e}
+\message{%
+  `Fixed Point Trigonometry',%
+  \space\space\space\space\space\space%
+  Version \FP@trigoversion%
+  \space(C) Michael Mehlich%
+  \space\space\space\space\space\space\space%
+  \space\space\space\space\space\space%
+}
+
+%resolve dependencies
+\RequirePackage{fp-basic}
+
+%%%public area (macros which may be used)%%%
+
+%constants
+\edef\FPpi{3.141592653589793238}
+
+%unary functions
+\def\FPsin#1#2{\FP@calld\FP@sin#1{#2}}
+\def\FPcos#1#2{\FP@calld\FP@cos#1{#2}}
+\def\FPsincos#1#2#3{\FP@calle\FP@sincos#1#2{#3}}
+\def\FPtan#1#2{\FP@calld\FP@tan#1{#2}}
+\def\FPcot#1#2{\FP@calld\FP@cot#1{#2}}
+\def\FPtancot#1#2#3{\FP@calle\FP@tancot#1#2{#3}}
+\def\FParcsin#1#2{\FP@calld\FP@arcsin#1{#2}}
+\def\FParccos#1#2{\FP@calld\FP@arccos#1{#2}}
+\def\FParcsincos#1#2#3{\FP@calle\FP@arcsincos#1#2{#3}}
+\def\FParctan#1#2{\FP@calld\FP@arctan#1{#2}}
+\def\FParccot#1#2{\FP@calld\FP@arccot#1{#2}}
+\def\FParctancot#1#2#3{\FP@calle\FP@arctancot#1#2{#3}}
+
+%%%private fp-area (don't use these macros)%%%
+
+%allocate registers
+
+\countdef\FP@ls=50
+\countdef\FP@lfa=51
+\countdef\FP@lfb=52
+
+\countdef\FP@loops=53
+\countdef\FP@oct=54
+
+\countdef\FP@@arccos=55
+\countdef\FP@oldvala=56
+\countdef\FP@oldvalb=57
+\countdef\FP@subfpih=58
+
+%compute 0<=x<2pi for value 2pi*n + x
+
+\def\FP@modtwopi#1#2{%result is the family {x}
+  % #1 integer part of value
+  % #2 fractional part of value
+  \FP@readvalue{x}{#1}{#2}%
+  %
+  \ifnum\ifnum\FP@xib=0 1\else0\fi\ifnum\FP@xia<6 1\else0\fi<11\relax%
+      %compute modulo without caring about sign
+      \FP@shift=0\relax%
+      \FP@ys=1\FP@yia=628318530\FP@yib=717958647\FP@yfa=692528676\FP@yfb=655900577\relax%2*pi
+      \loop%
+        \ifnum\FP@xia<100000000\relax%
+	   \FP@multen{x}%
+	   \advance\FP@shift-1\relax%
+	\repeat%
+      \FP@loops=18\relax\advance\FP@loops\FP@shift%
+      \loop%
+        \ifnum\FP@loops=0\else%
+	   \advance\FP@loops-1\relax%
+	   \FP@counttimes%divides x by \FP@times*y%
+	   \FP@divten{y}%
+	\repeat%
+      \loop%
+        \ifnum\FP@shift<0%
+	  \advance\FP@shift1\relax%
+	  \FP@divten{x}%
+	\repeat%
+  \fi%
+  %correct the result for negative values (modulo is positive)
+  \loop%should be computed only once
+    \ifnum\FP@xs<0\relax%
+      \advance\FP@xfb-179586477\relax\FP@xfb=-\FP@xfb%
+      \ifnum\FP@xfb<0\relax%
+	\advance\FP@xfb1000000000\relax%
+	\advance\FP@xfa1\relax%
+      \fi%
+      \advance\FP@xfa-283185307\relax\FP@xfa=-\FP@xfa%
+      \ifnum\FP@xfa<0\relax%
+	\advance\FP@xfa1000000000\relax%
+	\advance\FP@xib1\relax%
+      \fi%
+      \advance\FP@xib-6\relax\FP@xib=-\FP@xib%
+      \ifnum\FP@xib<0%
+	\FP@errmessage{Error in calculation: This shouldn't happen!}%
+      \else%
+	\FP@xs=1\relax%
+      \fi%
+    \repeat%
+}
+
+%auxiliary functions
+
+\def\FP@trigocmpsval#1#2#3{%
+  % #1 macro, which gets the result
+  % #2 9 digits integer value
+  % #3 9 digits integer value
+  \ifnum#2<#3\relax%
+    #1=-1\relax%
+  \else\ifnum#2>#3\relax%
+    #1=1\relax%
+  \else%
+    #1=0\relax%
+  \fi\fi%
+}
+
+\def\FP@trigocmpval#1#2#3#4#5#6#7{%
+  % #1 macro, which gets the result
+  % #2 9 digits integer value
+  % #3 9 digits integer value
+  % #4 9 digits integer value
+  % #5 9 digits integer value
+  % #6 9 digits integer value
+  % #7 9 digits integer value
+  %
+  \FP@trigocmpsval#1{#2}{#5}%
+  \ifnum#1=0\relax\FP@trigocmpsval#1{#3}{#6}\relax\fi%
+  \ifnum#1=0\relax\FP@trigocmpsval#1{#4}{#7}\relax\fi%
+}
+
+\def\FP@trigosub#1#2#3#4#5#6{%
+  % #1 resulting fractional part one
+  % #2 resulting fractional part two
+  % #3 1st value fractional part one
+  % #4 1st value fractional part two
+  % #5 2nd value fractional part one
+  % #6 2nd value fractional part two
+  \FP@rfb=#4\relax\advance\FP@rfb-#6\relax%
+  \FP@rfa=#3\relax\advance\FP@rfa-#5\relax%
+  \ifnum\FP@rfb<0\relax%
+    \advance\FP@rfa-1\relax%
+    \advance\FP@rfb1000000000\relax%
+  \fi%
+  \ifnum\FP@rfa<0\relax%
+    \advance\FP@rfa1000000000\relax%
+  \fi%
+  #1=\FP@rfa%
+  #2=\FP@rfb%
+}
+
+%compute octand of value and transform value to one between 0 and pi/4
+
+\def\FP@octand#1#2{%resulting values \FP@oct, family {x}
+  % #1 integer part of value
+  % #2 fractional part of value
+  %
+  \FP@modtwopi{#1}{#2}%
+  %now it is 0<={x}<2pi
+  %
+  \FP@trigocmpval\FP@oct\FP@xib\FP@xfa\FP@xfb{3}{141592653}{589793238}%
+  \ifnum\FP@oct>0\relax%
+     \FP@trigocmpval\FP@oct\FP@xib\FP@xfa\FP@xfb{4}{712388980}{384689858}%
+     \ifnum\FP@oct>0\relax%
+        \FP@trigocmpval\FP@oct\FP@xib\FP@xfa\FP@xfb{5}{497787143}{782138167}%
+	\ifnum\FP@oct>0\relax%
+	   \FP@oct=7\relax%
+	   \FP@trigosub\FP@xfa\FP@xfb{283185307}{179586477}\FP@xfa\FP@xfb%
+	\else%
+	   \FP@oct=6\relax%
+	   \FP@trigosub\FP@xfa\FP@xfb\FP@xfa\FP@xfb{712388980}{384689858}%
+	\fi%
+     \else%
+        \FP@trigocmpval\FP@oct\FP@xib\FP@xfa\FP@xfb{3}{926990816}{987241548}%
+	\ifnum\FP@oct>0\relax%
+	   \FP@oct=5\relax%
+	   \FP@trigosub\FP@xfa\FP@xfb{712388980}{384689858}\FP@xfa\FP@xfb%
+	\else%
+	   \FP@oct=4\relax%
+	   \FP@trigosub\FP@xfa\FP@xfb\FP@xfa\FP@xfb{141592653}{589793238}%
+	\fi%
+     \fi%
+  \else%
+     \FP@trigocmpval\FP@oct\FP@xib\FP@xfa\FP@xfb{1}{570796326}{794896619}%
+     \ifnum\FP@oct>0\relax%
+        \FP@trigocmpval\FP@oct\FP@xib\FP@xfa\FP@xfb{2}{356194490}{192344929}%
+	\ifnum\FP@oct>0\relax%
+	   \FP@oct=3\relax%
+	   \FP@trigosub\FP@xfa\FP@xfb{141592653}{589793238}\FP@xfa\FP@xfb%
+	\else%
+	   \FP@oct=2\relax%
+	   \FP@trigosub\FP@xfa\FP@xfb\FP@xfa\FP@xfb{570796326}{794896619}%
+	\fi%
+     \else%
+        \FP@trigocmpval\FP@oct\FP@xib\FP@xfa\FP@xfb{0}{785398163}{397448310}%
+	\ifnum\FP@oct>0\relax%
+	   \FP@oct=1\relax%
+	   \FP@trigosub\FP@xfa\FP@xfb{570796326}{794896619}\FP@xfa\FP@xfb%
+	\else%
+	   \FP@oct=0\relax%
+	\fi%
+     \fi%
+  \fi%
+  %
+  \FP@xib=0\relax%
+}
+
+%auxiliary functions
+
+\def\FP@trigo@mul#1#2#3#4#5#6{%
+  % #1 macro which gets fractional part 1
+  % #2 macro which fractional part 1
+  % #3 first value part 1
+  % #4 first value part 2
+  % #5 second value part 1
+  % #6 second value part 2
+  \FP@split\FP@xq\FP@xr\FP@xz{#3}\FP@split\FP@xt\FP@xu\FP@xv{#4}%
+  \FP@split\FP@yq\FP@yr\FP@yz{#5}\FP@split\FP@yt\FP@yu\FP@yv{#6}%
+  \FP@prod=0\relax%
+  \edef\FP@rd{}%
+  \FP@@mul vv 			\relax\FP@saveshift%
+  \FP@@mul vu uv 		\relax\FP@saveshift%
+  \FP@@mul uu vt tv 		\relax\FP@saveshift%
+  \FP@@mul ut tu vz zv 		\relax\FP@saveshift%
+  \FP@@mul tt uz zu vr rv 	\relax\FP@saveshift%
+  \FP@@mul zt tz ur ru qv vq 	\relax\FP@saveshift%
+  \FP@@mul zz rt tr qu uq 	\relax\FP@saveshift%
+  \FP@@mul rz zr qt tq 		\relax\FP@saveshift%
+  \FP@@mul rr qz zq 		\relax\FP@saveshift%
+  \FP@@mul qr rq 		\relax\FP@saveshift%
+  \FP@@mul qq 			\relax\FP@saveshift\FP@saveshift%
+  \FP@ninesplit\FP@rd#1=\FP@res%
+  \FP@ninesplit\FP@rd#2=\FP@res%
+}
+
+\def\FP@trigo@divn#1#2#3#4#5{%
+  % #1 macro which gets fractional part 1
+  % #2 macro which gets fractional part 2
+  % #3 value part 1
+  % #4 value part 2
+  % #5 integer (0,..,1000)
+  \FP@rega=#3\divide\FP@rega#5%
+  \FP@regd=\FP@rega%
+  \multiply\FP@rega#5\relax%
+  \advance\FP@rega-#3\relax%
+  \multiply\FP@rega-1000\relax%
+  \FP@regb=#4\divide\FP@regb1000000\relax%
+  \advance\FP@rega\FP@regb%
+  \FP@regc=\FP@rega\divide\FP@regc#5\relax%
+  \FP@rege=\FP@regc\multiply\FP@rege1000000\relax%
+  \multiply\FP@regc#5\advance\FP@rega-\FP@regc\multiply\FP@rega1000000\relax%
+  \multiply\FP@regb1000000\relax\advance\FP@regb-#4\relax%
+  \advance\FP@rega-\FP@regb%
+  \divide\FP@rega#5\relax%
+  \advance\FP@rege\FP@rega%
+  #1=\FP@regd%
+  #2=\FP@rege%
+}
+
+%sine and cosine
+
+\def\FP@sincos@loop#1#2{%
+  % #1 fractional part 1 of value
+  % #2 fractional part 2 of value
+  \loop%
+     \FP@ls=-\FP@ls%
+     \FP@trigo@mul\FP@lfa\FP@lfb\FP@lfa\FP@lfb{#1}{#2}%
+     \FP@trigo@mul\FP@lfa\FP@lfb\FP@lfa\FP@lfb{#1}{#2}%
+     \FP@trigo@divn\FP@lfa\FP@lfb\FP@lfa\FP@lfb\FP@count%
+     \advance\FP@count1\relax%
+     \FP@trigo@divn\FP@lfa\FP@lfb\FP@lfa\FP@lfb\FP@count%
+     \advance\FP@count1\relax%
+     \ifnum\ifnum\FP@lfa=0 0\else1\fi\ifnum\FP@lfb=0 0\else1\fi>0\relax%
+        \ifnum\FP@ls>0\relax%
+          \advance\FP@rfa\FP@lfa%
+	  \advance\FP@rfb\FP@lfb%
+	  \ifnum\FP@rfb<1000000000\relax\else%
+	    \advance\FP@rfa1\relax%
+	    \advance\FP@rfb-1000000000\relax%
+	  \fi%
+	  \ifnum\FP@rfa<1000000000\relax\else%
+	    \advance\FP@rib1\relax%
+	    \advance\FP@rfa-1000000000\relax%
+	  \fi%
+        \else%
+          \advance\FP@rfa-\FP@lfa%
+	  \advance\FP@rfb-\FP@lfb%
+	  \ifnum\FP@rfb<0\relax%
+	    \advance\FP@rfa-1\relax%
+	    \advance\FP@rfb1000000000\relax%
+	  \fi%
+	  \ifnum\FP@rfa<0\relax%
+	    \advance\FP@rib-1\relax%
+	    \advance\FP@rfa1000000000\relax%
+	  \fi%
+        \fi%
+     \repeat%
+}
+
+%sine for values 0<=v<=pi/4
+\def\FP@@sin#1#2{%
+  % #1 fractional part 1
+  % #2 fractional part 2
+  \ifnum\ifnum#1=0 0\else1\fi\ifnum#2=0 0\else1\fi=0\relax%
+    \FP@rs=1\FP@ria=0\FP@rib=0\FP@rfa=0\FP@rfb=0\relax%
+  \else%
+    \FP@rs=1\FP@ria=0\FP@rib=0\FP@rfa=#1\FP@rfb=#2\relax%
+    \FP@ls=1\FP@lfa=#1\FP@lfb=#2\relax%
+    \FP@count=2\relax%
+    \FP@sincos@loop{#1}{#2}%
+  \fi%
+}
+     
+%cosine for values 0<=v<=pi/4
+\def\FP@@cos#1#2{%
+  % #1 fractional part 1
+  % #2 fractional part 2
+  \ifnum\ifnum#1=0 0\else1\fi\ifnum#2=0 0\else1\fi=0\relax%
+    \FP@rs=1\FP@ria=0\FP@rib=1\FP@rfa=0\FP@rfb=0\relax%
+  \else%
+    \FP@ls=-1\FP@lfa=#1\FP@lfb=#2\relax%
+    \FP@trigo@mul\FP@lfa\FP@lfb\FP@lfa\FP@lfb\FP@lfa\FP@lfb%
+    \FP@trigo@divn\FP@lfa\FP@lfb\FP@lfa\FP@lfb{2}%
+    \FP@count=3\relax%
+    \FP@rs=1\FP@ria=0\relax%
+    \ifnum\FP@lfb=0\relax%
+      \ifnum\FP@lfa=0\relax%
+        \FP@rib=1\FP@rfa=0\FP@rfb=0\relax%
+      \else%
+        \FP@rib=0\FP@rfa=1000000000\FP@rfb=0\relax%
+      \fi%
+    \else%
+      \FP@rib=0\FP@rfa=999999999\FP@rfb=1000000000\relax%
+    \fi%
+    \advance\FP@rfb-\FP@lfb\advance\FP@rfa-\FP@lfa%
+    \FP@sincos@loop{#1}{#2}%
+  \fi%
+}
+     
+\def\FP@sin#1#2.#3.#4\relax{%
+  % #1 macro, which gets the result
+  % #2 integer part of value
+  % #3 fractional part of value
+  % #4 dummy to swallow everything after the 2nd '.'
+  %
+  \FP@beginmessage{SIN}%
+  %
+  {\FP@octand{#2}{#3}%
+   %
+   \ifnum\FP@oct<4\relax%
+     \ifnum\FP@oct<2\relax%
+       \ifnum\FP@oct<1\relax%
+         \FP@@sin\FP@xfa\FP@xfb%
+       \else%
+         \FP@@cos\FP@xfa\FP@xfb%
+       \fi%
+     \else%
+       \ifnum\FP@oct<3\relax%
+         \FP@@cos\FP@xfa\FP@xfb%
+       \else%
+         \FP@@sin\FP@xfa\FP@xfb%
+       \fi%
+     \fi%
+   \else%
+     \ifnum\FP@oct<6\relax%
+       \ifnum\FP@oct<5\relax%
+         \FP@@sin\FP@xfa\FP@xfb%
+	 \FP@rs=-\FP@rs%
+       \else%
+         \FP@@cos\FP@xfa\FP@xfb%
+	 \FP@rs=-\FP@rs%
+       \fi%
+     \else%
+       \ifnum\FP@oct<7\relax%
+         \FP@@cos\FP@xfa\FP@xfb%
+	 \FP@rs=-\FP@rs%
+       \else%
+         \FP@@sin\FP@xfa\FP@xfb%
+	 \FP@rs=-\FP@rs%
+       \fi%
+     \fi%
+   \fi%
+   %
+   \FP@store\FP@tmp{r}%
+   \global\let\FP@tmp\FP@tmp%
+  }%
+  %
+  \FP@endmessage{}%
+  %
+  \let#1\FP@tmp%
+}
+
+\def\FP@cos#1#2.#3.#4\relax{%
+  % #1 macro, which gets the result
+  % #2 integer part of value
+  % #3 fractional part of value
+  % #4 dummy to swallow everything after the 2nd '.'
+  %
+  \FP@beginmessage{COS}%
+  %
+  {\FP@octand{#2}{#3}%
+   %
+   \ifnum\FP@oct<4\relax%
+     \ifnum\FP@oct<2\relax%
+       \ifnum\FP@oct<1\relax%
+         \FP@@cos\FP@xfa\FP@xfb%
+       \else%
+         \FP@@sin\FP@xfa\FP@xfb%
+       \fi%
+     \else%
+       \ifnum\FP@oct<3\relax%
+         \FP@@sin\FP@xfa\FP@xfb%
+	 \FP@rs=-\FP@rs%
+       \else%
+         \FP@@cos\FP@xfa\FP@xfb%
+	 \FP@rs=-\FP@rs%
+       \fi%
+     \fi%
+   \else%
+     \ifnum\FP@oct<6\relax%
+       \ifnum\FP@oct<5\relax%
+         \FP@@cos\FP@xfa\FP@xfb%
+	 \FP@rs=-\FP@rs%
+       \else%
+         \FP@@sin\FP@xfa\FP@xfb%
+	 \FP@rs=-\FP@rs%
+       \fi%
+     \else%
+       \ifnum\FP@oct<7\relax%
+         \FP@@sin\FP@xfa\FP@xfb%
+       \else%
+         \FP@@cos\FP@xfa\FP@xfb%
+       \fi%
+     \fi%
+   \fi%
+   %
+   \FP@store\FP@tmp{r}%
+   \global\let\FP@tmp\FP@tmp%
+  }%
+  %
+  \FP@endmessage{}%
+  %
+  \let#1\FP@tmp%
+}
+
+\def\FP@@sincos#1#2{%
+  % #1 integer part of value
+  % #2 fractional part of value
+  %
+  \FP@octand{#1}{#2}%
+  %
+  \ifnum\FP@oct<4\relax%
+    \ifnum\FP@oct<2\relax%
+      \ifnum\FP@oct<1\relax%
+        \FP@@sin\FP@xfa\FP@xfb%
+        \FP@store\FP@tmpc{r}%
+        \FP@@cos\FP@xfa\FP@xfb%
+        \FP@store\FP@tmpb{r}%
+      \else%
+        \FP@@cos\FP@xfa\FP@xfb%
+        \FP@store\FP@tmpc{r}%
+        \FP@@sin\FP@xfa\FP@xfb%
+        \FP@store\FP@tmpb{r}%
+      \fi%
+    \else%
+      \ifnum\FP@oct<3\relax%
+        \FP@@cos\FP@xfa\FP@xfb%
+        \FP@store\FP@tmpc{r}%
+        \FP@@sin\FP@xfa\FP@xfb%
+	\FP@rs=-\FP@rs%
+        \FP@store\FP@tmpb{r}%
+      \else%
+        \FP@@sin\FP@xfa\FP@xfb%
+        \FP@store\FP@tmpc{r}%
+        \FP@@cos\FP@xfa\FP@xfb%
+        \FP@rs=-\FP@rs%
+        \FP@store\FP@tmpb{r}%
+      \fi%
+    \fi%
+  \else%
+    \ifnum\FP@oct<6\relax%
+      \ifnum\FP@oct<5\relax%
+        \FP@@sin\FP@xfa\FP@xfb%
+        \FP@rs=-\FP@rs%
+        \FP@store\FP@tmpc{r}%
+        \FP@@cos\FP@xfa\FP@xfb%
+	\FP@rs=-\FP@rs%
+        \FP@store\FP@tmpb{r}%
+      \else%
+        \FP@@cos\FP@xfa\FP@xfb%
+        \FP@rs=-\FP@rs%
+        \FP@store\FP@tmpc{r}%
+        \FP@@sin\FP@xfa\FP@xfb%
+	\FP@rs=-\FP@rs%
+        \FP@store\FP@tmpb{r}%
+      \fi%
+    \else%
+      \ifnum\FP@oct<7\relax%
+        \FP@@cos\FP@xfa\FP@xfb%
+        \FP@rs=-\FP@rs%
+        \FP@store\FP@tmpc{r}%
+        \FP@@sin\FP@xfa\FP@xfb%
+        \FP@store\FP@tmpb{r}%
+      \else%
+        \FP@@sin\FP@xfa\FP@xfb%
+        \FP@rs=-\FP@rs%
+        \FP@store\FP@tmpc{r}%
+        \FP@@cos\FP@xfa\FP@xfb%
+        \FP@store\FP@tmpb{r}%
+      \fi%
+    \fi%
+  \fi%
+}
+
+\def\FP@sincos#1#2#3.#4.#5\relax{%
+  % #1 macro, which gets the sine result
+  % #2 macro, which gets the cosine result
+  % #3 integer part of value
+  % #4 fractional part of value
+  % #5 dummy to swallow everything after the 2nd '.'
+  %
+  {\FP@beginmessage{SINCOS}%
+   %
+   \FP@@sincos{#3}{#4}%
+   %
+   \global\let\FP@tmpc\FP@tmpc%sine
+   \global\let\FP@tmpb\FP@tmpb%cosine
+   %
+   \FP@endmessage{}%
+  }%
+  %
+  \let#1\FP@tmpc%
+  \let#2\FP@tmpb%
+ }
+
+%tan and cot
+
+\def\FP@tan#1#2.#3.#4\relax{%
+  % #1 macro, which gets the result
+  % #2 integer part of value
+  % #3 fractional part of value
+  % #4 dummy to swallow everything after the 2nd '.'
+  %
+  \FP@beginmessage{TAN}%
+  %
+  {\def\FP@beginmessage##1{}%
+   \def\FP@endmessage##1{}%
+   %
+   \FP@@sincos{#2}{#3}%
+   %
+   \FPdiv\FP@tmp\FP@tmpc\FP@tmpb%
+   %
+   \global\let\FP@tmp\FP@tmp%
+  }%
+  %
+  \FP@endmessage{}%
+  %
+  \let#1\FP@tmp%
+}
+
+\def\FP@cot#1#2.#3.#4\relax{%
+  % #1 macro, which gets the result
+  % #2 integer part of value
+  % #3 fractional part of value
+  % #4 dummy to swallow everything after the 2nd '.'
+  %
+  \FP@beginmessage{COT}%
+  %
+  {\def\FP@beginmessage##1{}%
+   \def\FP@endmessage##1{}%
+   %
+   \FP@@sincos{#2}{#3}%
+   %
+   \FPdiv\FP@tmp\FP@tmpb\FP@tmpc%
+   %
+   \global\let\FP@tmp\FP@tmp%
+  }%
+  %
+  \FP@endmessage{}%
+  %
+  \let#1\FP@tmp%
+}
+
+\def\FP@tancot#1#2#3.#4.#5\relax{%
+  % #1 macro, which gets the tan result
+  % #1 macro, which gets the cot result
+  % #3 integer part of value
+  % #4 fractional part of value
+  % #5 dummy to swallow everything after the 2nd '.'
+  %
+  \FP@beginmessage{TANCOT}%
+  %
+  {\def\FP@beginmessage##1{}%
+   \def\FP@endmessage##1{}%
+   %
+   \FP@@sincos{#3}{#4}%
+   %
+   \FPdiv\FP@tmpd\FP@tmpc\FP@tmpb%
+   \FPdiv\FP@tmp\FP@tmpb\FP@tmpc%
+   %
+   \global\let\FP@tmpd\FP@tmpd%
+   \global\let\FP@tmp\FP@tmp%
+  }%
+  %
+  \FP@endmessage{}%
+  %
+  \let#1\FP@tmpd%
+  \let#2\FP@tmp%
+}
+
+%auxiliary functions
+
+% compute x/(x+1) for 0<=x<=1000000
+\def\FP@trigo@xy#1#2#3{%
+  % #1 macro, which gets fractional part 1
+  % #2 macro, which gets fractional part 2
+  % #3 natural number
+  \FP@rega=#3\relax\FP@regb=\FP@rega\advance\FP@regb1\relax%
+  \multiply\FP@rega1000\relax%
+  \FP@regc=\FP@rega\divide\FP@regc\FP@regb%
+  #1=\FP@regc%
+  \multiply\FP@regc\FP@regb\advance\FP@rega-\FP@regc%
+  \multiply\FP@rega1000\relax%
+  \FP@regc=\FP@rega\divide\FP@regc\FP@regb%
+  \multiply#11000\relax\advance#1\FP@regc%
+  \multiply\FP@regc\FP@regb\advance\FP@rega-\FP@regc%
+  \multiply\FP@rega1000\relax%
+  \FP@regc=\FP@rega\divide\FP@regc\FP@regb%
+  \multiply#11000\relax\advance#1\FP@regc%
+  \multiply\FP@regc\FP@regb\advance\FP@rega-\FP@regc%
+  \multiply\FP@rega1000\relax%
+  \FP@regc=\FP@rega\divide\FP@regc\FP@regb%
+  #2=\FP@regc%
+  \multiply\FP@regc\FP@regb\advance\FP@rega-\FP@regc%
+  \multiply\FP@rega1000\relax%
+  \FP@regc=\FP@rega\divide\FP@regc\FP@regb%
+  \multiply#21000\relax\advance#2\FP@regc%
+  \multiply\FP@regc\FP@regb\advance\FP@rega-\FP@regc%
+  \multiply\FP@rega1000\relax%
+  \FP@regc=\FP@rega\divide\FP@regc\FP@regb%
+  \multiply#21000\relax\advance#2\FP@regc%
+  \multiply\FP@regc\FP@regb\advance\FP@rega-\FP@regc%
+}
+
+%if x<=0.707106781 then x:=y else x:=y with x^2 + y^2 = 1
+%sets \FP@@arccos to 0 if x:=y otherwise to 1
+\def\FP@sincos@transform@Rii{%
+  \ifnum\FP@xfa>707106781\relax%
+    \FP@@arccos=1\relax%
+    \FP@trigo@mul\FP@rfa\FP@rfb\FP@xfa\FP@xfb\FP@xfa\FP@xfb%
+    \FP@lfa=1000000000\relax%
+    \advance\FP@lfa-\FP@rfa%
+    \ifnum\FP@rfb>0\relax%
+      \advance\FP@lfa-1\relax%
+      \FP@lfb=1000000000\relax%
+      \advance\FP@lfb-\FP@rfb%
+    \else%
+      \FP@lfb=0\relax%
+    \fi%
+    \FP@xia=710000000\FP@xib0\relax%
+    \FP@xfa=0\FP@xfb=0\relax%
+    \FP@oldvala=0\FP@oldvalb=0\relax%
+    \loop%
+      \ifnum\ifnum\FP@xia=\FP@xfa0\else1\fi\ifnum\FP@xib=\FP@xfb0\else1\fi>0\relax%
+        \FP@rfa\FP@xia\advance\FP@rfa\FP@xfa%
+	\FP@rfb\FP@xib\advance\FP@rfb\FP@xfb%
+	\divide\FP@rfb2\relax%
+	\ifodd\FP@rfa\advance\FP@rfb500000000\relax\fi%
+	\divide\FP@rfa2\relax%
+	\ifnum\FP@rfb<1000000000\relax\else%
+	  \advance\FP@rfb-1000000000\relax%
+	  \advance\FP@rfa1\relax%
+	\fi%
+	\FP@trigo@mul\FP@ria\FP@rib\FP@rfa\FP@rfb\FP@rfa\FP@rfb%
+	\ifnum\FP@ria<\FP@lfa%
+	  \FP@oct=1\relax%
+	\else\ifnum\FP@ria>\FP@lfa%
+	  \FP@oct=2\relax%
+	\else\ifnum\FP@rib<\FP@lfb%
+	  \FP@oct=1\relax%
+	\else\ifnum\FP@rib>\FP@lfb%
+	  \FP@oct=2\relax%
+	\else%
+	  \FP@oct=3\relax%
+	\fi\fi\fi\fi%
+	\ifnum\ifnum\FP@ria=\FP@oldvala0\else1\fi\ifnum\FP@rib=\FP@oldvalb0\else1\fi>0\relax%
+	  \FP@oldvala=\FP@ria\FP@oldvalb=\FP@rib%
+	\else%
+	  \FP@oct=3\relax%
+	\fi%
+	\ifodd\FP@oct%
+	  \FP@xfa\FP@rfa\FP@xfb\FP@rfb%
+	\fi%
+	\ifnum\FP@oct>1\relax%
+	  \FP@xia\FP@rfa\FP@xib\FP@rfb%
+	\fi%
+      \repeat%
+  \else%
+    \FP@@arccos=0\relax%
+  \fi%
+}
+
+%compute arcsin(abs(x)) resp. arccos(abs(x)) for -1<=x<=1
+%\FP@@arccos determines whether arcsin or arccos has been computed
+\def\FP@arcsincos@loop{%
+  \FP@@arccos=0\relax%
+  \ifnum\ifnum\FP@xia=0 1\else0\fi\ifnum\FP@xib<2 1\else 0\fi>0\relax%
+    \ifnum\FP@xib=1\relax%
+      \ifnum\ifnum\FP@xfa=0 1\else0\fi\ifnum\FP@xfb=0 1\else0\fi>10\relax%
+        \FP@rs=1\FP@ria=0\FP@rib=1\FP@rfa=570796326\FP@rfb=794896619\relax%
+      \else%
+        \FP@errmessage{Number too big}%
+      \fi%
+    \else%
+       \ifnum\ifnum\FP@xfa=0 0\else1\fi\ifnum\FP@xfb=0 0\else1\fi=0\relax%
+         \FP@rs=1\FP@ria=0\FP@rib=0\FP@rfa=0\FP@rfb=0\relax%
+       \else%
+         \FP@sincos@transform@Rii%
+         \FP@rs=1\FP@ria=0\FP@rib=0\FP@rfa=\FP@xfa\FP@rfb=\FP@xfb%
+	 \FP@ls=1\FP@lfa=\FP@xfa\FP@lfb=\FP@xfb%
+	 \FP@count=1\relax%
+	 \loop%
+	    \FP@trigo@mul\FP@lfa\FP@lfb\FP@lfa\FP@lfb\FP@xfa\FP@xfb%
+	    \FP@trigo@mul\FP@lfa\FP@lfb\FP@lfa\FP@lfb\FP@xfa\FP@xfb%
+	    \FP@trigo@xy\FP@yfa\FP@yfb\FP@count%
+	    \FP@trigo@mul\FP@lfa\FP@lfb\FP@lfa\FP@lfb\FP@yfa\FP@yfb%
+	    \advance\FP@count2\relax%
+	    \FP@trigo@divn\FP@yfa\FP@yfb\FP@lfa\FP@lfb\FP@count%
+	    \ifnum\ifnum\FP@yfa=0 0\else1\fi\ifnum\FP@yfb=0 0\else 1\fi>0\relax%
+	      \advance\FP@rfa\FP@yfa\advance\FP@rfb\FP@yfb%
+	      \ifnum\FP@rfb<1000000000\relax\else%
+	        \advance\FP@rfb-1000000000\relax%
+		\advance\FP@rfa1\relax%
+	      \fi%
+	      \ifnum\FP@rfa<1000000000\relax\else%
+	        \advance\FP@rfa-1000000000\relax%
+		\advance\FP@rib1\relax%
+	      \fi%
+	    \repeat%
+       \fi%
+    \fi%
+  \else%
+    \FP@errmessage{Number too big}%
+  \fi%
+}
+
+%compute sign(r)*r:=#1.#2#3-abs(r) (for abs(r)<=#1.#2#3)
+\def\FP@subrfrom#1#2#3{%
+   % #1 integer part of value to subtract from
+   % #2 fractional part 1 of value to subtract from
+   % #3 fractional part 2 of value to subtract from
+   \FP@ria=#1\relax\advance\FP@ria-\FP@rib\FP@rib\FP@ria%
+   \FP@ria=#2\relax\advance\FP@ria-\FP@rfa\FP@rfa\FP@ria%
+   \FP@ria=#3\relax\advance\FP@ria-\FP@rfb\FP@rfb\FP@ria%
+   \FP@ria=0\relax%
+   \ifnum\FP@rfb<0\relax%
+     \advance\FP@rfb1000000000\relax%
+     \advance\FP@rfa-1\relax%
+   \fi%
+   \ifnum\FP@rfa<0\relax%
+     \advance\FP@rfa1000000000\relax%
+     \advance\FP@rib-1\relax%
+   \fi%
+   \ifnum\FP@rib<0\relax%
+     \FP@errmessage{Subtraction lead to unaccepted value}%
+   \fi%
+}
+
+%compute r:= pi/2 - abs(r) (for abs(r)<=pi/2)
+\def\FP@pihalf@subr{\FP@subrfrom{1}{570796326}{794896619}}
+
+%compute sign(r)*r:= pi-abs(r) (for abs(r)<=pi)
+\def\FP@pi@subr{\FP@subrfrom{3}{141592653}{589793238}}
+
+%compute arcsin
+
+\def\FP@arcsin#1#2.#3.#4\relax{%
+  % #1 macro, which gets the result
+  % #2 integer part of value
+  % #3 fractional part of value
+  % #4 dummy to swallow everything after the 2nd '.'
+  %
+  {\FP@beginmessage{ARCSIN}%
+   %
+   \FP@readvalue{x}{#2}{#3}%
+   %
+   \FP@arcsincos@loop%
+   %
+   \ifnum\FP@@arccos=1\relax%
+     \FP@pihalf@subr%
+   \fi%
+   \FP@rs=\FP@xs%
+   %
+   \FP@store\FP@tmp{r}%
+   %
+   \global\let\FP@tmp\FP@tmp%
+   %
+   \FP@endmessage{}%
+  }%
+  %
+  \let#1\FP@tmp%
+}
+
+%compute arccos
+\def\FP@arccos#1#2.#3.#4\relax{%
+  % #1 macro, which gets the result
+  % #2 integer part of value
+  % #3 fractional part of value
+  % #4 dummy to swallow everything after the 2nd '.'
+  %
+  {\FP@beginmessage{ARCCOS}%
+   %
+   \FP@readvalue{x}{#2}{#3}%
+   %
+   \FP@arcsincos@loop%
+   %
+   \ifnum\FP@@arccos=0\relax%
+     \FP@pihalf@subr%
+   \fi%
+   \FP@rs=1%
+   \ifnum\FP@xs<0\relax%
+     \FP@pi@subr%
+   \fi%
+   %
+   \FP@store\FP@tmp{r}%
+   %
+   \global\let\FP@tmp\FP@tmp%
+   %
+   \FP@endmessage{}%
+  }%
+  %
+  \let#1\FP@tmp%
+}
+
+%compute arcsin and arccos
+\def\FP@arcsincos#1#2#3.#4.#5\relax{%
+  % #1 macro, which gets the arcsin-result
+  % #2 macro, which gets the arccos-result
+  % #3 integer part of value
+  % #4 fractional part of value
+  % #5 dummy to swallow everything after the 2nd '.'
+  %
+  {\FP@beginmessage{ARCSINCOS}%
+   %
+   \FP@readvalue{x}{#3}{#4}%
+   %
+   \FP@arcsincos@loop%
+   %
+   \FP@xia\FP@ria\FP@xib\FP@rib\FP@xfa\FP@rfa\FP@xfb\FP@rfb%
+   %
+   \ifnum\FP@@arccos=1\relax%
+     \FP@pihalf@subr%
+   \fi%
+   \FP@rs=\FP@xs%
+   \FP@store\FP@tmpa{r}%
+   %
+   \FP@ria\FP@xia\FP@rib\FP@xib\FP@rfa\FP@xfa\FP@rfb\FP@xfb%
+   %
+   \ifnum\FP@@arccos=0\relax%
+     \FP@pihalf@subr%
+   \fi%
+   \FP@rs=1%
+   \ifnum\FP@xs<0\relax%
+     \FP@pi@subr%
+   \fi%
+   \FP@store\FP@tmpb{r}%
+   %
+   \global\let\FP@tmpa\FP@tmpa%
+   \global\let\FP@tmpb\FP@tmpb%
+   %
+   \FP@endmessage{}%
+  }%
+  %
+  \let#1\FP@tmpa%
+  \let#2\FP@tmpb%
+}
+
+%compute arctan and arccot
+
+%compute 1/y for y>=1
+\def\FP@trigo@inv{%
+  \FP@shift=0\relax%
+  \FP@xia=1000000000\FP@xib=0\FP@xfa=0\FP@xfb=0\relax%
+  \loop%
+    \ifnum\FP@yia<100000000\relax%
+      \FP@multen{y}%
+      \advance\FP@shift1\relax%
+    \repeat%
+  \FP@ria=0\FP@rib=0\FP@rfa=0\FP@rfb=0\relax%
+  \loop%
+    \ifFP@zero{y}\else%
+      \FP@counttimes%divides x by \FP@times*y%
+      \FP@divten{y}%
+      \FP@multen{r}%
+      \advance\FP@rfb\FP@times%
+      \ifnum\FP@rfb<1000000000\relax\else%
+        \advance\FP@rfa1\advance\FP@rfb-1000000000\relax%
+        \ifnum\FP@rfa<1000000000\relax\else%
+	  \advance\FP@rib1\advance\FP@rfa-1000000000\relax%
+          \ifnum\FP@rib<1000000000\relax\else%
+	    \advance\FP@ria1\advance\FP@rib-1000000000\relax%
+          \fi%
+	\fi%
+      \fi%
+    \repeat%
+    \loop%
+      \ifnum\FP@shift<35\relax%
+        \advance\FP@shift1\relax%
+        \FP@divten{r}%
+      \repeat%
+}
+
+%compute 1/sqrt(1+x^2) for 0<=x<1
+\def\FP@trigo@sq\FP@xfa\FP@xfb{%
+  \FP@trigo@mul\FP@yfa\FP@yfb\FP@xfa\FP@xfb\FP@xfa\FP@xfb%
+  \ifnum\FP@yfb=0\relax\else%
+    \FP@yfb=-\FP@yfb%
+    \advance\FP@yfb1000000000\relax%
+    \advance\FP@yfa1\relax%
+  \fi%
+  \FP@yfa=-\FP@yfa%
+  \advance\FP@yfa1250000000\relax%
+  \FP@trigo@mul\FP@yfa\FP@yfb\FP@yfa\FP@yfb{444444444}{444444444}%
+  \FP@lfa=666666666\relax\FP@lfb=666666666\relax%
+  \FP@rs=1\FP@ria=0\FP@rib=0\FP@rfa=\FP@lfa\FP@rfb=\FP@lfb%
+  \FP@count=0\relax%
+  \loop%
+    \advance\FP@count2\relax%
+    \FP@trigo@divn\FP@yia\FP@yib{1000000000}{0}\FP@count%
+    \ifnum\ifnum\FP@yia=0 0\else1\fi\ifnum\FP@yib=0 0\else1\fi>0\relax%
+      \ifnum\FP@yib=0\relax\else%
+        \FP@yib=-\FP@yib%
+        \advance\FP@yib1000000000\relax%
+        \advance\FP@yia1\relax%
+      \fi%
+      \ifnum\FP@yia=0\relax\else%
+        \FP@yia=-\FP@yia%
+        \advance\FP@yia1000000000\relax%
+      \fi%
+      \FP@trigo@mul\FP@lfa\FP@lfb\FP@lfa\FP@lfb\FP@yia\FP@yib%
+    \fi%
+    \FP@trigo@mul\FP@lfa\FP@lfb\FP@lfa\FP@lfb\FP@yfa\FP@yfb%
+    \ifnum\ifnum\FP@lfa=0 0\else1\fi\ifnum\FP@lfb=0 0\else1\fi=0\relax\else%
+      \advance\FP@rfb\FP@lfb%
+      \ifnum\FP@rfb<1000000000\relax\else%
+        \advance\FP@rfa1\relax%
+	\advance\FP@rfb-1000000000\relax%
+      \fi%
+      \advance\FP@rfa\FP@lfa%
+      \ifnum\FP@rfa<1000000000\relax\else%
+        \advance\FP@rib1\relax%
+	\advance\FP@rfa-1000000000\relax%
+      \fi%
+  \repeat%
+}
+
+%compute arctan for 0<=x<=0.5
+\def\FP@@arctan{%
+  \ifnum\ifnum\FP@xfa=0 0\else1\fi\ifnum\FP@xfb=0 0\else1\fi=0\relax%
+    \FP@rs=1\FP@ria=0\FP@rib=0\FP@rfa=0\FP@rfb=0\relax%
+  \else%
+    \FP@rs=1\FP@ria=0\FP@rib=0\FP@rfa=\FP@xfa\FP@rfb=\FP@xfb%
+    \FP@lfa=\FP@xfa\FP@lfb=\FP@xfb%
+    \FP@trigo@mul\FP@xfa\FP@xfb\FP@xfa\FP@xfb\FP@xfa\FP@xfb%
+    \FP@count=1\relax%
+    \FP@regs=1\relax%
+    \loop%
+      \FP@regs=-\FP@regs%
+      \advance\FP@count2\relax%
+      \FP@trigo@mul\FP@lfa\FP@lfb\FP@lfa\FP@lfb\FP@xfa\FP@xfb%
+      \FP@trigo@divn\FP@yfa\FP@yfb\FP@lfa\FP@lfb\FP@count%
+      \ifnum\ifnum\FP@yfa=0 0\else1\fi\ifnum\FP@yfb=0 0\else1\fi>0\relax%
+        \ifnum\FP@regs<0\relax%
+          \advance\FP@rfb-\FP@yfb%
+	  \ifnum\FP@rfb<0\relax%
+	    \advance\FP@rfb1000000000\relax%
+	    \advance\FP@rfa-1\relax%
+	  \fi%
+	  \advance\FP@rfa-\FP@yfa%
+	  \ifnum\FP@rfa<0\relax%
+	    \advance\FP@rfa1000000000\relax%
+	    \advance\FP@rib-1\relax%
+	  \fi%
+        \else%
+          \advance\FP@rfb\FP@yfb%
+	  \ifnum\FP@rfb<1000000000\relax\else%
+	    \advance\FP@rfb-1000000000\relax%
+	    \advance\FP@rfa1\relax%
+	  \fi%
+	  \advance\FP@rfa\FP@yfa%
+	  \ifnum\FP@rfa<1000000000\relax\else%
+	    \advance\FP@rfa-1000000000\relax%
+	    \advance\FP@rib1\relax%
+	  \fi%
+        \fi%
+    \repeat%
+  \fi%
+}
+
+%compute arctan
+\def\FP@@arctancot#1#2{%
+  % #1 integer part of value
+  % #2 fractional part of value
+  %
+  \FP@readvalue{x}{#1}{#2}%
+  %
+  \ifnum\ifnum\FP@xia=0 0\else1\fi\ifnum\FP@xib=1 0\else1\fi\ifnum\FP@xfa=0 0\else1\fi\ifnum\FP@xfb=0 0\else1\fi=0\relax%
+    \FP@ria=0\FP@rib=0\FP@rfa=785398163\FP@rfb=397448310\relax%
+    \FP@subfpih=0\relax%
+  \else%
+    \ifnum\ifnum\FP@xia=0 0\else1\fi\ifnum\FP@xib=0 0\else1\fi=0\relax%
+      \FP@subfpih=0\relax%
+    \else%
+      \FP@yia=\FP@xia\FP@yib=\FP@xib\FP@yfa=\FP@xfa\FP@yfb=\FP@xfb%
+      \FP@trigo@inv%
+      \FP@xia=\FP@ria\FP@xib=\FP@rib\FP@xfa=\FP@rfa\FP@xfb=\FP@rfb%
+      \FP@subfpih=1\relax%
+    \fi%
+    \ifnum\FP@xfa>880000000\relax%
+      \FP@trigo@sq\FP@xfa\FP@xfb%
+      \FP@xfa=\FP@rfa\FP@xfb=\FP@rfb%
+      \FP@arcsincos@loop%
+      \ifnum\FP@@arccos=0\relax%
+        \FP@pihalf@subr%
+      \fi%
+    \else%
+      \FP@@arctan\FP@xfa\FP@xfb%
+    \fi%
+  \fi%
+  %
+  \ifnum\FP@subfpih>0\relax%
+    \FP@pihalf@subr%
+  \fi%
+  %
+  \FP@rs=\FP@xs%
+}
+
+%compute arctan
+\def\FP@arctan#1#2.#3.#4\relax{%
+  % #1 macro, which gets the result
+  % #2 integer part of value
+  % #3 fractional part of value
+  % #4 dummy to swallow everything after the 2nd '.'
+  %
+  {\FP@beginmessage{ARCTAN}%
+   %
+   \FP@@arctancot{#2}{#3}%
+   %
+   \FP@store\FP@tmp{r}%
+   %
+   \global\let\FP@tmp\FP@tmp%
+   %
+   \FP@endmessage{}%
+  }%
+  %
+  \let#1\FP@tmp%
+}
+
+%compute arccot
+\def\FP@arccot#1#2.#3.#4\relax{%
+  % #1 macro, which gets the result
+  % #2 integer part of value
+  % #3 fractional part of value
+  % #4 dummy to swallow everything after the 2nd '.'
+  %
+  {\FP@beginmessage{ARCCOT}%
+   %
+   \FP@@arctancot{#2}{#3}%
+   \ifnum\FP@rs<0\relax%
+     \FP@rs=1\relax%
+     \FP@pihalf@subr%
+     \FP@pi@subr%
+   \else%
+     \FP@pihalf@subr%
+   \fi%
+   %
+   \FP@store\FP@tmp{r}%
+   %
+   \global\let\FP@tmp\FP@tmp%
+   %
+   \FP@endmessage{}%
+  }%
+  %
+  \let#1\FP@tmp%
+}
+
+%compute arctan and arccot
+\def\FP@arctancot#1#2#3.#4.#5\relax{%
+  % #1 macro, which gets the arcsin-result
+  % #2 macro, which gets the arccos-result
+  % #3 integer part of value
+  % #4 fractional part of value
+  % #5 dummy to swallow everything after the 2nd '.'
+  %
+  {\FP@beginmessage{ARCTANCOT}%
+   %
+   \FP@@arctancot{#3}{#4}%
+   \FP@xs\FP@rs\FP@xia\FP@ria\FP@xib\FP@rib\FP@xfa\FP@rfa\FP@xfb\FP@rfb%
+   \FP@store\FP@tmpa{x}%
+   %
+   \ifnum\FP@rs<0\relax%
+     \FP@rs=1\relax%
+     \FP@pihalf@subr%
+     \FP@pi@subr%
+   \else%
+     \FP@pihalf@subr%
+   \fi%
+   \FP@store\FP@tmpb{r}%
+   %
+   \global\let\FP@tmpa\FP@tmpa%
+   \global\let\FP@tmpb\FP@tmpb%
+   %
+   \FP@endmessage{}%
+  }%
+  %
+  \let#1\FP@tmpa%
+  \let#2\FP@tmpb%
+}

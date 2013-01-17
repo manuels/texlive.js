@@ -1,0 +1,2289 @@
+%++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++%
+% This is file 'xwatermark.sty', version 1.5.2a, February 2012.              %
+%                                                                            %
+% This package puts user-specified watermarks (graphics and arbitrary        %
+% texts) on select pages of documents. See package documentation             %
+% for further details.                                                       %
+%                                                                            %
+% This work (ie, all the files in the xwatermark manifest) may be            %
+% distributed and/or modified under the conditions of the LaTeX              %
+% Project Public License, either version 1.3 of this license or any          %
+% later version. The latest version of this license is in                    %
+% http://www.latex-project.org/lppl.txt and version 1.3 or later             %
+% is part of all distributions of LaTeX version 2005/12/01 or later.         %
+%                                                                            %
+% The LPPL maintenance status of this software is 'author-maintained'.       %
+%                                                                            %
+% This software is provided 'as it is', without warranty of any kind,        %
+% either expressed or implied, including, but not limited to, the            %
+% implied warranties of merchantability and fitness for a particular         %
+% purpose.                                                                   %
+%                                                                            %
+% Copyright (c) 2009-2012 Ahmed Musa (amusa22@gmail.com).                    %
+%++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++%
+
+\@ifpackageloaded{catoptions}{%
+  \@ifpackagelater{catoptions}{2011/10/22}{}{%
+    \@latex@error{Loaded version of catoptions package is
+      not current}\@ehc
+  }%
+}{%
+  \RequirePackage{catoptions}[2011/10/22]%
+}
+\UseNormalCatcodes
+\StyleFilePurpose{A dynamic watermarking scheme}
+\StyleFileRCSInfo
+$Id: xwatermark.sty,v 1.5.2a 2012/02/01 09:00:00 Ahmed Musa Exp $
+\ProvidesPackage{xwatermark}[\StyleFileInfo]
+\NeedsTeXFormat{LaTeX2e}[2011/06/27]
+\SetStyleFileMessages[xwm@]{info}{warn}{err}
+\robust@def*\xwm@@err#1#2#3{\xwm@err{#1}{#2}\@gobble}
+\cptloadpackages{%
+  fix-cm||2006/03/24;
+  picture||2008/11/26;
+  graphicx||1999/02/16;
+  atbegshi||2008/07/31;
+  fancyhdr;
+  atveryend||2010/03/24;
+  ltxkeys||2011/01/01;
+  framed||2007/10/04
+}
+\AtEndOfPackage{\BeforeStartOfDocument{%
+  \ifcsndefTF{ver@hyperref.sty}{}{\usepackage{hyperref}}%
+}}
+
+\newletcs\xwm@nil\relax
+\new@def*\xwm@nnil{\xwm@nil}
+\AtBeginShipoutInit
+\newvariables{box}[xwm@box]{a,b}\relax
+\newvariables{count}[xwm@]{cnta}[\z@pt]
+\newvariables{if}[xwm@]{pdf,swa,swb,foregrd,wall}[false]
+\newvariables{write}[xwm@]{wrt}\relax
+\robust@def*\AtShipoutAlwaysUpperLeft#1{%
+  \AtBeginShipout{\AtBeginShipoutUpperLeft{#1}}%
+}
+\new@def*\xwm@boxframestack{}
+\robust@def*\xwm@pushboxframe{%
+  \xdef\xwm@boxframestack{%
+    \fboxrule=\the\fboxrule\relax
+    \fboxsep=\the\fboxsep\relax
+    \xwm@nil{\expandcsonce\xwm@boxframestack}%
+  }%
+}
+\robust@def*\xwm@popboxframe{%
+  \begingroup
+  \def\reserved@a##1\xwm@nil{\endgroup
+    ##1\gdef\xwm@boxframestack
+  }%
+  \expandafter\reserved@a\xwm@boxframestack
+}
+\robust@def\xwm@stripallouterbraces#1#2{%
+  \edef#2{\unexpanded\cptthreexp{\xwm@str@pallouterbraces#1\strip@nil}}%
+}
+\robust@def\xwm@str@pallouterbraces#1\strip@nil{%
+  \romannumeral\ifbracedTF{#1}{%
+    \expandafter\ifnullTF\expandafter{\@gobble#1}{%
+      \expandafter\@gobble\xwm@str@pallouterbraces#1\strip@nil
+    }{0 #1}%
+  }{0 #1}%
+}
+\robust@def\xwm@stripallouterbracesincs#1{%
+  \expandafter\xwm@stripallouterbraces\expandafter{#1}#1%
+}
+\new@def*\xwmremoveleadparsers#1#2{%
+  \s@expandarg\ifbracedTF{#2}{%
+    \unexpanded\expandafter{#2}%
+  }{%
+    \unexpanded\expandafter{\romannumeral
+      \expandafter\xwm@removeleadparsers#2\noboundary{#1}}%
+  }%
+}
+\new@def*\xwm@removeleadparsers#1#2\noboundary#3{%
+  \ifcondTF\if\string#1\string#3\fi{%
+    \xwm@removeleadparsers#2\noboundary{#3}%
+  }{%
+    0 #1#2%
+  }%
+}
+\robust@def*\xwm@ifxcolorloaded{%
+  \ifcsndefTF{ver@xcolor.sty}\@iden{%
+    \xwm@err{'xcolor' package not loaded}\@ehc
+  }%
+}
+\robust@def*\xwmdefinecolor{%
+  \xwm@ifxcolorloaded{%
+    \let\reserved@e\definecolor
+    \cpt@testopt\xwm@definecolor{}%
+  }%
+}
+\robust@def*\xwmcolorlet{%
+  \xwm@ifxcolorloaded{%
+    \let\reserved@e\colorlet
+    \cpt@testopt\xwm@definecolor{}%
+  }%
+}
+\robust@def*\xwm@definecolor[#1]#2{%
+  \@ifundefinedcolor{#2}{%
+    \reserved@e[#1]{#2}%
+  }{%
+    \xwm@err{Color name '#2' already defined}\@ehc
+  }%
+}
+\robust@def*\xwmdefinecolorset{\cpt@testopt\xwm@definecolorset{x}}
+\robust@def*\xwm@definecolorset[#1]{%
+  \cpt@testpnopt{\xwm@d@finecolorset{#1}}{1}%
+}
+\robust@def*\xwm@d@finecolorset#1(#2)#3{%
+  \xwm@ifxcolorloaded{%
+    \begingroup
+    \cptemptifycsset{\xwm@tempb,\xwm@tempc,\xwm@tempd,\xwm@tempe}%
+    \def\xwm@tempa##1,##2,##3,##4,##5\@nil{%
+      \ifblankTF{##4}{%
+        \xwm@err{Incomplete color format in
+          \string\xwmdefinecolorset}\@ehc
+      }{%
+        \def\xwm@tempf{##1}%
+      }%
+    }%
+    \cpt@stfalse\cpt@csvnormalize[;]{#3}%
+    \def\do##1;{%
+      \ifnot@nil{##1}{%
+        \xwm@tempa##1,,,,\@nil
+        \xifinsetTF{,\xwm@tempf,}{,\xwm@tempd,}{%
+          \edef\xwm@tempe{\csliststack,\xwm@tempe\xwm@tempf}%
+        }{%
+          \edef\xwm@tempd{\csliststack,\xwm@tempd\xwm@tempf}%
+          \@ifundefinedcolor{#1\xwm@tempf#2}{%
+            \edef\xwm@tempb{\csliststack;\xwm@tempb##1}%
+          }{%
+            \edef\xwm@tempc{\csliststack;\xwm@tempc#1\xwm@tempf#2}%
+          }%
+        }%
+        \do
+      }%
+    }%
+    \expandafter\do\normalized@list;\@nil;%
+    \ifcsemptyTF\xwm@tempe{}{%
+      \xwm@err{Color names '\expandcsonce\xwm@tempe' multiply
+        \MsgBrk submitted to \string\xwmdefinecolorset}\@ehc
+    }%
+    \ifcsemptyTF\xwm@tempc{}{%
+      \xwm@err{Color names '\expandcsonce\xwm@tempc' already in use}\@ehc
+    }%
+    \ifcsemptyTF\xwm@tempb{}{%
+      \cptexpandarg{\xglobal\definecolorset{rgb}{#1}{#2}}
+        {\expandcsonce\xwm@tempb}%
+    }%
+    \endgroup
+  }%
+}
+\DefSuffixChecker\xwm@suffixcheck{*}{+}{'}
+\robust@def*\xwmifitemsinTF{%
+  \cpt@swatrue\cpt@testopt\xwm@itemsin\@ne
+}
+\robust@def*\xwmifitemsinFT{%
+  \cpt@swafalse\cpt@testopt\xwm@itemsin\@ne
+}
+\robust@def\xwm@itemsin[#1]#2#3{%
+  \ifnum\numexpr#1<\@ne
+    \xwm@err{Invalid number '\the#1'\relax\MsgBrk
+      for command \string\xwmifitemsinTF}\@ehc
+  \fi
+  \lowercase{%
+    \edef\xwm@tempa{\unexpanded{#2}}%
+    \edef\xwm@tempb{\unexpanded{#3}}%
+  }%
+  \cpt@sttrue\cpt@csvnormalize[,]\xwm@tempb
+  \chardef\xwm@nritems\z@pt
+  \def\xwm@items{}%
+  \def\csv@do##1{%
+    \xifinsetFT{,\detokenize{##1}}{,\cptoxdetok\xwm@tempb}{}{%
+      \cptaddtolist[,]\xwm@items{##1}%
+      \pushnumber\xwm@nritems
+      \ifnum\xwm@nritems>\numexpr#1-1\relax
+        \loopbreak
+      \fi
+    }%
+  }%
+  \csv@@parse*[,]\xwm@tempa
+  \csname
+    @\ifnum\xwm@nritems>\numexpr#1-1\relax
+      \ifcpt@swa first\else second\fi
+    \else
+      \ifcpt@swa second\else first\fi
+    \fi
+  oftwo\endcsname
+}
+\robust@def*\x@xwmifitemsinTF{%
+  \cpt@swatrue\cpt@testopt\xwm@xitemsin{1}%
+}
+\robust@def\xwm@xitemsin[#1]#2#3{%
+  \cptexpandtwoargs{\xwm@itemsin[#1]}{#2}{#3}%
+}
+\robust@def*\xwm@hyphenpagerange#1#2#3{%
+  \xifinsetTF{\detokenize{\xwmgetpagenumber}}{\cptoxdetok{#1}}{%
+    \xwm@swbtrue
+  }{%
+    \xifinsetTF{\detokenize{\lastdocpage}}{\cptoxdetok{#1}}{%
+      \xwm@swbtrue
+    }{%
+      \xwm@swbfalse
+    }%
+  }%
+  \protected@edef#2{#1}\def#3{}%
+  \begingroup
+  \catcode`\-=12\relax
+  \cptscantokens#2%
+  \postgroupdef#2\endgroup
+  \oifinsetTF{-}{#2}{%
+    \expandafter\xwm@splitpagerange#2\xwm@nil{#2}{#3}%
+  }{%
+    \ifblankTF{#1}{%
+      \xwm@err{Empty page range for watermark:
+        ^^J'\expandcsonce\currwatermark'.^^J}\@ehc
+    }{%
+      \protected@edef#3{#1}%
+    }%
+  }%
+}
+\robust@def*\xwm@splitpagerange#1-#2\xwm@nil#3#4{%
+  \def#3{#1}\def#4{#2}%
+  \ifinsetTF{-}{#2}{%
+    \xwm@err{Too many hyphens in page range '#1-#2'
+      \MsgBrk of watermark:^^J'\expandcsonce\currwatermark'}\@ehc
+  }{%
+    \ifblankTF{#1}{%
+      \xwm@warn{No start-page in page-range of watermark:
+        ^^J'\expandcsonce\currwatermark'.^^JI have used the
+        default start-page '\xwm@defaultfirstpage'
+        instead}%
+      \def#3{\xwm@defaultfirstpage}%
+      \xwm@swafalse
+    }{%
+      \xwm@swatrue
+    }%
+    \ifblankTF{#2}{%
+      \xwm@warn{No end-page for page-range
+        of watermark:^^J'\expandcsonce\currwatermark'
+        ^^JI have used the default end-page
+        '\xwm@defaultlastpage' instead}%
+      \def#4{\xwm@defaultlastpage}%
+      \xwm@swafalse
+    }{%
+      \xwm@swatrue
+    }%
+    \ifxwm@swa
+      \ifnum\numexpr#1=\numexpr#2\relax\else
+        \ifnum\numexpr#1<\numexpr#2\relax\else
+          \ifxwm@swb\else
+            \xwm@err{Watermark start-page '#1' is greater
+              than end-page '#2'}\@ehc
+          \fi
+        \fi
+      \fi
+    \fi
+  }%
+}
+\let\xwm@papercenter\relax
+\ifdefTF\pdfoutput{%
+  \ifnum\pdfoutput<\@ne\xwm@pdffalse\else\xwm@pdftrue\fi
+}{%
+  \xwm@pdffalse
+}
+\new@def*\xwm@allowedcoordunits{%
+  em,ex,in,pt,pc,cm,mm,dd,cc,nd,nc,bp,sp,\paperwidth,%
+  \paperheight,\textwidth,\textheight,\hsize,\vsize,%
+  \columnwidth,\linewidth
+}
+\robust@def*\xwm@checkcoordunit#1{%
+  \oifinset@sp@TF,{#1}{\xwm@allowedcoordunits}{}{%
+    \xwm@err{Invalid coordinate unit '#1'}{%
+      Allowed coordinate units are:
+      ^^J||\xwm@allowedcoordunits||^^J}%
+  }%
+}
+\robust@def*\xwm@defaultunits#1#2{%
+  \begingroup
+  \@defaultunits\@tempdima\dimexpr#1\p@\relax\@nnil
+  \edefpass#2{\endgroup\def\noexpand#2{\the\@tempdima}}%
+}
+\robust@def*\xwm@getposition#1#2#3{%
+  \begingroup
+  \@defaultunits\@tempdima\dimexpr#1#3\p@\relax\@nnil
+  \edef\xwm@tempa{\the\dimexpr0.5\paperwidth+\@tempdima\relax}%
+  \@defaultunits\@tempdima\dimexpr#2#3\p@\relax\@nnil
+  \edef\xwm@tempb{\the\dimexpr-0.5\paperheight+\@tempdima\relax}%
+  \cptexpanded{\endgroup
+    \csn@def{\cptremovescape#1@a}{\xwm@tempa}%
+    \csn@def{\cptremovescape#2@a}{\xwm@tempb}%
+  }%
+}
+\cptrobustify{%
+  \fbox,\framebox,\makebox,\rotatebox,\scalebox,\raisebox
+}
+\new@def*\xwm@relax{\relax}
+\robust@def*\xwm@settextalign#1{%
+  \ifmacroTF{#1}{}{\cpt@notcserr{#1}}%
+  \begingroup
+  \cptexpandmacro{#1}\xwm@tempa
+  \cptexpandargonce{\endgroup\xwm@stripallouterbraces}\xwm@tempa#1%
+  \ltxkeys@trimspacesincs{#1}%
+  \cptexpandsecond{\def\reserved@a##1}{#1}##2##3\xwm@nil{%
+    \def\reserved@a{##2}%
+    \ifxTF\reserved@a\xwm@nnil{%
+      \cpt@err{Invalid value '#1' for textalign}\@ehc
+      \def#1{xwm@relax}%
+    }{%
+      \def#1{##2}%
+    }%
+  }%
+  \cptexpandsecond{\reserved@a
+    center{center},\centering{center},right{flushright},
+    \flushright{flushright},\raggedleft{flushright},
+    left{flushleft},\flushleft{flushleft},\raggedright{flushleft},
+    justified{xwm@relax},\relax{xwm@relax},xwm@relax{xwm@relax}%
+  }{#1}{\xwm@nil}\xwm@nil
+}
+\robust@def*\xwm@getalign#1{%
+  \ifmacroTF{#1}{%
+    \csn@edef{xwm@\expandafter\@gobblethree\string#1}{%
+      \xifstrcmpTF{#1}{\relax}{relax}{#1}%
+    }%
+  }{%
+    \cpt@notcserr{#1}%
+  }%
+}
+% 'boxalign' may be in the format 't-l, t-r, b-l, b-r, c, s'
+% or 'top-left, top-right, etc':
+\robust@def*\xwm@setboxalign#1{%
+  \ifmacroTF{#1}{}{\cpt@notcserr{#1}}%
+  \begingroup
+  \toks@{}%
+  \cptexpandarg\lowercase{\def\noexpand\reserved@a{#1}}%
+  % We don't want the format 't-l' mixed with 'top-left':
+  \def\xwm@tempa{}\def\xwm@tempb{}%
+  \def\xwm@resa##1-{%
+    \ifstrcmpTF{##1}{\xwm@nil}{}{%
+      \ifinsetTF{,##1,}{,top,left,right,bottom,center,justified,}{%
+        \edef\xwm@tempa{\csliststack,\xwm@tempa##1}%
+      }{%
+        \ifinsetTF{,##1,}{,l,r,b,t,c,s,}{%
+          \edef\xwm@tempb{\xwm@tempb##1}%
+        }{%
+          \toks@\expandafter{\the\toks@##1}%
+        }%
+      }%
+      \xwm@resa
+    }%
+  }%
+  \expandafter\xwm@resa\reserved@a-\xwm@nil-%
+  \s@expandarg\ifnullTF{\the\toks@}{}{%
+    \xwm@err{'boxalign' has invalid or inconsistent
+      \MsgBrk values '#1'}\@ehc
+  }%
+  \ifcsnullTF\xwm@tempa{}{%
+    \ifcsnullTF\xwm@tempb{}{%
+      \xwm@err{Invalid values '#1' for 'boxalign':
+        \MsgBrk possibly a mixture of styles}\@ehc
+    }%
+  }%
+  \def\xwm@tempc{}%
+  \ifcsnullTF\xwm@tempa{}{%
+    \def\xwm@resa##1##2##3\xwm@nil##4{%
+      \ifblankTF{##3}{}{%
+        \ifinsetFT{,##1,}{,##4,}{}{%
+          \xifinsetTF{##2}{\xwm@tempc}{}{%
+            \edef\xwm@tempc{\xwm@tempc##2}%
+          }%
+        }%
+        \xwm@resa##3\xwm@nil{##4}%
+      }%
+    }%
+    \cptexpandarg
+      {\xwm@resa{center}{c}{justified}{s}{left}{l}{right}{r}%
+      {top}{t}{bottom}{b}\xwm@mil\xwm@mil\xwm@nil}\xwm@tempa
+  }%
+  \ifcsnullTF\xwm@tempb{}{%
+    \def\siso@do##1{%
+      \ifinsetFT{,##1,}{,l,r,b,t,c,s,}{}{%
+        \xifinsetTF{##1}{\xwm@tempc}{}{%
+          \edef\xwm@tempc{\xwm@tempc##1}%
+        }%
+      }%
+    }%
+    \simpleexpandarg\siso@@loop\xwm@tempb
+  }%
+  \ifcsnullTF\xwm@tempc{%
+    \xifblankTF{#1}{%
+      \def\xwm@tempc{s}%
+    }{%
+      \xwm@err{Invalid entries '#1' for 'boxalign'}\@ehc
+    }%
+  }{%
+    \begingroup
+    \cpt@cnta\z@pt
+    \def\siso@do##1{\advance\cpt@cnta\@ne}%
+    \s@expandarg\siso@@loop\xwm@tempc
+    \ifnum\cpt@cnta>2\relax
+      \xwm@err{More than two entries '#1' for 'boxalign'}\@ehc
+    \fi
+    \endgroup
+  }%
+  \let#1=\xwm@tempc
+  \postgroupdef#1\endgroup
+}
+\robust@def*\xwm@notenddocerr{%
+  \xwm@err{Wrong location of end-of-document command}\@ehc
+}
+\robust@def*\AfterEndOfDocument{\grightaddtocs\xwm@afterenddoc}
+\new@def*\xwm@afterenddoc{}
+\robust@def*\AfterLastPageOfDocument{%
+  \grightaddtocs\xwm@afterlastpage
+}
+\new@def*\xwm@afterlastpage{}
+\AtEndDocument{%
+  \let\xwm@aft@renddoc\AtVeryEnd@AtVeryEndDocumentHook
+  \def\AtVeryEnd@AtVeryEndDocumentHook{%
+    \let\AfterEndOfDocument\@firstofone
+    \xwm@afterenddoc\xwm@aft@renddoc
+    \let\AfterEndOfDocument\xwm@notenddocerr
+    \undefcs\xwm@afterenddoc
+    \undefcs\xwm@aft@renddoc
+  }%
+  \let\xwm@afterl@stpage\AtVeryEnd@AfterLastShipoutHook
+  \def\AtVeryEnd@AfterLastShipoutHook{%
+    \let\AfterLastPageOfDocument\@firstofone
+    \xwm@afterlastpage\xwm@afterl@stpage
+    \let\AfterLastPageOfDocument\xwm@notenddocerr
+    \undefcs\xwm@afterlastpage
+    \undefcs\xwm@afterl@stpage
+  }%
+  \let\xwm@newlabel\xwm@testdef
+}
+\robust@def*\xwmnewlabel{\xwm@newlabel{xwmr}}
+\robust@def*\xwm@newlabel#1#2#3{%
+  \begingroup
+  \ifcsndefFT{#1@#2}{}{%
+    \gdef\xwm@multiplelabels{%
+      \ltxmsg@warn{There were multiply-defined labels}%
+    }%
+    \ltxmsg@warn{Label '#2' multiply defined}%
+  }%
+  \csngdef*{#1@#2}{#3}%
+  \endgroup
+}
+\let\xwm@multiplelabels\relax
+\BeforeStartOfDocument{%
+  \global\let\xwm@multiplelabels\relax
+}
+\robust@def*\xwm@testdef#1#2#3{%
+  \begingroup
+  \def\xwm@tempa{#3}%
+  \aftercsname\ifxTF{#1@#2}\xwm@tempa
+    {\global\xwm@swafalse}{\global\xwm@swatrue}%
+  \endgroup
+}
+% No need for \makeatletter in .xwm file since the file is read
+% by this package only:
+\InputIfFileExists{\jobname.xwm}{}{}
+\if@filesw
+  \immediate\openout\xwm@wrt=\jobname.xwm
+  \immediate\write\xwm@wrt{\relax}
+\fi
+\AfterLastPageOfDocument{%
+  \if@filesw
+    \begingroup
+    \advance\c@page\m@one
+    \xwmlabel{xwmlastpage}%
+    \endgroup
+  \fi
+  \immediate\closeout\xwm@wrt
+  \if@filesw
+    \ifx\xwm@multiplelabels\relax
+      \ifxwm@swa
+        \ltxmsg@warn{Label(s) may have changed.
+          Rerun to get cross-references right}%
+      \fi
+    \else
+      \xwm@multiplelabels
+    \fi
+  \fi
+}
+\new@def*\xwm@labelcarr#1#2#3\xwm@nil{\ifblankTF{#3}{}{#2}}
+\new@def*\xwmgetpagenumber#1{%
+  \ifcsndefTF{xwmr@#1}{%
+    \cptsevenxp\xwm@labelcarr
+      \usename{xwmr@#1}\xwm@defaultfirstpage\xwm@nil
+  }{%
+    \xwm@defaultfirstpage
+  }%
+}
+\new@def*\lastdocpage{\xwmgetpagenumber{xwmlastpage}}
+\robust@def*\xwmlabel#1{%
+  \@bsphack
+  \begingroup
+  \@onelevel@sanitize\@currentlabelname
+  \edef\@currentlabelname{%
+    \expandafter\strip@period\@currentlabelname\relax.\relax\@@@
+  }%
+  \immediate\write\@auxout{%
+    \string\newlabel{#1}{{\@currentlabel}{\thepage}%
+    {\@currentlabelname}{\@currentHref}{}}%
+  }%
+  \immediate\write\xwm@wrt{%
+    \string\xwmnewlabel{#1}{{\@currentlabel}{\thepage}%
+    {\@currentlabelname}{\@currentHref}{}}%
+  }%
+  \endgroup
+  \@esphack
+}
+\robust@def*\DeclareWatermarkParser#1{%
+  \begingroup
+  \xwm@stripallouterbraces{#1}\xwm@tempa
+  \xdef\xwm@watermarkparser{\cptoxdetok\xwm@tempa}%
+  \endgroup
+}
+\DeclareWatermarkParser{;}
+\robust@def*\xwm@put{\leavevmode\put}
+\new@edef*\xwm@defaultfileext{\ifxwm@pdf pdf\else eps\fi}
+\new@def*\xwm@picfilesread{}
+\robust@def*\xwm@fileextfn#1#2{%
+  \ifcsndefFT{#2picfile}{}{%
+    \def\xwm@tempb##1##2{%
+      \xwm@warn{Default file extension '##1'\MsgBrk
+        substituted for invalid '#1' in\MsgBrk
+        ##2 mode. I'll later confirm the\MsgBrk
+        existence of \usename{#2picfile}.##1%
+      }%
+    }%
+    \ifcsnnullTF{#2picfile}{%
+      \csn@edef{#2picfileext}{}%
+    }{%
+      \xifinsetTF{,\usename{#2picfile},}{,\xwm@picfilesread,}{%
+        \xwm@swbfalse
+      }{%
+        \xwm@swbtrue
+        \cptgxaddtolist*\xwm@picfilesread{\usename{#2picfile}}%
+      }%
+      \aftercsname\xwm@stripallouterbracesincs{#2picfileext}%
+      \ifboolTF{xwm@pdf}{%
+        \xifinsetTF{,\usename{#2picfileext},}{,pdf,png,jpeg,jpg,mps,}{}{%
+          \csn@def{#2picfileext}{pdf}%
+          \ifxwm@swb\xwm@tempb{pdf}{pdf}\fi
+        }%
+      }{%
+        \xifinsetTF{,\usename{#2picfileext},}{,eps,ps,}{}{%
+          \csn@def{#2picfileext}{eps}%
+          \ifxwm@swb\xwm@tempb{eps}{dvi}\fi
+        }%
+      }%
+    }%
+  }%
+}
+\ltxkeys@boolkey[XWM]{main}[xwm@]{disablegeometry}[true]{%
+  \BeforeStartOfDocument{%
+    \ifxwm@disablegeometry
+      \ifdefFT\geometry{}{%
+        \geometry{pass}%
+        \xwm@info{On your request (ie, 'disablegeometry=true')
+          \MsgBrk I have disabled the features of the
+          \MsgBrk 'geometry' package}%
+      }%
+    \fi
+  }%
+}
+\new@def*\xwm@gr@phicsoptions{}
+\robust@def*\GraphicsOptions#1{\gdef\xwm@gr@phicsoptions{#1}}
+\ltxkeys@definekeys*[XWM]{main}[xwm@]{%
+  disable-geometry=true/\setaliaskey{disablegeometry};
+  printwatermark=true;
+  print-watermark=true/\setaliaskey{printwatermark};
+  allownesting=true;
+  showpagecenter=true/\ifboolTF{xwm@showpagecenter}
+    {\wmk@showpagecentertrue\wlp@showpagecentertrue}{};
+  show-page-center=true/\setaliaskey{showpagecenter};
+  showpapercenter=true/\setaliaskey{showpagecenter};
+  usedummymarks=true;
+  use-dummy-marks=true/\setaliaskey{usedummymarks};
+  defaultfirstpage=1;
+  default-first-page=1/\setaliaskey{defaultfirstpage};
+  defaultlastpage=\xwmgetpagenumber{xwmlastpage};
+  default-last-page=\xwmgetpagenumber{xwmlastpage}/
+    \setaliaskey{defaultlastpage};
+  frontpagestyle=empty;
+  front-page-style=empty/\setaliaskey{frontpagestyle};
+  watermarkparser={;}/\DeclareWatermarkParser{#1};
+  watermark-parser={;}/\setaliaskey{watermarkparser};
+  resetpaperorigin=true/\ifxwm@resetpaperorigin\pdfhorigin\z@pt
+    \pdfvorigin\z@pt\hoffset\z@pt\voffset\z@pt\fi;
+  reset-paper-origin=true/\setaliaskey{resetpaperorigin};
+}
+\ltxkeys@biboolkeys+[XWM]{main}[xwm@]{draft,final}[true]
+  {}{}{\ltxkeys@keyvalerr}
+\ltxkeys@makeoptionkeys[XWM]{main}
+\BeforeStartOfDocument{%
+  \ifxwm@printwatermark
+    \cptreplaceoneelement\XWM@main@initialkeyvals
+      {printwatermark=false}{printwatermark=true}%
+  \fi
+}
+\robust@def*\xwm@defcommonkeys#1{%
+  \begingroup
+  \endlinechar\m@one
+  \expandafter\endgroup\xwm@defc@mmonkeys{#1}%
+}
+\robust@def*\xwm@defc@mmonkeys#1#2{%
+  \csn@def{#1@commonkeys}##1{#2}%
+  \AtEndOfPackage{\letcsntocs{#1@commonkeys}\relax}%
+}
+\xwm@defcommonkeys{xwm-1}{%
+  minmark=true;
+  onepageonly=true;
+  prange=true;
+  tmark=true;
+  pmark=true;
+  graphicsoptions={}/
+    \ifbracedTF{##1}{%
+      \aftercsname{\xwm@stripallouterbraces{##1}}{#1graphicsoptions}
+    }{%
+      \cpt@err{Values of key 'graphicsoptions' not braced}\@ehc
+    };
+  GraphicsOptions=/
+    \ifdocstartedTF{%
+      \xwm@err{\noexpand\GraphicsOptions
+        is a command, not a key.\MsgBrk
+        Maybe you meant 'graphicsoptions'}\@ehc
+    }{};
+  picontoptext=true;
+  picture-on-top-text=true/\setaliaskey{picontoptext};
+  pic-on-top-text=true/\setaliaskey{picontoptext};
+  textontoppic=true/\setaliaskey{picontoptext}[false];
+  text-on-top-picture=true/\setaliaskey{picontoptext}[false];
+  text-on-top-pic=true/\setaliaskey{picontoptext}[false];
+  draftboxcolor=blue;
+  draft-box-color=blue/\setaliaskey{draftboxcolor};
+  textcolor=gray!25;
+  text-color=gray!25/\setaliaskey{textcolor};
+  color=gray!25/\setaliaskey{textcolor};
+  textangle=0;
+  text-angle=0/\setaliaskey{textangle};
+  angle=0/\setaliaskey{textangle};
+  textscale=1;
+  text-scale=1/\setaliaskey{textscale};
+  scale=1/\setaliaskey{textscale};
+  textalign=center/\aftercsname\xwm@settextalign{#1textalign};
+  text-align=center/\setaliaskey{textalign};
+  align=center/\setaliaskey{textalign};
+  showpagecenter=true/\ifdefboolTF{#1showpagecenter}{%
+    \usename{#1showpagecentertrue}}{\usename{#1showpagecenterfalse}};
+  show-page-center=true/\setaliaskey{showpagecenter};
+  showpapercenter=true/\setaliaskey{showpagecenter};
+  fontsize=1cm/\aftercsname{\xwm@defaultunits{##1}}{#1fontsize};
+  fontseries=b;
+  fontfamily=bch;
+  \needvalue{picfile}=/\aftercsname\xwm@stripallouterbracesincs{#1picfile}
+    \ifcsnnullTF{#1picfile}{\usename{#1pmarkfalse}}{\usename{#1pmarktrue}
+    \usename{#1minmarktrue}};
+  \needvalue{picture-file}=/\setaliaskey{picfile};
+  picfileext=\xwm@defaultfileext/\xwm@fileextfn{##1}{#1};
+  pic-file-ext=\xwm@defaultfileext/\setaliaskey{picfileext};
+  picangle=0;
+  picture-angle=0/\setaliaskey{picangle};
+  picscale=1;
+  picture-scale=1/\setaliaskey{picscale};
+  picbb=0 0 100 100;
+  picture-bb=0 0 100 100/\setaliaskey{picbb};
+  pic-bounding-box=0 0 100 100/\setaliaskey{picbb};
+  picxpos=\z@pt;
+  picture-xpos=0/\setaliaskey{picxpos};
+  picture-x-position=0/\setaliaskey{picxpos};
+  picypos=\z@pt;
+  picture-ypos=0/\setaliaskey{picypos};
+  picture-y-position=0/\setaliaskey{picypos};
+  mark=DRAFT/\setaliaskey{textmark};
+  textmark=DRAFT/
+    \aftercsname\xwm@stripallouterbracesincs{#1textmark}
+    \ifcsnnullTF{#1textmark}{%
+      \usename{#1tmarkfalse}
+    }{%
+      \usename{#1tmarktrue}
+    }%
+    \letcstocsn\currwatermark{#1textmark};
+  text-mark=DRAFT/\setaliaskey{textmark};
+  firstpage=true/\ifdefboolFT{#1firstpage}{}{\usename{#1minmarktrue}};
+  first-page=true/\setaliaskey{firstpage};
+  allpages=true/\ifdefboolFT{#1allpages}{}{\usename{#1minmarktrue}};
+  oddpages=true/\ifdefboolFT{#1oddpages}{}{\usename{#1minmarktrue}};
+  evenpages=true/\ifdefboolFT{#1evenpages}{}{\usename{#1minmarktrue}};
+  page=1/
+    \ifinsetTF{-}{##1}{%
+      \xwm@err{I found '-' in '##1' for key 'page',
+        \MsgBrk but 'page' doesn't take page-range}\@ehc
+    }{%
+      \ifnum\numexpr##1=\z@pt\else\usename{#1onepageonlytrue}
+      \usename{#1minmarktrue}\fi
+    };
+  pages=1-1/
+    \aftercsname\xwm@stripallouterbracesincs{#1pages}
+    \aftercsname\xifstrcmpTF{#1pages}{0-0}{}{%
+      \usename{#1prangetrue}\usename{#1minmarktrue}
+    }
+    \cptexpandsecond\xwm@hyphenpagerange{\cptmakecs{#1pages}
+      \cptmakecs{#1pagestart}\cptmakecs{#1pageend}};
+  pagex={1}/
+    \ifbracedTF{##1}{}{%
+      \xwm@err{Value of key 'pagex' must be braced}\@ehc
+    };
+  boxalign=/\ifblankTF{##1}{}
+    {\aftercsname\xwm@setboxalign{#1boxalign}};
+  box-align=/\setaliaskey{boxalign};
+}
+\robust@def*\xwm@adddefkeys{%
+  \begingroup
+  \endlinechar\m@one
+  \cpt@testopt\xwm@addd@fkeys{}%
+}
+\robust@def\xwm@addd@fkeys[#1]#2#3#4#5{%
+  \def\xwm@tempa{\endgroup#4}%
+  \expandafter\expandafter\expandafter\xwm@tempa
+    \expandafter\expandafter\expandafter
+    {\csname#2@commonkeys\endcsname{#3}#1#5}%
+}
+\xwm@adddefkeys[;]{xwm-1}{wmk@}
+  {\ltxkeys@definekeys*[XWM]{watermark}[wmk@]}{%
+  textwidth=\paperheight;
+  text-width=\paperheight/\setaliaskey{textwidth};
+  width=\paperheight/\setaliaskey{textwidth};
+  textheight=\paperwidth;
+  text-height=\paperwidth/\setaliaskey{textheight};
+  height=\paperwidth/\setaliaskey{textheight};
+  \needvalue{picheight}=;
+  pic-height=/\setaliaskey{picheight};
+  picture-height=/\setaliaskey{picheight};
+  \needvalue{picwidth}=;
+  picture-width=/\setaliaskey{picwidth};
+  textxpos=0;
+  text-xpos=0/\setaliaskey{textxpos};
+  text-x-position=0/\setaliaskey{textxpos};
+  xpos=0/\setaliaskey{textxpos};
+  textypos=0;
+  text-ypos=0/\setaliaskey{textypos};
+  text-y-position=0/\setaliaskey{textypos};
+  ypos=0/\setaliaskey{textypos};
+  coordunit=mm/\xwm@checkcoordunit{#1};
+  coord-unit=mm/\setaliaskey{coordunit};
+  position-unit=mm/\setaliaskey{coordunit};
+}
+\ltxkeys@makeoptionkeys*[XWM]{watermark}
+\xwm@adddefkeys[;]{xwm-1}{wlp@}
+ {\ltxkeys@definekeys*[XWM]{wallpaper}[wlp@]}{%
+  textheight=\wlp@tileysize;
+  text-height=\wlp@tileysize/\setaliaskey{textheight};
+  textwidth=\wlp@tilexsize;
+  text-width=\wlp@tilexsize/\setaliaskey{textwidth};
+  picheight=\wlp@tileysize;
+  picture-height=\wlp@tileysize/\setaliaskey{picheight};
+  picwidth=\wlp@tilexsize;
+  picture-width=\wlp@tilexsize/\setaliaskey{picwidth};
+  tilexsize=.25\paperwidth;
+  tile-xsize=.25/\setaliaskey{tilexsize};
+  tileysize=.25\paperheight;
+  tile-ysize=.25/\setaliaskey{tileysize};
+  wpxoffset=\z@pt;
+  wallpaper-xoffset=\z@pt/\setaliaskey{wpxoffset};
+  wpyoffset=\z@pt;
+  wallpaper-yoffset=\z@pt/\setaliaskey{wpyoffset};
+  tilexoffset=\z@pt;
+  tile-xoffset=\z@pt/\setaliaskey{tilexoffset};
+  tileyoffset=\z@pt;
+  tile-yoffset=\z@pt/\setaliaskey{tileyoffset};
+  tileno=4;
+  tilenumber=4/\setaliaskey{tileno};
+  tile-number=4/\setaliaskey{tileno};
+  number-of-tiles=4/\setaliaskey{tileno};
+  squaretiles=true;
+  square-tiles=true/\setaliaskey{squaretiles};
+}
+\ltxkeys@makeoptionkeys*[XWM]{wallpaper}
+\ltxkeys@definekeys*[XWM]{fancypagenos}[pgn@]{%
+  textalign=center/\xwm@settextalign\pgn@textalign;
+  text-align=center/\setaliaskey{textalign};
+  align=center/\setaliaskey{textalign};
+  boxalign=/\ifblankTF{#1}{}{\xwm@setboxalign\pgn@boxalign};
+  box-align=center/\setaliaskey{boxalign};
+  textangle=0;
+  text-angle=0/\setaliaskey{textangle};
+  angle=0/\setaliaskey{textangle};
+  picangle=0;
+  picture-angle=0/\setaliaskey{picangle};
+  textwidth=.25\textwidth;
+  text-width=.25/\setaliaskey{textwidth};
+  width=.25\hsize/\setaliaskey{textwidth};
+  textheight=.25\textheight;
+  text-height=.25/\setaliaskey{textheight};
+  height=.25\vsize/\setaliaskey{textheight};
+  textxpos=\z@pt;
+  x-position=0/\setaliaskey{textxpos};
+  xposition=0/\setaliaskey{textxpos};
+  xpos=\z@pt/\setaliaskey{textxpos};
+  textypos=\z@pt;
+  y-position=0/\setaliaskey{textypos};
+  yposition=0/\setaliaskey{textypos};
+  ypos=\z@pt/\setaliaskey{textypos};
+  textcolor=blue;
+  text-color=blue/\setaliaskey{textcolor};
+  color=blue/\setaliaskey{textcolor};
+  textscale=2.5;
+  text-scale=2.5/\setaliaskey{textscale};
+  scale=2.5/\setaliaskey{textscale};
+  coordunit=mm/\xwm@checkcoordunit{#1};
+  coord-unit=mm/\setaliaskey{coordunit};
+  position-unit=mm/\setaliaskey{coordunit};
+  fontfamily=bch;
+  fontseries=m;
+  format=\fbox;
+  framerule=.4\p@;
+  framesep=3\p@;
+  fontsize=12\p@/\xwm@defaultunits{#1}\pgn@fontsize;
+  cfoot;
+  center-footer=/\setaliaskey{cfoot};
+  footer-center=/\setaliaskey{cfoot};
+  rfoot;
+  right-footer=/\setaliaskey{rfoot};
+  footer-right=/\setaliaskey{rfoot};
+  lfoot;
+  left-footer=/\setaliaskey{lfoot};
+  footer-left=/\setaliaskey{lfoot};
+  chead;
+  center-header=/\setaliaskey{chead};
+  header-center=/\setaliaskey{chead};
+  rhead;
+  right-header=/\setaliaskey{rhead};
+  header-right=/\setaliaskey{rhead};
+  lhead;
+  left-header=/\setaliaskey{lhead};
+  header-left=/\setaliaskey{lhead};
+  headruleheight=.4\p@;
+  headrule-height=.4\p@/\setaliaskey{headruleheight};
+  headruledepth=.4\p@;
+  headrule-depth=.4\p@/\setaliaskey{headruledepth};
+  headrulewidth=\headwidth;
+  headrule-width=\headwidth/\setaliaskey{headrulewidth};
+  headrulesep=2\p@;
+  headrule-sep=2\p@/\setaliaskey{headrulesep};
+  headrule-separation=2\p@/\setaliaskey{headrulesep};
+  headrulecolor=blue;
+  headrule-color=blue/\setaliaskey{headrulecolor};
+  footruleheight=.4\p@;
+  footrule-height=.4\p@/\setaliaskey{footruleheight};
+  footruledepth=.4\p@;
+  footrule-depth=.4\p@/\setaliaskey{footruledepth};
+  footrulewidth=\headwidth;
+  footrule-width=\headwidth/\setaliaskey{footrulewidth};
+  footrulesep=2\p@;
+  footrule-sep=2\p@/\setaliaskey{footrulesep};
+  footrule-separation=2\p@/\setaliaskey{footrulesep};
+  footrulecolor=cyan;
+  footrule-color=blue/\setaliaskey{footrulecolor};
+  hfoffsetleft=.5;
+  hfoffset-left=.5/\setaliaskey{hfoffsetleft};
+  hfoffsetright=.5;
+  hfoffset-right=.5/\setaliaskey{hfoffsetright};
+  style=\thepage;
+  printstyle=\thepage/\setaliaskey{style};
+  sendtoback=true;
+}
+\ltxkeys@makeoptionkeys*[XWM]{fancypagenos}
+\ltxkeys@definekeys*[XWM]{fancypagenos}[pgn@]{%
+  showpagenos=true/\ifpgn@showpagenos\global\pgn@showpagenostrue\fi;
+  showpagenumbers=true/\setaliaskey{showpagenos};
+  show-page-numbers=true/\setaliaskey{showpagenos};
+  show-pagenos=true/\setaliaskey{showpagenos};
+  show-pageno=true/\setaliaskey{showpagenos};
+  showonpageone=true;
+  show-on-page-one=true/\setaliaskey{showonpageone};
+  showheadrule=true;
+  show-headrule=true/\setaliaskey{showheadrule};
+  showfootrule=true;
+  show-footrule=true/\setaliaskey{showfootrule};
+}
+\BeforeStartOfDocument{%
+  \ifpgn@showpagenos
+    \cptreplaceoneelement\XWM@fancypagenos@initialkeyvals
+      {showpagenos=false}{showpagenos=true}%
+  \fi
+}
+\robust@def*\PrintWatermark{\global\xwm@printwatermarktrue}
+\ltxkeys@declareoption*{%
+  \ltxkeys@getpvalnopad
+  \xwm@warn{Unknown option '\CurrentKey' with
+    value '\InnocentVal' ignored}%
+}
+\ltxkeys@executeoptions[XWM]<main>{%
+  printwatermark=true,disablegeometry=false
+}\relax
+\ltxkeys@processoptions*[XWM]<main,watermark,wallpaper,%
+  fancypagenos>\relax
+\new@def*\xwm@samplemarkkeys{%
+  firstpage,lastpage,allpages,oddpages,evenpages,
+  picscale,picture-scale,
+  picfile,picture-file,
+  picfileext,pic-file-ext,
+  picangle,picture-angle,
+  picbb,picture-bb,pic-bounding-box,
+  picxpos,picture-xpos,picture-x-position,
+  picypos,picture-ypos,picture-y-position,
+  showpagecenter,show-page-center,
+  picontoptext,picture-on-top-text,pic-on-top-text,
+  textontoppic,text-on-top-picture,text-on-top-pic=true,
+  pic-height,picture-height,
+  picwidth,picture-width,
+  squaretiles,square-tiles,
+  tilexsize,tile-xsize,
+  tileysize,tile-ysize,
+  wpxoffset,wallpaper-xoffset,
+  wpyoffset,wallpaper-yoffset,
+  tilexoffset,tile-xoffset,
+  tileyoffset,tile-yoffset,
+  tileno,tilenumber,tile-number,number-of-tiles
+}
+\new@def*\xwm@pagespecifiers{%
+  page=,pages=,pagex=,firstpage,lastpage,allpages,%
+  oddpages,evenpages%
+}
+\robust@def*\xwm@decidedetok#1{%
+  \ifsingletokenTF{#1}{%
+    \ifmacroTF{#1}{%
+      \let\xwm@detok\cptoxdetok
+    }{%
+      \let\xwm@detok\detokenize
+    }%
+  }{%
+    \let\xwm@detok\detokenize
+  }%
+}
+\robust@def*\xwm@decidexp#1{%
+  \ifsingletokenTF{#1}{%
+    \ifmacroTF{#1}{%
+      \let\xwm@xp\expandcsonce
+    }{%
+      \let\xwm@xp\unexpanded
+    }%
+  }{%
+    \let\xwm@xp\unexpanded
+  }%
+}
+\robust@def*\newwatermark#1{%
+  \xwm@wallfalse
+  \ifstrcmpTF{#1}\dummywatermark{%
+    \xwm@err{'\string\dummywatermark' in front of
+      \string\newwatermark}{First comment out or
+      remove '\string\dummywatermark'.}%
+  }{%
+    \def\xwm@forelist{\xwm@forewmklist}%
+    \def\xwm@backlist{\xwm@backwmklist}%
+    \xwm@suffixcheck\xwm@newwatermark{#1}%
+  }%
+}
+\robust@def*\xnewwatermark{%
+  \xwm@suffixcheck
+  {\cpt@teststpm{\cpt@testopt\cpt@xnewwatermark{}}}%
+}
+\robust@def*\xwm@ltxcmds{%
+  \centering,\flushright,\flushleft,\raggedright,%
+  \raggedleft,\fbox,\framebox,\makebox,\rotatebox,%
+  \scalebox,\raisebox,\color,\textcolor,\usecsn,%
+  \newcommand,\lastdocpage
+}
+\robust@def*\xwm@relaxltxcmds{%
+  \def\ltxkeys@do##1{\let##1=\relax}%
+  \ltxkeys@parse*1\xwm@ltxcmds
+}
+\robust@def*\cpt@xnewwatermark[#1]#2{%
+  \begingroup
+  \xwm@relaxltxcmds
+  \cptexpanded{%
+    \endgroup
+    \newwatermark\ifcpt@st*\fi\ifcpt@pm'\fi
+    [\expandcstwice{#1}]{\expandcstwice{#2}}%
+  }%
+}
+\robust@def*\newwallpaper#1{%
+  \xwm@walltrue
+  \ifstrcmpTF{#1}\dummywallpaper{%
+    \xwm@err
+      {'\string\dummywallpaper' in front of \string\newwallpaper}%
+      {First comment out or remove '\string\dummywallpaper'.}%
+  }{%
+    \def\xwm@forelist{\xwm@forewalllist}%
+    \def\xwm@backlist{\xwm@backwalllist}%
+    \xwm@suffixcheck\xwm@newwatermark{#1}%
+  }%
+}
+\robust@def*\xnewwallpaper{%
+  \cpt@teststpm{\cpt@testopt\cpt@xnewwallpaper{}}%
+}
+\robust@def*\cpt@xnewwallpaper[#1]#2{%
+  \begingroup
+  \xwm@relaxltxcmds
+  \cptexpanded{%
+    \endgroup
+    \newwallpaper\ifcpt@st*\fi\ifcpt@pm'\fi
+    [\expandcstwice{#1}]{\expandcstwice{#2}}%
+  }%
+}
+\robust@def*\xwm@newwatermark{%
+  \def\siso@do##1{\catcode`##1\string=12}%
+  \cpt@teststpm{%
+    \let\ifxwm@foregrd\ifcpt@st
+    \cpt@testopt{%
+      \begingroup
+      \expandafter\siso@@loop\expandafter
+        {\xwm@watermarkparser,;|-=!'"*}%
+      \expandafter\endgroup\xwm@n@wwatermark
+    }{}%
+  }%
+}
+\robust@def\xwm@n@wwatermark[#1]#2{%
+  \ifboolTF{cpt@pm}{}{\xwm@n@ww@termark{#1}{#2}}%
+}
+\robust@def\xwm@n@ww@termark#1#2{%
+  \xwm@decidexp{#1}%
+  \edef\xwm@currattrib{\xwm@xp{#1}}%
+  \cpt@sttrue\cpt@kvnormalize[,]\xwm@currattrib
+  \xwm@decidexp{#2}%
+  \edef\xwm@currmark{\xwm@xp{#2}}%
+  \xwm@decidedetok{#2}%
+  \xwm@swafalse
+  \xifinsetTF{\detokenize{\newwatermark}}{\xwm@detok{#2}}{%
+    \xwm@swatrue
+  }{%
+    \xifinsetTF{\detokenize{\newwallpaper}}{\xwm@detok{#2}}{%
+      \xwm@swatrue
+    }{}%
+  }%
+  \ifxwm@swa
+    \ifxwm@allownesting\else
+      \xwm@err{Nested '\string\newwatermark' or
+        '\string\newwallpaper'\MsgBrk
+        while option 'allownesting' is false}\@ehc
+    \fi
+  \fi
+  \ifboolTF{xwm@wall}{}{%
+    \xwmifitemsinFT[1]{%
+      squaretiles,square-tiles,tilexsize,tile-xsize,%
+      tileysize,tile-ysize,wpxoffset,wallpaper-xoffset,%
+      wpyoffset,wallpaper-yoffset,tilexoffset,tile-xoffset,%
+      tileyoffset,tile-yoffset,tileno,tilenumber,%
+      tile-number,number-of-tiles%
+    }{#1}{}{%
+      \xwm@@err{'\xwm@items' not admissible for
+        \MsgBrk non-wallpaper watermarks}\@ehc
+    }%
+  }%
+  \ifboolTF{xwm@allownesting}{}{%
+    \cpt@choicefdfalse
+    \def\csv@do##1{%
+      \xifinsetFT{,\detokenize{##1}}{,\xwm@detok{#2}}{}{%
+        \def\xwm@tempa{##1}%
+        \cpt@choicefdtrue\loopbreak
+      }%
+    }%
+    \csv@@parse*[,]\xwm@samplemarkkeys
+    \ifcpt@choicefd
+      \xwm@err{Illegal location of '\xwm@tempa'.
+        \MsgBrk The following keys are not allowed in
+        \MsgBrk mandatory/second argument of
+        \MsgBrk '\string\newwatermark' or '\string\newwallpaper':
+        ^^J||\xwm@samplemarkkeys||}\@ehc
+    \fi
+  }%
+  \xifinsetFT\xwm@watermarkparser{\xwm@detok{#2}}{}{%
+    \xwm@err{Watermark parser '\xwm@watermarkparser' appears in
+      the following watermark.\MsgBrk Enclose your token
+      '\xwm@watermarkparser' in braces:^^J||\unexpanded{#2}||}\@ehc
+  }%
+  \x@xwmifitemsinTF[1]\xwm@pagespecifiers{\expandcsonce\xwm@currattrib}{%
+    \x@xwmifitemsinTF[2]\xwm@pagespecifiers{\expandcsonce\xwm@currattrib}{%
+      \xwm@err{Too many page specifiers '\xwm@items' for watermark:
+        ^^J||\expandcsonce\xwm@currattrib||}{%
+        Only one page specifier is allowed in watermark.}%
+    }{}%
+  }{%
+    \xwm@err{No page specifier for watermark:
+      ^^J||\expandcsonce\xwm@currmark||}\@ehc
+  }%
+  \ifcsnullTF\xwm@currattrib{%
+    \ifcsnullTF\xwm@currmark{}{%
+      \xwm@@err{No attributes for watermark:
+        ^^J||\expandcsonce\xwm@currmark||}\@ehc
+    }%
+  }{%
+    \xwm@makecurrmark
+  }%
+  \edef\reserved@a{%
+    \ifxwm@foregrd\expandcsonce\xwm@forelist\else
+      \expandcsonce\xwm@backlist\fi
+  }%
+  \expandafter\edef\reserved@a{%
+    \expandafter\ifdefTF\reserved@a{\expandcstwice\reserved@a}{}%
+    \expandcsonce\currwatermark
+  }%
+  \undefcs\xwm@xp\undefcs\xwm@detok
+}
+\robust@def*\xwm@twopagespecerr{%
+  \ifxwm@swa
+    \xwm@err{Two page specifiers in watermark attributes:
+      ^^J||\cptoxdetok{\xwm@currattrib}||}\@ehc
+  \else
+    \xwm@swatrue
+  \fi
+}
+\robust@def*\xwm@addcurrmark#1{%
+  \begingroup
+  \xifinsetTF{,\detokenize{textmark}}{,\cptoxdetok\xwm@currattrib}{%
+    \@tempswafalse
+    \ifxTF\xwm@currmark\@empty{}{%
+      \xwm@err{Duplicate nonempty 'textmark'}\@ehc
+    }%
+  }{%
+    \@tempswatrue
+  }%
+  \edef\xwm@tempb{%
+    page=\number#1,\expandcsonce\xwm@currattrib,%
+    \if@tempswa textmark={\expandcsonce\xwm@currmark}\fi
+  }%
+  \ifcsemptyTF\xwm@tempb{}{\xwm@normalizedoublecomma\xwm@tempb}%
+  \edef\currwatermark{%
+    \expandcsonce\currwatermark{\number#1}{\expandcsonce\xwm@tempb}%
+  }%
+  \postgroupdef\currwatermark\endgroup
+}
+\robust@def*\xwm@getpagespec#1{%
+  \ifinsetTF{,#1,}{,page,pages,pagex,}{%
+    \def\xwm@tempa##1#1=##2,##3\xwm@nil{%
+      \ifblankTF{##2}{%
+        \xwm@warn{Key 'page/pages' has blank value;
+          \MsgBrk '1' used instead}\@ehc
+        \def\xwm@currpage{1}%
+      }{%
+        \ifstrcmpTF{#1}{pages}{%
+          \ifinsetTF{,}{##2}{%
+            \xwm@err{Key 'pages' doesn't accept comma-separated
+              \MsgBrk page numbers: use a hyphen}\@ehc
+          }{}%
+        }{%
+          \ifstrcmpTF{#1}{pagex}{%
+            \ifinsetTF{-}{##2}{%
+              \xwm@err{Key 'pagex' doesn't accept hyphen-separated
+                \MsgBrk page numbers: use commas}\@ehc
+            }{}%
+          }{}%
+        }%
+        \def\xwm@currpage{##2}%
+      }%
+      \edef\xwm@currattrib{\unexpanded{##1,##3}}%
+    }%
+    \expandafter\xwm@tempa\xwm@currattrib,\xwm@nil
+  }{%
+    \def\xwm@tempa##1#1,##2\xwm@nil{%
+      \edef\xwm@currattrib{\unexpanded{##1,##2}}%
+    }%
+    \expandafter\xwm@tempa\xwm@currattrib,\xwm@nil
+  }%
+}
+\robust@def*\xwm@ifpagespec#1{%
+  \cptexpandtwoargs\cpt@in
+    {,\detokenize{#1}}{,\cptoxdetok\xwm@currattrib}%
+  \ifboolTF{cpt@in}\@iden\@gobble
+}
+\robust@def*\xwm@normalizedoublecomma#1{%
+  \def\xwm@tempa##1,,##2\xwm@@nil{%
+    \ifblankTF{##2}{%
+      \edef#1{\unexpanded{##1}}%
+    }{%
+      \xwm@tempa##1,##2\xwm@@nil
+    }%
+  }%
+  \expandafter\xwm@tempa#1,,\xwm@@nil
+}
+\robust@def*\xwm@makecurrmark{%
+  \edef\xwm@rsvda{\lastdocpage}%
+  \def\currwatermark{}%
+  \xwm@swafalse
+  \xwm@ifpagespec{page=}{%
+    \xwm@twopagespecerr
+    \xwm@getpagespec{page}%
+    \xwm@addcurrmark\xwm@currpage
+  }%
+  \xwm@ifpagespec{pages=}{%
+    \xwm@twopagespecerr
+    \xwm@getpagespec{pages}%
+    \xwm@hyphenpagerange\xwm@currpage\xwm@pagestart\xwm@pageend
+    \xwm@cnta\numexpr\xwm@pagestart\relax
+    \cptloop
+      \xwm@addcurrmark\xwm@cnta
+      \advance\xwm@cnta by1 %
+      \ifnum\xwm@cnta<\numexpr\xwm@pageend+1\relax
+    \cptrepeat
+  }%
+  \xwm@ifpagespec{pagex=}{%
+    \xwm@twopagespecerr
+    \xwm@getpagespec{pagex}%
+    \def\ltxkeys@do##1{\xwm@addcurrmark{##1}}%
+    \ltxkeys@parse*1\xwm@currpage
+  }%
+  \xwm@ifpagespec{firstpage}{%
+    \xwm@twopagespecerr
+    \xwm@getpagespec{firstpage}%
+    \xwm@addcurrmark{1}%
+  }%
+  \xwm@ifpagespec{lastpage}{%
+    \xwm@twopagespecerr
+    \xwm@getpagespec{lastpage}%
+    \xwm@addcurrmark\xwm@rsvda
+  }%
+  \xwm@ifpagespec{evenpages}{%
+    \xwm@twopagespecerr
+    \xwm@getpagespec{evenpages}%
+    \xwm@cnta\@ne
+    \cptloop
+      \ifodd\xwm@cnta\else
+        \xwm@addcurrmark\xwm@cnta
+      \fi
+      \advance\xwm@cnta by1
+      \ifnum\xwm@cnta<\numexpr\xwm@rsvda+1\relax
+    \cptrepeat
+  }%
+  \xwm@ifpagespec{oddpages}{%
+    \xwm@twopagespecerr
+    \xwm@getpagespec{oddpages}%
+    \xwm@cnta\z@pt
+    \cptloop
+      \ifodd\xwm@cnta\expandafter\@iden\else\expandafter\@gobble\fi
+        {\xwm@addcurrmark\xwm@cnta}%
+      \advance\xwm@cnta by1
+      \ifnum\xwm@cnta<\numexpr\xwm@rsvda+1\relax
+    \cptrepeat
+  }%
+  \ifxwm@swa\else
+    \xwm@err{No page specifier in watermark attributes:
+      ^^J||\cptoxdetok\xwm@currattrib||}\@ehc
+  \fi
+}
+\robust@def*\dummywatermark#1{%
+  \ifstrcmpTF{#1}\newwatermark{%
+    \xwm@err
+      {'\string\newwatermark' in front of \string\dummywatermark}%
+      {First comment out or remove '\string\newwatermark'.}%
+  }{%
+    \ifboolTF{xwm@usedummymarks}\newwatermark\xwm@dummywatermark
+    #1%
+  }%
+}
+\robust@def*\dummywallpaper#1{%
+  \ifstrcmpTF{#1}\newwallpaper{%
+    \xwm@err
+      {'\string\newwallpaper' in front of \string\dummywallpaper}%
+      {First comment out or remove '\string\newwallpaper'.}%
+  }{%
+    \ifboolTF{xwm@usedummymarks}\newwallpaper\xwm@dummywatermark
+    #1%
+  }%
+}
+\robust@def*\xwm@dummywatermark{%
+  \cpt@teststpm{\cpt@testopt\xwm@d@mmywatermark{}}%
+}
+\robust@def*\xwm@d@mmywatermark[#1]#2{}
+\robust@def*\UseDummyWatermarks{\global\xwm@usedummymarkstrue}
+\robust@def*\DiscardDummyWatermarks{\global\xwm@usedummymarksfalse}
+\DiscardDummyWatermarks
+\robust@def*\DiscardAllWatermarks{%
+  \global\let\newwatermark\dummywatermark
+  \global\xwm@usedummymarksfalse
+}
+\robust@def*\xwm@putbothmarks{%
+  \ifdefFT\xwm@watermarklist{}\xwm@textpicmark@a
+  \ifdefFT\xwm@wallpaperlist{}\xwm@wallpaper@a
+}
+\chardef\xwm@nowatermark\z@pt
+\AtBeginShipout{%
+  \endlinechar13\catcode13=5
+  \catcode`\ =10
+  \catcode`\\\z@pt
+  \catcode`\{\@ne
+  \catcode`\}\tw@
+  \ifboolTF{xwm@printwatermark}{%
+    \let\xwm@watermarklist\xwm@backwmklist
+    \let\xwm@wallpaperlist\xwm@backwalllist
+    \AtBeginShipoutUpperLeft{%
+      \xwm@foregrdfalse
+      \xwm@putbothmarks
+    }%
+    \let\xwm@watermarklist\xwm@forewmklist
+    \let\xwm@wallpaperlist\xwm@forewalllist
+    \AtBeginShipoutUpperLeftForeground{%
+      \xwm@foregrdtrue
+      \xwm@putbothmarks
+    }%
+  }{%
+    \ifnum\xwm@nowatermark<\@ne
+      \pushnumber\xwm@nowatermark
+      \xwm@info{'printwatermark=false': no watermark printed}%
+    \fi
+  }%
+}
+\robust@def*\xwm@perpagestate{%
+  page=0,
+  pagex={0},
+  pages=0-0,
+  minmark=false,
+  onepageonly=false,
+  prange=false,
+  tmark=false,
+  pmark=false,
+  firstpage=false,
+  allpages=false,
+  oddpages=false,
+  evenpages=false,
+  showpagecenter=false,
+  textmark=DRAFT,
+  textalign=center,
+  boxalign=,
+  textcolor=gray!55,
+  fontfamily=bch,
+  textangle=0,
+  picangle=0,
+  fontsize=1cm,
+  fontseries=b,
+  textscale=1,
+  picscale=1,
+  picheight=,
+  picwidth=,
+  picbb=0 0 100 100,
+  picfileext,
+  picontoptext=false,
+  graphicsoptions={},
+}
+\robust@edef*\xwm@perpagewmkstate{%
+  \expandcsonce\xwm@perpagestate,
+  \unexpanded{%
+    height=\paperwidth,
+    width=\paperheight,
+    textxpos=0,
+    textypos=0,
+    picxpos=\z@pt,
+    picypos=\z@pt,
+    coordunit=mm
+  }%
+}
+\robust@edef*\xwm@perpagewallstate{%
+  \expandcsonce\xwm@perpagestate,
+  \unexpanded{%
+    tilexsize=.5\paperwidth,
+    tileysize=.5\paperheight,
+    wpxoffset=\z@pt,
+    wpyoffset=\z@pt,
+    textmark=,
+    picfile=,
+    tilexoffset=\z@pt,
+    tileyoffset=\z@pt,
+    tileno=4,
+    squaretiles=false
+  }%
+}
+\robust@def*\xwm@textpicmark@a{%
+  \ifcsnullTF\xwm@watermarklist{%
+    \ifboolTF{xwm@foregrd}{}{%
+      \ifdefboolFT{xwm@printwatermark}{}{%
+        \ifboolTF{xwm@draft}{%
+          \ifboolTF{wmk@showpagecenter}{}{%
+            \ifnumcmpFT\c@page=\@ne{}{%
+              \cptexpandargonce{\ltxkeys@setkeys[XWM]{watermark}}%
+                \xwm@perpagewmkstate
+              \wmk@tmarktrue\wmk@pmarkfalse
+              \cptdimdef\wmk@textxpos@a{0.5\paperwidth}%
+              \cptdimdef\wmk@textypos@a{-0.5\paperheight}%
+              \xwm@textpicmark@c
+              \xwm@info{'printwatermark' and 'draft' are 'true'
+                \MsgBrk but no watermark(s): watermark
+                \MsgBrk printed on page 1 only}%
+            }%
+          }%
+        }{%
+          \ifnum\c@page=\@ne
+            \xwm@info{'printwatermark=true' and 'draft=false'
+              \MsgBrk but no watermark(s)}%
+          \fi
+        }%
+      }%
+    }%
+  }{%
+    \xwm@processmarks\xwm@watermarklist{%
+      \xwm@setwatermarkkeys{watermark}{wmk}{##2}%
+      \ifdefboolFT{wmk@minmark}{}\xwm@textpicmark@c
+    }%
+  }%
+}
+\robust@def*\xwm@wallpaper@a{%
+  \ifcsnullTF\xwm@wallpaperlist{}{%
+    \xwm@processmarks\xwm@wallpaperlist{%
+      \xwm@setwatermarkkeys{wallpaper}{wall}{##2}%
+      \ifdefboolFT{wlp@minmark}{}\xwm@wallpaper@c
+    }%
+  }%
+}
+\robust@def*\xwm@setwatermarkkeys#1#2#3{%
+  \ltxkeys@getkeynames{#3}%
+  \cptexpandsecond{%
+    \ltxkeys@setkeys[XWM]{#1}%
+  }{%
+    [\ltxkeys@keynames]{\expandcsnonce{xwm@perpage#2state}}%
+  }%
+  \edef\currwatermark{\unexpanded{#3}}%
+  \ifblankTF{#3}{}{\ltxkeys@setkeys[XWM]{#1}{#3}}%
+}
+\robust@def*\xwm@processmarks#1#2{%
+%\edef\tempa{\expandcsonce{#1}}
+%\show\tempa
+  \def\xwm@pr@cessmarks##1##2{%
+    \ifstrcmpTF{##1}{.}{}{%
+      \ifnumcmpTF##1=\c@page{#2}{%
+        \edef#1{\expandcsonce#1\unexpanded{{##1}{##2}}}%
+      }%
+      \xwm@pr@cessmarks
+    }%
+  }%
+  \cptexpandsecondonce{\def#1{}\xwm@pr@cessmarks}{#1}{.}{}%
+}
+\ltxkeys@disablekeys*[XWM]{main}{printwatermark,disablegeometry}
+\BeforeStartOfDocument{%
+  \unless\ifxwm@printwatermark
+    \xwm@info{*** printwatermark=false: no watermark printed}%
+  \fi
+}
+\newcommand\xwm@papercenter{%
+  \color{red}\noindent
+  \xwm@put(0,-0.5\paperheight){\line(1,0){\paperwidth}}%
+  \xwm@put(0.5\paperwidth,0){\line(0,-1){\paperheight}}%
+  \xwm@put(0.5\paperwidth,-0.5\paperheight){\circle{10}}%
+  \normalcolor
+}
+\robust@def*\xwm@textbox#1{%
+  \begingroup
+  \let\nxp\noexpand
+  \let\mcs\cptmakecs
+  \edef\xwm@curralign{\expandcsnonce{#1@textalign}}%
+  \cptexpanded{\endgroup
+    \xwm@put(\mcs{#1@textxpos@a},\mcs{#1@textypos@a}){%
+      \quitvmode\nxp\@killglue\noindent
+      \nxp\makebox(0,0)[\expandcsnonce{#1@boxalign}]{%
+        \nxp\rotatebox[origin=c]{\mcs{#1@textangle}}{%
+          \nxp\scalebox{\mcs{#1@textscale}}{%
+            \nxp\parbox[c][\mcs{#1@textheight}]%
+              [c]\mcs{#1@textwidth}{%
+              \nxp\color{\mcs{#1@textcolor}}%
+              \cptdimdef\mcs{#1@fontsize@a}{\mcs{#1@fontsize}}%
+              \cptdimdef\mcs{#1@fontsize@a}%
+                {1.5\p@*\mcs{#1@fontsize@a}}%
+              \nxp\fontfamily\mcs{#1@fontfamily}%
+              \nxp\fontseries\mcs{#1@fontseries}%
+              \nxp\fontsize\mcs{#1@fontsize}\mcs{#1@fontsize@a}%
+              \nxp\selectfont
+              \quitvmode
+              \nxp\begin{\xwm@curralign}%
+              \mcs{#1@textmark}%
+              \nxp\end{\xwm@curralign}%
+            }%
+          }%
+        }%
+      }%
+    }%
+  }%
+  \@killglue\normalcolor
+}
+\robust@def*\xwm@getpicsize#1{%
+  \ifcsnnullTF{#1@picwidth}{%
+    \ifcsnnullTF{#1@picheight}{%
+      \edef\pic@size{scale=\cptmakecs{#1@picscale}}%
+    }{%
+      \xwm@err{You have supplied picture height
+        but not width}\@ehc
+    }%
+  }{%
+    \ifcsnnullTF{#1@picheight}{%
+      \xwm@err{You have supplied picture width
+        but not height}\@ehc
+    }{%
+      \edef\pic@size{width=\cptmakecs{#1@picwidth},%
+        height=\cptmakecs{#1@picheight}}%
+    }%
+  }%
+}
+\robust@def*\xwm@picmark{%
+  \xwm@findpicfile\wmk@picfile\wmk@picfileext
+  \xwm@getpicsize{wmk}%
+  \cptpassexpanded{%
+    \setbox\xwm@boxa=\hbox{%
+    \noexpand\includegraphics[\ifxwm@pdf viewport\else
+    bb\fi=\wmk@picbb,\pic@size,clip,\wmk@graphicsoptions,
+    \xwm@gr@phicsoptions]{\xwm@filefound}}%
+  }%
+  \cptdimdef\widthofcurrpic{\wd\xwm@boxa}%
+  \cptdimdef\heightofcurrpic{\ht\xwm@boxa}%
+  \cptdimdef\depthofcurrpic{\dp\xwm@boxa}%
+  \xwm@makedraftbox
+  \xwm@put(\wmk@picxpos@a,\wmk@picypos@a){%
+    \rotatebox[origin=c]\wmk@picangle{%
+      \cptexpandsecond{\makebox(0,0)}{[\wmk@boxalign]{%
+        \ifboolTF{xwm@draft}{\xwm@draftbox{wmk}}{\copy\xwm@boxa}%
+      }%
+    }%
+  }}%
+}
+\robust@def*\xwm@makedraftbox{%
+  \fboxsep\p@\fboxrule.4\p@
+  \cptdimdef\xwm@tempa{(\ht\xwm@boxa+\dp\xwm@boxa
+    -2\fboxsep-2\fboxrule)/2}%
+  \cptdimdef\xwm@tempb{\wd\xwm@boxa-2\fboxsep-2\fboxrule}%
+  \setbox\@tempboxa\hbox{\color@begingroup
+    \ttfamily\color{red}\Large (draft mode)\color@endgroup}%
+  \setbox\xwm@boxb=\hb@xt@\xwm@tempb{%
+    \xwmstrut\xwm@tempa\z@pt
+    \hb@xt@\xwm@tempb{\hss\unhbox\@tempboxa\hss}%
+    \xwmstrut\z@pt\xwm@tempa
+  }%
+}
+\robust@def*\xwm@draftbox#1{%
+  \begingroup
+  \color{\usename{#1@draftboxcolor}}\fbox{\copy\xwm@boxb}%
+  \endgroup
+}
+\newcommand*\xwm@textpicmark@c{%
+  \xwm@getposition\wmk@textxpos\wmk@textypos\wmk@coordunit
+  \xwm@getposition\wmk@picxpos\wmk@picypos\wmk@coordunit
+  \ifboolTF{wmk@picontoptext}{%
+    \ifdefboolFT{wmk@tmark}{}{\xwm@textbox{wmk}}%
+    \ifdefboolFT{wmk@pmark}{}\xwm@picmark
+  }{%
+    \ifdefboolFT{wmk@pmark}{}\xwm@picmark
+    \ifdefboolFT{wmk@tmark}{}{\xwm@textbox{wmk}}%
+  }%
+  \ifdefboolFT{wmk@showpagecenter}{}\xwm@papercenter
+}
+\AtBeginDocument{%
+  \ifdefTF\Ginput@path{%
+    \xdef\xwm@inputpath{\Ginput@path\xwm@inputpath}%
+    \ifxTF\Ginput@path\input@path{}{%
+      \ifdefFT\input@path{}{%
+        \xdef\xwm@inputpath{\input@path\xwm@inputpath}%
+      }%
+    }%
+  }{%
+    \ifdefFT\input@path{}{%
+      \xdef\xwm@inputpath{\input@path\xwm@inputpath}%
+    }%
+  }%
+}
+\new@def*\xwm@inputpath{}
+\robust@def*\watermarkpaths{%
+  \cpt@testst{\cpt@testopt\xwm@w@termarkpaths{}}%
+}
+\robust@def*\xwm@w@termarkpaths[#1]{%
+  \cpt@testpnopt{\xwm@w@term@rkpaths#1}{}
+}
+\robust@def*\xwm@w@term@rkpaths#1(#2)#3{%
+  \cpt@useemptytrue
+  \def\xwm@tempa{#3}%
+  \ifboolTF{cpt@st}{%
+    \ifbracedTF{#3}{\xwm@stripallouterbraces{#3}\xwm@tempa}{}%
+    \def\csv@do##1{%
+      \ifbracedTF{##1}{%
+        \xwm@stripallouterbraces{##1}\xwm@tempa
+      }{%
+        \def\xwm@tempa{##1}%
+      }%
+      \cptexpandarg{\grightaddtocs\xwm@inputpath}{{#1\xwm@tempa#2}}%
+    }%
+    \csv@@parse*[,]\xwm@tempa
+  }{%
+    \xifinsetFT{,}{\cptoxdetok\xwm@tempa}{}{%
+      \xwm@err{Input path '#3' contains comma:
+        \MsgBrk Commas can appear only in the argument
+        \MsgBrk of star (*) variant of \string\watermarkpaths}\@ehc
+    }%
+    \def\tsv@do##1{%
+      \ifbracedTF{##1}{%
+        \cptexpandarg{\grightaddtocs\xwm@inputpath}{{#1\@iden##1#2}}%
+      }{%
+        \xwm@err{Input path '##1' needs outer braces}\@ehc
+      }%
+    }%
+    \tsv@@parse*\xwm@tempa
+  }%
+}
+\newletcs\watermarkpath=\watermarkpaths
+\new@def*\xwmifeofTF#1{\ifcondTF\ifeof#1\fi}
+\robust@def*\pdfiffileexistsTF#1{%
+  \ifcondFT\if\pdffilesize{#1}\relax\fi
+}
+\robust@def*\xwmiffileexistsTF#1{%
+  \openin\@inputcheck#1\@space
+  \xwmifeofTF\@inputcheck{%
+    \ifcsnullTF\xwm@inputpath{%
+      \@secondoftwo
+    }{%
+      \xwm@iffileonpath{#1}%
+    }%
+  }{%
+    \closein\@inputcheck
+    \edef\xwm@filefound{#1}%
+    \@firstoftwo
+  }%
+}
+\robust@def*\xwmiffileexistsFT#1{%
+  \xwmiffileexistsTF{#1}\@secondoftwo\@firstoftwo
+}
+\robust@def*\xwm@iffileonpath#1{%
+  \let\xwm@pathfound\@empty
+  \cpt@choicefdfalse
+  \def\tsv@do##1{%
+    \xwm@stripallouterbraces{##1}\xwm@tempa
+    \openin\@inputcheck\xwm@tempa#1\@space
+    \xwmifeofTF\@inputcheck{}{%
+      \let\xwm@pathfound\xwm@tempa
+      \edef\xwm@filefound{\xwm@tempa#1}%
+      \closein\@inputcheck
+      \cpt@choicefdtrue\loopbreak
+    }%
+  }%
+  \tsv@@loop*\xwm@inputpath
+  \ifboolTF{cpt@choicefd}\@firstoftwo\@secondoftwo
+}
+\robust@def*\xwm@nofileerr#1#2{%
+  \message{%
+    ^^J! Package xwatermark Error: File '#1.#2' not found.
+    ^^J^^JType x to quit, or <RETURN> to proceed,
+    ^^Jor enter new name (default extension: #2):^^J
+  }%
+  \begingroup
+  \endlinechar-1\global\read-1 to\@gtempa
+  \endgroup
+  \ifcsnullTF\@gtempa{}{%
+    \oifstrcmpTF\@gtempa{x}{%
+      \stop
+    }{%
+      \oifstrcmpTF\@gtempa{X}{%
+        \stop
+      }{%
+        \filename@parse\@gtempa
+        \edef#1{\filename@area\filename@base}%
+        \edef#2{\ifxTF\filename@ext\relax{#2}{\filename@ext}}%
+        \xwm@findpicfile{#1}{#2}%
+      }%
+    }%
+  }%
+}
+\robust@def*\xwm@findpicfile#1#2{%
+  \let\xwm@filefound\@empty
+  \edef\xwm@filegiven{#1.#2}%
+  \ifboolTF{xwm@pdf}{%
+    \xwm@f@ndpicfile{#1}{#2}{pdf,png,jpeg,mps}%
+  }{%
+    \xwm@f@ndpicfile{#1}{#2}{eps,ps}%
+  }%
+  \ifcsnullFT\xwm@filefound{}{\xwm@nofileerr{#1}{#2}}%
+}
+\robust@def*\xwm@f@ndpicfile#1#2#3{%
+  \xwm@swafalse
+  \xwmiffileexistsTF{#1.#2}{%
+    \xwm@swbtrue
+  }{%
+    \xwm@swbfalse
+    \def\csv@do##1{%
+      \xwmiffileexistsFT{#1.##1}{}{%
+        \xwm@swatrue\loopbreak
+      }%
+    }%
+    \csv@@loop[,]{#3}%
+  }%
+  \ifboolTF{xwm@swb}{}{%
+    \ifboolTF{xwm@swa}{%
+      \xwm@warn{File '\xwm@filegiven' doesn't exist
+        \MsgBrk on given path(s) '\xwm@inputpath',
+        \MsgBrk but I have found \xwm@filefound'}%
+    }{%
+      \let\xwm@filefound\@empty
+      \let\xwm@pathfound\@empty
+    }%
+  }%
+}
+\robust@def*\xwm@wallpaper@c{%
+  \ifboolTF{wlp@picontoptext}{%
+    \xwm@textwallpaper
+    \xwm@picwallpaper
+  }{%
+    \xwm@picwallpaper
+    \xwm@textwallpaper
+  }%
+  \ifdefboolFT{wlp@showpagecenter}{}\xwm@papercenter
+}
+\robust@def*\xwm@textwallpaper{%
+  \ifdefboolFT{wlp@tmark}{}{%
+    \ifboolTF{wlp@squaretiles}\xwm@sqtexttiles\xwm@texttiles
+  }%
+}
+\robust@def*\xwm@picwallpaper{%
+  \ifdefboolFT{wlp@pmark}{}{%
+    \ifboolTF{wlp@squaretiles}%
+      \xwm@sqpictiles\xwm@pictiles
+  }%
+}
+\robust@def*\xwm@dotiling{\xwm@makedraftbox\xwm@dotiling@a}
+\robust@def*\xwm@dotiling@a{%
+  \let\tiley\wlp@wpyoffset
+  \cptwhiledim\tiley<\paperheight-\wlp@wpyoffset\do{%
+    \cptdimdef\xwm@tempa{-\paperheight+\tiley}%
+    \let\tilex\wlp@wpxoffset
+    \cptwhiledim\tilex<\paperwidth-\wlp@wpxoffset\do{%
+      \leavevmode\@killglue
+      \xwm@put(\tilex,\xwm@tempa){\rotatebox[origin=c]
+        \xwm@currangle{%
+        \cptexpandsecond{\makebox(0,0)}{[\wlp@boxalign]}{%
+          \ifboolTF{xwm@draft}
+            {\xwm@draftbox{wlp}}{\copy\xwm@boxa}%
+        }%
+      }}%
+      \cptdimadd\tilex{\wlp@tilexsize+\wlp@tilexoffset}%
+    }%
+    \cptdimadd\tiley{\wlp@tileysize+\wlp@tileyoffset}%
+  }%
+}
+\robust@def*\xwm@toofewtiles#1{%
+  \ifnum\numexpr#1<4\relax
+    \xwm@err{Too few square wallpapers '#1';
+      \MsgBrk minimum expected: 4}\@ehc
+  \fi
+}
+\robust@def*\xwm@texttiles{%
+  \setbox\xwm@boxa=\hbox{%
+    \resizebox\wlp@tilexsize\wlp@tileysize
+      {\color{\wlp@textcolor}\wlp@textmark}%
+  }%
+  \let\xwm@currangle\wlp@textangle
+  \xwm@dotiling
+}
+\robust@def*\xwm@sqtexttiles{%
+  \xwm@toofewtiles\wlp@tileno
+  \cptdimdef\wlp@tilexsize{\paperwidth/\wlp@tileno}%
+  \let\wlp@tileysize\wlp@tilexsize
+  \setbox\xwm@boxa=\hbox{%
+    \resizebox\wlp@tilexsize\wlp@tileysize
+      {\color{\wlp@textcolor}\wlp@textmark}%
+  }%
+  \let\xwm@currangle\wlp@textangle
+  \xwm@dotiling
+}
+\robust@def*\xwm@tilepicbox{%
+  \xwm@findpicfile\wlp@picfile\wlp@picfileext
+  \setbox\xwm@boxa=\hbox{%
+    \cptexpandsecond\includegraphics{%
+      [\ifxwm@pdf viewport\else bb\fi=\wlp@picbb,
+      width=\the\dimexpr\wlp@tilexsize,height=
+      \the\dimexpr\wlp@tileysize,clip,
+      \wlp@graphicsoptions,\xwm@gr@phicsoptions]%
+    }{\xwm@filefound}%
+  }%
+}
+\robust@def*\xwm@pictiles{%
+  \xwm@tilepicbox
+  \let\xwm@currangle\wlp@picangle
+  \xwm@dotiling
+}
+\robust@def*\xwm@sqpictiles{%
+  \xwm@toofewtiles\wlp@tileno
+  \cptdimdef\wlp@tilexsize{\paperwidth/\wlp@tileno}%
+  \let\wlp@tileysize\wlp@tilexsize
+  \xwm@tilepicbox
+  \let\xwm@currangle\wlp@picangle
+  \xwm@dotiling
+}
+\robust@def*\xwmsetbox#1#2#3#4{%
+  \begingroup
+  \setbox1\hbox{\color@begingroup#4\color@endgroup}%
+  \setbox\@tempboxa\hbox to#1\textwidth{%
+    \setbox0\vtop{%
+      \ignorespaces#4\vskip\dimexpr#3\textheight/2\relax
+    }%
+    \cptdimdef\x{(#1\textwidth-\wd1)/2\relax}%
+    \hskip\x\box0\hskip-\x
+  }%
+  \ht\@tempboxa=\dimexpr#2\textheight/2\relax
+  \noindent\box\@tempboxa
+  \endgroup
+}
+\robust@def*\xwmstrut#1#2{%
+  \relax\unskip
+  \ifhmode\nobreak\fi
+  \begingroup
+  \setbox\@tempboxa=\hbox{\vrule\@height#1\@depth#2\@width\z@pt}%
+  \ifmmode\copy\@tempboxa\else\unhcopy\@tempboxa\fi
+  \endgroup
+}
+\robust@def*\xwmgetpicdim{\cpt@testopt\xwm@getpicdim{}}
+\robust@def*\xwm@getpicdim[#1]#2{%
+  \begingroup
+  \edef\Ginput@path{%
+    \usecsifdef\Ginput@path\usecsifdef\xwm@inputpath
+    \usecsifdef\input@path
+  }%
+  \setbox\xwm@boxa=\hbox{\includegraphics[#1]{#2}}%
+  \cptdimdef\xwmwdofpic{\wd\xwm@boxa}%
+  \cptdimdef\xwmhtofpic{\ht\xwm@boxa}%
+  \cptdimdef\xwmdpofpic{\dp\xwm@boxa}%
+  \cptdimdef\xwmtothtofpic{\ht\xwm@boxa+\dp\xwm@boxa}%
+  \let\\\cpt@csexit
+  \cptexpanded{\endgroup
+    \\\xwmwdofpic\\\xwmhtofpic\\\xwmdpofpic\\\xwmtothtofpic}%
+}
+% #1=optional text to be printed as watermark
+% #2=sundry fixed keys
+% #3=variable keys, separated by semicolon (set-1;...;set-n)
+% Each set-i has the syntax <key1=val1,...,keyn=valn>
+\robust@def*\repeatwatermarks{%
+  \cpt@teststpm{\cpt@testopt\xwm@repeatwatermarks{}}%
+}
+\robust@def\xwm@repeatwatermarks[#1]#2#3{%
+  \edef\repeat@marks{\csv@@loop\ifcpt@st*\fi}%
+  \def\csv@do##1{%
+    \ifblankTF{##1}{}{\newwatermark[#2,##1]{#1}}%
+  }%
+  \ifboolTF{cpt@pm}{}{\repeat@marks[;]{#3}}%
+  \undefcs\repeat@marks
+}
+\ltxkeys@definekeys*[XWM]{boxedminipage}[xwmbmp@]{%
+  width=\textwidth;
+  textcolor=black;
+  framecolor=black;
+  framesep=3\p@;
+  framerule=0.4\p@;
+  height=\z@pt;
+  depth=\z@pt;
+  textalign=justified/\xwm@settextalign\xwmbmp@textalign;
+  innerpos=c;
+}
+\robust@def*\xwmboxedminipage{\cpt@testopt\xwm@boxedminipage{}}
+\begingroup
+\catcode`\|=\catcode`\%
+\robust@gdef*\xwm@boxedminipage[#1]{%
+  \ltxkeys@launchkeys[XWM]{boxedminipage}{#1}%
+  \xwm@stripallouterbracesincs\xwmbmp@width
+  \xwm@stripallouterbracesincs\xwmbmp@textcolor
+  \leavevmode\@pboxswfalse
+  \begingroup
+  \color{\xwmbmp@framecolor}%
+  \xifstrcmpTF\xwmbmp@innerpos{b}{%
+    \vbox
+  }{%
+    \xifstrcmpTF\xwmbmp@innerpos{t}{%
+      \vtop
+    }{%
+      \ifboolTF{mmode}{%
+        \vcenter
+      }{%
+        \@pboxswtrue $\vcenter |$
+      }%
+    }%
+  }%
+  {\ifnum`}=0\fi
+    \hsize\xwmbmp@width\relax
+    \hrule\@height\xwmbmp@framerule
+    \hbox{\ifnum`}=0\fi
+      \vrule\@width\xwmbmp@framerule
+      \kern\xwmbmp@framesep\relax
+      \vbox{\ifnum`}=0\fi
+        \vskip\xwmbmp@framesep\relax
+  \cptdimdef\reserved@a{\hsize-(\xwmbmp@framerule+\xwmbmp@framesep)*2}%
+  \hsize\reserved@a\relax
+  \textwidth\reserved@a\relax
+  \columnwidth\reserved@a\relax
+  \@parboxrestore
+  \c@mpfootnote\z@pt
+  \let\@footnotetext\@mpfootnotetext
+	\let\@listdepth\@mplistdepth\@mplistdepth\z@pt
+	\@minipagerestore\@minipagetrue
+	\everypar{\global\@minipagefalse\everypar{}}%
+  \leavevmode\@killglue
+  \xwmstrut\xwmbmp@height\z@pt
+  \noindent\color{\xwmbmp@textcolor}%
+  \begin\xwmbmp@textalign
+  \ignorespaces
+}
+\robust@gdef*\endxwmboxedminipage{%
+  \end\xwmbmp@textalign
+  \xwmstrut\z@pt\xwmbmp@depth
+  \ifvoid\@mpfootins\else
+    \vskip\skip\@mpfootins\footnoterule\unvbox\@mpfootins
+  \fi
+  \vskip\xwmbmp@framesep\relax
+  \ifnum`{=0\fi}%
+  \kern\xwmbmp@framesep\relax
+  \vrule\@width\xwmbmp@framerule
+  \ifnum`{=0\fi}%
+  \hrule\@height\xwmbmp@framerule
+  \ifnum`{=0\fi}%
+  \if@pboxsw\m@th$\fi |$
+  \leavevmode\@killglue
+  \endgroup
+  \@ignoretrue
+}
+\endgroup
+
+\ltxkeys@definekeys*[XWM]{minipage}[xwmmp@]{%
+  width=\paperwidth;
+  textcolor=black;
+  framecolor=black;
+  framesep=3\p@;
+  framerule=0.4\p@;
+  height=\z@pt;
+  depth=\z@pt;
+  textalign=center/\xwm@settextalign\xwmmp@textalign;
+  text-align=center/\setaliaskey{textalign};
+  framebox=true;
+  insertframe=true/\setaliaskey{framebox};
+  insert-frame=true/\setaliaskey{framebox};
+}
+\robust@def*\xwmminipage{\cpt@testopt\xwm@minipage{}}
+\robust@def\xwm@minipage[#1]#2{%
+  \ltxkeys@launchkeys[XWM]{minipage}{#1}%
+  \xwm@stripallouterbracesincs\xwmmp@width
+  \xwm@stripallouterbracesincs\xwmmp@textcolor
+  \xwm@pushboxframe
+  \fboxsep\xwmmp@framesep\fboxrule\xwmmp@framerule\relax
+  \cptdimdef\xwmmp@boxwidth{\xwmmp@width-2\fboxsep-2\fboxrule}%
+  \def\xwm@printbox{%
+    \color{\xwmmp@framecolor}%
+    \ifxwmmp@framebox\fbox{\fi
+      \usebox\xwm@boxa
+    \ifxwmmp@framebox}\fi
+    \xwm@popboxframe
+  }%
+  \@killglue\noindent
+  \begin{lrbox}\xwm@boxa
+  \@killglue\noindent
+  \begin{minipage}[c][\height][s]\xwmmp@boxwidth
+  \@killglue\noindent
+  \xwmstrut\xwmmp@height\z@pt
+  \begin\xwmmp@textalign
+  \textcolor{\xwmmp@textcolor}{#2}\relax
+  \end\xwmmp@textalign
+  \xwmstrut\z@pt\xwmmp@depth
+  \end{minipage}%
+  \@ignoretrue\@killglue
+  \end{lrbox}%
+  \@ignoretrue\@killglue\noindent
+  \xwm@printbox
+  \normalcolor
+  \@ignoretrue
+}
+\ltxkeys@definekeys*[XWM]{colorbox}[xwmcbx@]{%
+  width=\textwidth;
+  height=\z@pt;
+  depth=\z@pt;
+  framebox=true;
+  insertframe=true/\setaliaskey{framebox};
+  insert-frame=true/\setaliaskey{framebox};
+  textcolor=black;
+  fillcolor=white;
+  outerframecolor=black;
+  outer-frame-color=black/\setaliaskey{outerframecolor};
+  innerframecolor=black;
+  inner-frame-color=black/\setaliaskey{innerframecolor};
+  framesep=3\p@;
+  framerule=0.4\p@;
+  textalign=center/\xwm@settextalign\xwmcbx@textalign;
+  align=center/\setaliaskey{textalign};
+  text-align=center/\setaliaskey{textalign};
+}
+\robust@def*\xwmcolorbox{\cpt@testopt\xwm@colorbox{}}
+\robust@def\xwm@colorbox[#1]#2{%
+  \ltxkeys@launchkeys[XWM]{colorbox}{#1}%
+  \xwm@pushboxframe
+  \fboxsep\xwmcbx@framesep\fboxrule\xwmcbx@framerule\relax
+  \removelastskip\noindent
+  \fcolorbox{\xwmcbx@outerframecolor}{\xwmcbx@fillcolor}{%
+    \cptexpandsecond\xwmminipage{[textalign=\xwmcbx@textalign,
+    framesep=\xwmcbx@framesep,framerule=\xwmcbx@framerule,
+    framecolor=\xwmcbx@innerframecolor,width=\xwmcbx@width,
+    height=\xwmcbx@height,depth=\xwmcbx@depth,
+    textcolor=\xwmcbx@textcolor,framebox=true]}{#2}%
+  }%
+  \xwm@popboxframe
+  \removelastskip
+  \normalcolor
+}
+\ltxkeys@definekeys*[XWM]{makecolorbox}[xwmmbx@]{%
+  width=\textwidth;
+  height=\z@pt;
+  depth=\z@pt;
+  framebox=true;
+  textcolor=black;
+  fillcolor=white;
+  outerframecolor=black;
+  outer-frame-color=black/\setaliaskey{outerframecolor};
+  innerframecolor=black;
+  inner-frame-color=black/\setaliaskey{innerframecolor};
+  framesep=3\p@;
+  framerule=0.4\p@;
+  textalign=center/\xwm@settextalign\xwmmbx@textalign;
+  align=center/\setaliaskey{textalign};
+  text-align=center/\setaliaskey{textalign};
+  boxalign=center/\xwm@settextalign\xwmmbx@boxalign;
+}
+\robust@def*\makecolorbox{\cpt@testopt\xwm@makecolorbox{}}
+\robust@def*\xwm@makecolorbox[#1]#2{%
+  \ltxkeys@launchkeys[XWM]{makecolorbox}{#1}%
+  \begin{\xwmmbx@boxalign}%
+  \makebox[\z@pt][c]{%
+    \xwmstrut\xwmmbx@height\z@pt
+    \xwm@pushboxframe
+    \fboxsep\xwmmbx@framesep\fboxrule\xwmmbx@framerule\relax
+    \fcolorbox{\xwmmbx@outerframecolor}{\xwmmbx@fillcolor}{%
+      \cptexpandsecond\xwmminipage{[textalign=\xwmmbx@textalign,
+      framesep=\xwmmbx@framesep,framerule=\xwmmbx@framerule,
+      framecolor=\xwmmbx@innerframecolor,width=\xwmmbx@width,
+      height=\xwmmbx@height,depth=\xwmmbx@depth,
+      textcolor=\xwmmbx@textcolor,framebox=
+      \thebool@normal{xwmmbx@framebox}]}{#2}%
+    }%
+    \xwm@popboxframe
+    \xwmstrut\z@pt\xwmmbx@depth
+  }%
+  \end{\xwmmbx@boxalign}%
+  \removelastskip
+  \normalcolor
+}
+\ltxkeys@definekeys*[XWM]{shade}[xwmshd@]{%
+  width=\hsize;
+  leftadjust=\z@pt;
+  indent=\z@pt;
+  fillcolor=gray!75;
+  framecolor=black;
+  framesep=3\p@;
+  framerule=0.4\p@;
+  height=\z@pt;
+  depth=\z@pt;
+  textalign=justified/\xwm@settextalign\xwmshd@textalign;
+  textcolor=black
+}
+\robust@def*\xwm@frameshade{%
+  \def\FrameCommand{%
+    \clubpenalty\@m\widowpenalty\@m
+    \noindent\kern\xwmshd@leftadjust
+    \fboxrule\xwmshd@framerule\fboxsep\xwmshd@framesep\relax
+    \fcolorbox{\xwmshd@framecolor}{\xwmshd@fillcolor}%
+  }%
+  \parindent\z@pt\finalhyphendemerits\z@pt
+  \cptdimdef\xwm@tempa{\xwmshd@width-(\xwmshd@framesep
+    +\xwmshd@framerule+\xwmshd@indent)}%
+  \color{\xwmshd@textcolor}%
+  \MakeFramed{%
+    \hsize\xwm@tempa\FrameRestore\@setminipage
+  }%
+  \xwmstrut\xwmshd@height\z@pt
+  \begin\xwmshd@textalign
+}
+\robust@def*\xwmshade{\cpt@testopt\xwm@shade{}}
+\robust@def*\xwm@shade[#1]{%
+  \ltxkeys@launchkeys[XWM]{shade}{#1}%
+  \xwm@frameshade
+}
+\robust@def*\endxwmshade{%
+  \end\xwmshd@textalign
+  \xwmstrut\z@pt\xwmshd@depth
+  \par\unskip\endMakeFramed\@ignoretrue
+}
+\ltxkeys@definekeys*[XWM]{fadingtext}[fad@]{%
+  textcolor=white;
+  boxcolor=black;
+  scale=1;
+  letterwidth=5mm;
+  barcolor=yellow;
+  height=\z@pt;
+  depth=\z@pt
+}
+\newcommand*\xwmfadingtext[2][]{%
+  \ltxkeys@launchkeys[XWM]{fadingtext}{#1}%
+  \begingroup
+  \@tempcnta\z@pt
+  \def\siso@do##1{%
+    \advance\@tempcnta\@ne
+    \csn@xdef{fade@\romannumeral\@tempcnta}{\cpttrimspace{##1}}%
+  }%
+  \siso@@loop{#2}%
+  \def\colbox##1{%
+    \color{.!80}%
+    \colorbox{.}{{%
+      \color{\fad@textcolor!\the\numexpr100-\@tempcnta/\icol*10\relax}%
+      \ifnum\icol=\@ne
+        \kern\dimexpr\fad@letterwidth/50\relax
+      \fi
+      \makebox[\fad@letterwidth]{##1}%
+      \ifnum\icol<\@tempcnta
+        \scalebox\fad@scale{\textcolor{\fad@barcolor}{$|$}}%
+      \else
+        \scalebox\fad@scale{\phantom{$|$}}%
+        \kern\dimexpr-\fad@letterwidth/10\relax
+      \fi
+    }}%
+  }%
+  \color{\fad@boxcolor}%
+  \chardef\icol\z@pt
+  \cptdotimes\@tempcnta{%
+    \pushnumber\icol
+    \colbox{\scalebox\fad@scale
+      {\xwmstrut\fad@height\fad@depth
+      \usename{fade@\romannumeral\icol}}}%
+  }%
+  \endgroup
+}
+\cptonlypreamble{%
+  \dummypagenos,\fancypagenos,
+  \FancyPageNumbers,\NoFancyPageNumbers
+}
+\newcommand*\dummypagenos[1][]{}
+\newcommand*\fancypagenos[1][]{%
+  \ifblankTF{#1}{}{\AtBeginDocument{\xwm@fancypagenos{#1}}}%
+}
+\robust@def*\NoFancyPageNumbers{%
+  \AfterStartOfDocument{\global\pgn@showpagenosfalse}%
+}
+\robust@def*\FancyPageNumbers{%
+  \AfterStartOfDocument{\global\pgn@showpagenostrue}%
+}
+\robust@def*\xwm@fancypagenos#1{%
+  \ltxkeys@launchkeys[XWM]{fancypagenos}{#1}%
+  \xwm@getposition\pgn@textxpos\pgn@textypos\pgn@coordunit
+  \ifnumcmpFT\c@page=\@ne{}{%
+    \AfterStartOfDocument{\thispagestyle{\xwm@frontpagestyle}}%
+  }%
+  \pagestyle{fancyplain}%
+  \fancyhf{}%
+  \cfoot{\pgn@cfoot}\rfoot{\pgn@rfoot}%
+  \lfoot{\pgn@lfoot}\chead{\pgn@chead}%
+  \rhead{\pgn@rhead}\lhead{\pgn@lhead}%
+  \ifpgn@showheadrule
+    \def\headrule{{%
+      \color{\pgn@headrulecolor}%
+      \hrule\@height\pgn@headruleheight\@depth\pgn@headruledepth
+        \@width\headwidth\vspace{\pgn@headrulesep}%
+      \hrule\@height\pgn@headruleheight\@depth\pgn@headruledepth
+        \@width\headwidth\vspace{-\pgn@headrulesep}%
+    }}%
+  \else
+    \let\headrule\relax
+  \fi
+  \ifpgn@showfootrule
+    \def\footrule{{%
+      \color{\pgn@footrulecolor}%
+      \hrule\@height\pgn@footruleheight\@depth\pgn@footruledepth
+        \@width\headwidth\vspace{\pgn@footrulesep}%
+      \hrule\@height\pgn@footruleheight\@depth\pgn@footruledepth
+        \@width\headwidth\vspace{\pgn@footrulesep}%
+    }}%
+  \else
+    \let\footrule\relax
+  \fi
+  \xwm@gethfoffset\pgn@hfoffsetleft\pgn@hfoffsetright
+  \fancyhfoffset[R,L]\xwm@hfoffset
+  \AtBeginShipout{%
+    \ifboolTF{pgn@sendtoback}{%
+      \AtBeginShipoutUpperLeft{%
+        \xwm@f@ncyp@genos
+      }%
+    }{%
+      \AtBeginShipoutUpperLeftForeground{%
+        \xwm@f@ncyp@genos
+      }%
+    }%
+  }%
+}
+\newswitch{xwm@fancy}
+\robust@def*\xwm@f@ncypagenos{%
+  \def\pgn@textmark{%
+    \begingroup
+    \fboxrule\pgn@framerule\fboxsep\pgn@framesep\relax
+    \pgn@format{\normalfont\pgn@style}%
+    \endgroup
+  }%
+  \switchtrue{xwm@fancy}%
+  \xwm@textbox{pgn}%
+  \switchfalse{xwm@fancy}%
+}
+\robust@def*\xwm@f@ncyp@genos{%
+  \ifboolFT{pgn@showpagenos}{}{%
+    \ifnumcmpTF\c@page=\@ne{%
+      \ifboolTF{pgn@showonpageone}\xwm@f@ncypagenos\relax
+    }{%
+      \xwm@f@ncypagenos
+    }%
+  }%
+}
+\robust@def*\xwm@gethfoffset#1#2{%
+  \begingroup
+  \def\temp@err{%
+    \xwm@err{Only digits (without units) are allowed\MsgBrk
+      in the values of 'hfoffsetleft' and 'hfoffsetright'}\@ehc
+  }%
+  \xifblankTF{#1}{}{%
+    \x@xwmifitemsinTF\xwm@allowedcoordunits{#1}\temp@err{}%
+  }%
+  \xifblankTF{#2}{}{%
+    \x@xwmifitemsinTF\xwm@allowedcoordunits{#2}\temp@err{}%
+  }%
+  \def\xwm@tempc##1##2{%
+    \xifblankTF{##1}{\def##2{1}}{\def##2{##1}}%
+    \ifdim##2\p@>\p@\def##2{1}\fi
+  }%
+  \xwm@tempc{#1}\xwm@tempa\xwm@tempc{#2}\xwm@tempb
+  \def\xwm@tempc##1{%
+    \xifinsetFT{.}{##1}{}{%
+      \def\xwm@tempd####1.####2\xwm@nil{\def##1{.####2}}%
+      \cptexpandsecond\xwm@tempd{##1}\xwm@nil
+    }%
+  }%
+  \xwm@tempc\xwm@tempa\xwm@tempc\xwm@tempb
+  \cptpassexpanded{%
+    \endgroup\def\noexpand\xwm@hfoffset{%
+      \the\dimexpr\xwm@tempa\marginparsep+%
+      \xwm@tempb\marginparwidth\relax
+    }%
+  }%
+}
+\robust@redef*\Gin@ii[#1]#2{%
+  \ifstrcmpTF{[}{#2}{%
+    \Gin@iii[#1][%
+  }{%
+    \begingroup
+    \@tempswafalse
+    \toks@{\Ginclude@graphics{#2}}%
+    \ltxkeys@setkeys{Gin}{#1}%
+    \Gin@esetsize
+    \the\toks@
+    \endgroup
+  }%
+}
+\robust@redef*\Grot@box@kv[#1]#2#3{%
+  \@begin@tempboxa\hbox{#3}%
+  \Grot@x\dimexpr\width/2\relax
+  \Grot@y\dimexpr(\height-\depth)/2\relax
+  \ltxkeys@setkeys{Grot}{#1}%
+  \setbox\z@pt\box\@tempboxa
+  \Grot@setangle{#2}%
+  \Grot@box
+  \@end@tempboxa
+}
+
+\endinput
+
+%%% End of file xwatermark.sty %%%

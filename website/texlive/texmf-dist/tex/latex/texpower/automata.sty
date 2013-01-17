@@ -1,0 +1,1090 @@
+%%
+%% This is file `automata.sty',
+%% generated with the docstrip utility.
+%%
+%% The original source files were:
+%%
+%% texpower-addons.dtx  (with options: `automata')
+%% 
+%% --------------------------------------------------------------
+%% TeXPower bundle - dynamic online presentations with LaTeX
+%% Copyright (C) 1999-2004 Stephan Lehmke
+%% Copyright (C) 2003-2005 Hans Fredrik Nordhaug
+%% 
+%% This program is free software; you can redistribute it and/or
+%% modify it under the terms of the GNU General Public License
+%% as published by the Free Software Foundation; either version 2
+%% of the License, or (at your option) any later version.
+%% 
+%% This program is distributed in the hope that it will be useful,
+%% but WITHOUT ANY WARRANTY; without even the implied warranty of
+%% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%% GNU General Public License for more details.
+%% --------------------------------------------------------------
+%% 
+%% The list of all files belonging to the TeXPower bundle is
+%% given in the file `00readme.txt'.
+%% 
+%=======================================================================================================================
+% File: automata.sty
+%
+% Draw and animate `automata' as used in theoretical computer science, using PSTricks and TeXPower.
+%
+% This package is an addition to the TeXPower bundle, to be found at
+%
+% http://texpower.sourceforge.net/
+%
+%=======================================================================================================================
+% Author: Stephan Lehmke <Stephan.Lehmke@cs.uni-dortmund.de>
+%
+% v0.2  Oct 05, 2001 First version for the pre-alpha release of texpower.
+%                    Only deterministic FA and Mealy Automata yet.
+%
+
+\NeedsTeXFormat{LaTeX2e}
+
+\ProvidesPackage%
+{automata}%
+[2001/10/05 v0.2 Draw and animate automata.]
+
+
+%=======================================================================================================================
+
+\RequirePackage{ifthen}
+
+\RequirePackage{relsize}
+
+\RequirePackage{texpower}
+
+\ifthenelse{\boolean{psspecialsallowed}}{\RequirePackage{tppstcol}}{}
+
+
+%=======================================================================================================================
+% Implementation of the functionality.
+
+%-----------------------------------------------------------------------------------------------------------------------
+% Some definitions of general interest.
+
+\defineTPcolor{automatoncolor}{gray}{0.8}
+\defineTPcolor{autoplatecolor}{gray}{0.95}
+\defineTPcolor{currstatecolor}{rgb}{0.8,1,0.8}
+\colorbetween{markstatecolor@TPATM}{pagecolor}{currstatecolor}
+\replacecolor{cellcolor}{white}
+
+
+
+\newlength{\tapepos@TPATM}
+
+\newcounter{tapecells@TPATM}
+\newcounter{inputlength@TPATM}
+\newcounter{states@TPATM}
+\newcounter{currstate@TPATM}
+\newcounter{nextstate@TPATM}
+\newcounter{currinputsymbol@TPATM}
+\newcounter{currtapepos@TPATM}
+
+\newtoks\tabrows@TPATM
+\newtoks\tabdecl@TPATM
+
+\newsavebox{\tabbox@TPATM}
+
+\newboolean{stategraph@TPATM}
+
+\newif\iffliplabel@TPATM
+
+\newcommand{\formatsymbol}[1]{\texttt{#1}}
+
+
+%-----------------------------------------------------------------------------------------------------------------------
+% Helper macros.
+
+% Make a fixed point number have exactly five decimal places, either by truncating or by filling up with trailing
+% zeroes.
+\newcommand{\filltofive@TPATM}[1]{\expandafter\@filltofive@TPATM#1000000\@nil#1}
+
+\def\@filltofive@TPATM#1.#2#3#4#5#6#7\@nil#8{\def#8{#1.#2#3#4#5#6}}
+
+
+% Count the number of items in a comma-separated list.
+\newcommand{\countsymbols@TPATM}[2]{\setcounter{#2}{1}\@countsymbols@TPATM#1,\@nil{#2}}
+
+\def\@countsymbols@TPATM#1,#2\@nil#3{\ifthenelse{\equal{#2}{}}{}{\stepcounter{#3}\@countsymbols@TPATM#2\@nil{#3}}}
+
+
+
+% Get a symbol from a (macro containing a) comma-separated list.
+\newcommand{\getsymbol@TPATM}[2]
+{%
+  \expandafter\@getsymbol@TPATM#1\@nil{#1}{#2}%
+}
+
+\def\@getsymbol@TPATM#1,#2\@nil#3#4{\gdef#3{#2}\@@getsymbol@TPATM#1\@nil{#4}}
+
+\def\@@getsymbol@TPATM{\@ifnextchar({\@@@getsymbol@TPATM}{\@@@getsymbol@TPATM()}}
+
+\def\@@@getsymbol@TPATM(#1)#2\@nil#3{\def\statepos@TPATM{#1}\def#3{#2}}
+
+
+% Get a state from a (macro containing a) comma-separated list of states and check whether it's accepting.
+
+\newif\ifacceptingstate@TPATM
+
+\newcommand{\getstate@TPATM}[4]{\expandafter\@getstate@TPATM#1\@nil{#1}{#2}{#3}{#4}}
+
+\def\@getstate@TPATM#1,#2\@nil#3#4#5#6{\gdef#3{#2}\@@getstate@TPATM#1\@nil{#4}{#5}{#6}}
+
+\def\@@getstate@TPATM{\@ifnextchar({\@@@getstate@TPATM}{\@@@getstate@TPATM()}}
+
+\def\@@@getstate@TPATM(#1)#2#3\@nil#4#5#6%
+{%
+  \def\statepos@TPATM{#1}%
+  \def#6{#2#3}%
+  \ifx\accept#2%
+    \acceptingstate@TPATMtrue%
+    \def#5{#4}%
+   \else
+    \acceptingstate@TPATMfalse%
+    \let#5\empty
+  \fi
+  }
+
+% Get a state transition from a (macro containing a) comma-separated list of states.
+\newcommand{\getdeltapair@TPATM}[3]
+{%
+  \expandafter\@getdeltapair@TPATM#1\@nil{#1}{#2}{#3}%
+}
+
+\def\@getdeltapair@TPATM{\@ifnextchar[{\@@getdeltapair@TPATM}{\@@getdeltapair@TPATM[\@nil]}}
+
+\def\@@getdeltapair@TPATM[#1]%
+{%
+  \def\optarg@TPATM{#1}%
+  \@ifstar{\let\fliplabel@TPATM=\fliplabel@TPATMtrue\@@@getdeltapair@TPATM}
+  {\let\fliplabel@TPATM=\fliplabel@TPATMfalse\@@@getdeltapair@TPATM}%
+  }
+
+\def\@@@getdeltapair@TPATM{\@ifnextchar({\@@@@getdeltapair@TPATM}{\@@@@getdeltapair@TPATM(.5)}}
+
+\def\@@@@getdeltapair@TPATM(#1)%
+{%
+  \def\labelpos@TPATM{#1}%
+  \@ifnextchar[{\@@@@@getdeltapair@TPATM}{\@@@@@getdeltapair@TPATM[\@nil]}%
+  }
+
+\def\@@@@@getdeltapair@TPATM[#1]#2->#3,#4\@nil#5#6#7{\def\labelopt@TPATM{#1}\protected@edef#6{#2}\protected@edef#7{#3}\gdef#5{#4}}
+
+% Decompose a comma-separated pair (without parentheses) into its components.
+\def\decomposestpos@TPATM#1,#2\@nil#3#4{\def#3{#1}\def#4{#2}}
+
+% Remove trailing comma from a comma-separated list.
+\def\gobblelastcomma@TPATM#1,\@nil#2{\gdef#2{#1}}
+
+% A first step towards internationalization - german only at the moment.
+\newcommand{\automatonname}{Automatenmodell}
+\newcommand{\inputname}{Eingabe}
+\newcommand{\inputtapename}{Eingabeband}
+\newcommand{\outputname}{Ausgabe}
+\newcommand{\outputtapename}{Ausgabeband}
+\newcommand{\acceptname}{Akzeptieren}
+\newcommand{\statename}{Zustand}
+\newcommand{\statesname}{Zust"ande}
+\newcommand{\statetransname}{Zustands"uberg"ange}
+\newcommand{\nextstatename}{Folgezust.}
+
+\newcommand{\statetransitiontablepreamble}{}
+
+\newcommand{\transitionarrayparameters}
+{%
+  \renewcommand{\arraystretch}{.3}%
+  \setlength{\extrarowheight}{16pt}%
+  \setlength{\tabcolsep}{.5pt}%
+}
+
+\let\accept\empty
+\let\comma\empty
+
+
+%-----------------------------------------------------------------------------------------------------------------------
+% Finite Automata.
+
+% Generic macros for drawing deterministic finite automata. The difference between simple dfa and mealy automata is made
+% by setting parameters.
+
+\def\finalisetabrows@TPATM#1\\\@nil#2{#2={#1\end{tabular}}}%
+
+\newcommand{\draw@outputtape@TPATM}[1]{}%
+\newcommand{\getoutput@TPATM}[2]{}
+\newcommand{\inittabrows@TPATM}[1]{}
+\newcommand{\addtabrow@TPATM}[2]{}
+\newcommand{\label@output@TPATM}{}%
+\newcommand{\fix@nextstate@TPATM}{}
+\newcommand{\mk@new@outputtape@TPATM}[1]{}%
+
+
+
+\newcommand{\genericdfa@TPATM}[8]
+{%
+  \begin{pspicture}(1,1)
+    % Draw automaton body.
+    \psframe[fillstyle=solid,fillcolor=automatoncolor](0.05,0)(0.95,1)
+    \rput[b]{90}(0.05,0.5){\psframebox[linestyle=none,fillstyle=solid,fillcolor=autoplatecolor]{\automatonname}}%
+    % Draw input tape.
+    \rput[l](0.07,0.93){\psframebox[linestyle=none,fillstyle=solid,fillcolor=autoplatecolor]{\inputtapename}}%
+    \setlength{\tapepos@TPATM}{0.55pt-0.1pt*\real{#6}}%
+    \setcounter{currinputsymbol@TPATM}{1*\real{#6}}%
+    \mkfactor{\startx@TPATM}{\ratio{\tapepos@TPATM}{1pt}}%
+    \setcounter{tapecells@TPATM}{6+\value{currinputsymbol@TPATM}}%
+    \countsymbols@TPATM{#5}{inputlength@TPATM}%
+    \ifthenelse{\value{tapecells@TPATM}>\value{inputlength@TPATM}}
+    {\setcounter{tapecells@TPATM}{\value{inputlength@TPATM}}}
+    {}%
+    \multips(\startx@TPATM,0.88)(0.1,0){\value{tapecells@TPATM}}{\psframe[fillstyle=solid,fillcolor=cellcolor](0.1,0.1)}%
+    \mkfactor{\startx@TPATM}{\ratio{\tapepos@TPATM+0.05pt}{1pt}}%
+    \filltofive@TPATM{\startx@TPATM}%
+    \protected@edef\tapecontents@TPATM{#5,}%
+    \setcounter{currtapepos@TPATM}{0}%
+    \let\inputtapesymbol@TPATM\relax
+    \let\nextinputtapesymbol@TPATM\relax
+    \multido{\n=\startx@TPATM+0.10000}{\value{tapecells@TPATM}}
+    {%
+      \getsymbol@TPATM\tapecontents@TPATM\inputtapesymbol@TPATM
+      \ifnum\value{currtapepos@TPATM}=\value{currinputsymbol@TPATM}\relax
+        \global\let\nextinputtapesymbol@TPATM\inputtapesymbol@TPATM
+      \fi
+      \stepcounter{currtapepos@TPATM}%
+      \ifnum\value{currtapepos@TPATM}=\value{currinputsymbol@TPATM}\relax
+        \global\let\inputtapesymbol@TPATM\inputtapesymbol@TPATM
+      \fi
+      \rput(\n,0.93){\formatsymbol\inputtapesymbol@TPATM}%
+      }%
+    \psframe[linewidth=2pt,linecolor=conceptcolor](0.45,0.88)(0.55,0.98)
+    % Draw state transitions
+    \countsymbols@TPATM{#1}{states@TPATM}%
+    \mkfactor{\tapeadvancement@TPATM}{\real{#6}-\value{currinputsymbol@TPATM}pt}%
+    \def\defdelta@TPATM{#3,}%
+    \whiledo{\not\equal{\defdelta@TPATM}{}}
+    {%
+      \getdeltapair@TPATM\defdelta@TPATM\domainvalue@TPATM\rangevalue@TPATM
+      \expandafter\def\csname delta(\domainvalue@TPATM)@TPATM\expandafter\endcsname\expandafter{\rangevalue@TPATM}%
+      \expandafter\let\csname deltaopt(\domainvalue@TPATM)@TPATM\endcsname=\optarg@TPATM
+      \expandafter\let\csname deltalabelpos(\domainvalue@TPATM)@TPATM\endcsname=\labelpos@TPATM
+      \expandafter\let\csname deltalabelopt(\domainvalue@TPATM)@TPATM\endcsname=\labelopt@TPATM
+      \expandafter\let\csname deltaflag(\domainvalue@TPATM)@TPATM\endcsname=\empty
+      \expandafter\let\csname deltafliplabel(\domainvalue@TPATM)@TPATM\endcsname=\fliplabel@TPATM
+      }%
+    \ifthenelse{\boolean{stategraph@TPATM}}% Draw state transition diagram?
+    {% Yes.
+      \ifthenelse{\lengthtest{\tapeadvancement@TPATM pt=0pt}}
+      {%
+        \let\nextinputtapesymbol@TPATM\inputtapesymbol@TPATM
+        \ifthenelse{\value{nextstate@TPATM}>-1}{\def\tapeadvancement@TPATM{1}}{}%
+        }{}%
+      \colorbetween[\tapeadvancement@TPATM]{activetranscolor@TPATM}{currstatecolor}{pagecolor}%
+      \rput(0.5,0.5)
+      {%
+        \begingroup
+          % Make `subpicture' containing the state transition diagram.
+          \psset{xunit=.43\psxunit,yunit=.36\psyunit,labelsep=1pt}%
+          \begin{pspicture}(0,0)
+            \psframe[fillstyle=solid,fillcolor=cellcolor,dimen=inner](-1,-1)(1,1)
+            \rput[lt](-1,1){\psframebox[linestyle=none,fillstyle=solid,fillcolor=autoplatecolor]{\statetransname}}%
+            % First, the nodes representing states.
+            \mkfactor{\statedistance@TPATM}{2/\value{states@TPATM}}%
+            \mkfactor\startx@TPATM{-1+\statedistance@TPATM pt/2}%
+            \def\states@TPATM{#1,}%
+            \setcounter{currstate@TPATM}{0}%
+            \multido{\n=\startx@TPATM+\statedistance@TPATM}{\value{states@TPATM}}
+            {%
+              \stepcounter{currstate@TPATM}%
+              \getstate@TPATM{\states@TPATM}{,linewidth=2pt,linecolor=red}{\statetype@TPATM}{\state@TPATM}%
+              \ifnum\value{currstate@TPATM}=#7\relax
+                \ifacceptingstate@TPATM\global\acceptingstate@TPATMtrue\else\global\acceptingstate@TPATMfalse\fi
+              \fi
+              \edef\next
+              {%
+                \noexpand
+                \cnode
+                [%
+                  fillstyle=solid,%
+                  fillcolor=\ifnum\value{currstate@TPATM}=#7currstatecolor\else cellcolor\fi\statetype@TPATM
+                  ]%
+                (\ifx\statepos@TPATM\empty\n,0\else\statepos@TPATM\fi)%
+                }%
+              \next{.4}{{state\state@TPATM}}%
+              \rput(\ifx\statepos@TPATM\empty\n,0\else\statepos@TPATM\fi){\let\comma,\state@TPATM}%
+              \ifthenelse{\value{currstate@TPATM}=#4}
+              {%
+                \ifx\statepos@TPATM\empty
+                  \mkfactor{\stxpos@TPATM}{\real{\n}-.2pt}%
+                  \def\stypos@TPATM{0}%
+                 \else
+                  \expandafter\decomposestpos@TPATM\statepos@TPATM\@nil{\stxpos@TPATM}{\stypos@TPATM}%
+                  \mkfactor{\stxpos@TPATM}{\real{\stxpos@TPATM}-.2pt}%
+                \fi
+                \pnode(\stxpos@TPATM,\stypos@TPATM){start}%
+                \ncline{->}{start}{state\state@TPATM}%
+                }{}%
+              }%
+            % Next, the node connections.
+            \setcounter{currstate@TPATM}{0}%
+            \def\states@TPATM{#1,}%
+            \whiledo{\not\equal{\states@TPATM}{}}
+            {%
+              \stepcounter{currstate@TPATM}%
+              \getsymbol@TPATM\states@TPATM\state@TPATM
+              \protected@edef\state@TPATM{\state@TPATM}%
+              \def\inputalphabet@TPATM{#2,}%
+              \whiledo{\not\equal{\inputalphabet@TPATM}{}}
+              {%
+                \getsymbol@TPATM\inputalphabet@TPATM\inputsymbol@TPATM
+                \getoutput@TPATM\state@TPATM\inputsymbol@TPATM
+                \ifthenelse{\equal{\csname deltaflag(\state@TPATM;\inputsymbol@TPATM)@TPATM\endcsname}{}}
+                {%
+                  \let\currentnstate@TPATM=\nstate@TPATM
+                  \let\currentia@TPATM=\inputalphabet@TPATM
+                  \inittabrows@TPATM\tabrows@TPATM
+                  \def\arrowparams@TPATM{border=1pt}%
+                  \begingroup
+                    \def\inputalphabet@TPATM{#2,}%
+                    \whiledo{\not\equal{\inputalphabet@TPATM}{}}
+                    {%
+                      \getsymbol@TPATM\inputalphabet@TPATM\inputsymbol@TPATM
+                      \getoutput@TPATM\state@TPATM\inputsymbol@TPATM
+                      \ifx\currentnstate@TPATM\nstate@TPATM
+                        \expandafter\global\expandafter\let
+                        \csname deltaflag(\state@TPATM;\inputsymbol@TPATM)@TPATM\endcsname=\relax
+                        \ifthenelse
+                        {%
+                          \value{currstate@TPATM}=#7%
+                          \and\equal\inputsymbol@TPATM\nextinputtapesymbol@TPATM
+                          \and\lengthtest{\tapeadvancement@TPATM pt>0pt}%
+                          }
+                        {%
+                          \xdef\arrowparams@TPATM
+                          {%
+                            doubleline=true,doublecolor=activetranscolor@TPATM,doublesep=\tapeadvancement@TPATM pt,%
+                            arrowsize=1pt 1.5,border=1pt%
+                            }%
+                          \def\@hlinput@TPATM{\noexpand\rowcolor{activetranscolor@TPATM}}%
+                          }
+                        {\let\@hlinput@TPATM=\empty}%
+                        \addtabrow@TPATM\tabrows@TPATM{\inputsymbol@TPATM}%
+                        \ifnum\value{currstate@TPATM}=#7\relax
+                          \ifx\inputsymbol@TPATM\inputtapesymbol@TPATM
+                            \fix@nextstate@TPATM%
+                          \fi
+                        \fi
+                      \fi
+                      }%
+                    \expandafter\finalisetabrows@TPATM\the\tabrows@TPATM\@nil\tabrows@TPATM
+                    \global\tabrows@TPATM=\tabrows@TPATM
+                  \endgroup
+                  \expandafter\gdef\expandafter\fullarrowparams@TPATM\expandafter{\expandafter[\arrowparams@TPATM]}%
+                  \expandafter\gdef\expandafter\addarrowparams@TPATM\expandafter{\expandafter,\arrowparams@TPATM}%
+                  \global\let\inputalphabet@TPATM=\currentia@TPATM
+                  \transitionarrayparameters
+                  \csname deltafliplabel(\state@TPATM;\inputsymbol@TPATM)@TPATM\endcsname
+                  \edef\mkcirclabel@TPATM
+                  {%
+                    \iffliplabel@TPATM\noexpand\aput\else\noexpand\bput\fi
+                    \expandafter\ifx\csname deltalabelopt(\state@TPATM;\inputsymbol@TPATM)@TPATM\endcsname\@nnil
+                     \else
+                      [\csname deltalabelopt(\state@TPATM;\inputsymbol@TPATM)@TPATM\endcsname]%
+                    \fi
+                    (\csname deltalabelpos(\state@TPATM;\inputsymbol@TPATM)@TPATM\endcsname)%
+                    }%
+                  \edef\mklinelabel@TPATM
+                  {%
+                    \iffliplabel@TPATM\noexpand\bput\else\noexpand\aput\fi
+                    \expandafter\ifx\csname deltalabelopt(\state@TPATM;\inputsymbol@TPATM)@TPATM\endcsname\@nnil
+                     \else
+                      [\csname deltalabelopt(\state@TPATM;\inputsymbol@TPATM)@TPATM\endcsname]%
+                    \fi
+                    (\csname deltalabelpos(\state@TPATM;\inputsymbol@TPATM)@TPATM\endcsname)%
+                    }%
+                  \expandafter
+                  \ifx\csname deltaopt(\state@TPATM;\inputsymbol@TPATM)@TPATM\endcsname\@nnil
+                    \ifx\state@TPATM\nstate@TPATM
+                      \expandafter\nccircle\fullarrowparams@TPATM{->}{state\state@TPATM}{.35}%
+                      \mkcirclabel@TPATM{\the\tabrows@TPATM}%
+                     \else
+                      \expandafter\ncline\fullarrowparams@TPATM{->}{state\state@TPATM}{state\nstate@TPATM}%
+                      \mklinelabel@TPATM{\the\tabrows@TPATM}%
+                    \fi
+                   \else
+                    \ifx\state@TPATM\nstate@TPATM
+                      \edef\next
+                      {%
+                        \noexpand\nccircle
+                        \expandafter
+                        \ifx\csname deltaopt(\state@TPATM;\inputsymbol@TPATM)@TPATM\endcsname\empty
+                          \fullarrowparams@TPATM
+                         \else
+                          [\csname deltaopt(\state@TPATM;\inputsymbol@TPATM)@TPATM\endcsname\addarrowparams@TPATM]%
+                        \fi
+                        }%
+                      \next{->}{state\state@TPATM}{.35}%
+                      \mkcirclabel@TPATM{\the\tabrows@TPATM}%
+                     \else
+                      \edef\next
+                      {%
+                        \noexpand\ncarc
+                        \expandafter
+                        \ifx\csname deltaopt(\state@TPATM;\inputsymbol@TPATM)@TPATM\endcsname\empty
+                          \fullarrowparams@TPATM
+                         \else
+                          [\csname deltaopt(\state@TPATM;\inputsymbol@TPATM)@TPATM\endcsname\addarrowparams@TPATM]%
+                        \fi
+                        }%
+                      \next{->}{state\state@TPATM}{state\nstate@TPATM}%
+                      \mklinelabel@TPATM{\the\tabrows@TPATM}%
+                    \fi
+                  \fi
+                  }%
+                {}%
+                }%
+              }%
+          \end{pspicture}%
+        \endgroup
+        }%
+      }
+    {% No; draw state transition table.
+      % First, the list of states.
+      \rput[l](0.07,0.81){\psframebox[linestyle=none,fillstyle=solid,fillcolor=autoplatecolor]{\statesname}}%
+      \mkfactor\startx@TPATM
+      {\ratio{\widthof{\psframebox[linestyle=none,fillstyle=solid,fillcolor=autoplatecolor]{\statesname}}}{\psyunit}}%
+      \mkfactor{\statewidth@TPATM}{0+(0.88pt-\startx@TPATM pt)/\value{states@TPATM}}%
+      \ifthenelse{\lengthtest{\statewidth@TPATM pt>.1pt}}{\def\statewidth@TPATM{.1}}{}%
+      \filltofive@TPATM{\startx@TPATM}%
+      \filltofive@TPATM{\statewidth@TPATM}%
+      \def\states@TPATM{#1,}%
+      \setcounter{currstate@TPATM}{0}%
+      \multido{\n=\startx@TPATM+\statewidth@TPATM}{\value{states@TPATM}}
+      {%
+        \stepcounter{currstate@TPATM}%
+        \mkfactor{\endx@TPATM}{\real{\n}+\statewidth@TPATM pt}%
+        \getstate@TPATM{\states@TPATM}{,linewidth=2pt,linecolor=red}{\statetype@TPATM}{\state@TPATM}%
+        \ifnum\value{currstate@TPATM}=#7
+          \ifacceptingstate@TPATM\global\acceptingstate@TPATMtrue\else\global\acceptingstate@TPATMfalse\fi
+        \fi
+        \edef\next
+        {%
+          \noexpand
+          \psframe
+          [%
+            fillstyle=solid,%
+            fillcolor=\ifnum\value{currstate@TPATM}=#7currstatecolor\else cellcolor\fi\statetype@TPATM
+          ]%
+          }%
+        \next(\n,0.76)(\endx@TPATM,0.86)%
+        \mkfactor{\charpos@TPATM}{\real{\n}+\statewidth@TPATM pt/2}%
+        \rput(\charpos@TPATM,0.81){\state@TPATM}%
+        \ifthenelse{\value{currstate@TPATM}=#4}{\psline{->}(\charpos@TPATM,0.74)(\charpos@TPATM,0.76)}{}%
+        }%
+      % Next, the state transition table itself.
+      \psframe[fillstyle=solid,fillcolor=cellcolor,dimen=inner](0.07,0.14)(0.93,0.74)
+      \rput[lt](0.07,0.74){\psframebox[linestyle=none,fillstyle=solid,fillcolor=autoplatecolor]{\smaller\statetransname}}%
+      % Construct tabular declaration and first row.
+      \def\inputalphabet@TPATM{#2,}%
+      \tabrows@TPATM={}%
+      \tabdecl@TPATM={}%
+      \ifthenelse{\equal{\inputtapesymbol@TPATM}{\nextinputtapesymbol@TPATM}}
+      {%
+        \replacecolor{oldinputcolor@TPATM}{markstatecolor@TPATM}%
+        \replacecolor{newinputcolor@TPATM}{markstatecolor@TPATM}%
+        \replacecolor{oldoutputcolor@TPATM}{currstatecolor}%
+        \replacecolor{newoutputcolor@TPATM}{currstatecolor}%
+        }
+      {%
+        \colorbetween[\tapeadvancement@TPATM]{oldinputcolor@TPATM}{pagecolor}{markstatecolor@TPATM}%
+        \colorbetween[\tapeadvancement@TPATM]{newinputcolor@TPATM}{markstatecolor@TPATM}{pagecolor}%
+        \ifthenelse{\lengthtest{\tapeadvancement@TPATM pt>0.5pt}}
+        {%
+          \colorbetween[\tapeadvancement@TPATM]{newoutputcolor@TPATM}{currstatecolor}{pagecolor}%
+          \replacecolor{oldoutputcolor@TPATM}{markstatecolor@TPATM}%
+          }
+        {%
+          \colorbetween[\tapeadvancement@TPATM]{oldoutputcolor@TPATM}{pagecolor}{currstatecolor}%
+          \replacecolor{newoutputcolor@TPATM}{markstatecolor@TPATM}%
+          }%
+        }%
+      \whiledo{\not\equal{\inputalphabet@TPATM}{}}
+      {%
+        \getsymbol@TPATM\inputalphabet@TPATM\inputsymbol@TPATM
+        \protected@edef\newtabrows@TPATM{\the\tabrows@TPATM&\noexpand\formatsymbol{\inputsymbol@TPATM}}%
+        \expandafter\tabrows@TPATM\expandafter{\newtabrows@TPATM}%
+        \edef\newtabdecl@TPATM
+        {%
+          \the\tabdecl@TPATM
+          \ifx\inputsymbol@TPATM\nextinputtapesymbol@TPATM>{\noexpand\columncolor{newinputcolor@TPATM}}\fi
+          \ifx\inputsymbol@TPATM\inputtapesymbol@TPATM>{\noexpand\columncolor{oldinputcolor@TPATM}}\fi
+          c%
+          }%
+        \expandafter\tabdecl@TPATM\expandafter{\newtabdecl@TPATM}%
+        }%
+      % Construct remaining rows.
+      \setcounter{currstate@TPATM}{0}%
+      \def\states@TPATM{#1,}%
+      \whiledo{\not\equal{\states@TPATM}{}}
+      {%
+        \stepcounter{currstate@TPATM}%
+        \getsymbol@TPATM\states@TPATM\state@TPATM
+        \protected@edef\newtabrows@TPATM
+        {%
+          \the\tabrows@TPATM\noexpand\\%
+          \ifnum\value{currstate@TPATM}=#7 \noexpand\rowcolor{markstatecolor@TPATM}\fi\state@TPATM
+          }%
+        \expandafter\tabrows@TPATM\expandafter{\newtabrows@TPATM}%
+        \def\inputalphabet@TPATM{#2,}%
+        \whiledo{\not\equal{\inputalphabet@TPATM}{}}
+        {%
+          \getsymbol@TPATM\inputalphabet@TPATM\inputsymbol@TPATM
+          \protected@edef\newtabrows@TPATM
+          {%
+            \the\tabrows@TPATM&%
+            \ifnum\value{currstate@TPATM}=#7
+              \ifx\inputsymbol@TPATM\inputtapesymbol@TPATM
+                \noexpand
+                \multicolumn{1}{>{\noexpand\columncolor{oldoutputcolor@TPATM}}c}
+                {\formatdfaoutput@TPATM\state@TPATM\inputsymbol@TPATM}%
+               \else
+                \ifx\inputsymbol@TPATM\nextinputtapesymbol@TPATM
+                  \noexpand
+                  \multicolumn{1}{>{\noexpand\columncolor{newoutputcolor@TPATM}}c}
+                  {\formatdfaoutput@TPATM\state@TPATM\inputsymbol@TPATM}%
+                 \else
+                  \formatdfaoutput@TPATM\state@TPATM\inputsymbol@TPATM
+                \fi
+              \fi
+             \else
+              \formatdfaoutput@TPATM\state@TPATM\inputsymbol@TPATM
+            \fi
+            }%
+          \expandafter\tabrows@TPATM\expandafter{\newtabrows@TPATM}%
+          % Set succeeding state (and output symbol).
+          \ifnum\value{currstate@TPATM}=#7\relax
+            \ifx\inputsymbol@TPATM\inputtapesymbol@TPATM
+              \getoutput@TPATM{\state@TPATM}{\inputsymbol@TPATM}%
+              \fix@nextstate@TPATM
+            \fi
+          \fi
+          }%
+        }%
+      % Save tabular into a box.
+      \savebox{\tabbox@TPATM}
+      {%
+        \raisebox{\depth}
+        {%
+          \setlength{\fboxsep}{0.4pt}%
+          \fbox
+          {%
+            \clipbox
+            {%
+              \edef\next{\noexpand\begin{tabular}[b]{c\the\tabdecl@TPATM}}%
+                \statetransitiontablepreamble
+                \next
+                \the\tabrows@TPATM
+              \end{tabular}%
+              }%
+            }%
+          }%
+        }%
+      % Print state transition table, with some decoration.
+      \rput(0.5,0.44)
+      {%
+        \raisebox{.5\tabcolsep}
+        {\rotatebox{90}{\psframebox[linestyle=none,fillstyle=solid,fillcolor=autoplatecolor]{\smaller \statename}}}%
+        \parbox[b]{\wd\tabbox@TPATM}
+        {%
+          \offinterlineskip\raggedleft
+          \psframebox[linestyle=none,fillstyle=solid,fillcolor=autoplatecolor]{\smaller \inputname}\kern\tabcolsep\\%
+          \usebox{\tabbox@TPATM}%
+          }%
+        \raisebox{.5\tabcolsep}
+        {%
+          \rotatebox{90}
+          {\psframebox[linestyle=none,fillstyle=solid,fillcolor=autoplatecolor]{\smaller[2]\nextstatename}}%
+          }%
+        \label@output@TPATM
+        }%
+      }%
+    % Draw output tape, if mealy automaton.
+    \draw@outputtape@TPATM{#8}%
+    % Calculate number of succeeding state.
+    \setcounter{currstate@TPATM}{0}%
+    \def\states@TPATM{#1,}%
+    \whiledo{\not\equal{\states@TPATM}{}}
+    {%
+      \stepcounter{currstate@TPATM}%
+      \getsymbol@TPATM\states@TPATM\state@TPATM
+      \edef\state@TPATM{\state@TPATM}%
+      \ifx\state@TPATM\nextstate@TPATM
+        \setcounter{nextstate@TPATM}{\value{currstate@TPATM}}%
+      \fi
+      }%
+    % Calculate new output tape.
+    \mk@new@outputtape@TPATM{#8}%
+  \end{pspicture}%
+  \endgroup
+  }
+
+
+% \dfa{<width>}{<height>}{<states>}{<inputalphabet>}{<statetransitions>}
+% {<initial state>}{<input tape>}{<tape position>}{<current state>}
+% draws a deterministic finite automaton.
+%
+% The parameters have the following meanings:
+% <width>             Width of the automaton to be drawn.
+% <height>            Height of the automaton to be drawn.
+% <states>            Comma-separated list (symbolically) specifying the set of states.
+% <inputalphabet>     Comma-separated list (symbolically) specifying the set of input symbols.
+% <statetransitions>  Comma-separated list (symbolically) specifying the state transition function (also giving the
+%                     output symbols associated with state transitions).
+% <initial state>     Number of the initial state.
+% <input tape>        Comma-separated list (symbolically) specifying the contents of the input tape.
+% <tape position>     Fixed-point number (greater or equal 1) specifying the current position of the head reading input
+%                     and output tape. The symbol currently read corresponds to the integer part of <tape position>.
+% <current state>     Number of the current state.
+%
+% The standard version of \dfa displays a state transition table, i.e. for every combination of state and
+% input symbol, the successor state is displayed in a tabular. The current state, current input
+% symbol and next input symbol (if <tape position> is not integer) are indicated by colored bars.
+%
+% There is a starred version \mealyautomaton* which displays a state transition graph where states are displayed as
+% circles and state transitions as arrows between circles. The `active' transition (leading from the current to the next
+% state) is highlighted.
+%
+% The <states> parameter looks like <state1>,<state2>,...,<staten>, where every single <state> has the following form:
+% {(<x>,<y>)\accept <symbol>}
+% where (<x>,<y>) and the special keyword \accept are optional and <symbol> is the symbolic name of the state.
+% The optional parameter (<x>,<y>) is used only in the starred version \mealyautomaton*. If given, it specifies the
+% position of the circle representing the state in the state transition graph, in PSTricks notation. The origin of the
+% state transition graph is in the middle of the area reserved for it, stretching one unit in all directions, so that
+% the corners of the area are at coordinates (-1,1), (1,1), (1,-1), (-1,-1). If not given in the starred version
+% \mealyautomaton*, the position is calculated automatically in a `bead' style.
+% The special keyword \accept flags this state as an accepting one.
+% If the optional coordinates argument is not given, the outer curly braces may be left out, but otherwise leaving the
+% curly braces out would disturb the parsing of the comma-separated list because of the comma between <x> and <y>.
+%
+% The <statetransitions> parameter looks like <trans1>,<trans2>,...,<transm>, where every single <trans> has the
+% following form:
+% [<opt>]<state>;<input>-><state'>
+% where [<opt>] is optional. <state> and <input> are the arguments of the state transition function, and <state'> is the
+% successor state.
+% The optional parameter [<opt>] is used only in the starred version \mealyautomaton*. If given, it specifies additional
+% optional parameters for the node connection command (\nccircle or \ncarc) drawing the arrow for this
+% transition. \ncline is used for transitions from a state to itself. For transitions between states, \ncarc is used
+% whenever the optional argument is given, otherwise \ncline is used. This is a seldom instance where giving an empty
+% optional argument is different from giving no optional argument at all: Giving the optional argument [] switches
+% between \ncline and \ncarc (useful if two transitions go `back and forth' between two states).
+%
+
+\newcommand{\initializedfa@TPATM}
+{%
+  \renewcommand{\draw@outputtape@TPATM}[1]
+  {%
+    \colorbetween{outercirclecolor@TPATM}{black}{automatoncolor}%
+    \pscircle[fillstyle=solid,fillcolor=outercirclecolor@TPATM,linewidth=.5\pslinewidth](0.5,0.07){0.25}%
+    \ifacceptingstate@TPATM
+      \replacecolor{acceptlampcolor@TPATM}{red}%
+     \else
+      \colorbetween[.1]{acceptlampcolor@TPATM}{red}{automatoncolor}%
+    \fi
+    \pscircle[fillstyle=solid,fillcolor=acceptlampcolor@TPATM,linewidth=.5\pslinewidth](0.5,0.07){0.15}%
+    \rput[l](0.53,0.07){\psframebox[linestyle=none,fillstyle=solid,fillcolor=autoplatecolor]{\acceptname}}%
+    }%
+  \renewcommand{\getoutput@TPATM}[2]
+  {%
+    \expandafter\expandafter\expandafter\def\expandafter\expandafter\expandafter\nstate@TPATM
+    \expandafter\expandafter\expandafter{\csname delta(##1;##2)@TPATM\endcsname}%
+    }%
+  \renewcommand{\inittabrows@TPATM}[1]{##1={\smaller\begin{tabular}{@{}r@{}}}}%
+  \renewcommand{\addtabrow@TPATM}[2]
+  {%
+    \protected@edef\newtabrows@TPATM{\the##1\@hlinput@TPATM\formatsymbol{##2}\noexpand\\}%
+    \expandafter##1\expandafter{\newtabrows@TPATM}%
+    }%
+  \def\formatdfaoutput@TPATM##1##2{\csname delta(##1;##2)@TPATM\endcsname}%
+  \renewcommand{\label@output@TPATM}{}%
+  \renewcommand{\fix@nextstate@TPATM}
+  {%
+    \global\let\nextstate@TPATM=\nstate@TPATM
+    }%
+  \renewcommand{\mk@new@outputtape@TPATM}[1]{}%
+  }%
+
+\newcommand{\dfa}
+{%
+  \initializedfa@TPATM
+  \dfa@TPATM
+  }
+
+\newcommand{\dfa@TPATM}
+{%
+  \@ifstar
+  {\setboolean{stategraph@TPATM}{true}\@dfa@TPATM}
+  {\setboolean{stategraph@TPATM}{false}\@dfa@TPATM}%
+  }
+
+\newcommand{\@dfa@TPATM}[2]
+{%
+  \ifthenelse{\boolean{psspecialsallowed}}
+  {%
+    \begingroup
+      \setlength{\@tempdima}{#1}%
+      \setlength{\@tempdimb}{#2}%
+      \psset{xunit=\@tempdima,yunit=\@tempdimb,arrowinset=0}%
+      \let\next=\@@dfa@TPATM
+    }
+  {%
+    \rule{#1}{#2}%
+    \let\next=\@@nodfa@TPATM
+    }%
+  \next
+}
+
+\newcommand{\@@nodfa@TPATM}[7]{}
+
+\newcommand{\@@dfa@TPATM}[7]{\genericdfa@TPATM{#1}{#2}{#3}{#4}{#5}{#6}{#7}{}}
+
+
+% \simulatedfa{<width>}{<height>}{<states>}{<inputalphabet>}{<statetransitions>}
+% {<initial state>}{<input tape>}{<number of steps>}{<tape move resolution>}
+% simulates a deterministic finite automaton.
+%
+% The parameters <width>, <height>, <states>, <inputalphabet>, <statetransitions>, <initial state>, and <input tape>
+% have the same meaning as for \dfa.
+% <number of steps> gives the number of state transitions to perform (in fact, the first state transition occurs after
+% the first step, so <number of steps>=1 means no state transition.
+% The simulation starts with both tapes at the beginning, in the initial state. After this, the simulation proceeds in
+% the following steps:
+% 1) Change state.
+% 2) Advance input tape and reiterate.
+% The steps are realised with TeXPower's \step mechanism. This means the whole simulation will lead to the corresponding
+% number of `subpages' each displaying the automaton in changing states.
+% If <tape move resolution>=1, then step number 3 will just switch over the tape position. Otherwise, advancing the tape
+% will take <tape move resolution> intermediate steps, which are automatically animated using hyperref's pdfpageduration
+% mechanism, i.e. when displayed in acroread's full screen mode (with automatic advancing activated), a `smooth' tape
+% movement will be seen.
+% \simulatedfa comes in normal and starred versions, with the same semantics as for \dfa, i.e. the normal version
+% displays a state transition table, the starred version displays a state transition graph.
+
+\newcommand{\simulatedfa}
+{%
+  \initializedfa@TPATM
+  \@ifstar
+  {\setboolean{stategraph@TPATM}{true}\@simulatedfa@TPATM}
+  {\setboolean{stategraph@TPATM}{false}\@simulatedfa@TPATM}%
+  }
+
+\newcommand{\@simulatedfa@TPATM}[2]
+{%
+  \ifthenelse{\boolean{psspecialsallowed}}
+  {%
+    \begingroup
+      \setlength{\@tempdima}{#1}%
+      \setlength{\@tempdimb}{#2}%
+      \psset{xunit=\@tempdima,yunit=\@tempdimb,arrowinset=0}%
+      \let\next=\@@simulatedfa@TPATM
+    }
+  {%
+    \rule{#1}{#2}%
+    \let\next=\@@nosimulatedfa@TPATM
+    }%
+  \next
+}
+
+\newcommand{\@@nosimulatedfa@TPATM}[7]{}
+
+\newcounter{currentdfastate@TPATM}
+\newcounter{currentsupstep@TPATM}
+\newcounter{currentsubstep@TPATM}
+\newboolean{beginautosim@TPATM}
+\newcommand{\autosimduration}{0.04}
+\releasecounter{currentdfastate@TPATM}\releasecounter{nextstate@TPATM}
+
+\newcommand{\@@simulatedfa@TPATM}[7]
+{%
+  % Setup initial state.
+  \setcounter{currentsupstep@TPATM}{0}%
+  \setcounter{currentdfastate@TPATM}{#4}%
+  \setcounter{nextstate@TPATM}{0}%
+  \stepwise[\setcounter{currentdfastate@TPATM}{#4}\setcounter{nextstate@TPATM}{0}]
+  {%
+  \setboolean{beginautosim@TPATM}{true}%
+  % Main loop for state transitions.
+  \whiledo{\value{currentsupstep@TPATM}<#6}
+  {%
+    % At the beginning, the situation right before the state transition is displayed. This is effected by only
+    % displaying the last step of the tape movement.
+    \ifthenelse{\boolean{beginautosim@TPATM}}
+    {\setboolean{beginautosim@TPATM}{false}\setcounter{currentsubstep@TPATM}{#7-1}}
+    {\setcounter{currentsubstep@TPATM}{0}}%
+    % Inner loop for tape movement.
+    \whiledo{\value{currentsubstep@TPATM}<#7}
+    {%
+      \stepcounter{currentsubstep@TPATM}%
+      % Display sequence of steps while the tape gradually moves.
+      \mkfactor{\tapeposition@TPATM}{\value{currentsupstep@TPATM}+\arabic{currentsubstep@TPATM}pt/#7}%
+      \ifthenelse{\value{currentsubstep@TPATM}=#7}
+      {%
+        \setcounter{tmpcnta@TP}{\value{currentsupstep@TPATM}+1}%
+        \ifthenelse{\value{tmpcnta@TP}=#6}{\switch}{\switch[][\boolean{firstactivation}]}{}
+        {%
+          \begingroup\genericdfa@TPATM{#1}{#2}{#3}{#4}{#5}{\tapeposition@TPATM}{\value{currentdfastate@TPATM}}{}%
+          \afterstep{\stopAdvancing}%
+          \setcounter{currentdfastate@TPATM}{\value{nextstate@TPATM}}\setcounter{nextstate@TPATM}{-1}%
+          }%
+        }
+      {%
+        \switch[][\boolean{firstactivation}]{}
+        {%
+          \begingroup\genericdfa@TPATM{#1}{#2}{#3}{#4}{#5}{\tapeposition@TPATM}{\value{currentdfastate@TPATM}}{}%
+          \afterstep{\pageDuration{\autosimduration}}%
+          }%
+        }%
+      }%
+    \stepcounter{currentsupstep@TPATM}%
+    % After the tape is in the next (or initial) position, switch state and reiterate.
+    \ifthenelse{\value{currentsupstep@TPATM}=#6}{}
+    {%
+      \switch[][\boolean{firstactivation}]{}%
+      {%
+        \begingroup\genericdfa@TPATM{#1}{#2}{#3}{#4}{#5}{\tapeposition@TPATM}{\value{currentdfastate@TPATM}}{}%
+        }%
+      }%
+    }%
+  }%
+\endgroup
+}
+
+
+%-----------------------------------------------------------------------------------------------------------------------
+% Finite Automata with output.
+
+% \mealyautomaton{<width>}{<height>}{<states>}{<inputalphabet>}{<statetransitions>}
+% {<initial state>}{<input tape>}{<tape position>}{<current state>}{<output tape>}
+% draws a mealy automaton (deterministic finite automaton with output tape, output is triggered by state transitions).
+%
+% The parameters have the same meanings as for \dfa, with one addition:
+% <output tape>       Comma-separated list (symbolically) specifying the contents of the output tape.
+%
+% The standard version of \mealyautomaton displays a state transition table, i.e. for every combination of state and
+% input symbol, the successor state and output symbol are displayed in a tabular. The current state, current input
+% symbol and next input symbol (if <tape position> is not integer) are indicated by colored bars.
+%
+% There is a starred version \mealyautomaton* which displays a state transition graph where states are displayed as
+% circles and state transitions as arrows between circles. The `active' transition (leading from the current to the next
+% state) is highlighted.
+%
+% The <states> parameter has the same structure as for \dfa.
+%
+% The <statetransitions> parameter looks like <trans1>,<trans2>,...,<transm>, where every single <trans> has the
+% following form:
+% [<opt>]<state>;<input>-><state'>;<output>
+% where [<opt>] is optional. <state> and <input> are the arguments of the state transition function, and <state'> and
+% <output> are the successor state and output symbol, respectively.
+% The optional parameter [<opt>] is used only in the starred version \mealyautomaton*. If given, it specifies additional
+% optional parameters for the node connection command (\nccircle or \ncarc) drawing the arrow for this
+% transition. \ncline is used for transitions from a state to itself. For transitions between states, \ncarc is used
+% whenever the optional argument is given, otherwise \ncline is used. This is a seldom instance where giving an empty
+% optional argument is different from giving no optional argument at all: Giving the optional argument [] switches
+% between \ncline and \ncarc (useful if two transitions go `back and forth' between two states).
+%
+
+\newcommand{\initializema@TPATM}
+{%
+  \renewcommand{\draw@outputtape@TPATM}[1]
+  {%
+    \rput[l](0.07,0.07){\psframebox[linestyle=none,fillstyle=solid,fillcolor=autoplatecolor]{\outputtapename}}%
+    \mkfactor{\startx@TPATM}{\ratio{\tapepos@TPATM}{1pt}}%
+    \setcounter{tapecells@TPATM}{6+\value{currinputsymbol@TPATM}}%
+    \multips(\startx@TPATM,0.02)(0.1,0){\value{tapecells@TPATM}}{\psframe[fillstyle=solid,fillcolor=cellcolor](0.1,0.1)}%
+    \mkfactor{\startx@TPATM}{\ratio{\tapepos@TPATM+0.05pt}{1pt}}%
+    \filltofive@TPATM{\startx@TPATM}%
+    \protected@edef\tapecontents@TPATM{##1,}%
+    \setcounter{currtapepos@TPATM}{0}%
+    \multido{\n=\startx@TPATM+0.10000}{\value{tapecells@TPATM}}
+    {%
+      \ifx\tapecontents@TPATM\empty
+       \else
+        \stepcounter{currtapepos@TPATM}%
+        \getsymbol@TPATM\tapecontents@TPATM\outputtapesymbol@TPATM
+        \ifnum\value{currtapepos@TPATM}=\value{currinputsymbol@TPATM}\relax
+          \global\let\outputtapesymbol@TPATM\outputtapesymbol@TPATM
+        \fi
+        \rput(\n,0.07){\formatsymbol\outputtapesymbol@TPATM}%
+      \fi
+      }%
+    \psframe[linewidth=2pt,linecolor=mathcolor](0.45,0.02)(0.55,0.12)
+    }%
+  \renewcommand{\getoutput@TPATM}[2]
+  {\expandafter\expandafter\expandafter\@getoutput@TPATM\csname delta(##1;##2)@TPATM\endcsname\@nil}%
+  \def\@getoutput@TPATM##1;##2\@nil{\def\nstate@TPATM{##1}\def\output@TPATM{##2}}%
+  \renewcommand{\inittabrows@TPATM}[1]{##1={\smaller\begin{tabular}{rcl}}}%
+  \renewcommand{\addtabrow@TPATM}[2]
+  {%
+    \protected@edef\newtabrows@TPATM
+    {%
+      \the##1%
+      \@hlinput@TPATM\formatsymbol{##2}&\origmath{\vartriangleright}&\noexpand\formatsymbol{\output@TPATM}\noexpand\\%
+      }%
+    \expandafter##1\expandafter{\newtabrows@TPATM}%
+    }%
+  \def\formatdfaoutput@TPATM##1##2%
+  {\expandafter\expandafter\expandafter\@formatdfaoutput@TPATM\csname delta(##1;##2)@TPATM\endcsname\@nil}%
+  \def\@formatdfaoutput@TPATM##1;##2\@nil{##1;\formatsymbol{##2}}%
+  \renewcommand{\label@output@TPATM}
+  {%
+    \raisebox{.5\tabcolsep}
+    {\rotatebox{90}{\psframebox[linestyle=none,fillstyle=solid,fillcolor=autoplatecolor]{\smaller \outputname}}}%
+    }%
+  \renewcommand{\fix@nextstate@TPATM}
+  {%
+    \global\let\newoutputsymbol@TPATM=\output@TPATM
+    \global\let\nextstate@TPATM=\nstate@TPATM
+    }%
+  \renewcommand{\mk@new@outputtape@TPATM}[1]%
+  {%
+    \setcounter{currtapepos@TPATM}{0}%
+    \protected@edef\tapecontents@TPATM{##1,}%
+    \let\newoutputtape@TPATM=\empty
+    \whiledo{\not\equal{\tapecontents@TPATM}{}}
+    {%
+      \stepcounter{currtapepos@TPATM}%
+      \getsymbol@TPATM\tapecontents@TPATM\outputsymbol@TPATM
+      \ifnum\value{currtapepos@TPATM}=\value{currinputsymbol@TPATM}%
+        \let\outputsymbol@TPATM=\newoutputsymbol@TPATM%
+      \fi
+      \protected@edef\newoutputtape@TPATM{\newoutputtape@TPATM\outputsymbol@TPATM,}%
+      }%
+    \expandafter\gobblelastcomma@TPATM\newoutputtape@TPATM\@nil\newoutputtape@TPATM
+    }%
+  }
+
+\newcommand{\mealyautomaton}
+{%
+  \initializema@TPATM
+  \mealyautomaton@TPATM
+  }
+
+\newcommand{\mealyautomaton@TPATM}
+{%
+  \@ifstar
+  {\setboolean{stategraph@TPATM}{true}\@mealyautomaton@TPATM}
+  {\setboolean{stategraph@TPATM}{false}\@mealyautomaton@TPATM}%
+  }
+
+\newcommand{\@mealyautomaton@TPATM}[2]
+{%
+  \ifthenelse{\boolean{psspecialsallowed}}
+  {%
+    \begingroup
+      \setlength{\@tempdima}{#1}%
+      \setlength{\@tempdimb}{#2}%
+      \psset{xunit=\@tempdima,yunit=\@tempdimb,arrowinset=0}%
+      \let\next=\@@genericdfa@TPATM
+    }
+  {%
+    \rule{#1}{#2}%
+    \let\next=\@@nomealyautomaton@TPATM
+    }%
+  \next
+}
+
+\newcommand{\@@nomealyautomaton@TPATM}[8]{}
+
+
+% \simulatema{<width>}{<height>}{<states>}{<inputalphabet>}{<statetransitions>}
+% {<initial state>}{<input tape>}{<number of steps>}{<tape move resolution>}{<output tape>}
+% simulates a mealy automaton (deterministic finite automaton with output tape, output is triggered by state
+% transitions).
+%
+% The parameters <width>, <height>, <states>, <inputalphabet>, <statetransitions>, <initial state>, <input tape>,
+% <output tape> have the same meaning as for \mealyautomaton.
+% The parameters <number of steps> and <tape move resolution> have the same meaning as for \simulatedfa.
+% The simulation starts with both tapes at the beginning, in the initial state and with the output tape in the state
+% given by <output tape>. After this, the simulation proceeds in the following steps:
+% 1) Write output symbol of the `active' transition to the output tape.
+% 2) Change state.
+% 3) Advance both tapes and reiterate.
+% \simulatema comes in normal and starred versions, with the same semantics as for \mealyautomaton, i.e. the normal
+% version displays a state transition table, the starred version displays a state transition graph.
+
+\newcommand{\simulatema}
+{%
+  \initializema@TPATM
+  \@ifstar
+  {\setboolean{stategraph@TPATM}{true}\@simulatema@TPATM}
+  {\setboolean{stategraph@TPATM}{false}\@simulatema@TPATM}%
+  }
+
+\newcommand{\@simulatema@TPATM}[2]
+{%
+  \ifthenelse{\boolean{psspecialsallowed}}
+  {%
+    \begingroup
+      \setlength{\@tempdima}{#1}%
+      \setlength{\@tempdimb}{#2}%
+      \psset{xunit=\@tempdima,yunit=\@tempdimb,arrowinset=0}%
+      \let\next=\@@simulatema@TPATM
+    }
+  {%
+    \rule{#1}{#2}%
+    \let\next=\@@nosimulatema@TPATM
+    }%
+  \next
+}
+
+\newcommand{\@@nosimulatema@TPATM}[8]{}
+
+\newcommand{\@@simulatema@TPATM}[8]
+{%
+  % Setup initial state.
+  \setcounter{currentsupstep@TPATM}{0}%
+  \setcounter{currentdfastate@TPATM}{#4}\gdef\currentoutputtape@TPATM{#8}%
+  \stepwise[\setcounter{currentdfastate@TPATM}{#4}\gdef\currentoutputtape@TPATM{#8}]
+  {%
+  \setboolean{beginautosim@TPATM}{true}%
+  % Main loop for state transitions.
+  \whiledo{\value{currentsupstep@TPATM}<#6}
+  {%
+    % At the beginning, the situation right before the state transition is displayed. This is effected by only
+    % displaying the last step of the tape movement.
+    \ifthenelse{\boolean{beginautosim@TPATM}}
+    {\setboolean{beginautosim@TPATM}{false}\setcounter{currentsubstep@TPATM}{#7-1}}
+    {\setcounter{currentsubstep@TPATM}{0}}%
+    % Inner loop for tape movement.
+    \whiledo{\value{currentsubstep@TPATM}<#7}
+    {%
+      \stepcounter{currentsubstep@TPATM}%
+      % Display sequence of steps while the tape gradually moves.
+      \mkfactor{\tapeposition@TPATM}{\value{currentsupstep@TPATM}+\arabic{currentsubstep@TPATM}pt/#7}%
+      \switch[][\boolean{firstactivation}]{}
+      {%
+        \begingroup\genericdfa@TPATM{#1}{#2}{#3}{#4}{#5}{\tapeposition@TPATM}{\value{currentdfastate@TPATM}}{\currentoutputtape@TPATM}%
+        \ifthenelse{\value{currentsubstep@TPATM}=#7}
+        {\afterstep{\stopAdvancing}\global\let\currentoutputtape@TPATM\newoutputtape@TPATM}%
+        {\afterstep{\pageDuration{\autosimduration}}}%
+        }%
+      }%
+    \stepcounter{currentsupstep@TPATM}%
+    % After the tape is in the next (or initial) position, display new output symbol.
+    \switch[][\boolean{firstactivation}]{}
+    {%
+      \begingroup\genericdfa@TPATM{#1}{#2}{#3}{#4}{#5}{\tapeposition@TPATM}{\value{currentdfastate@TPATM}}{\currentoutputtape@TPATM}%
+      \setcounter{currentdfastate@TPATM}{\value{nextstate@TPATM}}\setcounter{nextstate@TPATM}{-1}%
+      }%
+    % Next, switch state and reiterate.
+    \ifthenelse{\value{currentsupstep@TPATM}=#6}{\switch}{\switch[][\boolean{firstactivation}]}{}%
+    {%
+      \begingroup\genericdfa@TPATM{#1}{#2}{#3}{#4}{#5}{\tapeposition@TPATM}{\value{currentdfastate@TPATM}}{\currentoutputtape@TPATM}%
+      }%
+    }%
+  }%
+\endgroup
+}
+
+\endinput
+%%
+%% End of file `automata.sty'.

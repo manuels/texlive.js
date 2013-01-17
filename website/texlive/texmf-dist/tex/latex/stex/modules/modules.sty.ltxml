@@ -1,0 +1,624 @@
+# -*- CPERL -*-
+package LaTeXML::Package::Pool;
+use strict;
+use LaTeXML::Global;
+use LaTeXML::Package;
+DefKeyVal('Module','id','Semiverbatim');
+DefKeyVal('Module','cd','Semiverbatim');
+DefEnvironment('{module} OptionalKeyVals:Module',
+       "?#excluded()(<omdoc:theory "
+             . "?&defined(&KeyVal(#1,'id'))(xml:id='&KeyVal(#1,'id')')(xml:id='#id')>#body</omdoc:theory>)",
+#     beforeDigest=>\&useTheoryItemizations,
+       afterDigestBegin=>sub {
+       my($stomach, $whatsit)=@_;
+       $whatsit->setProperty(excluded=>LookupValue('excluding_modules'));
+
+       my $keys = $whatsit->getArg(1);
+       my($id, $cd)=$keys
+  && map(ToString($keys->getValue($_)),qw(id cd));
+        #make sure we have an id or give a stub one otherwise:
+if (not $id) {
+#do magic to get a unique id for this theory
+#$whatsit->setProperties(beginItemize('theory'));
+#$id = ToString($whatsit->getProperty('id'));
+                # changed: beginItemize returns the hash returned by RefStepCounter.
+                # RefStepCounter deactivates any scopes for the current value of the
+                # counter which causes the stored prop. of the env. not to be
+                # visible anymore.
+                $id = LookupValue('stex:theory:id') || 0;
+                AssignValue('stex:theory:id', $id+1);
+                $id = "I$id";
+}
+       $cd = $id unless $cd;
+       # update the catalog with paths for modules
+       my $module_paths = LookupValue('module_paths') || {};
+       $module_paths->{$id} = LookupValue('last_module_path');
+       AssignValue('module_paths', $module_paths, 'global');
+
+       #Update the current module position
+       AssignValue(current_module => $id);
+       AssignValue(module_cd => $cd) if $cd;
+
+       #activate the module in our current scope
+       $STATE->activateScope("module:".$id);
+
+       #Activate parent scope, if present
+       my $parentmod = LookupValue('parent_module');
+       use_module($parentmod) if $parentmod;
+       #Update the current parent module
+       AssignValue("parent_of_$id"=>$parentmod,'global');
+       AssignValue("parent_module" => $id);
+       return; },
+     afterDigest => sub {
+       #Move a step up on the module ancestry
+       AssignValue("parent_module" => LookupValue("parent_of_".LookupValue("parent_module")));
+       return;
+     });
+sub use_module {
+  my($module,%ancestors)=@_;
+  $module = ToString($module);
+  if (defined $ancestors{$module})  {
+    Fatal(":module \"$module\" leads to import cycle!");
+  }
+  $ancestors{$module}=1;
+  # Depth-first load definitions from used modules, disregarding cycles
+  foreach my $used_module (@{ LookupValue("module_${module}_uses") || []}){
+    use_module($used_module,%ancestors);
+  }
+  # then load definitions for this module
+  $STATE->activateScope("module:$module"); }#$
+DefMacro('\coolurion',sub {AssignValue('cooluri'=>1);});
+DefMacro('\coolurioff',sub {AssignValue('cooluri'=>0);});
+sub omext {
+  my ($mod)=@_; my $dest='';
+  $mod = ToString($mod);
+  if ($mod) {
+    #We need a constellation of abs_path invocations
+    # to make sure that all symbolic links get resolved
+    if ($mod=~/^(\w)+:\/\//) { $dest=$mod; } else {
+      my ($d,$f,$t) = pathname_split(abs_path($mod));
+      $d = pathname_relative(abs_path($d),abs_path(cwd()));
+      $dest=$d."/".$f;
+    }
+  }
+  $dest.=".omdoc" if (ToString($mod) && !LookupValue('cooluri'));
+  return Tokenize($dest);}
+sub importmoduleI {
+   my($stomach,$whatsit)=@_;
+   my $file = ToString($whatsit->getArg(1));
+   my $omdocmod = $file.".omdoc" if $file;
+   my $module = ToString($whatsit->getArg(2));
+   my $containing_module = LookupValue('current_module');
+   AssignValue('last_import_module',$module);
+   #set the relation between the current module and the one to be imported
+   PushValue("module_".$containing_module."_uses"=>$module) if $containing_module;
+  #check if we've already loaded this module file or no file path given
+  if((!$file) || (LookupValue('file_'.$module.'_loaded'))) {use_module($module);} #if so activate it!
+  else {
+    #if not:
+    my $gullet = $stomach->getGullet;
+    #1) mark as loaded
+    AssignValue('file_'.$module.'_loaded' => 1, 'global');
+    #open a group for its definitions so that they are localized
+    $stomach->bgroup;
+    #update the last module path
+    AssignValue('last_module_path', $file);
+    #queue the closing tag for this module in the gullet where it will be executed
+    #after all other definitions of the imported module have been taken care of
+    $gullet->unread(Invocation(T_CS('\end@requiredmodule'), Tokens(Explode($module)))->unlist);
+    #we only need to load the sms definitions without generating any xml output, so we set the flag to 1
+    AssignValue('excluding_modules' => 1);
+    #queue this module's sms file in the gullet so that its definitions are imported
+    $gullet->input($file,['sms']);
+   }
+   return;}
+DefConstructor('\importmodule OptionalSemiverbatim {}',
+   "<omdoc:imports from='?#1(&omext(#1))\##2'/>",
+   afterDigest=>sub{ importmoduleI(@_)});
+DefMacro('\importmodulevia OptionalSemiverbatim {}','\endgroup\importmoduleI[#1]{#2}\begin{importmoduleenv}[#1]{#2}');
+DefMacroI('\end{importmodulevia}',undef,'\end{importmoduleenv}');
+DefEnvironment('{importmoduleenv} OptionalSemiverbatim {}',
+   "<omdoc:imports from='?#1(&omext(#1))\##2'>"
+  .  "<omdoc:morphism>#body</omdoc:morphism>"
+  ."</omdoc:imports>");
+DefConstructor('\importmoduleI OptionalSemiverbatim {}', '',
+   afterDigest=>sub{ importmoduleI(@_)});
+DefConstructor('\vassign{}{}',
+    "<omdoc:requation>"
+   .  "<ltx:Math><ltx:XMath>#1</ltx:XMath></ltx:Math>"
+   .  "<ltx:Math><ltx:XMath>#2</ltx:XMath></ltx:Math>"
+   ."</omdoc:requation>");
+DefConstructor('\tassign[]{}{}',
+    "<omdoc:requation>"
+   .  "<om:OMOBJ><om:OMS cd='?#1(#1)(#lastImportModule)' name='#2'/></om:OMOBJ>"
+   .  "<om:OMOBJ><om:OMS cd='#currentModule' name='#3'/></om:OMOBJ>"
+   ."</omdoc:requation>",
+   afterDigest=> sub {
+     my ($stomach,$whatsit) = @_;
+     $whatsit->setProperty('currentModule',LookupValue("current_module"));
+     $whatsit->setProperty('lastImportModule',LookupValue("last_import_module"));
+   });
+DefConstructor('\ttassign{}{}',
+    "<omdoc:requation>"
+   .  "<ltx:Math><ltx:XMath>#1</ltx:XMath></ltx:Math>"
+   .  "<ltx:Math><ltx:XMath>#2</ltx:XMath></ltx:Math>"
+   ."</omdoc:requation>");
+DefConstructor('\importOMDocmodule OptionalSemiverbatim {}{}',"<omdoc:imports from='#3\##2'/>",
+afterDigest=>sub{
+  #Same as \importmodule, just switch second and third argument.
+  my ($stomach,$whatsit) = @_;
+  my $path = $whatsit->getArg(1);
+  my $ouri = $whatsit->getArg(2);
+  my $module = $whatsit->getArg(3);
+  $whatsit->setArgs(($path, $module,$ouri));
+  importmoduleI($stomach,$whatsit);
+  return;
+});
+DefConstructor('\metalanguage OptionalSemiverbatim {}',
+   "<omdoc:imports type='metalanguage' from='?#1(&omext(#1))\##2'/>",
+   afterDigest=>sub{ importmoduleI(@_)});
+DefMacro('\DefMathOp OptionalKeyVals:symdef {}',
+ sub {
+   my($self,$keyval,$pres)=@_;
+   my $name = KeyVal($keyval,'name') if $keyval;
+   #Rewrite this token
+   my $scopes = $STATE->getActiveScopes;
+   DefMathRewrite(xpath=>'descendant-or-self::ltx:XMath',match=>ToString($pres),
+        replace=>sub{
+          map {$STATE->activateScope($_);} @$scopes;
+          $_[0]->absorb(Digest("\\".ToString($name)));
+        });
+   #Invoke symdef
+   (Invocation(T_CS('\symdef'),$keyval,$name,undef,$pres)->unlist);
+ });
+DefMacro('\symdef OptionalKeyVals:symdef {}[]{}',
+      sub {
+  my($self,@args)=@_;
+  ((Invocation(T_CS('\@symdef'),@args)->unlist),
+   (LookupValue('excluding_modules') ? ()
+     : (Invocation(T_CS('\@symdef@pres'), @args)->unlist))); });
+
+#Current list of recognized formatter command sequences:
+our @PresFormatters = qw (infix prefix postfix assoc mixfixi mixfixa mixfixii mixfixia mixfixai mixfixaii mixfixiii);
+DefPrimitive('\@symdef OptionalKeyVals:symdef {}[]{}', sub {
+  my($stomach,$keys,$cs,$nargs,$presentation)=@_;
+  my($name,$cd,$role,$bvars,$bvar)=$keys
+    && map($_ && $_->toString,map($keys->getValue($_), qw(name cd role
+    bvars bvar)));
+  $cd = LookupValue('module_cd') unless $cd;
+  $name = $cs unless $name;
+  #Store for later lookup
+  AssignValue("symdef.".ToString($cs).".cd"=>ToString($cd),'global');
+  AssignValue("symdef.".ToString($cs).".name"=>ToString($name),'global');
+  $nargs = (ref $nargs ? $nargs->toString : $nargs || 0);
+  my $module = LookupValue('current_module');
+  my $scope = (($keys && ($keys->getValue('local') || '' eq 'true')) ? 'module_local' : 'module').":".$module;
+  #The DefConstructorI Factory is responsible for creating the \symbol command sequences as dictated by the \symdef
+  DefConstructorI("\\".$cs->toString,convertLaTeXArgs($nargs+1,'default'), sub {
+     my ($document,@args) = @_;
+     my $icvariant = shift @args;
+     my @props = @args;
+     #Lookup the presentation from the State, if a variant:
+     @args = splice(@props,0,$nargs);
+     my %prs = @props;
+     my $localpres = $prs{presentation};
+     $prs{isbound} = "BINDER" if ($bvars || $bvar);
+     my $wrapped;
+     my $parent=$document->getNode;
+     if(! defined $parent->lookupNamespacePrefix("http://omdoc.org/ns")){ # namespace not already declared?
+       $document->getDocument->documentElement->setNamespace("http://omdoc.org/ns","omdoc",0); }
+     my $symdef_scope=$parent->exists('ancestor::omdoc:rendering'); #Are we in a \symdef rendering?
+     if (($localpres =~/^LaTeXML::Token/) && $symdef_scope) {
+       #Note: We should probably ask Bruce whether this maneuver makes sense
+       # We jump back to digestion, at a processing stage where it has been already completed
+       # Hence need to reinitialize all scopes and make a new group. This is probably expensive to do.
+
+       my @toks = $localpres->unlist;
+       while(@toks && $toks[0]->equals(T_SPACE)){ shift(@toks); }  # Remove leading space
+       my $formatters = join("|",@PresFormatters);
+       $formatters = qr/$formatters/;
+       $wrapped = (@toks && ($toks[0]->toString =~ /^\\($formatters)$/));
+       $localpres = Invocation(T_CS('\@use'),$localpres) unless $wrapped;
+       # Plug in the provided arguments, doing a nasty reversion:
+       my @sargs = map (Tokens($_->revert),  @args);
+       $localpres = Tokens(LaTeXML::Expandable::substituteTokens($localpres,@sargs)) if $nargs>0;
+       #Digest:
+       my $stomach = $STATE->getStomach;
+       $stomach->beginMode('inline-math');
+       $STATE->activateScope($scope);
+       use_module($module);
+       use_module(LookupValue("parent_of_".$module)) if LookupValue("parent_of_".$module);
+       $localpres=$stomach->digest($localpres);
+       $stomach->endMode('inline-math');
+     }
+     else { #Some are already digested to Whatsit, usually when dropped from a wrapping constructor
+     }
+     if ($nargs == 0) {
+       if (!$symdef_scope) { #Simple case - discourse flow, only a single XMTok
+         #Referencing XMTok when not in \symdefs:
+         $document->insertElement('ltx:XMTok',undef,(name=>$cs->toString, meaning=>$name,omcd=>$cd,role => $role,scriptpos=>$prs{'scriptpos'}));
+       }
+       else {
+         if ($symdef_scope && ($localpres =~/^LaTeXML::Whatsit/) && (!$wrapped)) {#1. Simple case: converts to a single token
+           $localpres->setProperties((name=>$cs->toString, meaning=>$name,omcd=>$cd,role => $role,scriptpos=>$prs{'scriptpos'}));
+         }
+         else {
+           #Experimental treatment - COMPLEXTOKEN
+           #$role=$role||'COMPLEXTOKEN';
+           #$document->openElement('ltx:XMApp',role=>'COMPLEXTOKEN');
+           #$document->insertElement('ltx:XMTok',undef,(name=>$cs->toString, meaning=>$name, omcd=>$cd, role=>$role, scriptpos=>$prs{'scriptpos'}));
+           #$document->openElement('ltx:XMWrap');
+           #$document->absorb($localpres);
+           #$document->closeElement('ltx:XMWrap');
+           #$document->closeElement('ltx:XMApp');
+         }
+         #We need expanded presentation when invoked in \symdef scope:
+
+         #Suppress errors from rendering attributes when absorbing.
+         #This is bad style, but we have no way around it due to the digestion acrobatics.
+         my $verbosity = $LaTeXML::Global::STATE->lookupValue('VERBOSITY');
+         my $errors = $LaTeXML::Global::STATE->getStatus('error');
+         $LaTeXML::Global::STATE->assignValue('VERBOSITY',-5);
+
+         #Absorb presentation:
+         $document->absorb($localpres);
+
+         #Return to original verbosity and error state:
+         $LaTeXML::Global::STATE->assignValue('VERBOSITY',$verbosity);
+         $LaTeXML::Global::STATE->setStatus('error',$errors);
+
+         #Strip all/any <rendering><Math><XMath> wrappers:
+         #TODO: Ugly LibXML work, possibly do something smarter
+         my $parent = $document->getNode;
+         my @renderings=$parent->findnodes(".//omdoc:rendering");
+         foreach my $render(@renderings) {
+           my $content=$render;
+           while ($content && $content->localname =~/^rendering|[X]?Math/) {
+             $content = $content->firstChild;
+           }
+           my $sibling = $content->parentNode->lastChild;
+           my $localp = $render->parentNode;
+           while ((defined $sibling) && (!$sibling->isSameNode($content))) {
+             my $clone = $sibling->cloneNode(1);
+             $localp->insertAfter($clone,$render);
+             $sibling = $sibling->previousSibling;
+           }
+           $render->replaceNode($content);
+         }
+       }
+     }
+     else {#2. Constructors with arguments
+       if (!$symdef_scope) { #2.1 Simple case, outside of \symdef declarations:
+         #Referencing XMTok when not in \symdefs:
+         my %ic = ($icvariant ne 'default') ? (ic=>'variant:'.$icvariant) : ();
+         $document->openElement('ltx:XMApp',%ic,scriptpos=>$prs{'scriptpos'},role=>$prs{'isbound'});
+         $document->insertElement('ltx:XMTok',undef,(name=>$cs->toString, meaning=>$name, omcd=>$cd, role=>$role, scriptpos=>$prs{'operator_scriptpos'}));
+         foreach my $carg (@args) {
+           if ($carg =~/^LaTeXML::Token/) {
+             my $stomach = $STATE->getStomach;
+             $stomach->beginMode('inline-math');
+             $carg=$stomach->digest($carg);
+             $stomach->endMode('inline-math');
+           }
+           $document->openElement('ltx:XMArg');
+           $document->absorb($carg);
+           $document->closeElement('ltx:XMArg');
+         }
+         $document->closeElement('ltx:XMApp');
+       }
+       else { #2.2 Complex case, inside a \symdef declaration
+         #We need expanded presentation when invoked in \symdef scope:
+
+         #Suppress errors from rendering attributes when absorbing.
+         #This is bad style, but we have no way around it due to the digestion acrobatics.
+         my $verbosity = $LaTeXML::Global::STATE->lookupValue('VERBOSITY');
+         my $errors = $LaTeXML::Global::STATE->getStatus('error');
+         $LaTeXML::Global::STATE->assignValue('VERBOSITY',-5);
+
+         #Absorb presentation:
+         $document->absorb($localpres);
+
+         #Return to original verbosity and error state:
+         $LaTeXML::Global::STATE->assignValue('VERBOSITY',$verbosity);
+         $LaTeXML::Global::STATE->setStatus('error',$errors);
+
+         #Strip all/any <rendering><Math><XMath> wrappers:
+         #TODO: Ugly LibXML work, possibly do something smarter?
+         my $parent = $document->getNode;
+         if(! defined $parent->lookupNamespacePrefix("http://omdoc.org/ns")){ # namespace not already declared?
+           $document->getDocument->documentElement->setNamespace("http://omdoc.org/ns","omdoc",0); }
+         my @renderings=$parent->findnodes(".//omdoc:rendering");
+         foreach my $render(@renderings) {
+           my $content=$render;
+           while ($content && $content->localname =~/^rendering|[X]?Math/) {
+             $content = $content->firstChild;
+           }
+           my $sibling = $content->parentNode->lastChild;
+           my $localp = $render->parentNode;
+           while ((defined $sibling) && (!$sibling->isSameNode($content))) {
+             my $clone = $sibling->cloneNode(1);
+             $localp->insertAfter($clone,$render);
+             $sibling = $sibling->previousSibling;
+           }
+           $render->replaceNode($content);
+         }
+       }
+     }},
+   properties => {name=>$cs->toString, meaning=>$name,omcd=>$cd,role => $role},
+   scope=>$scope,
+   beforeDigest => sub{
+     my ($gullet, $variant) = @_;
+     my $icvariant = ToString($variant);
+     my $localpres = $presentation;
+     if ($icvariant && $icvariant ne 'default') {
+       $localpres = LookupValue($cs->toString."$icvariant:pres");
+       if (!$localpres) {
+         Error("No variant named '$icvariant' found! Falling back to ".
+         "default.\n Please consider introducing \\symvariant{".
+         $cs->toString."}[$nargs]{$icvariant}{... your presentation ...}");
+         $localpres = $presentation;
+       }
+     }
+     my $count = LookupValue(ToString($cs).'_counter') || 0;
+     AssignValue(ToString($cs).":pres:$count",$localpres);
+     AssignValue(ToString($cs).'_counter',$count+1);
+     return;
+   },
+   afterDigest => sub{
+     my ($stomach,$whatsit) = @_;
+     my $count = LookupValue(ToString($cs).'_aftercounter') || 0;
+     $whatsit->setProperty('presentation',LookupValue(ToString($cs).":pres:$count"));
+     AssignValue(ToString($cs).'_aftercounter',$count+1);
+   });
+   return; });
+ DefMacro('\symvariant{}[]{}{}', sub {
+  my($self,@args)=@_;
+  my $prestok = Invocation(T_CS('\@symvariant@pres'), @args);
+  pop @args; push @args, $prestok;
+  Invocation(T_CS('\@symvariant@construct'),@args)->unlist;
+});
+ DefMacro('\@symvariant@pres{}[]{}{}', sub {
+   my($self,$cs,$nargs,$ic,$presentation)=@_;
+   symdef_presentation_pmml($cs,ToString($nargs)||0,$presentation);
+ });
+ DefConstructor('\@symvariant@construct{}[]{}{}', sub {
+  my($document,$cs,$nargs,$icvariant,$presentation)=@_;
+  $cs = ToString($cs);
+  $nargs = ToString($nargs);
+  $icvariant = ToString($icvariant);
+  # Save presentation for future reference:
+  #Notation created by \symdef
+  #Create the rendering at the right place:
+  my $cnode = $document->getNode;
+  my $root = $document->getDocument->documentElement;
+  my $name = LookupValue("symdef.".ToString($cs).".name") || $cs;
+  # Fix namespace (the LibXML XPath problems...)
+  $root->setNamespace("http://omdoc.org/ns","omdoc",0);
+  my ($notation) = $root->findnodes(".//omdoc:notation[\@name='$name' and ".
+                                    "preceding-sibling::omdoc:symbol[1]/\@name
+                                    = '$name']");
+  if (!$notation) {
+    #No symdef found, raise error:
+    Error("No \\symdef found for \\$cs! Please define symbol prior to introducing variants!");
+    return;
+  }
+  $document->setNode($notation);
+  $document->absorb($presentation);
+  $notation->lastChild->setAttribute("ic","variant:$icvariant");
+  $document->setNode($cnode);
+  return;
+ },
+ beforeDigest => sub {
+    my($gullet,$cs,$nargs,$icvariant,$presentation)=@_;
+    $cs = ToString($cs);
+    $icvariant = ToString($icvariant);
+    AssignValue("$cs:$icvariant:pres",Digest($presentation),'module:'.LookupValue('current_module'));
+ });
+ #mode=>'math'
+DefPrimitive('\abbrdef OptionalKeyVals:symdef {}[]{}', sub {
+  my($stomach,$keys,$cs,$nargs,$presentation)=@_;
+  my $module = LookupValue('current_module');
+  my $scope = (($keys && ($keys->getValue('local') || '' eq 'true')) ? 'module_local' : 'module').":$module";
+  DefMacroI("\\".$cs->toString,convertLaTeXArgs($nargs,''),$presentation,
+   scope=>$scope);
+  return; });
+DefMacro('\defpath{}{}', sub {
+   my ($gullet,$arg1,$arg2)=@_;
+   $arg1 = ToString($arg1);
+   $arg2 = ToString($arg2);
+   my $paths = LookupValue('defpath')||{};
+   $$paths{"$arg1"}=$arg2;
+   AssignValue('defpath'=>$paths,'global');
+   DefMacro('\\'.$arg1.' Semiverbatim',$arg2."/#1");
+ });#$
+DefPrimitive('\requiremodules{}', sub {
+  my($stomach,$module)=@_;
+  my $GULLET = $stomach->getGullet;
+  $module = Digest($module)->toString;
+  if(LookupValue('file_'.$module.'_loaded')) {}
+  else {
+    AssignValue('file_'.$module.'_loaded' => 1, 'global');
+    $stomach->bgroup;
+    AssignValue('last_module_path', $module);
+    $GULLET->unread(T_CS('\end@requiredmodule'));
+    AssignValue('excluding_modules' => 1);
+    $GULLET->input($module,['sms']);
+       }
+  return;});
+
+DefPrimitive('\end@requiredmodule{}',sub {
+ #close the group
+ $_[0]->egroup;
+ #print STDERR "END: ".ToString(Digest($_[1])->toString);
+ #Take care of any imported elements in this current module by activating it and all its dependencies
+ #print STDERR "Important: ".ToString(Digest($_[1])->toString)."\n";
+ use_module(ToString(Digest($_[1])->toString));
+ return; });#$
+DefPrimitive('\sinput Semiverbatim', sub {
+  my($stomach,$module)=@_;
+  my $GULLET = $stomach->getGullet;
+  $module = Digest($module)->toString;
+  AssignValue('file_'.$module.'_loaded' => 1, 'global');
+  $stomach->bgroup;
+  AssignValue('last_module_path', $module);
+  $GULLET->unread(Invocation(T_CS('\end@requiredmodule'),Tokens(Explode($module)))->unlist);
+  $GULLET->input($module,['tex']);
+  return;});#$
+DefConstructor('\sinputref{}',"<omdoc:oref href='#1.omdoc' class='expandable'/>");
+DefConstructor('\inputref{}',"<omdoc:oref href='#1.omdoc' class='expandable'/>");
+DefMacro('\@symdef@pres  OptionalKeyVals:symdef {}[]{}', sub {
+  my($self,$keys, $cs,$nargs,$presentation)=@_;
+
+  my($name,$cd,$role)=$keys
+   && map($_ && $_->toString,map($keys->getValue($_), qw(name cd role)));
+  $cd = LookupValue('module_cd') unless $cd;
+  $name = $cs unless $name;
+  AssignValue('module_name'=>$name) if $name;
+  $nargs = 0 unless ($nargs);
+  my $nargkey = ToString($name).'_args';
+  AssignValue($nargkey=>ToString($nargs)) if $nargs;
+  $name=ToString($name);
+
+  Invocation(T_CS('\@symdef@pres@aux'),
+     $cs,
+     ($nargs || Tokens(T_OTHER(0))),
+     symdef_presentation_pmml($cs,ToString($nargs)||0,$presentation),
+     (Tokens(Explode($name))),
+     (Tokens(Explode($cd))),
+     $keys)->unlist; });#$
+sub symdef_presentation_pmml {
+  my($cs,$nargs,$presentation)=@_;
+  my @toks = $presentation->unlist;
+  while(@toks && $toks[0]->equals(T_SPACE)){ shift(@toks); }  # Remove leading space
+  $presentation = Tokens(@toks);
+  # Wrap with \@use, unless already has a recognized formatter.
+  my $formatters = join("|",@PresFormatters);
+  $formatters = qr/$formatters/;
+  $presentation = Invocation(T_CS('\@use'),$presentation)
+    unless (@toks && ($toks[0]->toString =~ /^\\($formatters)$/));
+  # Low level substitution.
+  my @args =
+  map(Invocation(T_CS('\@SYMBOL'),T_OTHER("arg:".($_))),1..$nargs);
+  $presentation =  Tokens(LaTeXML::Expandable::substituteTokens($presentation,@args));
+  $presentation; }#$
+sub  getSymmdefProperties {
+  my $cd = LookupValue('module_cd');
+  my $name = LookupValue('module_name');
+  my $nargkey = ToString($name).'_args';
+  my $nargs = LookupValue($nargkey);
+  $nargs = 0 unless ($nargs);
+  my %props = ('cd'=>$cd,'name'=>$name,'nargs'=>$nargs);
+  return %props;}
+DefConstructor('\@use{}', sub{
+  my ($document,$args,%properties) = @_;
+  #Notation created at \@symdef@pres@aux
+  #Create the rendering:
+  $document->openElement('omdoc:rendering');
+  $document->openElement('ltx:Math');
+  $document->openElement('ltx:XMath');
+  if ($args->isMath) {$document->absorb($args);}
+  else {  $document->insertElement('ltx:XMText',$args);}
+  $document->closeElement('ltx:XMath');
+  $document->closeElement('ltx:Math');
+  $document->closeElement('omdoc:rendering');
+},
+properties=>sub { getSymmdefProperties($_[1]);},
+               mode=>'inline_math');
+sub get_cd {
+   my($name,$cd,$role)=@_;
+   return $cd;}
+DefConstructor('\@symdef@pres@aux{}{}{}{}{} OptionalKeyVals:symdef', sub {
+  my ($document,$cs,$nargs,$pmml,$name,$cd,$keys)=@_;
+  my $assocarg = ToString($keys->getValue('assocarg')) if $keys;
+  $assocarg = $assocarg||"0";
+  my $bvars = ToString($keys->getValue('bvars')) if $keys;
+  $bvars = $bvars||"0";
+  my $bvar = ToString($keys->getValue('bvar')) if $keys;
+  $bvar = $bvar||"0";
+  my $appElement = 'om:OMA'; $appElement = 'om:OMBIND' if ($bvars || $bvar);
+  my $root = $document->getDocument->documentElement;
+  my $name_str = ToString($name);
+  my ($notation) = $root->findnodes(".//omdoc:notation[\@name='$name_str' and ".
+                                    "preceding-sibling::omdoc:symbol[1]/\@name
+                                    = '$name_str']");
+  if (!$notation) {
+    $document->insertElement("omdoc:symbol",undef,(name=>$name,"xml:id"=>$name_str.".sym"));
+  }
+   $document->openElement("omdoc:notation",(name=>$name,cd=>$cd));
+   #First, generate prototype:
+   $nargs = ToString($nargs)||0;
+   $document->openElement('omdoc:prototype');
+   $document->openElement($appElement) if $nargs;
+   my $cr="fun" if $nargs;
+   $document->insertElement('om:OMS',undef,
+    (cd=>$cd,
+     name=>$name,
+     "cr"=>$cr));
+   if ($bvar || $bvars) {
+     $document->openElement('om:OMBVAR');
+     if ($bvar) {
+       $document->insertElement('omdoc:expr',undef,(name=>"arg$bvar"));
+     } else {
+       $document->openElement('omdoc:exprlist',(name=>"args"));
+       $document->insertElement('omdoc:expr',undef,(name=>"arg"));
+       $document->closeElement('omdoc:exprlist');
+     }
+     $document->closeElement('om:OMBVAR');
+   }
+   for my $id(1..$nargs) {
+     next if ($id==$bvars || $id==$bvar);
+     if ($id!=$assocarg) {
+       my $argname="arg$id";
+       $document->insertElement('omdoc:expr',undef,(name=>"$argname"));
+     }
+     else {
+       $document->openElement('omdoc:exprlist',(name=>"args"));
+       $document->insertElement('omdoc:expr',undef,(name=>"arg"));
+       $document->closeElement('omdoc:exprlist');
+     }
+   }
+   $document->closeElement($appElement) if $nargs;
+   $document->closeElement('omdoc:prototype');
+   #Next, absorb rendering:
+   $document->absorb($pmml);
+   $document->closeElement("omdoc:notation");
+ }, afterDigest=>sub { my ($stomach, $whatsit) = @_;
+  my $keys = $whatsit->getArg(6);
+  my $module = LookupValue('current_module');
+  $whatsit->setProperties(for=>ToString($whatsit->getArg(1)));
+  $whatsit->setProperty(role=>($keys ? $keys->getValue('role')
+       : (ToString($whatsit->getArg(2)) ? 'applied'
+  : undef))); });
+sub symdef_presentation_TeX {
+  my($presentation)=@_;
+  my @tokens = $presentation->unlist;
+  my(@frag,@frags) = ();
+  while(my $tok = shift(@tokens)){
+    if($tok->equals(T_PARAM)){
+      push(@frags,Invocation(T_CS('\@symdef@pres@text'),Tokens(@frag))) if @frag;
+      @frag=();
+      my $n = shift(@tokens)->getString;
+      push(@frags,Invocation(T_CS('\@symdef@pres@arg'),T_OTHER($n+1))); }
+    else {
+      push(@frag,T_OTHER($tok->getString)); }} # IMPORTANT! Neutralize the tokens!
+  push(@frags,Invocation(T_CS('\@symdef@pres@text'),Tokens(@frag))) if @frag;
+  Tokens(map($_->unlist,@frags)); }
+DefConstructor('\@symdef@pres@arg{}', "<omdoc:recurse select='#select'/>",
+       afterDigest=>sub { my ($stomach, $whatsit) = @_;
+  my $select = $whatsit->getArg(1);
+  $select = ref $select ? $select->toString : '';
+  $whatsit->setProperty(select=>"*[".$select."]"); });
+DefConstructor('\@symdef@pres@text{}', "<omdoc:text>#1</omdoc:text>");
+DefConstructor('\requirepackage{} Semiverbatim',"<omdoc:imports from='#2'/>",
+       afterDigest=>sub { my ($stomach, $whatsit) = @_;
+  my $select = $whatsit->getArg(1);
+  RequirePackage($select->toString); });#$
+DefKeyVal('view','id','Semiverbatim');
+DefEnvironment('{view} OptionalKeyVals:view {}{}',
+   "<omdoc:theory-inclusion from='#2' to='#3'>"
+  .  "<omdoc:morphism>#body</omdoc:morphism>"
+  ."</omdoc:theory-inclusion>");
+Tag('omdoc:recurse',afterOpen=>\&numberIt,afterClose=>\&locateIt);
+Tag('omdoc:imports',afterOpen=>\&numberIt,afterClose=>\&locateIt);
+Tag('omdoc:theory',afterOpen=>\&numberIt,afterClose=>\&locateIt);
+1;

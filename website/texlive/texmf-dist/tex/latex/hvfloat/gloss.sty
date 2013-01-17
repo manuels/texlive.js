@@ -1,0 +1,347 @@
+% +--------------------------------------------------+
+% | Typeset gloss.tex to get the documentation.      |
+% +--------------------------------------------------+
+%
+% (c) 1998 Jose Luis Diaz, 1999-2002 Jose Luis Diaz and Javier Bezos.
+% All Rights Reserved.
+%
+% This file is part of the gloss distribution release 1.5.2
+% -----------------------------------------------------------
+%
+% This file can be redistributed and/or modified under the terms
+% of the LaTeX Project Public License Distributed from CTAN
+% archives in directory macros/latex/base/lppl.txt; either
+% version 1 of the License, or any later version.
+
+\def\fileversion{1.5.2}
+\def\filedate{2002/07/26}
+
+\NeedsTeXFormat{LaTeX2e}[1995/12/01]
+\ProvidesPackage{gloss}[\filedate\space\fileversion\space Gloss package]
+
+\edef\gls@a{\catcode`\string:=\the\catcode`:\relax}
+\catcode`:=12
+
+\providecommand\glossname{Glossary}
+\newcommand\glosspage[1]{, p.\nobreakspace#1.}
+\newcommand\xglosspage{\glosspage}
+
+\DeclareOption{refpages}{%
+  \def\endglossitem{%
+    \@ifundefined{gls@thispage}%
+      {.}%
+      {\glosspage\gls@thispage}%
+    \par}%
+  \@namedef{endglossitem*}{%
+    \@ifundefined{gls@thispage}%
+      {}%
+      {\xglosspage\gls@thispage}%
+    \par}}
+
+% Declaring new glossaries
+% ~~~~~~~~~~~~~~~~~~~~~~~~
+
+% 1:label 2:ext 3:title 4:bibstyle
+
+\newcommand\newgloss[4]{%
+  \if@filesw
+    \expandafter\newwrite\csname glsf@#1\endcsname
+    \immediate\openout\csname glsf@#1\endcsname\jobname#2.aux %
+    \PackageInfo{gloss}{Writing gloss file \jobname#2.aux}%
+    \immediate\write\csname glsf@#1\endcsname{\string\bibstyle{#4}}%
+  \fi
+  \@namedef{glst@#1}{\def\gls@title{#3}}%
+  \@namedef{glso@#1}{\edef\gls@base{\jobname#2}\edef\gls@name{#1}}}
+
+\newcommand\makegloss{%
+  \newgloss{default}{.gls}{\glossname}{glsplain}}
+
+\def\glso@default{\PackageError{gloss}{Missing default glossary}%
+  {You missed either \string\makegloss or a \string\newgloss
+   with a `default' label}}
+
+% Two .aux related commands
+% ~~~~~~~~~~~~~~~~~~~~~~~~
+% In both of them, #1 includes (already expanded) \gls@name ::
+
+\def\gls@cite{%
+  \begingroup
+    \catcode`:=12
+    \gls@cite@i}
+\def\gls@cite@i#1#2#3#4{%
+  \endgroup
+  \global\@namedef{gls@#1}{{#2}{#3}{#4}}}
+
+\def\gls@page{%
+  \begingroup
+    \catcode`:=12
+    \gls@page@i}
+\def\gls@page@i#1#2{%
+  \endgroup
+  \global\@namedef{glsp@#1}{#2}}
+
+% The \gloss command
+% ~~~~~~~~~~~~~~~~~~
+% The command:
+
+\newcommand\gloss{\protect\gls@gloss@i}
+
+\def\gls@gloss@i{%
+  \@bsphack
+  \begingroup
+    \catcode`\ =9
+    \@ifnextchar[{\gls@gloss@ii}{\gls@gloss@ii[]}}
+
+\def\gls@gloss@ii[#1]{%
+    \endgroup
+  \gls@gloss@iii{#1}}
+
+\def\gls@gloss@iii#1#2{%
+  \begingroup
+    \def\gls@a{\def\gls@a{,\penalty\@m\ }}%
+    \glso@default
+    \glso@word
+    \@for\gls@b:=#1\do{%
+      \@ifundefined{glso@\gls@b}%
+         {\PackageError{gloss}{Unknown option}%
+            {You have used an unknown option in \string\gloss}}%
+         {\csname glso@\gls@b\endcsname}}%
+    \@for\gls@b:=#2\do
+      {\gls@a %%% 2001/08/29 Missing
+       \edef\gls@b{\expandafter\@firstofone\gls@b\@empty}%
+       \ifgls@cite  %%% 2001/12/20 a few lines rewritten
+         \@ifundefined{glspp@\gls@name::\gls@b}{\gls@refpagetrue}{}%
+       \fi
+       \ifgls@refpage
+         \protected@write\@auxout{}%
+           {\string\gls@page{\gls@name::\gls@b}{\noexpand\thepage}}%
+         \global\@namedef{glspp@\gls@name::\gls@b}{}%
+       \fi
+       \if@filesw
+         \immediate\write\csname glsf@\gls@name\endcsname
+            {\string\citation{\gls@b}}%
+       \fi
+       \@ifundefined{gls@\gls@name::\gls@b}%
+         {\ifgls@cite
+            {\reset@font\bfseries[\gls@unlabel{#2}??]}%
+          \fi
+          \G@refundefinedtrue
+          \PackageWarning{gloss}%
+            {Term `\gls@b' on page \thepage\space 
+                not defined in glossary `\gls@name'}}%
+         {\ifgls@cite
+          {\edef\@pdfborder{\glosslinkborder}%
+           \edef\@linkcolor{\glosslinkcolor}%
+           \edef\@linkbordercolor{\glosslinkbordercolor}%
+           \gls@hyperlink{\gls@name::\gls@b}{%
+             \expandafter\expandafter\expandafter
+               \gls@printtext\csname gls@\gls@name::\gls@b\endcsname}}%
+          \fi}}%
+  \expandafter
+  \endgroup  %2002/07/25 wrong tempswa replaced by gls@cite
+  \ifgls@cite\else\expandafter\@esphack\fi}
+
+\def\gls@unlabel#1{%
+  \expandafter\expandafter\expandafter
+  \@gobble\expandafter\string\csname #1\endcsname}
+
+\AtBeginDocument{%
+  \@ifpackageloaded{hyperref}%
+    {\let\gls@hyperlink\hyperlink
+     \let\gls@raisedlink\Hy@raisedlink}%
+    {\let\gls@hyperlink\@secondoftwo
+     \let\gls@raisedlink\@gobble
+     \let\glosslinkborder\relax
+     \let\glosslinkcolor\relax
+     \let\glosslinkbordercolor\relax}}
+
+\def\glosslinkborder{\@pdfborder}%
+\def\glosslinkcolor{\@linkcolor}%
+\def\glosslinkbordercolor{\@linkbordercolor}
+
+% Options:
+
+\newif\ifgls@cite
+\gls@citetrue
+\def\glso@nocite{%
+  \gls@citefalse
+  \let\gls@a\@empty}
+
+\newif\ifgls@refpage % false by default
+\def\glso@refpage{\gls@refpagetrue}
+
+\newcommand\setglosstext[2]{%
+  \@namedef{gls@prtext@#1}##1##2##3{{\def\gls@short{##3}#2}}%
+  \@namedef{glso@#1}{%
+    \def\gls@printtext{\csname gls@prtext@#1\endcsname}}}
+
+\setglosstext{short}{\ifglossshort*{#3}{}}
+\setglosstext{word}{#1}
+\setglosstext{Word}{#2}
+\setglosstext{long}{#1\ifglossshort*{ (#3)}{}}
+\setglosstext{Long}{#2\ifglossshort*{ (#3)}{}}
+
+\def\ifglossshort{%
+  \@ifstar
+    {\ifx\gls@short\@empty
+       \PackageError{gloss}{Empty short}%
+          {You cannot print a short form of a term lacking it}%
+       {\reset@font\bfseries[??]}%
+       \expandafter\@secondoftwo
+     \else
+       \expandafter\@firstoftwo
+     \fi}%
+    {\ifx\gls@short\@empty
+       \expandafter\@secondoftwo
+     \else
+       \expandafter\@firstoftwo
+     \fi}}
+
+% \newcommand\maingloss[2][word]{\textit{\gloss[refpage,#1]{#2}}}
+
+\newcommand\Gloss[1]{\gloss[Word]{#1}}
+\newcommand\onlygloss[1]{\gloss[nocite]{#1}}
+
+% Printing the gloss
+% ~~~~~~~~~~~~~~~~~~
+% The whole list:
+
+\@ifundefined{chapter}
+  {\def\gls@section{%
+     \section*{\gls@title}%
+     \@mkboth{\MakeUppercase\gls@title}{\MakeUppercase\gls@title}%
+     \addcontentsline{toc}{section}{\gls@title}}}%
+  {\def\gls@section{%
+     \chapter*{\gls@title}%
+     \@mkboth{\MakeUppercase\gls@title}{\MakeUppercase\gls@title}%
+     \addcontentsline{toc}{chapter}{\gls@title}}}
+
+\newcommand\printgloss[2][default]{%
+  \if@filesw
+    \csname glso@#1\endcsname
+    \immediate\write\csname glsf@\gls@name\endcsname
+       {\string\bibdata{#2}}%
+  \fi
+  \csname glst@#1\endcsname
+  \InputIfFileExists{\gls@base.bbl}%
+    {}%
+    {\typeout{No file \gls@base.bbl}}}
+
+\newenvironment{thegloss}
+  {\gls@section
+   \def\+##1+{}%
+   \@beginparpenalty\@M}%  
+  {\stopglosslist}
+
+% Headings:
+
+\newcommand\setglossgroup[1]{\@namedef{gls@group@#1}}
+\newcommand\glossgroup[1]{%
+  \expandafter\glossheading\csname gls@group@#1\endcsname}
+
+\newcommand\glossheading[1]{%
+  \stopglosslist
+  \subsection*{#1}}
+
+% The list itself:
+
+\newlength{\glosshang}
+\setlength{\glosshang}{2cm}
+
+\newenvironment{glosslist}
+  {\begin{list}{\relax}{%
+        \def\makelabel##1{##1\hfil}%
+        \setlength{\labelsep}{1em}%
+        \setlength{\labelwidth}{\glosshang}%
+        \addtolength{\labelwidth}{-\labelsep}%
+        \setlength{\itemindent}{0em}%
+        \setlength{\leftmargin}{\glosshang}}}
+  {\end{list}}
+
+% The gloss items:
+
+% 1:key  2:term  3:text  4:shorthand 
+
+\newcommand\stopglosslist{}
+
+\newif\ifgls@list
+
+\newenvironment{glossitem}[4]%
+  {\ifgls@list
+     \expandafter\let\expandafter\gls@thispage  % relax if undefined
+             \csname glsp@\gls@name::#1\endcsname
+     \item[%
+       \gls@raisedlink{\hyper@anchorstart{\gls@name::#1}\hyper@anchorend}%
+       \gls@label{#2}{#3}{#4}]%
+     \begingroup
+       \let\protect\noexpand
+       \immediate\write\@auxout{%
+         \string\gls@cite{\gls@name::#1}{#2}{#3}{#4}}%
+     \endgroup
+   \else
+     \xdef\gls@a{\noexpand\begin{\@currenvir}}%
+     \endgroup
+     \begin{glosslist}%
+     \gls@listtrue
+     \def\stopglosslist{\end{glosslist}}%
+     \gls@a{#1}{#2}{#3}{#4}%
+   \fi
+   \ignorespaces}
+  {.\@@par}
+
+\expandafter\let\csname glossitem*\endcsname\glossitem
+\expandafter\let\csname endglossitem*\endcsname\@@par
+
+\newcommand\setglosslabel[1]{%
+   \def\gls@label##1##2##3{\def\gls@short{##3}#1}}
+
+\setglosslabel{\sffamily\bfseries#1\ifglossshort{ (#3)}{}}
+
+% Language support
+
+\DeclareOption{basque}{%
+  \def\glossname{Glosategi}%
+  \def\glosspage#1{, orri \nobreakspace#1.}}%*********
+\DeclareOption{brazilian}{%
+  \def\glossname{Gloss\'ario}%
+  \def\glosspage#1{, p\'ag.\nobreakspace#1.}}
+\DeclareOption{catalan}{%
+  \def\glossname{Glossari}%
+  \def\glosspage#1{, p\`ag.\nobreakspace#1.}}
+\DeclareOption{danish}{%
+  \def\glossname{Ordliste}%
+  \def\glosspage#1{, s.\nobreakspace#1.}}
+\DeclareOption{dutch}{%
+  \def\glossname{Verklarende woordenlijst}%
+  \def\glosspage#1{, p.\nobreakspace#1.}}
+\DeclareOption{french}{%
+  \def\glossname{Glossaire}%
+  \def\glosspage#1{, p.\nobreakspace#1.}}
+\DeclareOption{german}{%
+  \def\glossname{Glossar}%
+  \def\glosspage#1{, S.\nobreakspace#1.}}
+\DeclareOption{italian}{%
+  \def\glossname{Glossario}%
+  \def\glosspage#1{, pag.\nobreakspace#1.}}
+\DeclareOption{polish}{%
+  \def\glossname{S\l owniczek}%
+  \def\glosspage#1{, str.\nobreakspace#1.}}%
+\DeclareOption{portuguese}{%
+  \def\glossname{Gloss\'ario}%
+  \def\glosspage#1{, p\'ag.\nobreakspace#1.}}
+\DeclareOption{russian}{%
+  \def\glossname{%
+     {\cyr\CYRG\cyrl\cyro\cyrs\cyrs\cyra\cyrr\cyri\cyrishrt}}%
+  \def\glosspage#1{, {\cyr\cyrs.}\nobreakspace#1.}}
+\DeclareOption{spanish}{%
+  \def\glossname{Glosario}%
+  \def\glosspage#1{, p\'ag.\nobreakspace#1.}}
+\DeclareOption{swedish}{%
+  \def\glossname{Ordlista}%
+  \def\glosspage#1{, s.\nobreakspace#1.}}%*******
+
+\ProcessOptions*
+
+\gls@a  % restores the colon catcode
+
+\endinput

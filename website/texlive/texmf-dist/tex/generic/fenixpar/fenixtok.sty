@@ -1,0 +1,197 @@
+% fenixtok.sty Version 0.92, 18th November, 2011
+%
+% (c) Javier A. M\'ugica, 2007 2011
+% License: LPPL version 1.3
+% 
+% LPPL maintenance status: maintained
+% Current Maintainer: Javier A. M\'ugica
+%
+%	For bug reports and comments:
+%
+%	Javier M\'ugica,   javier at digi21.net
+%
+% Description:
+%
+% This file provides a few user macros to add material to a token register (typically \everypar)
+% to be automatically removed when the token list is executed or later on request,
+% without interfering with existing material in that register.
+% Supose for example that you want the code \hbox to0pt{\kern-20pt$\ast$\hss} to be
+% executed by the next \everypar. Then you would type
+% \fornexttokl{everypar}{\hbox to0pt{\kern-20pt$\ast$\hss}}.
+%	\fornexttokl adds the material as a stack: last added, first executed.
+%	If you want to add material to be executed after whatever may be on the register,
+% use \fornexttokr instead.
+% If you need \fornexttok often (or even twice) you may _define_ that type of everypar:
+%
+%	\NewTypeoftok{everypar}{asterisk}{\hbox to0pt{\kern-20pt$\ast$\hss}}
+%
+% And later you would type \NexteveryparL{asterisk} (or \NexteveryparR).
+% If you want several consecutive paragraphs to be signaled with the asterisk
+% you may enclose them between \AlleveryparsL{asterisk} (or ...R) and \Endeverypars{asterisk}.
+%
+% For any token register 'mytok' you can use \nextmytokl (...r) as an abreviation for
+% \fornexttokl{mytok} (...r), but it will fail if you have not yet used \NewTypeoftok{mytok}
+% or \fornexttok{mytok}.
+%
+% The commands \All... and \End..., can be mixed in any order; in particular, they don't need
+% to be nested. They may also be mixed in any way with respect to \Next.. or \fornext...
+%
+\chardef\atcatcode=\catcode`\@
+\catcode`\@=11\relax
+\def\exp@noex{\expandafter\noexpand}
+\def\noexp@name#1{\exp@noex\csname#1\endcsname}
+\def\tok@newtoks{\csname newtoks\endcsname}%	\newtoks not allowed in definitios
+\def\@namedef#1{\expandafter\def\csname#1\endcsname}%	This is LaTeX definition
+\long\def\@gobbletwo#1#2{}%	So is this one.
+%Almost everything is done by this macro. See the example below.
+\def\NewTypeoftok#1#2#3{%
+	\toktype@Registerifnotyet{#1}%
+	\expandafter\tok@newtoks\csname #1/#2\endcsname
+	\csname #1/#2\endcsname{#3}%
+	\@namedef{next@#1/#2}{%
+		\edef\tok@type{\csname #1\endcsname}%	We need it very often
+		\edef\if@nextrequired{\noexp@name{if@next#1@required}}%Idem
+		\def\make@ifnextrequired@false{\let\exp@noex\if@nextrequired\noexpand\iffalse}%
+		\edef\tempa{\csname previous@#1@\endcsname\tok@type}\tempa
+		\if@nextrequired\else
+			\edef\tempa{\csname former@#1@\endcsname\tok@type}\tempa
+		\fi
+		\edef\tempa{\tok@type{\if\foo L\expandafter\the\csname #1/#2\endcsname\fi
+			\if@nextrequired\else\tok@type\csname former@#1@\endcsname\fi\make@ifnextrequired@false%	the \fi should be after \make@..., but if another macro (@startsection, for instance) changes everypar before it is executed, or builds the paragraph inside a group and later outside the group changes it, we would never recover.
+			\expandafter\the\csname previous@#1@\endcsname
+			\if\foo R\expandafter\the\csname #1/#2\endcsname\fi}}%
+		\tempa
+		\expandafter\let\if@nextrequired\iftrue
+	}%
+	\expandafter\edef\csname the@#1/#2\endcsname{\expandafter\the\csname #1/#2\endcsname}%
+	\@namedef{every@#1/#2}{%
+	  \def\tempb####1{\edef\tempa{\csname####1\endcsname{\if\foo L\noexp@name{the@#1/#2}\fi\expandafter\the\csname####1\endcsname\if\foo R\noexp@name{the@#1/#2}\fi}}}%
+		\tempb{#1}\tempa
+		%Also add it to the saved \former... if necesary:
+		\csname if@next#1@required\endcsname
+			\tempb{former@#1@}\tempa
+		\fi
+	}%
+	\@namedef{end@#1/#2}{%
+		\edef\tempa{\noexpand\see@if@present\noexp@name{#1}\noexp@name{the@#1/#2}}\tempa
+		\if@tok@present
+		\def\tempb####1{\edef\tempa{\csname ####1\endcsname\noexpand\expandafter\noexp@name{strip@#1/#2}\noexpand\the\csname####1\endcsname}%
+			\expandafter\expandafter\tempa\mark@end@fenixtok}%
+		\tempb{#1}%
+		%Remove it from \former... if necesary:
+		\iftrue
+		\csname if@next#1@required\endcsname
+			\tempb{former@#1@}%
+		\fi
+		\csname fi\endcsname
+		\else
+		\newlinechar=`^^J%
+		\edef\tempa{\noexpand\errhelp{Probably another macro redefined \noexp@name{#1} behind the scenes.^^J%
+			Simply proceed and remember to check if the effect of {#2}^^J%
+			is missing from some prior point up to here.}}%
+		\tempa
+		\errmessage{The material of {#2} has already been removed from \noexp@name{#1}.^^J%
+		I will ignore End#1s{#2}}%
+		\errhelp{}%
+		\fi
+	}%
+	\edef\tempa{\noexp@name{strip@#1/#2}####1\noexp@name{the@#1/#2}}%
+	\expandafter\def\tempa##2\mark@end@fenixtok{{##1##2}}%
+}
+
+%This one must receive the \xxx already built, for if not the definition would be (more) cumbersome.
+\def\see@if@present#1#2{%
+	\def\save@first@part ##1#2##2\mark@end@fenixtok{\toks0{##1}}%
+	\expandafter\save@first@part\the#1#2\mark@end@fenixtok\edef\tempa{\the\toks0}\edef\tempb{\the#1}%
+	\expandafter\let\expandafter\if@tok@present\csname\ifx\tempa\tempb iffalse\else iftrue\fi\endcsname \toks0{}%
+}
+
+\let\tempb\fi \let\tempc\iffalse
+\catcode`f=12 \catcode`s=12 %
+\tempc
+%If #1 is {mytok} and #2 is {foo}, the previous unexcrutable \csname's and \edef's
+%will result arfter expansion of \NewTypeoftok in something like
+	\toktype@Registerifnotyet{mytok}%
+	\newtoks\mytok/foo
+	\mytok/foo{#3}%
+	\def\next@mytok/foo{%
+		% The two auxiliary   %\def\tok@type{\mytok}
+		% edef lines          %\def\if@nextrequired{\if@nextmytok@required}
+		% Another auxiliary line, for easier reading of the edef where it apears
+		% \def\make@ifnextrequired@false{\let\exp@noex\if@nextrequired\noexpand\iffalse}
+		\previous@mytok@\mytok
+		\if@nextmytok@required\else
+			\former@mytok@\mytok
+		\fi
+		\edef\tempa{\mytok{\if\foo L\the\mytok/foo\fi		%The first \foo is real
+			\if@nextmytok@required\else\mytok\former@mytok@\let\noexpand\if@nextmytok@required\noexpand\iffalse\fi
+			\the\previous@mytok@
+			\if\foo R\the\mytok/foo\fi
+			}}%
+		\tempa
+		\let\if@nextmytok@required\iftrue
+	}%
+	\edef\the@mytok/foo{\the\mytok/foo}%
+	\def\every@mytok/foo{%
+		%Axuliary definition of \tempb in order to edefine \tempa, not shown.
+		\edef\tempa{\mytok{\if\foo L\noexpand\the@mytok@foo\fi \the\mytok \if\foo L\noexpand\the@mytok@foo\fi}}%
+		\tempa
+		\if@nextmytok@required
+			%Same definition as above with \former@mytok@ istead of \mytok
+			\tempa
+		\fi
+	}%
+	\def\end@mytok/foo{%
+		%Axuliary definition of \tempb not shown
+		%Only shown the case where \if@tok@present is true
+		\def\tempa{\mytok\expandafter\strip@mytok/foo \the\mytok}%
+		\expandafter\mytok\expandafter\strip@mytok/foo\the\mytok\mark@end@fenixtok
+		\if@nextmytok@required
+			\def\tempa{\expandafter\strip@mytok/foo \noexpand\the\mytok}%
+			\expandafter\former@mytok@\expandafter\strip@mytok/foo\the\former@mytok@\mark@end@fenixtok
+		\fi
+	}%
+	\def\tempa{\strip@mytok/foo ####1\the@mytok/foo}%
+	\def\strip@mytok/foo##1\the@mytok/foo##2\mark@end@fenixtok{\mytok{##1##2}}%
+\fi
+%end of example
+\tempb
+\catcode`f=11 \catcode`s=11 %
+\let\fi\tempb \let\iffalse\tempc
+\let\tempb\relax \let\tempc\relax
+
+%Now the Register macros
+\def\toktype@Registerifnotyet#1{%
+	\ifcsname if@next#1@required\endcsname
+		\def\next{}%
+	\else\def\next{\toktype@Register{#1}}%
+	\fi
+	\next
+}
+\def\toktype@Register#1{%
+	\expandafter\tok@newtoks\csname former@#1@\endcsname
+	\expandafter\tok@newtoks\csname previous@#1@\endcsname
+	\expandafter\global\expandafter\let\csname if@next#1@required\endcsname\iffalse
+%
+	\@namedef{Next#1L}##1{\def\foo{L}\csname next@#1/##1\endcsname}%	If you think
+	\@namedef{Next#1R}##1{\def\foo{R}\csname next@#1/##1\endcsname}%
+	\@namedef{All#1sL}##1{\def\foo{L}\csname every@#1/##1\endcsname}%	these should not be user level,
+	\@namedef{All#1sR}##1{\def\foo{R}\csname every@#1/##1\endcsname}%	these should not be user level,
+	\@namedef{End#1s}##1{\csname end@#1/##1\endcsname}%		just insert an @
+%
+	\NewTypeoftok{#1}{@scratch@}{}%
+	\@namedef{next#1l}##1{\csname #1/@scratch@\endcsname{##1}\csname Next#1L\endcsname{@scratch@}}% inside the argument
+	\@namedef{next#1r}##1{\csname #1/@scratch@\endcsname{##1}\csname Next#1R\endcsname{@scratch@}}% to the @namedef's
+}
+
+\def\fornexttokl#1#2{%
+	\toktype@Registerifnotyet{#1}%
+	\csname next#1l\endcsname{#2}%	Also here.
+}
+\def\fornexttokr#1#2{%
+	\toktype@Registerifnotyet{#1}%
+	\csname next#1r\endcsname{#2}%	and here.
+}
+\catcode`@=\atcatcode
+\let\atcatcode\relax
+\endinput

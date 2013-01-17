@@ -1,0 +1,164 @@
+\ProvidesPackage{threeparttablex}[2010/07/14 v0.2 by daleif]
+
+%%
+%% This package can be distributed and/or modified under the
+%% conditions of the LaTeX Project Public License, either version 1.3
+%% of this license or (at your option) any later version.
+%% The latest version of this license is in
+%%   http://www.latex-project.org/lppl.txt
+%% and version 1.3 or later is part of all distributions of LaTeX
+%% version 2003/12/01 or later.
+%% 
+%% This work has the LPPL maintenance status "maintained".
+%% 
+%% The Current Maintainer of this work is Lars Madsen (daleif@imf.au.dk).
+%%
+
+
+\newif\ifTPTL@referable
+\DeclareOption{referable}{\TPTL@referabletrue}
+\DeclareOption*{\PassOptionsToPackage{\CurrentOption}{threeparttable}}
+
+\ProcessOptions\relax
+
+\RequirePackage{threeparttable}
+\RequirePackage{environ}
+
+
+\newcommand\TPTL@font{}
+\newcommand\setTableNoteFont[1]{\renewcommand\TPTL@font{#1}}
+
+% length to store the longtable width in
+\newlength\TPTL@width
+% macro to store the optional argument for tablenotes
+\def\TPTL@optarg{}
+% wrapper env used to collect the tablenotes for later use
+\newenvironment{TableNotes}[1][]{
+  \gdef\TPTL@optarg{#1}%
+  \Collect@Body\TPTL@collector}{}
+\newcommand\TPTL@collector[1]{%
+  \long\gdef\TPTL@body{#1}}
+% the macro used to store the tablenotes contents
+\gdef\TPTL@body{}
+\newcommand\insertTableNotes{%
+  % first we need to know the width of the longtable, remember that it
+  % will only settle after a few compilations
+  \noalign{\begingroup
+  \setlength\TPTL@width{0pt}
+  \renewcommand\LT@entry[2]{\global\advance\TPTL@width by ##2}
+  \@nameuse{LT@\roman{LT@tables}}
+  \ifdim\TPTL@width<\TPTminimum\relax\global\TPTL@width=\TPTminimum\fi
+  \endgroup}
+  % then add the table notes inside a \parbox of the required width
+  \multicolumn{\LT@cols}{c}{%
+    \makebox[0pt][c]{%
+      \parbox{\TPTL@width}{%
+        \let\TPT@hsize\@empty% otherwise the width is not reset
+                             % correctly as \TPT@hsize messes with 
+                             % \@parboxrestore
+        \let\TPToverlap\relax%
+        \begin{tablenotes}[\TPTL@optarg]%
+          \TPTL@font%
+          \TPTL@body
+        \end{tablenotes}
+      }%
+    }%
+  }%
+}
+
+% the alternative threeparttable env, it only enables \TPToverlap
+\newenvironment{ThreePartTable}{\let\TPToverlap\TPTrlap}{}
+
+
+
+\ifTPTL@referable\else\endinput\fi
+
+% we only come here if we need to make tablenotes referable
+
+
+% define an extra \tnote command that table a label instead of a string
+\DeclareRobustCommand\tnotex{\@ifstar{\TPTL@tnotex{01}}{\TPTL@tnotex{00}}}
+
+\newcommand\TPTL@tnotex[2]{\tnote{\ref{#2}}}
+
+% if hyperref is loaded we activate a starred version
+\AtBeginDocument{%
+  \@ifpackageloaded{hyperref}{%
+    \renewcommand\TPTL@tnotex[2]{%
+      \if#1\relax%
+      \tnote{\ref{#2}}%
+      \else%
+      \tnote{\ref*{#2}}
+      \fi}}{}}
+
+
+\newcommand\TPTL@generator[2]{%
+  \providecommand{#1}{}% just to make it exist
+  \renewcommand#1[1][#2]{%
+    \let\TPTL@oldmakelabel=\makelabel%
+    \renewcommand\makelabel[1]{\TPTLnotesnamefontcommand{##1:}}%
+  \item%
+    \let\makelabel=\TPTL@oldmakelabel}}
+
+\newcommand\TPTL@generator@para[2]{%
+  \providecommand{#1}{}% just to make it exist
+  \renewcommand#1[1][#2]{%
+    \TPTLnotesnamefontcommand{##1: }%
+  }}
+
+
+\providecommand\TPTLnotename{Note}
+\providecommand\TPTLsourcename{Source}
+\providecommand\TPTLnotesnamefontcommand{\textit}
+
+
+
+\let\TPTL@tablenotes=\tablenotes
+
+% \makelabel (i.e. \item) hides its argument inside a group, making it
+% difficult to set \@currentlabel, so we locally overload \item to get
+% the argument and set \@currentlabel AFTER \item[...]
+
+
+\renewcommand\tablenotes{%
+  \let\TPTL@item=\item
+  \renewcommand\item[1][]{\TPTL@item[##1]%
+    \phantomsection\protected@edef\@currentlabel{##1}}
+  \TPTL@generator\note{\TPTLnotename}
+  \TPTL@generator\source{\TPTLsourcename}
+  \TPTL@font\TPTL@tablenotes}
+
+
+% this is a copy from threeparttable, since adding to it failed
+\def\TPT@doparanotes{\par
+   \prevdepth\z@ \TPT@hsize
+   \TPTnoteSettings
+   \parindent\z@ \pretolerance 8
+   \linepenalty 200
+   \renewcommand\item[1][]{\relax\ifhmode \begingroup
+       \unskip
+       \advance\hsize 10em % \hsize is scratch register, based on real hsize
+       \penalty -45 \hskip\z@\@plus\hsize \penalty-19
+       \hskip .15\hsize \penalty 9999 \hskip-.15\hsize
+       \hskip .01\hsize\@plus-\hsize\@minus.01\hsize 
+       \hskip 1em\@plus .3em
+      \endgroup\fi
+      \tnote{##1}%
+      \phantomsection\protected@edef\@currentlabel{##1}%
+      \,\ignorespaces}%
+    \let\TPToverlap\relax%
+    \TPTL@generator@para\note{\TPTLnotename}%
+    \TPTL@generator@para\source{\TPTLsourcename}%
+    \TPTL@font%
+    \def\endtablenotes{\par}%
+  }
+
+
+
+% just in case it is not already there
+\providecommand\phantomsection{}
+
+
+\endinput
+
+The End

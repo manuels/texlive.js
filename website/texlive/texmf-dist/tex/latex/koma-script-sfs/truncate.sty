@@ -1,0 +1,158 @@
+% truncate.sty  ver 3.6   20-Aug-2001    Donald Arseneau
+% This LaTeX program is released to the public domain.
+%
+% Truncate text to a specified width:  \truncate [marker]{width}{text}
+%
+% If the text is too wide to fit in the specified width, then it is
+% truncated, and a continuation marker is shown at the end. The default
+% marker, used when the optional "[marker]" parameter is omitted, is
+% "\,\dots".  You can change this default by redefining "\TruncateMarker"
+% ("\renewcommand{\TruncateMarker}{}").
+%
+% Normally, the text (whether truncated or not) is printed flush-left
+% in a box with exactly the width specified. The package option "[fit]"
+% ("\usepackage[fit]{truncate}") causes the output text to have its
+% natural width, up to a maximum of the specified width.
+%
+% The text will not normally be truncated in the middle of a word,
+% nor at a space specified by the tie "~".  For example:
+%
+%     "\truncate{122pt}{This text has been~truncated}"   
+% gives
+%     "This text has...      "
+%
+% You can give one of the package options "[hyphenate]", "[breakwords]",
+% or "[breakall]" to allow breaking in the middle of words. The first 
+% two only truncate at hyphenation points; with the difference being that 
+% "breakwords" suppresses the hyphen character.  On the other hand, 
+% "breakall" allows truncation at any character.  For example: 
+%
+%     "\truncate{122pt}{This text has been~truncated}" 
+% gives
+%     "This text has been trun-..."   (hyphenate)
+%     "This text has been trun... "   (breakwords)
+%     "This text has been trunc..."   (breakall)
+%
+% (All of these options work through TeX's hyphenation mechanism.)
+%
+\ProvidesPackage{truncate}[2001/08/20 \space ver 3.6]
+%
+% [breakwords] allows hyphenation but with invisible hyphen characters
+\DeclareOption{breakwords}{%
+   \let\@Trunc@DoSelect\relax
+   \expandafter\chardef\csname \string\@TruncHyph T1\endcsname 23
+   \expandafter\chardef\csname \string\@TruncHyph OT1\endcsname 223
+   \expandafter\chardef\csname \string\@TruncHyph LY1\endcsname 0
+   \def\@Trunc@Post{\hyphenpenalty\tw@ \exhyphenpenalty\tw@
+     \doublehyphendemerits\z@ \finalhyphendemerits\z@
+     \the\@Trunc@RestHyph % set invisible hyphenchars for all fonts used
+  }}
+%
+% [breakall] is like breakwords, but all characters are treated like
+% the letter "c"; the default language 0 patterns allow hyphenation
+% c-c-c-c-c-c-c-c-c.  This means we don't need special patterns!
+\DeclareOption{breakall}{\ExecuteOptions{breakwords}%
+    \expandafter\def\expandafter\@Trunc@Post\expandafter{\@Trunc@Post
+      \@tempcnta\z@ \chardef\c`\c % in knuth patterns, c allows hyphens
+      \loop \lccode\@tempcnta\c \advance\@tempcnta\@ne
+      \ifnum\@tempcnta<\@cclvi \repeat}%
+    \def\@Trunc@Pre{% force US english
+      \lefthyphenmin\@ne \righthyphenmin\@ne
+      \doublehyphendemerits\language
+      \language\z@ % default English language
+      \let\language\doublehyphendemerits
+      \uchyph\@ne
+    }}
+%
+% [hyphenate] ordinary hyphenation for breakpoints
+\DeclareOption{hyphenate}{% takes precedence over breakwords
+   \def\@Trunc@Post{\hyphenpenalty\sixt@@n}\let\@Trunc@Pre\relax}
+%
+% [fit] use true size of truncated text, not requested size.
+\DeclareOption{fit}{\def\@Trunc@Rebox{%
+   \setbox\z@\hbox{\unhbox\z@\unskip\unskip\@tempa}%
+   \ifdim\wd\z@>\hsize \hbox to\hsize{\unhbox\z@}\else \box\z@ \fi}}
+%
+% Defaults:
+\let\@Trunc@Pre\@empty
+\def\@Trunc@Post{\hyphenpenalty\@M}
+\def\@Trunc@Rebox{\hbox to\hsize{\unhbox\z@\unskip\unskip\@tempa\hfil}}
+\let\@Trunc@DoSelect\@empty
+
+\ProcessOptions\relax
+
+\providecommand{\TruncateMarker}{\,\dots}
+
+\newcommand{\truncate}[3][\TruncateMarker]{% #1=marker #2=width #3=text
+  \parbox[b]{#2}{\tolerance9999 \emergencystretch .216\hsize
+   \vbadness\maxdimen \vfuzz\vsize % no overfull warnings
+   \hbadness\maxdimen \hfuzz\vsize
+   %  set up hyphenchar switching for all fonts used.
+   \edef\@tempb{\the\@Trunc@RestHyph}% save whole stack
+   \global\@Trunc@RestHyph{}%
+   \ifx\@Trunc@DoSelect\relax
+     \let\@Trunc@DoSelect\selectfont
+     \def\selectfont{\@Trunc@DoSelect\@Trunc@SaveHChar}%
+   \fi
+   \@Trunc@SaveHChar % do it for current font
+   \setbox\z@\vbox\bgroup
+    % First set text in a hbox to see if it fits.
+    \setbox\z@\@@line{\ignorespaces #3\unskip\hfil}%
+    \ifnum\badness>\@M  % text does not fit
+      \settowidth\rightskip{#1}%
+      \advance\rightskip \z@\@plus\p@
+      \parfillskip-\@ne\rightskip \@plus\@ne fil 
+      \parshape \tw@ \z@\hsize \z@\maxdimen \linepenalty60
+      \tracinglostchars\z@
+      %% \let\par\relax -- don't do this because \vskip causes infinite loop
+      \@Trunc@Pre % must set language before paragraph
+      \noindent \vadjust{\penalty-\@MM}% for splitting off first line
+      \nobreak\hskip\z@skip % allow first word hyphenation
+      \ignorespaces #3% the text
+      \pretolerance\hyphenpenalty \@Trunc@Post % set up `hyphenation'
+      \@@par
+      \ifnum\prevgraf>\@ne
+       \egroup \def\@tempa{#1}% use truncation marker
+      \else
+       \egroup \let\@tempa\@empty% no linebreak, so all text fits; no marker
+      \fi
+    \else
+      \box\z@ \egroup \let\@tempa\@empty
+    \fi
+   \setbox\@tempboxa\vsplit\z@ to\z@ \unvbox\@tempboxa
+   \unskip\unpenalty\unpenalty
+   \setbox\z@\lastbox
+   \nointerlineskip
+   \hfuzz\p@
+   \@Trunc@Rebox
+   \let\@Trunc@HC\@firstofone \the\@Trunc@RestHyph % restore hyphenchars
+   \global\@Trunc@RestHyph\expandafter{\@tempb}% restore the stack itself
+ }}
+% (Note that the text may be proessed twice.  I could avoid that
+% if there are problems with global counters etc.)
+
+% we save (implicit global) hyphenchar settings for each font on a 
+% manual stack -- the token register \@Trunc@RestHyph -- before changing
+% them.  We execute \@Trunc@RestHyph to set them to the invisible 
+% characters and then again to restore them.  (I can't imagine this
+% will ever be required.)
+\newtoks\@Trunc@RestHyph
+\global\@Trunc@RestHyph{}
+%
+\def\@Trunc@SaveHChar{\begingroup
+  \edef\@tempa{%
+    \hyphenchar\the\font=\noexpand\@Trunc@HC{\the\hyphenchar\font}\relax 
+    \the\@Trunc@RestHyph}%
+  \global\@Trunc@RestHyph\expandafter{\@tempa}%
+%  \hyphenchar\font\z@
+  \endgroup}
+%
+% select an invisible character for hyphenation.  Use \textcompwordmark, if
+% any; use selected numbers for certain encodings (OT1 uses a *missing*
+% character); use a space otherwise.
+\def\@Trunc@HC#1{%
+  \@ifundefined{\f@encoding\string\textcompwordmark}{%
+    \@ifundefined{\string\@TruncHyph\f@encoding}%
+      {32}% If no appropriate character, guess space character may be blank
+      {\csname \string\@TruncHyph\f@encoding\endcsname}%
+  }{\csname\f@encoding\string\textcompwordmark\endcsname}}%

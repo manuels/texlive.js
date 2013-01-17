@@ -1,0 +1,125 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% This is a helper package with an elementary double-ended-queue
+% (deque) datastructure,
+% featuring O(1) index access and O(N) creation, deletion, copy.
+%
+% The following macros are supplied:
+%
+% \pgfplotsdequenewempty
+% \pgfplotsdequecopy
+% \pgfplotsdequepushback
+% \pgfplotsdequepopfront
+% \pgfplotsdequecheckempty
+% \pgfplotsdequeforeach
+%
+% Copyright 2007/2008 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% IMPLEMENTATION NOTES:
+% I allocate an array which provides storage capacity and two pointers
+% (indices) into that array.
+%
+% The deque is stored as
+% - an array: \csname pgfpldq@<name>\endcsname
+% - the pointers:
+%   \csname pgfpldq@<name>@beg\endcsname
+%   \csname pgfpldq@<name>@end\endcsname (one after the end)
+%
+% ATTENTION: <name> may NOT be a control sequence! 
+%            this is in contrast to my other container structures.
+
+
+% Allocates a new, empty deque #1.
+%
+% #1 the name of a deque (NO control sequence!)
+% #2 is an integer denoting the maximum capacity. For now, this
+% capacity is fixed afterwards and denotes the maximum number of
+% entries.
+\def\pgfplotsdequenewempty#1{%
+	\pgfutil@ifnextchar\capacity{%
+		\pgfplotsdequenewempty@{#1}%
+	}{%
+		\pgfplots@error{Expected \string\capacity\{the capacity\} after \string\pgfplotsdequenewempty...}%
+		\pgfplotsdequenewempty@{#1}\capacity{100}%
+	}%
+}%
+\def\pgfplotsdequenewempty@#1\capacity#2{%
+	\pgfplotsarrayresize{pgfpldq@#1}{#2}%
+	\pgfutil@namedef{pgfpldq@#1@beg}{0}%
+	\pgfutil@namedef{pgfpldq@#1@end}{0}%
+}%
+
+\def\pgfplotsdequecopy#1\to#2{%
+	\pgfutil@namelet{pgfpldq@#1@beg}{pgfpldq@#2@beg}%
+	\pgfutil@namelet{pgfpldq@#1@end}{pgfpldq@#2@end}%
+	\pgfplotsarraycopy{pgfpldq@#1}\to{pgfpldq@#2}%
+}%
+
+\def\pgfplotsdequepushback#1\to#2{%
+	\pgfplotsarrayset{\csname pgfpldq@#2@end\endcsname}\of{pgfpldq@#2}\to{#1}%
+	\c@pgfplotsarray@tmp=\csname pgfpldq@#2@end\endcsname
+	\advance\c@pgfplotsarray@tmp by1
+	\ifnum\c@pgfplotsarray@tmp=\pgfplotsarraysizeof{pgfpldq@#2}
+		\c@pgfplotsarray@tmp=0
+	\fi
+	\expandafter\edef\csname pgfpldq@#2@end\endcsname{\the\c@pgfplotsarray@tmp}%
+	\pgfplotsdequeifempty{#2}{\pgfplots@error{Error: \string\pgfplotsdeque\space capacity has been reached - it was too small. Sorry, I didn't write auto-enlargement...}}{}%
+}%
+
+\def\pgfplotsdequepopfront#1\to#2{%
+	\pgfplotsarrayselect{\csname pgfpldq@#1@beg\endcsname}\of{pgfpldq@#1}\to{#2}%
+	\c@pgfplotsarray@tmp=\csname pgfpldq@#1@beg\endcsname
+	\advance\c@pgfplotsarray@tmp by1
+	\ifnum\c@pgfplotsarray@tmp=\pgfplotsarraysizeof{pgfpldq@#1}
+		\c@pgfplotsarray@tmp=0
+	\fi
+	\expandafter\edef\csname pgfpldq@#1@beg\endcsname{\the\c@pgfplotsarray@tmp}%
+}%
+
+% invokes #2 if deque '#1' is empty and '#3' if it is not empty.
+\def\pgfplotsdequeifempty#1#2#3{%
+	\ifnum\csname pgfpldq@#1@beg\endcsname=\csname pgfpldq@#1@end\endcsname\relax
+		#2%
+	\else
+		#3%
+	\fi
+}%
+
+
+\long\def\pgfplotsdequeforeach#1\as#2#3{%
+	\c@pgfplotsarray@tmp=\csname pgfpldq@#1@beg\endcsname
+	\long\def\pgfplotsdequeforeach@next{\pgfplotsdequeforeach@iter{#1}{#2}{#3}}%
+	\pgfplotsdequeforeach@next
+}%
+\long\def\pgfplotsdequeforeach@iter#1#2#3{%
+	\ifnum\c@pgfplotsarray@tmp=\csname pgfpldq@#1@end\endcsname
+		\def\pgfplotsdequeforeach@next{}%
+	\else
+		\pgfplotsarrayselect\c@pgfplotsarray@tmp\of pgfpldq@#1\to#2%
+		\edef\pgfplotsdequeforeach@{\the\c@pgfplotsarray@tmp}%
+		#3\relax
+		\c@pgfplotsarray@tmp=\pgfplotsdequeforeach@
+		\advance\c@pgfplotsarray@tmp by1
+		\ifnum\c@pgfplotsarray@tmp=\pgfplotsarraysizeof{pgfpldq@#1}
+			\c@pgfplotsarray@tmp=0
+		\fi
+	\fi
+	\pgfplotsdequeforeach@next
+}%

@@ -1,0 +1,442 @@
+% \AddToCheckSum{309}
+%
+% \begin{warning}
+%   This code has not been well tested yet.  The output routine of \LaTeX{} is
+%   very complicated, and unforseen problems might arise.
+% \end{warning}
+%
+% \DescribeMacro\NextAux
+% \DescribeMacro\DynamicAux
+% \DescribeMacro\StaticAux
+%   The macro \cs\NextAux changes \cname{@auxout} to a new stream if one is
+%   available, and gives an error otherwise.  The macro is implemented in
+%   dynamic and static ways which can be selected with \cs\DynamicAux and
+%   \cs\StaticAux\marg{number of streams}.  The number of streams can be from 2
+%   to~16.  The dynamic implementation is the default; I do not see much use
+%   for the static implementation at present.  The \option{static} option is
+%   the equivalent of the declaration |\StaticAux{10}|.  The \option{dynamic}
+%   selects the dynamic implementation.
+%
+%   \cs\StaticAux can be invoked after \cs\DynamicAux, but not the other way
+%   around (at least, the streams allocated by \cs\StaticAux are not
+%   recovered).  Macros which use \cs\NextAux do not have to know whether the
+%   implementation is static or dynamic.
+%
+%   \subsubsection{Wheels}
+%
+% The output streams are manipulated with the help of a data structure I call a
+% \word{wheel}.
+%
+% A \term{wheel} has 0 or more \term{spokes} and can be \term{rolled}.  Each
+% spoke is a \TeX{} token, probably a control sequence name, and has an
+% internal name.  You can access the spoke at the 12 o'clock or ``top''
+% position of a wheel.  In computerese, a wheel is a circularly linked list of
+% tokens, and the operation of rolling moves a pointer along it in a certain
+% direction by one element.  
+%
+% Wheels and operations on wheels are local.
+%
+% \DescribeMacro\InitWheel
+% \DescribeMacro\DefWheel
+%   You make a wheel either with \cs\InitWheel\marg{\\csname}, which makes
+%   \meta{\\csname} a wheel with no spokes, or
+%   \cs\DefWheel\marg{\\csname}\marg{spokes}, which makes a wheel with
+%   \meta{spokes} for spokes.  The first spoke in \meta{spokes} is the top, the
+%   second will be top after one roll, and the first will be top again after
+%   $n$ rolls, if there are $n$ spokes.
+%
+% \DescribeMacro\Roll
+% \DescribeMacro\Top
+% \DescribeMacro\AddSpokes
+%   Wheels are rolled by \cs\Roll\marg{wheel}.  Spokes can be added to a
+%   wheel with \cs\AddSpokes\marg{wheel}\marg{spokes}.  When $n$ spokes are
+%   added, the previous top will be at the top after $n$ rolls.
+%   \cs\Top\marg{wheel} expands eventually to the top spoke, which then can
+%   further expand, and so on.
+%   
+% \DescribeMacro\IfTop
+%   \cs\IfTop\marg{wheel}\marg{spoke}\marg{true clause}\marg{false clause}
+%   compares the top of \meta{wheel} with \meta{spoke} using \cname{ifx}, and
+%   executes either \meta{true clause} or \meta{false clause} as appropriate.
+%   (The \package{newclude} package doesn't actually use this command; it's
+%   provided to ``round out'' the wheel data structure.)
+%
+% \caveat{Don't put more than one token as the second argument to \cs\IfTop.}
+%
+%   \subsubsection{Preliminaries}
+%
+% We require the \package{afterpage} package.  The intuitive justification is
+% that \cs\write{}s are delayed until the current page is shipped out.  We need
+% to keep an output stream open until its last \cs\write has been actually
+% handled; after that, the stream can be made available again.
+%    \begin{macrocode}
+\RequirePackage{afterpage}
+%    \end{macrocode}
+%
+% \begin{macro}{\nc@aux@wheel}
+%   We use the wheel structure to handle both the static case and the dynamic
+%   case.  The spokes of the wheel are macros |\nc@auxout@|\meta{n}.  Their
+%   first-level expansion is \meta{n}, a positive integer from 0 to~15.  Each
+%   spoke has two corresponding macros.  |\nc@auxout@|\meta{n}|@stream| is a
+%   stream name allocated by \cs\newwrite.  |\nc@auxout@|\meta{n}|@inuse| is a
+%   global boolean which is |true| iff the corresponding stream is currently in
+%   use.
+%    \begin{macrocode}
+\InitWheel\nc@aux@wheel
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\nc@count}
+%    We need an internal counter.  Notice that the stream numbers used in the
+%    auxwheel start at 0, so the stream associated with with the numeral 4 is
+%    the fifth stream.
+%    \begin{macrocode}
+\newcounter{nc@count}
+%    \end{macrocode}
+%  \end{macro}
+%
+% \begin{macro}{\nc@aux@wheel@size}
+%   \cname{nc@aux@wheel@size} is a pseudo-counter that holds the present size
+%   of the aux wheel.  In the static case it never changes and is set only for
+%   consistency.
+%    \begin{macrocode}
+\ReserveCS\nc@aux@wheel@size
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\NextAux}
+%   \mbox{}
+%    \begin{macrocode}
+\ReserveCS\NextAux
+%    \end{macrocode}
+% \end{macro}
+%
+% The kernel allocates two streams for the include system, \cname{@mainaux} and
+% \cname{@partaux}.  The auxwheel is initialized with these two streams.  The
+% first, corresponding to the principle source, is always marked in use.
+%
+% \todo{Reserve the stream names.}
+%    \begin{macrocode}
+\newboolean{@nc@auxout@1@inuse@}
+
+\ReserveName{nc@auxout@1}
+\NewName*{nc@auxout@1} {} {1}
+
+\ReserveName{nc@auxout@1@stream}
+\expandafter\let\csname nc@auxout@1@stream\endcsname\@partaux
+%    \end{macrocode}
+%
+% \begin{macro}{\nc@init@aux@wheel}
+% We initialize the wheel with the first spoke.
+%    \begin{macrocode}
+\newcommand\nc@init@aux@wheel {%
+  \EExpand\csname nc@auxout@1\endcsname\In {%
+    \AddSpokes\nc@aux@wheel##1%
+  }
+}
+%    \end{macrocode}
+% \end{macro}
+%
+%   \subsubsection{Static allocation}
+%
+% \begin{macro}{\StaticAux}
+%   nonpositive numbers are treated the same as~1. \todo{bounds check; the
+%   counter's max should be one less than the number, since we have stream 0.}
+%    \begin{macrocode}
+\newcommand\StaticAux [1] {%
+  \def\nc@aux@wheel@size {#1}
+  \setcounter{nc@count}{2}
+  \nc@init@aux@wheel
+  \@whilenum \value{nc@count} <= \nc@aux@wheel@size
+    \do {%
+%    \end{macrocode}
+% First define the macros that make up the wheel itself to be their spoke
+% numbers.
+%    \begin{macrocode}
+     \eExpand*\thenc@count\In {%
+       \NewName*{nc@auxout@\thenc@count} {} {%
+          ##1%
+        }%
+      }
+%    \end{macrocode}
+% Next allocate the corresponding stream.
+%    \begin{macrocode}
+      \EExpand\csname nc@auxout@\thenc@count@stream\endcsname\In {%
+        \@nameuse{newwrite}##1%
+      }
+%    \end{macrocode}
+% Next create the corresponding flag (they start |false|).
+%    \begin{macrocode}
+      \provideboolean{@nc@auxout@\thenc@count @inuse@}
+%    \end{macrocode}
+% Now add the spoke itself.
+%    \begin{macrocode}
+      \EExpand\csname nc@auxout@\thenc@count\endcsname\In {%
+        \ReserveCS#1%
+        \AddSpokes\nc@aux@wheel##1%
+      }
+      \stepcounter{nc@count}
+    }
+  \def\NextAux {%
+    \Roll\nc@aux@wheel
+    \@nameuse{if@nc@auxout@\Top\nc@aux@wheel @inuse@}%
+      \MonsterError{newclude} {%
+        You can't nest \protect\include this deeply!%
+      }%
+    \else
+      \Elet\@auxout\csname nc@auxout@\Top\nc@aux@wheel @stream\endcsname
+    \fi
+  }%
+}
+%    \end{macrocode}
+% \end{macro}
+%
+%   \subsubsection{Dynamic allocation}
+%
+% \begin{macro}{\DynamicAux}
+% \begin{macro}{\nc@addnewauxstream}
+%   \mbox{}
+%    \begin{macrocode}
+\newcommand\DynamicAux {%
+  \def\nc@aux@wheel@size {1}
+  \nc@init@aux@wheel
+  \def\NextAux {%
+    \Roll\nc@aux@wheel
+    \@nameuse{if@nc@auxout@\Top\nc@aux@wheel @inuse@}%
+      \nc@addnewauxstream
+    \fi
+%    \end{macrocode}
+% Either the top spoke was not in use, or we have added a fresh spoke at the
+% top -- so the top spoke represents what we want.
+%    \begin{macrocode}
+    \Elet\@auxout\csname nc@auxout@\Top\nc@aux@wheel @stream\endcsname
+    \typeout{NextAux has just set auxout to stream 
+            \the\csname nc@auxout@\Top\nc@aux@wheel @stream\endcsname.
+             We are using spoke number
+            \csname nc@auxout@\Top\nc@aux@wheel\endcsname.}
+    }%
+}
+%    \end{macrocode}
+% It works out that the new spoke should have a spoke number one greater than
+% the current wheel size.  We use the |nc@count| counter to find this number.
+%    \begin{macrocode}
+\newcommand\nc@addnewauxstream {%
+  \setcounter{nc@count}{\nc@aux@wheel@size}%
+  \stepcounter{nc@count}%
+  \typeout{Allocating another spoke (spoke number \thenc@count)}%
+%    \end{macrocode}
+% First we add the spoke itself, then initialize the corresponding objects.
+%    \begin{macrocode}
+  \EExpand*\csname nc@auxout@\thenc@count\endcsname\In {%
+    \AddSpokes\nc@aux@wheel##1%
+  }%
+  \EExpand*\thenc@count\In {%
+    \DefName*{nc@auxout@##1} {} {##1}%
+    \provideboolean{@nc@auxout@##1@inuse@}%
+    \def\nc@aux@wheel@size {##1}%
+    \EExpand*\csname nc@auxout@##1@stream\endcsname\In {%
+      \@nameuse{newwrite}####1%
+    }%
+  }%
+}
+\DynamicAux
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+%   \subsubsection{Including}
+%
+% \begin{macro}{\nc@include}
+%   The only way I see how to set the |inuse| flag to |false| at the proper
+%   time is to use the \package{afterpage} package.  What I would really like
+%   is to \cs\write something with side effects.
+%    \begin{macrocode}
+\newcommand\nc@include [2][] {%
+  \if@filesw
+    \immediate\write\@mainaux{\string\@input{#2.aux}}%
+  \fi
+  \@tempswatrue
+  \if@partsw
+    \@tempswafalse
+    \edef\reserved@b{#2}%
+    \@for\reserved@a:=\@partlist\do
+      {\ifx\reserved@a\reserved@b\@tempswatrue\fi}%
+  \fi
+  \if@tempswa
+    \stepcounter{IncludeDepth}%
+%    \end{macrocode}
+% \cname{nc@t@c} is going to preserve the current \ext{aux} stream number to
+% restore \cname{@auxout}, in case there is a nested \cs\include.
+%    \begin{macrocode}
+    \edef\nc@t@c {%
+      \the\@auxout
+    }%
+    \if@filesw
+      \NextAux
+      \openout\@auxout #2.aux
+      \write\@auxout{\relax}%
+      \expandafter\global
+        \csname @nc@auxout@\Top\nc@aux@wheel @inuse@true\endcsname
+%    \end{macrocode}
+% \begin{macro}{\nc@include@finish@<N>}
+% The next line defines the macro |\nc@include@finish@|\meta{n} to close the
+% output stream that is presently open.  We have an interesting task here of
+% getting certain unique information to macros after the \cname{@input} when we
+% might end up recursing during the \cname{@input}.  To do this, we immediately
+% expand the variables we need and store them in a macro which will \emph{not}
+% be altered by a recursion of \cs\include.  We have set up the |IncludeDepth|
+% counter to allow us to define such a macro, which is unique to \emph{this}
+% instance of \cs\include.
+%
+% \begin{warning}
+%   The macro names |\nc@include@finish@|\meta{n} where \meta{n} is an
+%   integer are overwritten, that is, they are not allocated in a safe way.
+% \end{warning}
+%
+% The following lines are intended to make this definition, where |<D>|
+% represents the current value of |IncludeDepth|, |<P>| represents the spoke
+% number of the current top of \cname{nc@aux@wheel}, and |<S>| represents the
+% stream number for the current part, i.e., the current value of
+% \cname{@auxout}, and |<X>| represents the stream number that was current
+% before \cs\include got called (this is saved in \cname{nc@t@c}).
+% \begin{codeexample}
+%   \def\nc@include@finish@<D> {%
+%     \closeout<S>%
+%     \global\chardef\@auxout=<X>%
+%     \afterpage{\global\@nc@auxout@<P>@inuse@false}
+%   }
+% \end{codeexample}
+%    \begin{macrocode}
+      \EExpand\theIncludeDepth\In {%                   ##1
+      \EExpand\the\@auxout\In {%                       ####1
+        \DefName{nc@include@finish@##1} {} {%
+          \closeout####1%
+          \global\chardef\@auxout=\nc@t@c
+          \typeout{Restored auxout to stream number 
+                            \nc@t@c \space (old: \the\@auxout)}
+          \typeout{executing afterpage}%
+          \EExpand\csname @nc@auxout@\Top\nc@aux@wheel
+                          @inuse@false\endcsname\In {% ########1
+            \afterpage{%
+              \typeout{Finishing.  auxout is now \the\@auxout;  current spoke
+                     is \csname nc@auxout@\Top\nc@aux@wheel\endcsname\space
+                      with stream number
+                  \the\csname nc@auxout@\Top\nc@aux@wheel @stream\endcsname
+                    }%
+              \global########1%
+            }%                                                 Afterpage
+          }%                                                   EExpand
+        }%                                                     DefName
+      }}%                                                      EExpand
+    \fi %                                                      \if@filesw
+    \nc@t@b           % surround the \include with something
+%    \end{macrocode}
+% Now execute the text of the optional argument to \cs\include.  Notice that if
+% we change to a new \ext{aux} file, we should do it before the optional
+% argument. This is important so that sectioning commands will appear in the
+% right order.  If the sectioning command were to write to \cname{@mainaux},
+% then it would come \emph{after} the whole included \ext{aux} file, instead of
+% before it.
+%    \begin{macrocode}
+    #1%
+    \@input@{#2.tex}%
+    \@writeckpt{#2}%
+    \if@filesw
+      \csname nc@include@finish@\theIncludeDepth\endcsname
+    \fi
+    \nc@t@b           % surround the \include with something
+%    \end{macrocode}
+% We mustn't restore the counter before we have finished using it.
+%    \begin{macrocode}
+    \addtocounter{IncludeDepth}{\m@ne}%
+%    \end{macrocode}
+% If the file is excluded by the \cs\includeonly command, we don't load it and
+% execute the file's checkpoint instead.
+%    \begin{macrocode}
+  \else
+    \@nameuse{cp@#2}%
+  \fi
+}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+% 
+%   \subsubsection{Checkpoints}
+%
+% \begin{macro}{\@writeckpt}
+% \begin{macro}{\@wckptelt}
+%   We must redefine the macros which write the checkpoints.  \cname{@auxout}
+%   is substituted for \cname{@partaux}; I think this change should be in the
+%   kernel anyway!  And we remove the \cs\immediate{}s.
+%    \begin{macrocode}
+\defcommand\@writeckpt [1] {%
+  \if@filesw
+    \write\@auxout{\string\@setckpt{#1}\@charlb}%
+    \begingroup
+      \let\@elt\@wckptelt
+      \cl@@ckpt
+    \endgroup
+    \write\@auxout{\@charrb}%
+  \fi
+}
+\defcommand\@wckptelt [1] {%
+  \protected@write\@auxout{}{\string\setcounter{#1}{\the\@nameuse{c@#1}}}%
+}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+% \subsubsection{Wheels}
+%
+% \begin{macro}{\InitWheel}
+% \begin{macro}{\Roll}
+% \begin{macro}{\IfTop}
+% \begin{macro}{\Top}
+% \begin{macro}{\AddSpokes}
+%   A wheel is implemented as a macro.  The tokens of its first-level expansion
+%   are the spokes, the top being the first.
+%    \begin{macrocode}
+\newcommand\InitWheel [1] {% args: wheel
+  \InitCS#1%
+}
+\newcommand\Roll [1] {% args: wheel
+  \edef #1{%
+    \expandafter\nc@roll #1\nc@llor
+  }%
+}
+\ReserveCS\nc@llor
+\NewNameDef{nc@roll} {#1\nc@llor} {%
+  \@cdr#1\@nil\@car#1\@nil
+}
+\newcommand\Top [1] {% args: wheel
+  \E@car #1\@nil
+}
+\newcommand\IfTop [4] {% args: wheel token true false
+  \EExpand#1\In {%
+    \edef\nc@t@b {%
+      \expandafter\noexpand\@car##1\@nil
+    }%
+  }%
+%    \end{macrocode}
+% At this point, the first-level expansion of \cname{nc@t@b} is a single token,
+% the top of the wheel.  We \cs\let \cname{nc@t@a} to this token.
+%    \begin{macrocode}
+  \Elet\nc@t@a\nc@t@b
+  \let\nc@t@b #2%
+  \ifx\nc@t@a\nc@t@b
+    \expandafter\@firstoftwo
+  \else
+    \expandafter\@secondoftwo
+  \fi
+}
+\newcommand\AddSpokes [2] {% args: wheel spokes
+  \EExpand#1\In {%
+    \def #1{#2##1}%
+  }%
+}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+% \end{macro}

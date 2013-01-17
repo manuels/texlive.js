@@ -1,0 +1,256 @@
+#!/bin/bash
+#
+# addpsctrl
+#
+# Adds printer control commands to the given PostScript data.
+# Currently requires bash - sorry but I have no time to support too many
+# dumb shells (like Solaris /bin/sh). The korn shell (ksh) would be suitable,
+# but the syntax is not the same as that of bash. bash is free - ksh loses out.
+# Works with bash 1.x and 2.x.
+#
+# Copyright (C) by Volker Kuhlmann <v.kuhlmann@elec.canterbury.ac.nz>
+# Copyright (C) by Volker Kuhlmann <VolkerKuhlmann@gmx.de>
+# Released under the terms of the GNU General Public License (GPL) Version 2.
+# See http://www.gnu.org/ for details.
+#
+# Volker Kuhlmann
+#   5, 6, 12 Apr; 2 Aug 2000
+#   26 Jan 2006
+#
+
+VERSION="VK 1.3, 26 Jan 2006"
+
+
+####
+#### Constants and initial variables
+#
+# Use kpsewhich:
+ADDPSCTRL_DFLTOPT="${ADDPSCTRL_DFLTOPT:=--kpsewhich}"
+# If you don't have kpsewhich, or would like to load the config files from a
+# different directory, give the directory with the config files by setting
+# the environment variable ADDPSCTRL_DFLTOPT:
+#ADDPSCTRL_DFLTOPT="${ADDPSCTRL_DFLTOPT:=--nokpsewhich --dir YOURPATH}"
+
+
+####
+#### Usage
+#
+show_usage() {
+    echo "
+Usage: ${0##*/} [OPTION]... [FILE] [CTRL]...
+Version $VERSION
+"
+}
+usage() {
+    show_usage
+    echo "Call with -h for help.
+"
+    exitwith ErrUsage
+}
+
+####
+#### Help
+#
+Help() { show_help; exitwith ErrHelp; }
+show_help() {
+    show_usage
+    echo "\
+Inserts printer control instructions (e.g. duplex) into a PostScript file.
+OPTIONS:
+  -h, --help          show help
+  -k, --kpsewhich     use kpsewhich to locate config files if necessary
+  -K, --nokpsewhich   never use kpsewhich
+  -f, --file FILE     insert control commands into file FILE ('-' for stdin)
+  -d, --dir DIR       control files are in directory DIR
+  -c, --ctrl CTRL     locate + insert control file 'config.CTRL'
+  -i, --insert INSRT  insert file INSRT before any other control files
+                        (give full path and filename)
+  -o, --output OUT    write to file OUT instead of stdout
+  -V, --version       display version and exit
+
+  -s, -1      same as -c simplex
+  -2L         same as -c duplong
+  -2S         same as -c dupshort
+  -a4, -a3    same as -c a4 / -c a3
+  -man        same as -c manualfeed
+
+If -f is not used, the first non-option argument is taken as FILE.
+Remaining arguments are names of control files to be inserted (after those 
+given with -i and -c).
+Control file searching:
+  1)  In directory DIR (if given)
+  2)  By running kpsewhich, unless disabled with -K
+Default (can be changed by setting environment variable ADDPSCTRL_DFLTOPT):
+  $ADDPSCTRL_DFLTOPT
+"
+}
+
+####
+#### Error/Exit codes
+#
+exitwith() {
+    exec 1>&2  # write stdout on stderr instead
+  case "$1" in
+    ErrUsage|ErrHelp)
+	# usage already displayed
+	exit 1;;
+    ErrNoread)
+    	echo "Config/header file not readable: '$2'."
+	exit 2;;
+    ErrNoconf)
+    	echo "Can not locate config/header file '$2'."
+	exit 3;;
+    ErrNodatafile)
+    	echo "No file specified to insert control commands into."
+	echo "Call with -h for help on command argument syntax."
+	exit 9;;
+    ErrNoinsfile)
+    	echo "No control commands specified to insert."
+	echo "Call with -h for help on command argument syntax."
+	exit 9;;
+    ErrMissingParameter)
+	echo "A required parameter for option $2 is missing."
+	echo "Call with -h for help."
+	exit 9;;
+    *)
+	echo "Error: exitwith() was called with illegal error code '$1'."
+	exit 19;;
+  esac
+}
+
+####
+#### Parse command line parameters
+#
+checkargmm() {
+    test "$1" != "--" -a "$2" != "--"
+    #true  # uncomment this to allow "--" as argument to an option
+}
+checkarg2() {
+    test $# -ge 2 && checkargmm "$2" && return
+    exitwith ErrMissingParameter "$1"
+}
+checkarg3() {
+    test $# -ge 3 && checkargmm "$2" "$3" && return
+    exitwith ErrMissingParameter "$1"
+}
+parse_cmd_line() {
+    local cmdline arg
+    unset -v debug usekpsewhich configdir insfile datafile outfile ctrl
+    set -- $ADDPSCTRL_OPT "$@"  # pre-init options
+    while [ "$1" ]; do
+	#test $debug && echo "Current arg: $1"
+	arg="${1#-}"
+	test "$arg" = "$1" && break  # does word start with "-"?
+	test "$arg" = "-" && { shift; break; }
+	# allow both "-long" and "--long" for long options:
+	arg="${arg#-}"
+	case "$arg" in
+	    #debug)	debug=1;;
+	    usage) 	usage;;
+	    V|version) 	usage;;
+	    h|help) 	Help;;
+
+    	    k|kpsewhich)    usekpsewhich=1;;
+    	    K|nokpsewhich)  usekpsewhich="";;
+	    
+	    d|dir)  	    checkarg2 "$@"; configdir="$2"; shift;;
+    	    i|insert)	    checkarg2 "$@"; insfile="$2"; shift;;
+    	    f|file)	    checkarg2 "$@"; datafile="$2"; shift;;
+    	    o|output)	    checkarg2 "$@"; outfile="$2"; shift;;
+	    
+    	    c|ctrl) 	checkarg2 "$@"; ctrl="$2"; shift;;
+	    s|1)    	ctrl=simplex;;
+	    2L)     	ctrl=duplong;;
+	    2S)     	ctrl=dupshort;;
+	    a4|a3)  	ctrl="$arg";;
+	    man)    	ctrl="manualfeed";;
+
+	    "")     break;;  # allow "-" as file arg
+	    *)	    exitwith ErrBadoption "$1";;
+	esac
+	shift
+    done
+    numfileargs=$#
+}
+
+locate_config_file() {
+    insfile=""
+    test -n "$configdir" && insfile="$configdir/config.$1"
+    if [ -n "$usekpsewhich" -a \( -z "$insfile" -o ! -r "$insfile" \) ]; then
+	insfile="`kpsewhich --format 'dvips config' config.$1`"
+    fi
+    test -z "$insfile" && exitwith ErrNoconf "config.$1"
+    test -r "$insfile" || exitwith ErrNoread "$insfile"
+}
+
+insert_into_ps() {
+    # 0: start
+    # 1: !% found
+    # 2: %% found
+    # 3: insertion done
+    in="$1"; shift
+    #echo \
+    AWK '\
+	BEGIN {n = 0; ins="'"$*"'"} \
+	n == 3 {print $0; next} \
+	/^%%EndSetup/ || /^%%Page:/ || ((n == 1) && (! /^[% ]/) && (! /^$/)) { \
+	    if ((n == 1) || (n == 2)) { \
+		n = 3; \
+		while ((getline line <ins) > 0) { print line } \
+	    }} \
+	/^%\!/ {if (n == 0) {n = 1}} \
+	/^%%/ {if (n == 1) {n = 2}} \
+	{print $0} \
+	END {if (n < 3) { \
+	    while ((getline line <ins) > 0) { print line } } } \
+	' \
+	"$in"
+    # gawk 3.1.4 doesn't understand   while ("cat " ins | getline
+    # and tries to run ins as a command. -VK26Jan06
+}
+
+####
+#### Main
+
+if [ $# -eq 0 ]; then usage; fi
+
+ADDPSCTRL_OPT="${ADDPSCTRL_OPT:-$ADDPSCTRL_DFLTOPT}"
+
+# find a useful awk (solaris awk is not)
+p="`type -p gnuawk gawk nawk | head -1`" && eval 'AWK() { '"${p:-awk}"' "$@"; }'
+
+parse_cmd_line "$@"
+#echo $#, $numfileargs, `expr $# - $numfileargs`
+shift `expr $# - $numfileargs`
+
+#echo fileargs: "$@"
+#echo "opts=$ADDPSCTRL_OPT;; use=$usekpsewhich"
+#echo "ctrl=$ctrl, insfile=$insfile, dir=$configdir, out=$outfile"
+
+if [ -z "$datafile" ]; then
+    test -z "$1" && exitwith ErrNodatafile
+    datafile="$1"; shift
+fi
+#echo "datafile=$datafile"
+
+insfiles=""
+if [ -n "$insfile" ]; then
+    test -r "$insfile" || exitwith ErrNoread "$insfile"
+    insfiles="$insfile"
+fi
+for c in "$ctrl" "$@"; do
+    test -z "$c" && continue
+    #echo locate_config_file "$c"
+    locate_config_file "$c"
+    #echo "insfile=$insfile"
+    insfiles="$insfiles $insfile"
+done
+#echo "insfiles=$insfiles"
+test -z "$insfiles" && exitwith ErrNoinsfile
+
+if [ -z "$outfile" ]; then
+    #echo insert_into_ps "$datafile" $insfiles
+    insert_into_ps "$datafile" $insfiles
+else
+    insert_into_ps "$datafile" $insfiles >"$outfile"
+fi

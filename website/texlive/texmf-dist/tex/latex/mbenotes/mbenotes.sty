@@ -1,0 +1,1342 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%       ****************************************
+%       *              mbeNOTES  
+%       ****************************************
+%
+%  Date of this version: 2011-10-17
+%  Matthias Borck-Elsner
+%
+%% Based on endnotes.sty Copyright 2002 John Lavagnino
+%%
+%% This file may be distributed and/or modified under the
+%% conditions of the LaTeX Project Public License, either version 1.2
+%% of this license or (at your option) any later version.
+%% The lambe version of this license is in
+%%    http://www.latex-project.org/lppl.txt
+%% and version 1.2 or later is part of all distributions of LaTeX
+%% version 1999/12/01 or later.
+%%
+%%  Uses an extra external file, with .mbe extension, to hold the 
+%%  text of the mbenotes.  This may be deleted after the run; a new
+%%  version is generated each time--it doesn't require information
+%%  collected from the previous run.
+%%
+%%  This code does not obey \nofiles.  Perhaps it should.
+%%
+%%
+%%  To turn all the footnotes in your documents into mbenotes, say
+%%
+%%     \let\footnote=\mbenote
+%%
+%%  in your preamble, and then add something like
+%%
+%%     \newpage
+%%     \begingroup
+%%     \parindent 0pt
+%%     \parskip 2ex
+%%     \def\mbenotesize{\normalsize}
+%%     \thembenotes  
+%%     \endgroup
+%%
+%% as the last thing in your document.  (But \thembenotes all
+%% by itself will work.)
+%%
+%%       ****************************************
+%%       *        mbeNOTE COMMANDS              *
+%%       ****************************************
+%%
+%%
+%%   \mbenote{NOTE}       : User command to insert a mbenote.
+%%
+%%   \mbenote[NUM]{NOTE}  : User command to insert a mbenote numbered
+%%                           NUM, where NUM is a number -- 1, 2,
+%%                           etc.  For example, if mbenotes are numbered
+%%                           *, **, etc. within pages, then  \mbenote[2]{...}
+%%                           produces mbenote '**'.  This command does  not
+%%                           step the mbenote counter.
+%%
+%%   \mbenotemark[NUM]    : Command to produce just the mbenote mark in
+%%                           the text, but no mbenote.  With no argument,
+%%                           it steps the mbenote counter before  generating
+%%                           the mark.
+%%
+%%   \mbenotetext[NUM]{TEXT} : Command to produce the mbenote but no 
+%%                              mark.  \mbenote is equivalent to
+%%                              \mbenotemark \mbenotetext .
+%%
+%%   \addtombenotes{TEXT} : Command to add text or commands to current
+%%                              mbenotes file: for inserting headings,
+%%                              pagebreaks, and the like into mbenotes
+%%                              sections.  TEXT a moving argument:
+%%                              \protect required for fragile commands.
+%%
+%%       ****************************************
+%%       *        mbeNOTE USER COMMANDS         *
+%%       ****************************************
+%%
+%%   mbenotes use the following parameters, similar to those relating
+%%   to footnotes:
+%%
+%%   \mbenotesize   : Size-changing command for mbenotes.
+%%
+%%   \thembenote : In usual LaTeX style, produces the mbenote number.
+%%
+%%   \thembemark : Holds the current mbenote's mark--e.g., \dag or '1' or 'a'.
+%%                 (You don't want to set this yourself, as it comes
+%%                 either from the autonumbering of notes or from
+%%                 the optional argument to \mbenote. But you'll need
+%%                 to use it if you define your own \makembemark.)
+%%
+%%   \makembemark : A macro to generate the mbenote marker from  \thembemark
+%%                  The default definition is \hbox{$^\thembemark$}.
+%%
+%%   \@makembetext{NOTE} :
+%%        Must produce the actual mbenote, using \thembemark as the mark
+%%        of the mbenote and NOTE as the text.  It is called when effectively
+%%        inside a \parbox, with \hsize = \columnwidth.  For example, it might
+%%        be as simple as
+%%               $^{\thembemark}$ NOTE
+%%
+%%
+%%       ****************************************
+%%       *       mbeNOTE MACROS             *
+%%       ****************************************
+%%
+%%
+\@definecounter{mbenote}
+\def\thembenote{\@arabic\c@mbenote}
+
+\def\@makembemark{\hbox{\@textsuperscript{{\tiny{\@thembemark}}}}}
+\def\makembemark{\@makembemark}
+
+\def\thembemark{\@thembemark}
+
+\newdimen\mbenotesep
+
+\def\mbenote{\@ifnextchar[\@xmbenote{\stepcounter{mbenote}%
+     \protected@xdef\@thembemark{\thembenote}%
+     \@mbenotemark\@mbenotetext}}
+
+\def\@xmbenote[#1]{
+   \begingroup
+     \c@mbenote=#1\relax
+     \unrestored@protected@xdef\@thembemark{\thembenote}%
+   \endgroup
+   \@mbenotemark\@mbenotetext }
+
+%%  Here begins a section of mbenote code that's really different from
+%% the footnote code of LaTeX.
+
+\let\@doanmbenote=0
+\let\@endanmbenote=0
+
+\newwrite\@mbenotes
+\newif\if@mbenotesopen \global\@mbenotesopenfalse
+
+\def\@openmbenotes{\immediate\openout\@mbenotes=\jobname.mbe\relax
+      \global\@mbenotesopentrue}
+
+%%  The stuff with \next and \meaning is a trick from the TeXbook, 382,
+%% there intended for setting verbatim text, but here used to avoid
+%% macro expansion when the footnote text is written.  \next will have
+%% the entire text of the footnote as one long line, which might well
+%% overflow limits on output line length; the business with \newlinechar
+%% makes every space become a newline in the \@mbenotes file, so that all
+%% of the lines wind up being quite short.
+%%
+\long\def\@mbenotetext#1{%
+     \if@mbenotesopen \else \@openmbenotes \fi
+     \immediate\write\@mbenotes{\@doanmbenote{\@thembemark}}%
+     \begingroup
+        \def\next{#1}%
+        \newlinechar='40
+        \immediate\write\@mbenotes{\meaning\next}%
+     \endgroup
+     \immediate\write\@mbenotes{\@endanmbenote}}
+
+%% \addtombenotes works the way the other mbenote macros probably should
+%% have, requiring the use of \protect for fragile commands.
+
+\long\def\addtombenotes#1{%
+     \if@mbeenotesopen \else \@openmbenotes \fi
+     \begingroup
+        \newlinechar='40
+        \let\protect\string
+        \immediate\write\@mbenotes{#1}%
+     \endgroup}
+
+%%  End of unique mbenote code
+%%
+\def\mbenotemark{%
+   \@ifnextchar[\@xmbenotemark
+     {\stepcounter{mbenote}%
+      \protected@xdef\@thembemark{\thembenote}%
+      \@mbenotemark}}
+
+\def\@xmbenotemark[#1]{%
+   \begingroup
+      \c@mbenote #1\relax
+      \unrestored@protected@xdef\@thembemark{\thembenote}%
+   \endgroup
+   \@mbenotemark}
+
+\def\@mbenotemark{%
+  \leavevmode
+  \ifhmode\edef\@x@sf{\the\spacefactor}\nobreak\fi
+  \makembemark
+  \ifhmode\spacefactor\@x@sf\fi
+  \relax}
+
+\def\mbenotetext{
+     \@ifnextchar [\@xmbenotenext
+       {\protected@xdef\@thembemark{\thembenote}%
+    \@mbenotetext}}
+
+\def\@xmbenotenext[#1]{\begingroup \c@mbenote=#1\relax
+   \xdef\@thembemark{\thembenote}\endgroup \@mbenotetext}
+
+\def\@xmbenotenext[#1]{%
+  \begingroup
+     \c@mbenote=#1\relax
+     \unrestored@protected@xdef\@thembemark{\thembenote}%
+  \endgroup
+  \@mbenotetext}
+
+
+%%  \thembenotes actually prints out the mbenotes.
+
+%%  The user may want separate mbenotes for each chapter, or a big
+%% block of them at the end of the whole document.  As it stands,
+%% either will work; you just say \thembenotes wherever you want the
+%% mbenotes so far to be inserted.  The counter is always set to 0 %%
+%%  \mbenoteformat is provided so user can specify some special formatting
+%% for the mbenotes.  It needs to set up the paragraph parameters, start
+%% the paragraph, and print the label.  The \mbox stuff in \mbenoteheading
+%% is to make and undo a dummbe paragraph, to get around the games \section*
+%% plays with paragraph indenting and instead give us uniform
+%% indenting for all notes.
+
+\def\mbenotesname{mbenotes} 
+\def\mbenoteheading{\subsubsection*{\footnotesize{\mbenotesname} \@mkboth{\MakeUppercase{\mbenotesname}}{\MakeUppercase{\mbenotesname}}}
+  \mbox{ }\par\vskip-\baselineskip}
+
+\def\mbenoteformat{\rightskip\z@ \leftskip\z@ \parindent=1.8em
+  \leavevmode\llap{\makembemark}}
+
+\def\mbenotesize{\footnotesize}
+
+\def\thembenotes[#1]{\def\mbenotesname{#1}\immediate\closeout\@mbenotes \global\@mbenotesopenfalse
+  \begingroup
+    \makeatletter
+    %%
+    %% The machinery with \@ResetGT and > here ensures that
+    %% \@doanmbenote works properly even if > is an active character
+    %% at the point where \thembenotes is invoked. > needs to have
+    %% catcode 12 when the arguments of \@doanmbenote are scanned, so
+    %% that the > in the string "macro:->" is matched.  The actual
+    %% footnote text is not an argument to \@doanmbenote, but just
+    %% follows it in the .mbe file; so \@ResetGT can reset the
+    %% category code for > that should be used when processing
+    %% that text.  That resetting takes place within a
+    %% \begingroup-\endgroup block set up by \@doanmbenote and
+    %% \@endanmbenote, so the catcode for > is back to 12 for the
+    %% next note.
+    %
+    \edef\@tempa{`\string >}%
+    \ifnum\catcode\@tempa=12%
+      \let\@ResetGT\relax
+    \else
+      \edef\@ResetGT{\noexpand\catcode\@tempa=\the\catcode\@tempa}%
+      \@makeother\>%
+    \fi
+    \def\@doanmbenote##1##2>{\def\@thembemark{##1}\par\begingroup
+        \@ResetGT
+        \edef\@currentlabel{\csname p@mbenote\endcsname\@thembemark}%
+        \mbenoteformat}
+    \def\@endanmbenote{\par\endgroup}%
+     \mbenoteheading 
+    \mbenotesize
+    \input{\jobname.mbe}%
+    \setcounter{mbenote}{0} \vspace{1.8em} 
+  \endgroup}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%       ****************************************
+%       *              tabNOTES  
+%       ****************************************
+%
+%  Date of this version: 2011-10-17
+%  Matthias Borck-Elsner
+%
+%% Based on endnotes.sty Copyright 2002 John Lavagnino
+%%
+%% This file may be distributed and/or modified under the
+%% conditions of the LaTeX Project Public License, either version 1.2
+%% of this license or (at your option) any later version.
+%% The lambe version of this license is in
+%%    http://www.latex-project.org/lppl.txt
+%% and version 1.2 or later is part of all distributions of LaTeX
+%% version 1999/12/01 or later.
+%%
+%%  Uses an extra external file, with .tab extension, to hold the 
+%%  text of the tabnotes.  This may be deleted after the run; a new
+%%  version is generated each time--it doesn't require information
+%%  collected from the previous run.
+%%
+%%  This code does not obey \nofiles.  Perhaps it should.
+%%
+%%
+%%  To turn all the footnotes in your documents into tabnotes, say
+%%
+%%     \let\footnote=\tabnote
+%%
+%%  in your preamble, and then add something like
+%%
+%%     \newpage
+%%     \begingroup
+%%     \parindent 0pt
+%%     \parskip 2ex
+%%     \def\tabnotesize{\normalsize}
+%%     \thetabnotes  
+%%     \endgroup
+%%
+%% as the last thing in your document.  (But \thetabnotes all
+%% by itself will work.)
+%%
+%%       ****************************************
+%%       *        tabNOTE COMMANDS              *
+%%       ****************************************
+%%
+%%
+%%   \tabnote{NOTE}       : User command to insert a tabnote.
+%%
+%%   \tabnote[NUM]{NOTE}  : User command to insert a tabnote numbered
+%%                           NUM, where NUM is a number -- 1, 2,
+%%                           etc.  For example, if tabnotes are numbered
+%%                           *, **, etc. within pages, then  \tabnote[2]{...}
+%%                           produces tabnote '**'.  This command does  not
+%%                           step the tabnote counter.
+%%
+%%   \tabnotemark[NUM]    : Command to produce just the tabnote mark in
+%%                           the text, but no tabnote.  With no argument,
+%%                           it steps the tabnote counter before  generating
+%%                           the mark.
+%%
+%%   \tabnotetext[NUM]{TEXT} : Command to produce the tabnote but no 
+%%                              mark.  \tabnote is equivalent to
+%%                              \tabnotemark \tabnotetext .
+%%
+%%   \addtotabnotes{TEXT} : Command to add text or commands to current
+%%                              tabnotes file: for inserting headings,
+%%                              pagebreaks, and the like into tabnotes
+%%                              sections.  TEXT a moving argument:
+%%                              \protect required for fragile commands.
+%%
+%%       ****************************************
+%%       *        tabNOTE USER COMMANDS         *
+%%       ****************************************
+%%
+%%   tabnotes use the following parameters, similar to those relating
+%%   to footnotes:
+%%
+%%   \tabnotesize   : Size-changing command for tabnotes.
+%%
+%%   \thetabnote : In usual LaTeX style, produces the tabnote number.
+%%
+%%   \thetabmark : Holds the current tabnote's mark--e.g., \dag or '1' or 'a'.
+%%                 (You don't want to set this yourself, as it comes
+%%                 either from the autonumbering of notes or from
+%%                 the optional argument to \tabnote. But you'll need
+%%                 to use it if you define your own \maketabmark.)
+%%
+%%   \maketabmark : A macro to generate the tabnote marker from  \thetabmark
+%%                  The default definition is \hbox{$^\thetabmark$}.
+%%
+%%   \@maketabtext{NOTE} :
+%%        Must produce the actual tabnote, using \thetabmark as the mark
+%%        of the tabnote and NOTE as the text.  It is called when effectively
+%%        inside a \parbox, with \hsize = \columnwidth.  For example, it might
+%%        be as simple as
+%%               $^{\thetabmark}$ NOTE
+%%
+%%
+%%       ****************************************
+%%       *       tabNOTE MACROS             *
+%%       ****************************************
+%%
+%%
+\@definecounter{tabnote}
+\def\thetabnote{\@arabic\c@tabnote}
+
+\def\@maketabmark{\hbox{\@textsuperscript{{\tiny{\@thetabmark}}}}}
+\def\maketabmark{\@maketabmark}
+
+\def\thetabmark{\@thetabmark}
+
+\newdimen\tabnotesep
+
+\def\tabnote{\@ifnextchar[\@xtabnote{\stepcounter{tabnote}%
+     \protected@xdef\@thetabmark{\thetabnote}%
+     \@tabnotemark\@tabnotetext}}
+
+\def\@xtabnote[#1]{
+   \begingroup
+     \c@tabnote=#1\relax
+     \unrestored@protected@xdef\@thetabmark{\thetabnote}%
+   \endgroup
+   \@tabnotemark\@tabnotetext }
+
+%%  Here begins a section of tabnote code that's really different from
+%% the footnote code of LaTeX.
+
+\let\@doantabnote=0
+\let\@endantabnote=0
+
+\newwrite\@tabnotes
+\newif\if@tabnotesopen \global\@tabnotesopenfalse
+
+\def\@opentabnotes{\immediate\openout\@tabnotes=\jobname.tab\relax
+      \global\@tabnotesopentrue}
+
+%%  The stuff with \next and \meaning is a trick from the TeXbook, 382,
+%% there intended for setting verbatim text, but here used to avoid
+%% macro expansion when the footnote text is written.  \next will have
+%% the entire text of the footnote as one long line, which might well
+%% overflow limits on output line length; the business with \newlinechar
+%% makes every space become a newline in the \@tabnotes file, so that all
+%% of the lines wind up being quite short.
+%%
+\long\def\@tabnotetext#1{%
+     \if@tabnotesopen \else \@opentabnotes \fi
+     \immediate\write\@tabnotes{\@doantabnote{\@thetabmark}}%
+     \begingroup
+        \def\next{#1}%
+        \newlinechar='40
+        \immediate\write\@tabnotes{\meaning\next}%
+     \endgroup
+     \immediate\write\@tabnotes{\@endantabnote}}
+
+%% \addtotabnotes works the way the other tabnote macros probably should
+%% have, requiring the use of \protect for fragile commands.
+
+\long\def\addtotabnotes#1{%
+     \if@tabenotesopen \else \@opentabnotes \fi
+     \begingroup
+        \newlinechar='40
+        \let\protect\string
+        \immediate\write\@tabnotes{#1}%
+     \endgroup}
+
+%%  End of unique tabnote code
+%%
+\def\tabnotemark{%
+   \@ifnextchar[\@xtabnotemark
+     {\stepcounter{tabnote}%
+      \protected@xdef\@thetabmark{\thetabnote}%
+      \@tabnotemark}}
+
+\def\@xtabnotemark[#1]{%
+   \begingroup
+      \c@tabnote #1\relax
+      \unrestored@protected@xdef\@thetabmark{\thetabnote}%
+   \endgroup
+   \@tabnotemark}
+
+\def\@tabnotemark{%
+  \leavevmode
+  \ifhmode\edef\@x@sf{\the\spacefactor}\nobreak\fi
+  \maketabmark
+  \ifhmode\spacefactor\@x@sf\fi
+  \relax}
+
+\def\tabnotetext{
+     \@ifnextchar [\@xtabnotenext
+       {\protected@xdef\@thetabmark{\thetabnote}%
+    \@tabnotetext}}
+
+\def\@xtabnotenext[#1]{\begingroup \c@tabnote=#1\relax
+   \xdef\@thetabmark{\thetabnote}\endgroup \@tabnotetext}
+
+\def\@xtabnotenext[#1]{%
+  \begingroup
+     \c@tabnote=#1\relax
+     \unrestored@protected@xdef\@thetabmark{\thetabnote}%
+  \endgroup
+  \@tabnotetext}
+
+
+%%  \thetabnotes actually prints out the tabnotes.
+
+%%  The user may want separate tabnotes for each chapter, or a big
+%% block of them at the end of the whole document.  As it stands,
+%% either will work; you just say \thetabnotes wherever you want the
+%% tabnotes so far to be inserted.  The counter is always set to 0 %%
+%%  \tabnoteformat is provided so user can specify some special formatting
+%% for the tabnotes.  It needs to set up the paragraph parameters, start
+%% the paragraph, and print the label.  The \mbox stuff in \tabnoteheading
+%% is to make and undo a dummbe paragraph, to get around the games \section*
+%% plays with paragraph indenting and instead give us uniform
+%% indenting for all notes.
+
+\def\tabnotesname{tabnotes} 
+\def\tabnoteheading{\subsubsection*{\footnotesize{\tabnotesname} \@mkboth{\MakeUppercase{\tabnotesname}}{\MakeUppercase{\tabnotesname}}}
+  \mbox{ }\par\vskip-\baselineskip}
+
+\def\tabnoteformat{\rightskip\z@ \leftskip\z@ \parindent=1.8em
+  \leavevmode\llap{\maketabmark}}
+
+\def\tabnotesize{\footnotesize}
+
+\def\thetabnotes[#1]{\def\tabnotesname{#1}\immediate\closeout\@tabnotes \global\@tabnotesopenfalse
+  \begingroup
+    \makeatletter
+    %%
+    %% The machinery with \@ResetGT and > here ensures that
+    %% \@doantabnote works properly even if > is an active character
+    %% at the point where \thetabnotes is invoked. > needs to have
+    %% catcode 12 when the arguments of \@doantabnote are scanned, so
+    %% that the > in the string "macro:->" is matched.  The actual
+    %% footnote text is not an argument to \@doantabnote, but just
+    %% follows it in the .tab file; so \@ResetGT can reset the
+    %% category code for > that should be used when processing
+    %% that text.  That resetting takes place within a
+    %% \begingroup-\endgroup block set up by \@doantabnote and
+    %% \@endantabnote, so the catcode for > is back to 12 for the
+    %% next note.
+    %
+    \edef\@tempa{`\string >}%
+    \ifnum\catcode\@tempa=12%
+      \let\@ResetGT\relax
+    \else
+      \edef\@ResetGT{\noexpand\catcode\@tempa=\the\catcode\@tempa}%
+      \@makeother\>%
+    \fi
+    \def\@doantabnote##1##2>{\def\@thetabmark{##1}\par\begingroup
+        \@ResetGT
+        \edef\@currentlabel{\csname p@tabnote\endcsname\@thetabmark}%
+        \tabnoteformat}
+    \def\@endantabnote{\par\endgroup}%
+     \tabnoteheading 
+    \tabnotesize
+    \input{\jobname.tab}%
+    \setcounter{tabnote}{0} \vspace{1.8em} 
+  \endgroup}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%       ****************************************
+%       *              imgNOTES  
+%       ****************************************
+%
+%  Date of this version: 2011-10-17
+%  Matthias Borck-Elsner
+%
+%% Based on endnotes.sty Copyright 2002 John Lavagnino
+%%
+%% This file may be distributed and/or modified under the
+%% conditions of the LaTeX Project Public License, either version 1.2
+%% of this license or (at your option) any later version.
+%% The lambe version of this license is in
+%%    http://www.latex-project.org/lppl.txt
+%% and version 1.2 or later is part of all distributions of LaTeX
+%% version 1999/12/01 or later.
+%%
+%%  Uses an extra external file, with .img extension, to hold the 
+%%  text of the imgnotes.  This may be deleted after the run; a new
+%%  version is generated each time--it doesn't require information
+%%  collected from the previous run.
+%%
+%%  This code does not obey \nofiles.  Perhaps it should.
+%%
+%%
+%%  To turn all the footnotes in your documents into imgnotes, say
+%%
+%%     \let\footnote=\imgnote
+%%
+%%  in your preamble, and then add something like
+%%
+%%     \newpage
+%%     \begingroup
+%%     \parindent 0pt
+%%     \parskip 2ex
+%%     \def\imgnotesize{\normalsize}
+%%     \theimgnotes  
+%%     \endgroup
+%%
+%% as the last thing in your document.  (But \theimgnotes all
+%% by itself will work.)
+%%
+%%       ****************************************
+%%       *        imgNOTE COMMANDS              *
+%%       ****************************************
+%%
+%%
+%%   \imgnote{NOTE}       : User command to insert a imgnote.
+%%
+%%   \imgnote[NUM]{NOTE}  : User command to insert a imgnote numbered
+%%                           NUM, where NUM is a number -- 1, 2,
+%%                           etc.  For example, if imgnotes are numbered
+%%                           *, **, etc. within pages, then  \imgnote[2]{...}
+%%                           produces imgnote '**'.  This command does  not
+%%                           step the imgnote counter.
+%%
+%%   \imgnotemark[NUM]    : Command to produce just the imgnote mark in
+%%                           the text, but no imgnote.  With no argument,
+%%                           it steps the imgnote counter before  generating
+%%                           the mark.
+%%
+%%   \imgnotetext[NUM]{TEXT} : Command to produce the imgnote but no 
+%%                              mark.  \imgnote is equivalent to
+%%                              \imgnotemark \imgnotetext .
+%%
+%%   \addtoimgnotes{TEXT} : Command to add text or commands to current
+%%                              imgnotes file: for inserting headings,
+%%                              pagebreaks, and the like into imgnotes
+%%                              sections.  TEXT a moving argument:
+%%                              \protect required for fragile commands.
+%%
+%%       ****************************************
+%%       *        imgNOTE USER COMMANDS         *
+%%       ****************************************
+%%
+%%   imgnotes use the following parameters, similar to those relating
+%%   to footnotes:
+%%
+%%   \imgnotesize   : Size-changing command for imgnotes.
+%%
+%%   \theimgnote : In usual LaTeX style, produces the imgnote number.
+%%
+%%   \theimgmark : Holds the current imgnote's mark--e.g., \dag or '1' or 'a'.
+%%                 (You don't want to set this yourself, as it comes
+%%                 either from the autonumbering of notes or from
+%%                 the optional argument to \imgnote. But you'll need
+%%                 to use it if you define your own \makeimgmark.)
+%%
+%%   \makeimgmark : A macro to generate the imgnote marker from  \theimgmark
+%%                  The default definition is \hbox{$^\theimgmark$}.
+%%
+%%   \@makeimgtext{NOTE} :
+%%        Must produce the actual imgnote, using \theimgmark as the mark
+%%        of the imgnote and NOTE as the text.  It is called when effectively
+%%        inside a \parbox, with \hsize = \columnwidth.  For example, it might
+%%        be as simple as
+%%               $^{\theimgmark}$ NOTE
+%%
+%%
+%%       ****************************************
+%%       *       imgNOTE MACROS             *
+%%       ****************************************
+%%
+%%
+\@definecounter{imgnote}
+\def\theimgnote{\@arabic\c@imgnote}
+
+\def\@makeimgmark{\hbox{\@textsuperscript{{\tiny{\@theimgmark}}}}}
+\def\makeimgmark{\@makeimgmark}
+
+\def\theimgmark{\@theimgmark}
+
+\newdimen\imgnotesep
+
+\def\imgnote{\@ifnextchar[\@ximgnote{\stepcounter{imgnote}%
+     \protected@xdef\@theimgmark{\theimgnote}%
+     \@imgnotemark\@imgnotetext}}
+
+\def\@ximgnote[#1]{
+   \begingroup
+     \c@imgnote=#1\relax
+     \unrestored@protected@xdef\@theimgmark{\theimgnote}%
+   \endgroup
+   \@imgnotemark\@imgnotetext }
+
+%%  Here begins a section of imgnote code that's really different from
+%% the footnote code of LaTeX.
+
+\let\@doanimgnote=0
+\let\@endanimgnote=0
+
+\newwrite\@imgnotes
+\newif\if@imgnotesopen \global\@imgnotesopenfalse
+
+\def\@openimgnotes{\immediate\openout\@imgnotes=\jobname.img\relax
+      \global\@imgnotesopentrue}
+
+%%  The stuff with \next and \meaning is a trick from the TeXbook, 382,
+%% there intended for setting verbatim text, but here used to avoid
+%% macro expansion when the footnote text is written.  \next will have
+%% the entire text of the footnote as one long line, which might well
+%% overflow limits on output line length; the business with \newlinechar
+%% makes every space become a newline in the \@imgnotes file, so that all
+%% of the lines wind up being quite short.
+%%
+\long\def\@imgnotetext#1{%
+     \if@imgnotesopen \else \@openimgnotes \fi
+     \immediate\write\@imgnotes{\@doanimgnote{\@theimgmark}}%
+     \begingroup
+        \def\next{#1}%
+        \newlinechar='40
+        \immediate\write\@imgnotes{\meaning\next}%
+     \endgroup
+     \immediate\write\@imgnotes{\@endanimgnote}}
+
+%% \addtoimgnotes works the way the other imgnote macros probably should
+%% have, requiring the use of \protect for fragile commands.
+
+\long\def\addtoimgnotes#1{%
+     \if@imgenotesopen \else \@openimgnotes \fi
+     \begingroup
+        \newlinechar='40
+        \let\protect\string
+        \immediate\write\@imgnotes{#1}%
+     \endgroup}
+
+%%  End of unique imgnote code
+%%
+\def\imgnotemark{%
+   \@ifnextchar[\@ximgnotemark
+     {\stepcounter{imgnote}%
+      \protected@xdef\@theimgmark{\theimgnote}%
+      \@imgnotemark}}
+
+\def\@ximgnotemark[#1]{%
+   \begingroup
+      \c@imgnote #1\relax
+      \unrestored@protected@xdef\@theimgmark{\theimgnote}%
+   \endgroup
+   \@imgnotemark}
+
+\def\@imgnotemark{%
+  \leavevmode
+  \ifhmode\edef\@x@sf{\the\spacefactor}\nobreak\fi
+  \makeimgmark
+  \ifhmode\spacefactor\@x@sf\fi
+  \relax}
+
+\def\imgnotetext{
+     \@ifnextchar [\@ximgnotenext
+       {\protected@xdef\@theimgmark{\theimgnote}%
+    \@imgnotetext}}
+
+\def\@ximgnotenext[#1]{\begingroup \c@imgnote=#1\relax
+   \xdef\@theimgmark{\theimgnote}\endgroup \@imgnotetext}
+
+\def\@ximgnotenext[#1]{%
+  \begingroup
+     \c@imgnote=#1\relax
+     \unrestored@protected@xdef\@theimgmark{\theimgnote}%
+  \endgroup
+  \@imgnotetext}
+
+
+%%  \theimgnotes actually prints out the imgnotes.
+
+%%  The user may want separate imgnotes for each chapter, or a big
+%% block of them at the end of the whole document.  As it stands,
+%% either will work; you just say \theimgnotes wherever you want the
+%% imgnotes so far to be inserted.  The counter is always set to 0 %%
+%%  \imgnoteformat is provided so user can specify some special formatting
+%% for the imgnotes.  It needs to set up the paragraph parameters, start
+%% the paragraph, and print the label.  The \mbox stuff in \imgnoteheading
+%% is to make and undo a dummbe paragraph, to get around the games \section*
+%% plays with paragraph indenting and instead give us uniform
+%% indenting for all notes.
+
+\def\imgnotesname{imgnotes} 
+\def\imgnoteheading{\subsubsection*{\footnotesize{\imgnotesname} \@mkboth{\MakeUppercase{\imgnotesname}}{\MakeUppercase{\imgnotesname}}}
+  \mbox{ }\par\vskip-\baselineskip}
+
+\def\imgnoteformat{\rightskip\z@ \leftskip\z@ \parindent=1.8em
+  \leavevmode\llap{\makeimgmark}}
+
+\def\imgnotesize{\footnotesize}
+
+\def\theimgnotes[#1]{\def\imgnotesname{#1}\immediate\closeout\@imgnotes \global\@imgnotesopenfalse
+  \begingroup
+    \makeatletter
+    %%
+    %% The machinery with \@ResetGT and > here ensures that
+    %% \@doanimgnote works properly even if > is an active character
+    %% at the point where \theimgnotes is invoked. > needs to have
+    %% catcode 12 when the arguments of \@doanimgnote are scanned, so
+    %% that the > in the string "macro:->" is matched.  The actual
+    %% footnote text is not an argument to \@doanimgnote, but just
+    %% follows it in the .img file; so \@ResetGT can reset the
+    %% category code for > that should be used when processing
+    %% that text.  That resetting takes place within a
+    %% \begingroup-\endgroup block set up by \@doanimgnote and
+    %% \@endanimgnote, so the catcode for > is back to 12 for the
+    %% next note.
+    %
+    \edef\@tempa{`\string >}%
+    \ifnum\catcode\@tempa=12%
+      \let\@ResetGT\relax
+    \else
+      \edef\@ResetGT{\noexpand\catcode\@tempa=\the\catcode\@tempa}%
+      \@makeother\>%
+    \fi
+    \def\@doanimgnote##1##2>{\def\@theimgmark{##1}\par\begingroup
+        \@ResetGT
+        \edef\@currentlabel{\csname p@imgnote\endcsname\@theimgmark}%
+        \imgnoteformat}
+    \def\@endanimgnote{\par\endgroup}%
+     \imgnoteheading 
+    \imgnotesize
+    \input{\jobname.img}%
+    \setcounter{imgnote}{0} \vspace{1.8em} 
+  \endgroup}
+ \newlength\imgheight{} \newlength\imgwidth{} \def\imgsize#1#2{\imgwidth=#1 \imgheight#2 }
+\def\putimgnote#1#2#3{\put(#1\imgwidth,#2\imgheight){\imgnote{#3 }}}\def\ruler#1#2{\begin{picture}(0,0)(#1,#2)\begin{tiny} 
+%%horizontal
+\put(0\imgwidth,0){\rotatebox{270}{ -0.00}}
+\put(-0.10\imgwidth,0){\rotatebox{270}{ -0.10}}
+\put(-0.20\imgwidth,0){\rotatebox{270}{ -0.20}}
+\put(-0.30\imgwidth,0){\rotatebox{270}{ -0.30}}
+\put(-0.40\imgwidth,0){\rotatebox{270}{ -0.40}}
+\put(-0.50\imgwidth,0){\rotatebox{270}{ -0.50}}
+\put(-0.60\imgwidth,0){\rotatebox{270}{ -0.60}}
+\put(-0.70\imgwidth,0){\rotatebox{270}{ -0.70}}
+\put(-0.80\imgwidth,0){\rotatebox{270}{ -0.80}}
+\put(-0.90\imgwidth,0){\rotatebox{270}{ -0.90}}
+\put(-1.00\imgwidth,0){\rotatebox{270}{ -1.00}}
+%%vertical
+\put(0,0\imgheight){{\rotatebox{0}{+0.0}}}
+\put(0,0.10\imgheight){{\rotatebox{0}{+0.10}}}
+\put(0,0.20\imgheight){{\rotatebox{0}{+0.20}}}
+\put(0,0.30\imgheight){{\rotatebox{0}{+0.30}}}
+\put(0,0.40\imgheight){{\rotatebox{0}{+0.40}}}
+\put(0,0.50\imgheight){{\rotatebox{0}{+0.50}}}
+\put(0,0.60\imgheight){{\rotatebox{0}{+0.60}}}
+\put(0,0.70\imgheight){{\rotatebox{0}{+0.70}}}
+\put(0,0.80\imgheight){{\rotatebox{0}{+0.80}}}
+\put(0,0.90\imgheight){{\rotatebox{0}{+0.90}}}
+\put(0,1.00\imgheight){{\rotatebox{0}{+1.00}}}
+\end{tiny} \end{picture}}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%       ****************************************
+%       *              mathNOTES  
+%       ****************************************
+%
+%  Date of this version: 2011-10-17
+%  Matthias Borck-Elsner
+%
+%% Based on endnotes.sty Copyright 2002 John Lavagnino
+%%
+%% This file may be distributed and/or modified under the
+%% conditions of the LaTeX Project Public License, either version 1.2
+%% of this license or (at your option) any later version.
+%% The lambe version of this license is in
+%%    http://www.latex-project.org/lppl.txt
+%% and version 1.2 or later is part of all distributions of LaTeX
+%% version 1999/12/01 or later.
+%%
+%%  Uses an extra external file, with .math extension, to hold the 
+%%  text of the mathnotes.  This may be deleted after the run; a new
+%%  version is generated each time--it doesn't require information
+%%  collected from the previous run.
+%%
+%%  This code does not obey \nofiles.  Perhaps it should.
+%%
+%%
+%%  To turn all the footnotes in your documents into mathnotes, say
+%%
+%%     \let\footnote=\mathnote
+%%
+%%  in your preamble, and then add something like
+%%
+%%     \newpage
+%%     \begingroup
+%%     \parindent 0pt
+%%     \parskip 2ex
+%%     \def\mathnotesize{\normalsize}
+%%     \themathnotes  
+%%     \endgroup
+%%
+%% as the last thing in your document.  (But \themathnotes all
+%% by itself will work.)
+%%
+%%       ****************************************
+%%       *        mathNOTE COMMANDS              *
+%%       ****************************************
+%%
+%%
+%%   \mathnote{NOTE}       : User command to insert a mathnote.
+%%
+%%   \mathnote[NUM]{NOTE}  : User command to insert a mathnote numbered
+%%                           NUM, where NUM is a number -- 1, 2,
+%%                           etc.  For example, if mathnotes are numbered
+%%                           *, **, etc. within pages, then  \mathnote[2]{...}
+%%                           produces mathnote '**'.  This command does  not
+%%                           step the mathnote counter.
+%%
+%%   \mathnotemark[NUM]    : Command to produce just the mathnote mark in
+%%                           the text, but no mathnote.  With no argument,
+%%                           it steps the mathnote counter before  generating
+%%                           the mark.
+%%
+%%   \mathnotetext[NUM]{TEXT} : Command to produce the mathnote but no 
+%%                              mark.  \mathnote is equivalent to
+%%                              \mathnotemark \mathnotetext .
+%%
+%%   \addtomathnotes{TEXT} : Command to add text or commands to current
+%%                              mathnotes file: for inserting headings,
+%%                              pagebreaks, and the like into mathnotes
+%%                              sections.  TEXT a moving argument:
+%%                              \protect required for fragile commands.
+%%
+%%       ****************************************
+%%       *        mathNOTE USER COMMANDS         *
+%%       ****************************************
+%%
+%%   mathnotes use the following parameters, similar to those relating
+%%   to footnotes:
+%%
+%%   \mathnotesize   : Size-changing command for mathnotes.
+%%
+%%   \themathnote : In usual LaTeX style, produces the mathnote number.
+%%
+%%   \themathmark : Holds the current mathnote's mark--e.g., \dag or '1' or 'a'.
+%%                 (You don't want to set this yourself, as it comes
+%%                 either from the autonumbering of notes or from
+%%                 the optional argument to \mathnote. But you'll need
+%%                 to use it if you define your own \makemathmark.)
+%%
+%%   \makemathmark : A macro to generate the mathnote marker from  \themathmark
+%%                  The default definition is \hbox{$^\themathmark$}.
+%%
+%%   \@makemathtext{NOTE} :
+%%        Must produce the actual mathnote, using \themathmark as the mark
+%%        of the mathnote and NOTE as the text.  It is called when effectively
+%%        inside a \parbox, with \hsize = \columnwidth.  For example, it might
+%%        be as simple as
+%%               $^{\themathmark}$ NOTE
+%%
+%%
+%%       ****************************************
+%%       *       mathNOTE MACROS             *
+%%       ****************************************
+%%
+%%
+\@definecounter{mathnote}
+\def\themathnote{\@arabic\c@mathnote}
+
+\def\@makemathmark{\hbox{\@textsuperscript{\textcolor{red}{\tiny{\@themathmark}}}}}
+\def\makemathmark{\@makemathmark}
+
+\def\themathmark{\@themathmark}
+
+\newdimen\mathnotesep
+
+\def\mathnote{\@ifnextchar[\@xmathnote{\stepcounter{mathnote}%
+     \protected@xdef\@themathmark{\themathnote}%
+     \@mathnotemark\@mathnotetext}}
+
+\def\@xmathnote[#1]{
+   \begingroup
+     \c@mathnote=#1\relax
+     \unrestored@protected@xdef\@themathmark{\themathnote}%
+   \endgroup
+   \@mathnotemark\@mathnotetext }
+
+%%  Here begins a section of mathnote code that's really different from
+%% the footnote code of LaTeX.
+
+\let\@doanmathnote=0
+\let\@endanmathnote=0
+
+\newwrite\@mathnotes
+\newif\if@mathnotesopen \global\@mathnotesopenfalse
+
+\def\@openmathnotes{\immediate\openout\@mathnotes=\jobname.math\relax
+      \global\@mathnotesopentrue}
+
+%%  The stuff with \next and \meaning is a trick from the TeXbook, 382,
+%% there intended for setting verbatim text, but here used to avoid
+%% macro expansion when the footnote text is written.  \next will have
+%% the entire text of the footnote as one long line, which might well
+%% overflow limits on output line length; the business with \newlinechar
+%% makes every space become a newline in the \@mathnotes file, so that all
+%% of the lines wind up being quite short.
+%%
+\long\def\@mathnotetext#1{%
+     \if@mathnotesopen \else \@openmathnotes \fi
+     \immediate\write\@mathnotes{\@doanmathnote{\@themathmark}}%
+     \begingroup
+        \def\next{#1}%
+        \newlinechar='40
+        \immediate\write\@mathnotes{\meaning\next}%
+     \endgroup
+     \immediate\write\@mathnotes{\@endanmathnote}}
+
+%% \addtomathnotes works the way the other mathnote macros probably should
+%% have, requiring the use of \protect for fragile commands.
+
+\long\def\addtomathnotes#1{%
+     \if@mathenotesopen \else \@openmathnotes \fi
+     \begingroup
+        \newlinechar='40
+        \let\protect\string
+        \immediate\write\@mathnotes{#1}%
+     \endgroup}
+
+%%  End of unique mathnote code
+%%
+\def\mathnotemark{%
+   \@ifnextchar[\@xmathnotemark
+     {\stepcounter{mathnote}%
+      \protected@xdef\@themathmark{\themathnote}%
+      \@mathnotemark}}
+
+\def\@xmathnotemark[#1]{%
+   \begingroup
+      \c@mathnote #1\relax
+      \unrestored@protected@xdef\@themathmark{\themathnote}%
+   \endgroup
+   \@mathnotemark}
+
+\def\@mathnotemark{%
+  \leavevmode
+  \ifhmode\edef\@x@sf{\the\spacefactor}\nobreak\fi
+  \makemathmark
+  \ifhmode\spacefactor\@x@sf\fi
+  \relax}
+
+\def\mathnotetext{
+     \@ifnextchar [\@xmathnotenext
+       {\protected@xdef\@themathmark{\themathnote}%
+    \@mathnotetext}}
+
+\def\@xmathnotenext[#1]{\begingroup \c@mathnote=#1\relax
+   \xdef\@themathmark{\themathnote}\endgroup \@mathnotetext}
+
+\def\@xmathnotenext[#1]{%
+  \begingroup
+     \c@mathnote=#1\relax
+     \unrestored@protected@xdef\@themathmark{\themathnote}%
+  \endgroup
+  \@mathnotetext}
+
+
+%%  \themathnotes actually prints out the mathnotes.
+
+%%  The user may want separate mathnotes for each chapter, or a big
+%% block of them at the end of the whole document.  As it stands,
+%% either will work; you just say \themathnotes wherever you want the
+%% mathnotes so far to be inserted.  The counter is always set to 0 %%
+%%  \mathnoteformat is provided so user can specify some special formatting
+%% for the mathnotes.  It needs to set up the paragraph parameters, start
+%% the paragraph, and print the label.  The \mbox stuff in \mathnoteheading
+%% is to make and undo a dummbe paragraph, to get around the games \section*
+%% plays with paragraph indenting and instead give us uniform
+%% indenting for all notes.
+
+\def\mathnotesname{mathnotes} 
+\def\mathnoteheading{\subsubsection*{\footnotesize{\mathnotesname} \@mkboth{\MakeUppercase{\mathnotesname}}{\MakeUppercase{\mathnotesname}}}
+  \mbox{ }\par\vskip-\baselineskip}
+
+\def\mathnoteformat{\rightskip\z@ \leftskip\z@ \parindent=1.8em
+  \leavevmode\llap{\makemathmark}}
+
+\def\mathnotesize{\footnotesize}
+
+\def\themathnotes[#1]{\def\mathnotesname{#1}\immediate\closeout\@mathnotes \global\@mathnotesopenfalse
+  \begingroup
+    \makeatletter
+    %%
+    %% The machinery with \@ResetGT and > here ensures that
+    %% \@doanmathnote works properly even if > is an active character
+    %% at the point where \themathnotes is invoked. > needs to have
+    %% catcode 12 when the arguments of \@doanmathnote are scanned, so
+    %% that the > in the string "macro:->" is matched.  The actual
+    %% footnote text is not an argument to \@doanmathnote, but just
+    %% follows it in the .math file; so \@ResetGT can reset the
+    %% category code for > that should be used when processing
+    %% that text.  That resetting takes place within a
+    %% \begingroup-\endgroup block set up by \@doanmathnote and
+    %% \@endanmathnote, so the catcode for > is back to 12 for the
+    %% next note.
+    %
+    \edef\@tempa{`\string >}%
+    \ifnum\catcode\@tempa=12%
+      \let\@ResetGT\relax
+    \else
+      \edef\@ResetGT{\noexpand\catcode\@tempa=\the\catcode\@tempa}%
+      \@makeother\>%
+    \fi
+    \def\@doanmathnote##1##2>{\def\@themathmark{##1}\par\begingroup
+        \@ResetGT
+        \edef\@currentlabel{\csname p@mathnote\endcsname\@themathmark}%
+        \mathnoteformat}
+    \def\@endanmathnote{\par\endgroup}%
+     \mathnoteheading 
+    \mathnotesize
+    \input{\jobname.math}%
+    \setcounter{mathnote}{0} \vspace{1.8em} 
+  \endgroup}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%       ****************************************
+%       *              bibNOTES  
+%       ****************************************
+%
+%  Date of this version: 2011-10-17
+%  Matthias Borck-Elsner
+%
+%% Based on endnotes.sty Copyright 2002 John Lavagnino
+%%
+%% This file may be distributed and/or modified under the
+%% conditions of the LaTeX Project Public License, either version 1.2
+%% of this license or (at your option) any later version.
+%% The lambe version of this license is in
+%%    http://www.latex-project.org/lppl.txt
+%% and version 1.2 or later is part of all distributions of LaTeX
+%% version 1999/12/01 or later.
+%%
+%%  Uses an extra external file, with .bib extension, to hold the 
+%%  text of the bibnotes.  This may be deleted after the run; a new
+%%  version is generated each time--it doesn't require information
+%%  collected from the previous run.
+%%
+%%  This code does not obey \nofiles.  Perhaps it should.
+%%
+%%
+%%  To turn all the footnotes in your documents into bibnotes, say
+%%
+%%     \let\footnote=\bibnote
+%%
+%%  in your preamble, and then add something like
+%%
+%%     \newpage
+%%     \begingroup
+%%     \parindent 0pt
+%%     \parskip 2ex
+%%     \def\bibnotesize{\normalsize}
+%%     \thebibnotes  
+%%     \endgroup
+%%
+%% as the last thing in your document.  (But \thebibnotes all
+%% by itself will work.)
+%%
+%%       ****************************************
+%%       *        bibNOTE COMMANDS              *
+%%       ****************************************
+%%
+%%
+%%   \bibnote{NOTE}       : User command to insert a bibnote.
+%%
+%%   \bibnote[NUM]{NOTE}  : User command to insert a bibnote numbered
+%%                           NUM, where NUM is a number -- 1, 2,
+%%                           etc.  For example, if bibnotes are numbered
+%%                           *, **, etc. within pages, then  \bibnote[2]{...}
+%%                           produces bibnote '**'.  This command does  not
+%%                           step the bibnote counter.
+%%
+%%   \bibnotemark[NUM]    : Command to produce just the bibnote mark in
+%%                           the text, but no bibnote.  With no argument,
+%%                           it steps the bibnote counter before  generating
+%%                           the mark.
+%%
+%%   \bibnotetext[NUM]{TEXT} : Command to produce the bibnote but no 
+%%                              mark.  \bibnote is equivalent to
+%%                              \bibnotemark \bibnotetext .
+%%
+%%   \addtobibnotes{TEXT} : Command to add text or commands to current
+%%                              bibnotes file: for inserting headings,
+%%                              pagebreaks, and the like into bibnotes
+%%                              sections.  TEXT a moving argument:
+%%                              \protect required for fragile commands.
+%%
+%%       ****************************************
+%%       *        bibNOTE USER COMMANDS         *
+%%       ****************************************
+%%
+%%   bibnotes use the following parameters, similar to those relating
+%%   to footnotes:
+%%
+%%   \bibnotesize   : Size-changing command for bibnotes.
+%%
+%%   \thebibnote : In usual LaTeX style, produces the bibnote number.
+%%
+%%   \thebibmark : Holds the current bibnote's mark--e.g., \dag or '1' or 'a'.
+%%                 (You don't want to set this yourself, as it comes
+%%                 either from the autonumbering of notes or from
+%%                 the optional argument to \bibnote. But you'll need
+%%                 to use it if you define your own \makebibmark.)
+%%
+%%   \makebibmark : A macro to generate the bibnote marker from  \thebibmark
+%%                  The default definition is \hbox{$^\thebibmark$}.
+%%
+%%   \@makebibtext{NOTE} :
+%%        Must produce the actual bibnote, using \thebibmark as the mark
+%%        of the bibnote and NOTE as the text.  It is called when effectively
+%%        inside a \parbox, with \hsize = \columnwidth.  For example, it might
+%%        be as simple as
+%%               $^{\thebibmark}$ NOTE
+%%
+%%
+%%       ****************************************
+%%       *       bibNOTE MACROS             *
+%%       ****************************************
+%%
+%%
+\@definecounter{bibnote}
+\def\thebibnote{\@arabic\c@bibnote}
+
+\def\@makebibmark{\lbrack\hbox{\@textsuperscript{{\tiny{\@thebibmark}}}}\rbrack}
+\def\makebibmark{\@makebibmark}
+
+\def\thebibmark{\@thebibmark}
+
+\newdimen\bibnotesep
+
+\def\bibnote{\@ifnextchar[\@xbibnote{\stepcounter{bibnote}%
+     \protected@xdef\@thebibmark{\thebibnote}%
+     \@bibnotemark\@bibnotetext}}
+
+\def\@xbibnote[#1]{
+   \begingroup
+     \c@bibnote=#1\relax
+     \unrestored@protected@xdef\@thebibmark{\thebibnote}%
+   \endgroup
+   \@bibnotemark\@bibnotetext }
+
+%%  Here begins a section of bibnote code that's really different from
+%% the footnote code of LaTeX.
+
+\let\@doanbibnote=0
+\let\@endanbibnote=0
+
+\newwrite\@bibnotes
+\newif\if@bibnotesopen \global\@bibnotesopenfalse
+
+\def\@openbibnotes{\immediate\openout\@bibnotes=\jobname.bib\relax
+      \global\@bibnotesopentrue}
+
+%%  The stuff with \next and \meaning is a trick from the TeXbook, 382,
+%% there intended for setting verbatim text, but here used to avoid
+%% macro expansion when the footnote text is written.  \next will have
+%% the entire text of the footnote as one long line, which might well
+%% overflow limits on output line length; the business with \newlinechar
+%% makes every space become a newline in the \@bibnotes file, so that all
+%% of the lines wind up being quite short.
+%%
+\long\def\@bibnotetext#1{%
+     \if@bibnotesopen \else \@openbibnotes \fi
+     \immediate\write\@bibnotes{\@doanbibnote{\@thebibmark}}%
+     \begingroup
+        \def\next{#1}%
+        \newlinechar='40
+        \immediate\write\@bibnotes{\meaning\next}%
+     \endgroup
+     \immediate\write\@bibnotes{\@endanbibnote}}
+
+%% \addtobibnotes works the way the other bibnote macros probably should
+%% have, requiring the use of \protect for fragile commands.
+
+\long\def\addtobibnotes#1{%
+     \if@bibenotesopen \else \@openbibnotes \fi
+     \begingroup
+        \newlinechar='40
+        \let\protect\string
+        \immediate\write\@bibnotes{#1}%
+     \endgroup}
+
+%%  End of unique bibnote code
+%%
+\def\bibnotemark{%
+   \@ifnextchar[\@xbibnotemark
+     {\stepcounter{bibnote}%
+      \protected@xdef\@thebibmark{\thebibnote}%
+      \@bibnotemark}}
+
+\def\@xbibnotemark[#1]{%
+   \begingroup
+      \c@bibnote #1\relax
+      \unrestored@protected@xdef\@thebibmark{\thebibnote}%
+   \endgroup
+   \@bibnotemark}
+
+\def\@bibnotemark{%
+  \leavevmode
+  \ifhmode\edef\@x@sf{\the\spacefactor}\nobreak\fi
+  \makebibmark
+  \ifhmode\spacefactor\@x@sf\fi
+  \relax}
+
+\def\bibnotetext{
+     \@ifnextchar [\@xbibnotenext
+       {\protected@xdef\@thebibmark{\thebibnote}%
+    \@bibnotetext}}
+
+\def\@xbibnotenext[#1]{\begingroup \c@bibnote=#1\relax
+   \xdef\@thebibmark{\thebibnote}\endgroup \@bibnotetext}
+
+\def\@xbibnotenext[#1]{%
+  \begingroup
+     \c@bibnote=#1\relax
+     \unrestored@protected@xdef\@thebibmark{\thebibnote}%
+  \endgroup
+  \@bibnotetext}
+
+
+%%  \thebibnotes actually prints out the bibnotes.
+
+%%  The user may want separate bibnotes for each chapter, or a big
+%% block of them at the end of the whole document.  As it stands,
+%% either will work; you just say \thebibnotes wherever you want the
+%% bibnotes so far to be inserted.  The counter is always set to 0 %%
+%%  \bibnoteformat is provided so user can specify some special formatting
+%% for the bibnotes.  It needs to set up the paragraph parameters, start
+%% the paragraph, and print the label.  The \mbox stuff in \bibnoteheading
+%% is to make and undo a dummbe paragraph, to get around the games \section*
+%% plays with paragraph indenting and instead give us uniform
+%% indenting for all notes.
+
+\def\bibnotesname{bibnotes} 
+\def\bibnoteheading{\subsubsection*{\footnotesize{\bibnotesname} \@mkboth{\MakeUppercase{\bibnotesname}}{\MakeUppercase{\bibnotesname}}}
+  \mbox{ }\par\vskip-\baselineskip}
+
+\def\bibnoteformat{\rightskip\z@ \leftskip\z@ \parindent=1.8em
+  \leavevmode\llap{\makebibmark}}
+
+\def\bibnotesize{\footnotesize}
+
+\def\thebibnotes[#1]{\def\bibnotesname{#1}\immediate\closeout\@bibnotes \global\@bibnotesopenfalse
+  \begingroup
+    \makeatletter
+    %%
+    %% The machinery with \@ResetGT and > here ensures that
+    %% \@doanbibnote works properly even if > is an active character
+    %% at the point where \thebibnotes is invoked. > needs to have
+    %% catcode 12 when the arguments of \@doanbibnote are scanned, so
+    %% that the > in the string "macro:->" is matched.  The actual
+    %% footnote text is not an argument to \@doanbibnote, but just
+    %% follows it in the .bib file; so \@ResetGT can reset the
+    %% category code for > that should be used when processing
+    %% that text.  That resetting takes place within a
+    %% \begingroup-\endgroup block set up by \@doanbibnote and
+    %% \@endanbibnote, so the catcode for > is back to 12 for the
+    %% next note.
+    %
+    \edef\@tempa{`\string >}%
+    \ifnum\catcode\@tempa=12%
+      \let\@ResetGT\relax
+    \else
+      \edef\@ResetGT{\noexpand\catcode\@tempa=\the\catcode\@tempa}%
+      \@makeother\>%
+    \fi
+    \def\@doanbibnote##1##2>{\def\@thebibmark{##1}\par\begingroup
+        \@ResetGT
+        \edef\@currentlabel{\csname p@bibnote\endcsname\@thebibmark}%
+        \bibnoteformat}
+    \def\@endanbibnote{\par\endgroup}%
+     \bibnoteheading 
+    \bibnotesize
+    \input{\jobname.bib}%
+    \setcounter{bibnote}{0} \vspace{1.8em} 
+  \endgroup}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

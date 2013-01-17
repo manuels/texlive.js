@@ -1,0 +1,158 @@
+#!/usr/bin/env perl
+
+#    Copyright 2009 Joseph E. Fields
+#    email: fieldsj1@southernct.edu
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+$version = "0.2";
+
+# Version 0.2
+#  Changed hashbang to use the '/usr/bin/env perl' hack for portability
+#  Added a check on the return status of open("> Makefile").
+#
+# Version 0.1
+#  Original release.
+
+#default values of a few variables
+
+$mag_factor = 1.0;
+$pdflatex = 0;
+$figure_directory = "./";
+
+
+&parse_command_line;
+
+
+if ($figure_directory =~ m/\/$/) {
+  $pref = $figure_directory;
+} else {
+  $pref = $figure_directory . "/";
+}
+  
+
+#Look for files ending with the .fig extension in the current directory.
+
+opendir(THISDIR, ".");
+@fig_files = grep(/\.fig$/, readdir(THISDIR));
+
+open(MAKEFILE, "> Makefile") || die "Can't open Makefile for write. \n"; ;
+
+#First we run through the list of .fig files to make a list of corresponding
+#.tex files these are used as the dependencies for the "all" target.
+
+@tex_files = ();
+@base_names = ();
+
+foreach $fig (@fig_files) {
+  $tex_file_name = $fig;
+  $base = $fig;
+  $tex_file_name =~ s/\.fig$/\.tex/;
+  $base =~ s/\.fig$//;
+  push(@tex_files, $tex_file_name);
+  push(@base_names, $base);
+}
+print MAKEFILE "\#\n\# fig4latex makefile\n\#\n\n";
+print MAKEFILE "all: @tex_files\n\n";
+
+#For each .fig file we need to add appropriate lines to the Makefile
+
+if ($pdflatex == 1){
+    $ext = ".pdf";
+} else {
+    $ext = ".eps";
+}
+
+foreach $nm (@base_names) {
+  print MAKEFILE "\# translation into pstex\n\n";
+  print MAKEFILE "$nm\.tex: $nm$ext \n";
+  print MAKEFILE "\tfig2dev -L pstex_t -p $pref$nm$ext -m $mag_factor $nm\.fig > $nm\.tex\n\n";
+  print MAKEFILE "$nm\.pdf: $nm\.eps \n";
+  print MAKEFILE "\tepstopdf $nm\.eps\n\n";
+  print MAKEFILE "$nm\.eps: $nm\.fig \n";
+  print MAKEFILE "\tfig2dev -L pstex -m $mag_factor $nm\.fig > $nm\.eps\n\n";
+  print MAKEFILE "clean::\n";
+  print MAKEFILE "\trm -f $nm\.tex $nm\.eps $nm\.pdf\n\n\n";
+}
+
+close(MAKEFILE);
+
+print "\nNow run \'make\' to update your graphics files.\n\n";
+print "If you are changing from PdfLaTeX (-p) to LaTeX (-l), or vice versa, \n";
+print "run \'make clean\' then \'make\'.\n\n";
+
+sub parse_command_line{ 
+    while ($ARGV[0] =~ /^-/) {
+	$_ = shift @ARGV;               # in a subroutine 
+	if (/^-m$/) { 
+	    $mag_factor = shift @ARGV; 
+	    if ( ! ($mag_factor > 0.0)  ) { 
+		print "\nThe next thing after the -m option is supposed to be a number\n";       
+		die("Bad arg for -m (magnification factor): $mag_factor\n\n");
+	    } 
+	} 
+	elsif (/^-p$/) { 
+	    $pdflatex = 1; 
+	} 
+	elsif (/^-l$/) { 
+	    $pdflatex = 0; 
+	} 
+	elsif (/^-d$/) { 
+	    $figure_directory = shift @ARGV;
+	    if (! (-d "../".$figure_directory)) {
+		print "\nArgument after -d must be the name of the directory\n";
+		print "containing the figures, which you should currently be in!\n\n";
+		die;
+	    }  
+	    if ($figure_directory eq "") {
+		print "\nPlease specify a path to the figures (relative to the\n";
+		print " LaTeX source files). \n\n";
+		die;
+	    }
+	} 
+	elsif (/^-h$/ || /^--help$/) { 
+	    &usage && die; 
+	} 
+	elsif (/^--version$/) {
+	    print "\nThis is Fig4latex, version $version.\n\n";
+	    die;
+	}
+	else { 
+	    &usage && die; 
+	} 
+    }
+} 
+
+sub usage{ 
+  print <<"MULTILINE";
+
+Usage: fig4latex [-d dir] [-m NUM] [-p] [-l] [-h] 
+
+ -d DIR Directory containing the figures (a path relative to
+        the directory where your LaTeX source files are).
+ -m NUM Magnification factor.
+ -p Pdflatex -- create makefile for use with pdflatex -- the images
+    get converted to pdf format. 
+ -l Latex -- create makefile for use with (regular) latex -- the images
+    are exported as eps format. (this is the default)
+ -h Help -- print this message and quit.
+
+This program creates a Makefile.  Running 'make' will then search the
+current director for .fig files and use fig2dev (pstex and pstex_t) to 
+create .tex files which are \input into your latex file to include the 
+graphic.  Any text in the figure with the 'special' flag set is processed
+by LaTeX.
+MULTILINE
+} 
+

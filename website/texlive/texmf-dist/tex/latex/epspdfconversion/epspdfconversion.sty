@@ -1,0 +1,375 @@
+%%
+%% This is file `epspdfconversion.sty',
+%%
+%%
+%% It is based on epstopdf.sty by Heiko Oberdiek and is a tool to use Siep
+%% Kroonenberg's Epspdf-tools  (http://tex.aanhet.net/epspdf/)
+%% "on the fly" in LaTeX
+%%
+%% Please send suggestions to d.becker@jpberlin.de
+%%
+%%
+%% version history:
+%% 0.61 * new options pdftopdf and pstopdf. Uses epspdf to do pdf-to-pdf and ps-to-pdf conversions. Allows grayscaling, calculation of 
+%%        bounding boxes etc for pdf's that already exist an for .ps-files. Disabled by default.
+%%      * bugfix for the outdir-option (converted files in subdirectories are again saved in those subdirectories)
+%%        (Thanks to Stefan Pofahl for the feedback.)
+%%      * small improvement of the documentation (on the windows epspdf.bat file, on epstopdf's option 'outdir')
+%%      * now uses epstopdf's \epstopdfDeclareGraphicsRule
+%% 0.6  * pdfversion now uses epspdf's --pdfversion. --version in epspdf is to print the 
+%%        version number of epspdf (currently, epspdf is at 0.5)
+%%      * new author email
+%% 0.5  this update makes use of changes in the epstopdf-package v2.2
+%%      * new options 
+%%        update,verbose,prefersuffix,suffix,outdir
+%%        (they are really epstopdf options, but can be set 
+%%        as options for this package)
+%%      * default is that converted files have a suffix
+%%      * info in logfile about the setup that is used for epstopdf
+%%      * new options hires, no-hires
+%% 0.4: the epstopdf-package is now loaded with options [update,prepend] 
+%%      (works only when epstopdf version 1.5 is used) An update of epstopd.sty
+%%      (part of the oberdiek-bundle) is recommended. Added options nogrey,nogray
+%% 0.3: Heiko Oberdiek substantially improved the code. 
+%%      The kvoptions-package is now used for the implemention of options. 
+%%      See the documentation for effects and additional features. 
+%% 0.2: the package is now simply based on epstopdf. This package essentially
+%%      defines \@namedef{Gin@rule@.eps}#1{{pdf}{.pdf}{`\conversioncommand #1}}
+%%      differently than epstopdf. The code has been cleaned up. Improvements of
+%%      documentation and additional warning about pdfminorversion....
+%% 0.1: first try
+%%
+
+
+
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{epspdfconversion}%
+  [2010/06/01 v0.61 Conversion eps->pdf with epspdf-tools on the fly]
+
+
+%% this loads the graphics, epstopdf and the kvoptions packages. 
+\RequirePackage{graphics}
+\RequirePackage{epstopdf-base}[2009/07/16]% version 2.2 is necessary
+\RequirePackage{kvoptions}[2006/08/22]% because of \DeclareBoolOption
+
+
+\SetupKeyvalOptions{
+  family=EPC,
+  prefix=EPC@
+}
+
+
+%% this is the basic command necessary for the conversion with epspdf 
+\DeclareStringOption[epspdf]{cmd}
+
+% Gray
+% \EPC@gray stores the whole option
+\DeclareVoidOption{gray}{%this is for the \usepackage[gray]{...
+  \def\EPC@optgray{--gray }%this is the effect in the command line
+}
+\DeclareVoidOption{GRAY}{%
+  \def\EPC@optgray{--GRAY }%
+}
+\DeclareVoidOption{grey}{%
+  \def\EPC@optgray{--grey }%
+}
+\DeclareVoidOption{GREY}{%
+  \def\EPC@optgray{--GREY }%
+}
+\DeclareVoidOption{nogrey}{%
+  \def\EPC@optgray{ }%
+}
+\DeclareVoidOption{nogray}{%
+  \def\EPC@optgray{ }%
+}
+
+
+
+% Target
+% \EPC@target stores the target only
+% target         ==> --target=default
+% target=printer ==> --target=printer
+% screen         ==> --target=screen
+\DeclareStringOption{target}[default]
+\DeclareVoidOption{default}{%
+  \def\EPC@target{default}%
+}
+\DeclareVoidOption{printer}{%
+  \def\EPC@target{printer}%
+}
+\DeclareVoidOption{prepress}{%
+  \def\EPC@target{prepress}%
+}
+\DeclareVoidOption{screen}{%
+  \def\EPC@target{screen}%
+}
+\DeclareVoidOption{ebook}{%
+  \def\EPC@target{ebook}%
+}
+
+
+
+         
+% Version
+% \EPC@pdfversion stores the version only
+% pdfversion=1.2 ==> --pdfversion=1.2
+% the warning with pdfminorversion does not work?
+
+\define@key{EPC}{pdfversion}[default]{%
+  \@ifundefined{EPC@pdfversion@#1}{% 
+    \PackageError{epspdfconversion}{%
+      Ignoring unknown value for `pdfversion'. Known values are: 1.2,1.3, 1.4, default%
+    }\@ehc
+  }{%
+    \def\EPC@pdfversion{#1}%
+    \begingroup
+      \let\MinorVersion\relax
+      \@ifundefined{pdfminorversion}{%
+        \@ifundefined{pdfoptionpdfminorversion}{}{%
+          \def\MinorVersion{\pdfoptionpdfminorversion}%
+        }%
+      }{%
+        \def\MinorVersion{\pdfminorversion}%
+      }%
+      \ifx\MinorVersion\relax
+      \else
+        \ifnum\@nameuse{EPC@pdfversion@#1}>\MinorVersion
+          \PackageWarning{epspdfconversion}{%
+            You have chosen pdfversion=#1,\MessageBreak  
+            but you generate PDF-1.\number\MinorVersion.%
+            \MessageBreak
+            This can be changed by\MessageBreak
+            \expandafter\string\MinorVersion=%
+            \@nameuse{EPC@pdfversion@#1}%
+            \MessageBreak
+            (at the very beginning of your .tex file).\MessageBreak Or try `pdfversion=1.\number\MinorVersion'%
+          }%
+        \fi
+      \fi
+    \endgroup
+  }%
+}
+
+\@namedef{EPC@pdfversion@1.2}{2}
+\@namedef{EPC@pdfversion@1.3}{3}
+\@namedef{EPC@pdfversion@1.4}{4}
+\@namedef{EPC@pdfversion@default}{0}% disable version check
+
+% bbox       ==> --bbox
+% bbox=true  ==> --bbox
+% bbox=false ==> option disabled
+\DeclareBoolOption{bbox}
+
+%support for pdftopdf-conversion
+\DeclareBoolOption{pdftopdf}
+
+%support for pstopdf-conversion
+\DeclareBoolOption{pstopdf}
+
+\DeclareVoidOption{pdftops}{%
+  \def\EPC@optpdftops{-U }%
+}
+\DeclareVoidOption{nopdftops}{%
+  \def\EPC@optpdftops{-I }%
+}
+
+\DeclareVoidOption{hires}{%
+  \def\EPC@opthires{--hires }%
+}
+\DeclareVoidOption{no-hires}{%
+  \def\EPC@opthires{--no-hires }%
+}
+
+\DeclareStringOption{custom}
+\DeclareStringOption{psoptions}
+\DeclareStringOption{pagenumber}
+
+\DeclareVoidOption{simple}{%
+  % disable other options
+  \let\EPC@optgray\@empty
+  \let\EPC@optpdftops\@empty
+  \let\EPC@opthires\@empty
+  \let\EPC@target\@empty
+  \let\EPC@pdfversion\@empty
+  \let\EPC@custom\@empty
+  \let\EPC@psoptions\@empty
+  \let\EPC@pagenumber\@empty
+  \EPC@bboxfalse
+}
+
+% default setting: all options cleared
+\EPC@simple
+
+% Options help works immediately, if shell escape feature is enabled.
+\DeclareVoidOption{help}{%
+  \immediate\write18{\EPC@cmd\space--help}%
+}
+
+\def\EPC@addopt#1{%
+  \expandafter\ifx\csname EPC@#1\endcsname\@empty
+  \else
+    --#1=\@nameuse{EPC@#1} %
+  \fi
+}
+
+%% this is the setup of the command line....
+\newcommand*{\epspdfconversioncmdline}[1]{%
+  \EPC@cmd\space
+  \EPC@optpdftops
+  \EPC@opthires
+  \EPC@addopt{target}%
+  \ifx\EPC@pdfversion\@empty
+  \else
+    --pdfversion=\EPC@pdfversion\space
+  \fi
+  \EPC@addopt{custom}%
+  \EPC@addopt{psoptions}%
+  \EPC@addopt{pagenumber}%
+  \ifEPC@bbox
+    --bbox %
+  \else
+  \fi
+  \EPC@optgray
+  #1%
+}
+
+%% message in the log-file:
+\def\EPC@printlog{\PackageInfo{epspdfconversion}{\MessageBreak%
+\epspdfconversioncmdline{<file>} is used to convert eps->pdf \MessageBreak(not epstopdf (script))\MessageBreak
+  }%
+}
+
+
+%% this allows to change the options on the fly
+% Use example: \epspdfconversionsetup{target=prepress,bbox}
+\newcommand*{\epspdfconversionsetup}[1]{%
+  \setkeys{EPC}{#1}%
+  \EPC@printlog
+}
+%%%%%  epstopdf-options .....
+
+% update, default is true, can be set as update=false
+\DeclareBoolOption[true]{update}
+% verbose, default is true, can be set as verbose=false
+\DeclareBoolOption[true]{verbose}
+% if there is original.pdf and original-suffix.pdf, prefer original-suffix.pdf
+% (the one that has been generated by epspdf), can be set as prefersuffix=false
+\DeclareBoolOption[true]{prefersuffix}
+% suffix. Avoids accidental overwriting of files. 
+% usage: suffix={bla}
+\DeclareStringOption[-epspdf-to]{suffix}
+%  specifies an outdir, default is current directory ...
+\DeclareStringOption{outdir}
+
+\DeclareBoolOption[false]{prepend}
+
+
+
+
+% Important: !!!
+\ProcessKeyvalOptions*
+
+\typeout{%
+^^Jepspdfconversion.sty is using epstopdf.sty with the following setup:}
+
+% use them to set epstopdf up
+% update
+\ifEPC@update
+\epstopdfsetup{update=true}%
+\typeout{\space\space\space\space update=true,}%
+\else
+\epstopdfsetup{update=false}%
+\typeout{\space\space\space\space update=false,}%
+\fi
+% verbose
+\ifEPC@verbose
+\epstopdfsetup{verbose=true}%
+\typeout{\space\space\space\space verbose=true,}%
+\else
+\epstopdfsetup{verbose=false}%
+\typeout{\space\space\space\space verbose=false,}%
+\fi
+% prefersuffix
+\ifEPC@prefersuffix
+\epstopdfsetup{prefersuffix=true}%
+\typeout{\space\space\space\space prefersuffix=true,}%
+\else
+\epstopdfsetup{prefersuffix=false}%
+\typeout{\space\space\space\space prefersuffix=false,}%
+\fi
+% suffix
+\epstopdfsetup{suffix=\EPC@suffix}%
+\typeout{\space\space\space\space suffix=\EPC@suffix,}%
+
+% outdir
+\let\CheckOutdir\EPC@outdir
+    \ifx\CheckOutdir\@empty
+      \typeout{\space\space\space\space option outdir not set. Default: same directory as the .eps-source-file}%
+    \else
+     \epstopdfsetup{outdir={\EPC@outdir}}%
+     \typeout{\space\space\space\space outdir=\EPC@outdir}%
+    \fi
+
+% prepend
+\ifEPC@prepend
+\epstopdfsetup{prepend}%
+\typeout{\space\space\space\space prepend,}%
+\else
+\epstopdfsetup{append}%
+\typeout{\space\space\space\space append,}%
+\fi
+% enable
+\epstopdfsetup{enable}%
+\typeout{\space\space\space\space enable}%
+
+
+% another message...
+\typeout{epspdf is used with the following command:}
+\typeout{\space\space\space\space \epspdfconversioncmdline{<file>} }
+
+
+
+
+\EPC@printlog
+
+
+%%% the main functionality of this package: 
+%%% this changes the definition provided by epstopdf:
+
+% previously, I used:
+%\@namedef{Gin@rule@.eps}#1{{pdf}{.pdf}{`\epspdfconversioncmdline{#1} \OutputFile}}
+
+% since version 0.61: use the mechanism provided by epstopdf to define the eps-pdf conversion rule:
+
+\epstopdfDeclareGraphicsRule{.eps}{pdf}{.pdf}{% 
+\epspdfconversioncmdline #1 \OutputFile
+}
+
+% pdftopdf
+\ifEPC@pdftopdf
+\epstopdfDeclareGraphicsRule{.pdf}{pdf}{.pdf}{% 
+\epspdfconversioncmdline #1 \OutputFile
+}
+\typeout{support for pdf-to-pdf is ENABLED}%
+\typeout{}
+\else
+\typeout{support for pdf-to-pdf is DISABLED}%
+\typeout{}
+\fi
+
+% pstopdf
+\ifEPC@pstopdf
+\epstopdfDeclareGraphicsRule{.ps}{pdf}{.pdf}{% 
+\epspdfconversioncmdline #1 \OutputFile
+}
+\typeout{support for ps-to-pdf is ENABLED}%
+\typeout{}
+\else
+\typeout{support for ps-to-pdf is DISABLED}%
+\typeout{}
+\fi
+
+
+
+\endinput

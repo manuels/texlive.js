@@ -1,0 +1,275 @@
+% +--------------------------------------------------+
+% | Typeset soulpos.tex to get the documentation.   |
+% +--------------------------------------------------+
+%
+%% Copyright (C) 2012 Javier Bezos
+%% All Rights Reserved
+%% http://www.tex-tipografia.com
+%%
+%% This work may be distributed and/or modified under the conditions
+%% of the LaTeX Project Public License, either version 1.3 of this
+%% license or (at your option) any later version.  The latest version
+%% of this license is in
+%%     http://www.latex-project.org/lppl.txt
+%% and version 1.3 or later is part of all distributions of LaTeX
+%% version 2003/12/01 or later.
+%%
+%% This work has the LPPL maintenance status "maintained".
+%%
+%% This Current Maintainer of this work is Javier Bezos.
+%%
+%% This work consists of the files soulpos.tex and soulpos.sty.
+
+\ProvidesPackage{soulpos}[2012/02/25 v1.0 Fancy underlining]
+
+\newcount\ulp@subcnt
+\newcount\ulp@cnt
+
+\newwrite\ulp@out
+\newread\ulp@in
+
+\AtBeginDocument{\ulp@begindoc}
+
+\def\ulp@begindoc{%
+  \@ifundefined{SOUL@}%
+    {\PackageInfo{soulpos}{Loading soulutf8}%
+     \RequirePackage{soulutf8}}{}%
+  \openout\ulp@out=\jobname.upa\relax
+  \openin\ulp@in=\jobname.upb\relax}
+
+\let\ulp@afterend\relax
+
+\AtEndDocument{%
+  \closeout\ulp@out
+  \closein\ulp@in
+  \write\@auxout{\string\ulp@afterend}%
+  \def\ulp@afterend{%
+    \ulp@cnt\z@
+    \message{* soulpos - computing points - it may take a few seconds *}%
+    \immediate\openout\ulp@out=\jobname.upb\relax
+    \begingroup
+      \makeatletter
+      \InputIfFileExists{\jobname.upa}{}{}%
+    \endgroup
+    \immediate\closeout\ulp@out}}
+
+% Underlining options
+% --------------------
+
+\RequirePackage{keyval}
+
+\define@key{soulpos}{overdraw}[true]{\@nameuse{ulp@pos@#1}}
+\def\ulp@pos@false{\def\ulp@pos{\z@}}
+\def\ulp@pos@true{\def\ulp@pos{\@ne}}
+
+\newif\ifulp@includehyphens
+\ulp@includehyphenstrue
+
+\define@key{soulpos}{hyphens}[include]{\@nameuse{ulp@hyp@#1}}
+\def\ulp@hyp@include{\ulp@includehyphenstrue}
+\def\ulp@hyp@exclude{\ulp@includehyphensfalse}
+
+\define@key{soulpos}{xoffset}[0pt]{\def\ulp@skern{#1}\def\ulp@ekern{#1}}
+\define@key{soulpos}{xoffset-start}[0pt]{\def\ulp@skern{#1}}
+\define@key{soulpos}{xoffset-end}[0pt]{\def\ulp@ekern{#1}}
+
+\define@key{soulpos}{gap}[0pt]{\def\ulp@sgap{#1}\def\ulp@egap{#1}}
+\define@key{soulpos}{gap-start}[0pt]{\def\ulp@sgap{#1}}
+\define@key{soulpos}{gap-end}[0pt]{\def\ulp@egap{#1}}
+
+% Computing start/end points
+% ---------------------------
+
+\newcommand\ulpostolerance{0}%
+
+\let\ulp@Gb\relax
+\def\ulp@Pb#1{\expandafter\gdef\csname ulp@@#1\endcsname}
+
+\def\ulp@writeb{%
+  \count@\ulp@xlast
+  \advance\count@-\ulp@xfirst
+  \immediate\write\ulp@out{%
+    \string\ulp@Pb{\ulp@ulsub}%
+    {{\the\count@}\ulp@startprev\ulp@endprev}\@percentchar}}
+
+\def\ulp@Ga#1#2{%
+  \advance\ulp@cnt\@ne
+  \def\ulp@pos{#1}%
+  \immediate\write\ulp@out{\string\ulp@Gb\string{\@percentchar\iffalse}\fi}%
+  #2%
+  \ulp@writeb
+  \immediate\write\ulp@out{\iffalse{\fi\string}\@percentchar}}
+
+\def\ulp@Pa#1#2#3#4{%
+  \@tempswafalse
+  \ifnum#2=\@ne
+    \@tempswatrue
+  \else
+    \count@\ulp@ylast\relax
+    \advance\count@-#4\relax
+    \ifnum\ulpostolerance<\count@
+      \ulp@writeb
+      \@tempswatrue
+    \else\ifnum-\ulpostolerance>\count@
+      \ulp@writeb
+      \@tempswatrue
+    \fi\fi
+  \fi
+  \if@tempswa
+    \def\ulp@xfirst{#3}%
+    \def\ulp@startprev{#1}%
+    \ifnum\ulp@pos=\z@
+      \edef\ulp@ulsub{#2}%
+    \fi
+  \fi
+  \def\ulp@endprev{#1}%
+  \def\ulp@xlast{#3}%
+  \def\ulp@ylast{#4}%
+  \ifnum\ulp@pos=\@ne
+    \edef\ulp@ulsub{#2}%
+  \fi}
+
+% Writing points to .upa
+% ----------------------
+
+\def\ulp@stepput{\ulp@step\ulp@put}
+\def\ulp@step{\global\advance\ulp@subcnt\@ne}
+
+% 0: text, 1: space, 2: discretionary, 3 exhyph
+
+\newdimen\ulwidth
+
+\def\ulp@fetch#1#2#3{%
+   \ulwidth#1sp\relax
+   \def\ulstarttype{#2}%
+   \def\ulendtype{#3}}
+
+\def\ulp@put#1{%
+  \hb@xt@\z@\bgroup
+    \ifcase\ulp@pos\else\hss\fi % over
+    \@ifundefined{ulp@@\the\ulp@subcnt}{}%
+      {\expandafter\expandafter\expandafter
+         \ulp@fetch\csname ulp@@\the\ulp@subcnt\endcsname
+       \ulp@draw
+       \global\expandafter\let\csname ulp@@\the\ulp@subcnt\endcsname\@undefined}%
+    \ifcase\ulp@pos\hss\fi % over
+    \pdfsavepos
+    \protected@write\ulp@out{}%
+      {\string\ulp@Pa\number#1{\the\ulp@subcnt}%
+      {\noexpand\the\pdflastxpos}{\noexpand\the\pdflastypos}%
+       \@percentchar}%
+  \egroup}
+
+% The command for defining underlines
+% ------------------------------------
+
+\def\ulp@preamble{%
+      \ifeof\ulp@in
+      \else
+        \begingroup
+          \makeatletter
+          \catcode`\^^M=9  % avoids extra \par's
+          \read\ulp@in to\@tempa
+          \@tempa
+        \endgroup
+      \fi
+      \global\advance\ulp@cnt\@ne
+      \ulp@subcnt\z@
+      \ifdim\ulp@sgap>0pt  % sacar también desde aquí
+        \ifdim\lastskip>5sp
+          \unskip
+          \hskip\ulp@sgap
+        \fi
+      \fi
+      \protected@write\ulp@out{}{%
+         \string\ulp@Ga\ulp@pos
+         \string{\@percentchar\iffalse}\fi}%
+      \SOUL@setkern{-\ulp@skern}%
+      \ulp@stepput\z@
+      \SOUL@setkern\ulp@skern}
+
+\def\ulp@postamble{%
+     \SOUL@setkern\ulp@ekern
+     \ulp@stepput\z@
+     \SOUL@setkern{-\ulp@ekern}%
+     \write\ulp@out{\iffalse{\fi\string}\@percentchar}%
+     \ifdim\ulp@egap>0pt
+       \global\skip@\ulp@egap
+       \aftergroup\SOUL@socheck
+     \fi}%
+
+\def\ulp@everyspace#1{%
+     \ulp@stepput\@ne
+     #1\space
+     \ulp@stepput\@ne}%
+
+\def\ulp@everyhyphen{%
+     \ifulp@includehyphens
+       \ulp@step
+     \else
+       \ulp@stepput\tw@
+     \fi
+     \ulp@step
+     \discretionary
+       {\SOUL@setkern\SOUL@hyphkern
+        \SOUL@sethyphenchar
+        \global\advance\ulp@subcnt\m@ne
+        \ifulp@includehyphens
+          \ulp@put\tw@
+        \fi
+        \ulp@step}%
+       {\ulp@put\tw@}%
+       {}}%
+
+\def\ulp@everyexhyphen#1{%
+     \SOUL@setkern\SOUL@hyphkern
+     \ifulp@includehyphens
+       \hbox{#1}%
+       \ulp@stepput\thr@@
+     \else
+       \ulp@stepput\thr@@
+       \hbox{#1}%
+     \fi
+     \ulp@step
+     \discretionary{}%
+       {\ulp@put\thr@@}%
+       {\SOUL@setkern\SOUL@charkern}}%
+
+\newcommand\ulposdef[1]{%
+  \@ifnextchar[{\ulp@def#1}{\ulp@def#1[]}}
+
+\def\ulp@def#1[#2]#3{
+  \DeclareRobustCommand*#1{%
+    \def\SOUL@preamble{%
+      \def\ulp@skern{0pt}%
+      \def\ulp@ekern{0pt}%
+      \def\ulp@sgap{0pt}%
+      \def\ulp@egap{0pt}%
+      \def\ulp@pos{\z@}%
+      \setkeys{soulpos}{#2}%
+      \def\ulp@draw{#3}%
+      \ulp@preamble}%
+    \let\SOUL@postamble\ulp@postamble
+    \let\SOUL@everyspace\ulp@everyspace
+    \let\SOUL@everyhyphen\ulp@everyhyphen
+    \let\SOUL@everyexhyphen\ulp@everyexhyphen
+    \let\SOUL@everysyllable\@empty
+    \def\SOUL@everytoken{\the\SOUL@token}%
+  \SOUL@}}
+
+\newcommand\ifulstarttype[1]{%
+  \ifnum\ulstarttype=#1\relax
+    \expandafter\@firstoftwo
+  \else
+    \expandafter\@secondoftwo
+  \fi}
+
+\newcommand\ifulendtype[1]{%
+  \ifnum\ulendtype=#1\relax
+    \expandafter\@firstoftwo
+  \else
+    \expandafter\@secondoftwo
+  \fi}
+
+
+

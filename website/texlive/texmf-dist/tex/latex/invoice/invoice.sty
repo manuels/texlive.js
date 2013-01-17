@@ -1,0 +1,1042 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%        Datei: invoice.sty
+%        Autor: Oliver Corff
+%      Contact: oliver.corff@email.de
+%        Datum: October 01, 2011
+%      Version: 0.9
+%    Copyright: Ulaanbaatar, Beijing, Berlin, Zagreb, Shenyang, Shanghai
+%  Description: This collection of macros provides
+%               tools for generating complex invoices
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Corrections, suggestions and contributions by:
+%%%%%%
+% 
+% Some of the following contributions came years ago, others quite
+% recently:
+%
+% Spanish: Juanjo <jj.hfmc@gmail.com> and Lee Rudolph <lrudolph@panix.com>
+%
+% Corrections of Italian orthography: Paolo Cusinu <paolo.cusinu@gmail.com>
+% 
+% Estonian and a patch for using fp: Priit Laes <plaes@plaes.org>
+%
+% Another patch for fp: AFresh1, March 2011 % e-mail: andrew@afresh1.com
+%
+% One variant of Spanish: Matias Banchoff <matiasb@cespi.unlp.edu.ar>
+%
+%%%%%%
+% Jacopo, May 2003
+% e-mail: jacopo@
+%
+%   Contributed labels in Italian.
+%
+%%%%%%
+% O. Corff, July 2003 
+% 
+%   fixed one nasty spacing bug, simplified internal table 
+%   construction (table now has five instead of six columns,
+%   the second of which was never used).
+%
+%%%%%%
+% Johann Spies, January 21, 2002
+% e-mail: jspies@sun.ac.za
+%
+%   Hinted that \Subtotal Project should show the project name
+%   rather than just `Project'.
+%
+%   Contributed labels in Afrikaans.
+%
+%%%%%%
+% Robin Fairbairns, December 6, 2001
+% 
+%   Hinted that the dollar sign can also be printed by saying
+%   \string$.
+%
+%%%%%%
+% Vincent Tougait, France, November 27, 2001
+%
+%   Pointed out that fractions of VAT percents were not allowed.
+%   Bugfix on December 06, 2001
+%
+%%%%%%
+% Fred Donck, The Hague, The Netherlands, October, 2001
+% e-mail: fd0@donck.com
+%
+% Dutch labels
+%
+%%%%%%
+% Ian Wormsbecker, October 31, 2001
+%
+%   Skips the VAT lines if VAT=0
+%   Noticed that the terminal message will not accept a Dollar sign.
+%   The only workaround is to say \char`$ in \begin{invoice}{}
+%
+%%%%%%
+% Fred Donck, The Hague, The Netherlands, Sept 18, 2001
+% e-mail: fd0@donck.com
+%
+% fixed some minor issues:
+%   real arithmetic will use integer intermediate values, so
+%   some calculations failed with the \Fee{title}{rate}{amount}
+%   where \rate is not an integer
+%
+%   another fix is that in my opinion the VAT line should be 
+%   printed also even though only one project is specified
+%
+%   third fix is that the subtotal-line should not be printed 
+%   on a project with only one \Fee line
+%
+%%%%%%
+% Jacco Kok (fixed some labels),
+%
+%%%%%%
+% Thilo Barth (discussed alternative names and command clashes
+%	with KOMA Script class scrlettr.cls),
+%
+%%%%%%
+% Robert Inder (discussed general issues)
+%
+% were gladly and gratefully received and accepted.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% -------------------     identification     -------------------
+%
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{invoice}[2011/10/01]
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% -------------------    language options    -------------------
+%
+%
+\newcount\invoice@language
+\let\invoice@language=\language
+%
+\ifx\l@afrikaans\undefined	\newlanguage\l@afrikaans \fi
+\ifx\l@dutch\undefined		\newlanguage\l@dutch \fi
+\ifx\l@english\undefined	\newlanguage\l@english \fi
+\ifx\l@estonian\undefined	\newlanguage\l@estonian \fi
+\ifx\l@finnish\undefined	\newlanguage\l@finnish \fi
+\ifx\l@french\undefined		\newlanguage\l@french \fi
+\ifx\l@german\undefined		\newlanguage\l@german \fi
+\ifx\l@italian\undefined	\newlanguage\l@italian \fi
+\ifx\l@spanish\undefined	\newlanguage\l@spanish \fi
+\ifx\l@swedish\undefined	\newlanguage\l@swedish \fi
+\ifx\l@spanish\undefined	\newlanguage\l@spanish \fi
+\ifx\l@spanishe\undefined	\newlanguage\l@spanishe \fi
+\ifx\l@spanishv\undefined	\newlanguage\l@spanishv \fi
+%
+\DeclareOption{afrikaans}{\invoice@language=\number\l@afrikaans}
+\DeclareOption{dutch}{\invoice@language=\number\l@dutch}
+\DeclareOption{english}{\invoice@language=\number\l@english}
+\DeclareOption{estonian}{\invoice@language=\number\l@estonian}
+\DeclareOption{finnish}{\invoice@language=\number\l@finnish}
+\DeclareOption{french}{\invoice@language=\number\l@french}
+\DeclareOption{german}{\invoice@language=\number\l@german}
+\DeclareOption{italian}{\invoice@language=\number\l@italian}
+\DeclareOption{spanish}{\invoice@language=\number\l@spanish}
+\DeclareOption{spanishe}{\invoice@language=\number\l@spanishe}
+\DeclareOption{spanishv}{\invoice@language=\number\l@spanishv}
+\DeclareOption{swedish}{\invoice@language=\number\l@swedish}
+\DeclareOption{position}{}
+%
+\ProcessOptions
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% -------------------      initial code      -------------------
+%
+\RequirePackage{ifthen}
+\RequirePackage{longtable}
+\RequirePackage{calc}
+\input{fp}
+\input{invoice.def}
+%
+\newcommand{\InvoiceVersion}{0.9}%
+\newcounter{Fee}		%
+\newcounter{VAT}		%
+%\newcounter{VAT@rate}		%
+\newcounter{Expenses}		%
+\newcounter{Discount}		% Discount item
+\newcounter{Total}		%
+\newcounter{Project}		%
+%
+\newcounter{Fee@ctr}		% Number of fees per project
+				% no subtotal will be printed in case of
+				% value < 2
+%
+\newcounter{Expense@ctr}	% Number of expense items per project
+				% no subtotal will be printed in case of
+				% value < 2
+%
+\newcounter{One@Fee}		% Individual Fee
+\newcounter{One@VAT}		% Individual VAT
+\newcounter{One@Expense}	% Individual Expense
+%
+\newcounter{ST@Fee}		% Subtotal Fee
+\newcounter{ST@VAT}		% Subtotal VAT
+\newcounter{ST@Expenses}	% Subtotal Expenses
+\newcounter{ST@Project}		% Subtotal Project
+%
+\gdef\Flag{0}%			% State 0: Invoice not started yet
+				% State 1: Start invoice
+				% State 2: Start project, print title
+				% State 3: Fee Item
+				% State 4: Print Subtotal Fee
+				% State 5: Expense Item
+				% State 6: Print Subtotal Expenses
+				% State 7: Print Subtotal Project
+				% State 8: Print Total, Close invoice
+%
+\gdef\Project{}%		% Empty Project Name
+\def\Null{0}%
+\newif\ifVATnonzero
+% \def\BC{Euro}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%\newcommand{\my@message}[1]{\message{^^J#1^^J^^J}}
+\newcommand{\error@message}[1]{\errmessage{^^J\Error: #1^^J^^J}}
+\newcommand{\warning@message}[1]{\message{^^J\Warning: #1^^J^^J}}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\ifx\invoice\undefined			% False if KOMA Script scrlettr.cls
+	\def\my@invoice{invoice}	% loaded. In this case one may say
+\else					% "invoice". If true, the environ-
+	\def\my@invoice{invoiceenv}	% ment is renamed to "invoiceenv"
+	\let\invoiceno\invoice		% and the scrlettr macro is renamed
+	\def\invoice#1{%		% to "invoiceno". Thank you, Thilo,
+		\error@message{\KOMA}}	% for this hint!
+\fi					%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newenvironment{\my@invoice}[2]{%
+	\setcounter{Fee@ctr}{0}%		% reset counter
+	\setcounter{Expense@ctr}{0}%		% reset counter
+	\def\Null{0}%
+	\setcounter{Project}{0}%
+	\ST@Reset\Total@Reset%
+	\def\BC{#1}%
+	\def\VAT@rate{#2}%
+	\ifx\VAT@rate\Null\VATnonzerofalse\else\VATnonzerotrue\fi%
+	\ifVATnonzero
+		\message{^^J^^JVAT is not zero!^^J^^J}%
+	\else
+		\message{^^J^^JVAT is zero!^^J^^J}%
+	\fi%
+	% The VAT is: \the\VAT@rate % Debugging Diagnostics only
+	\parindent=0cm%
+	\ifcase\Flag % 0: Invoice not started yet
+		%
+		\gdef\Flag{1}%
+		%\begin{center}% Removed 20050621 by suggestion from ...
+		\begin{longtable}{p{5cm}lrrr}%
+		%
+	\else \error@message{\NoInvoiceNesting}%
+	\fi}%
+% At the end of environment: 
+% Yields state 8->0, Close and complete invoice, finish tables, etc.
+{% 
+	\ifcase\Flag % 0: Invoice not started yet
+		%
+		\error@message{\MissingOpening}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 1: Start invoice
+		%
+		\error@message{\MissingProject}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 2: Start project, print title
+		%
+		\error@message{\MissingInputData}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 3: Print remuneration item
+		%
+		\ifnum\theProject>0 \ST@Fee\ST@Project\fi%
+		\Tot@l%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 4: Print subtotal remuneration
+		%
+		\ifnum\theProject>1 \ST@Project\fi%
+		\Tot@l%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 5: Expense item
+		%
+		\ifnum\theProject>1 \ST@Expenses\ST@Project\fi%
+		\Tot@l%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 6: Print subtotal expenses
+		%
+		\ifnum\theProject>1 \ST@Project\fi%
+		\Tot@l%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 7: Print subtotal project
+		%
+		\Tot@l%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 8: Print total, close invoice
+		%
+		\warning@message{\InvoiceCompleted}%
+		%
+	\else \error@message{\InternalError}%
+	\fi%
+	\gdef\Flag{0}%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\ProjectTitle}[1]{% Yields state 2: Start Project
+	%\gdef\NewProject{#1}
+	%
+	\ifcase\Flag% 0: Invoice not started yet
+	%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or 	% 1: Start invoice
+		%
+		\Project@Title{#1}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 2: Start project, print title
+		%
+		\error@message{\NoProjectNesting}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 3: Print remuneration item
+		%
+		\ST@Fee%
+		\ST@Project%
+		\Project@Title{#1}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 4: Print subtotal remuneration
+		%
+		\ST@Project%
+		\Project@Title{#1}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 5: Expense item
+		%
+		\ST@Expenses%
+		\ST@Project%
+		\Project@Title{#1}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 6: Print subtotal expenses
+		%
+		\ST@Project%
+		\Project@Title{#1}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 7: Print subtotal project
+		%
+		\Project@Title{#1}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 8: Print total, close invoice
+		%
+		\error@message{\InvoiceCompletedNoProject}%
+		%
+	\else \error@message{\InternalError}%
+	\fi%
+	\setcounter{Fee@ctr}{0}%		% reset counter
+	\setcounter{Expense@ctr}{0}%		% reset counter
+}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\Fee}[3]{% Yields state 3, Print Fee Item
+	%
+	% #1 Contents
+	% #2 Fee per Unit
+	% #3 Unit Count
+	%
+	\ifcase\Flag % 0: Invoice not started yet
+		\error@message{\MissingOpening}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 1: Start invoice
+		%
+		\error@message{\MissingProject}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 2: Start project, print title
+		%
+		\Fee@Title%
+		\Fee@Line{#1}{#2}{#3}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 3: Print remuneration item
+		%
+		\Fee@Line{#1}{#2}{#3}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 4: Print subtotal remuneration
+		%
+		\warning@message{\FeeSTExists}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 5: Expense item
+		%
+		\error@message{\FeeBeforeExpense}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 6: Print subtotal expenses
+		%
+		\error@message{\FeeBeforeExpense}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 7: Print subtotal project
+		%
+		\error@message{\ProjectCompletedNoFee}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 8: Print total, close invoice
+		%
+		\error@message{\InvoiceCompletedNoFee}%
+		%
+		%
+	\else \error@message{\InternalError}%
+	\fi%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\STFee}{% Yields state 4, print subtotal remuneration
+	%
+	\ifcase\Flag % 0: Invoice not started yet
+		%
+		\error@message{\MissingOpening}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 1: Start invoice
+		%
+		\error@message{\MissingProject}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 2: Start project, print title
+		%
+		\error@message{\MissingFee}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 3: Print remuneration item
+		%
+		\Print@ST@Fees%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 4: Print subtotal remuneration
+		%
+		\warning@message{\FeeSTExists}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 5: Expense item
+		%
+		\error@message{\FeeBeforeExpense}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 6: Print subtotal expenses
+		%
+		\error@message{\FeeBeforeExpense}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 7: Print subtotal project
+		%
+		\error@message{\ProjectCompletedNoFee}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 8: Print total, close invoice
+		%
+		\error@message{\ProjectCompletedNoFee}%
+		%
+	\else \error@message{\InternalError}%
+	\fi%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\EBC}[2]{% Yields state 5: Expenses in BaseCurrency 
+	%
+	% #1 Contents und Datum
+	% #2 Amount in BaseCurrency
+	%
+	\ifcase\Flag % 0: Invoice not started yet
+		%
+		\error@message{\MissingOpening}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 1: Start invoice
+		%
+		\error@message{\MissingProject}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 2: Start project, print title
+		%
+		\Expense@Title%
+		\Expense@BaseCurrency{#1}{#2}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 3: Print remuneration item
+		%
+		\ST@Fee%
+		\Expense@Title%
+		\Expense@BaseCurrency{#1}{#2}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 4: Print subtotal remuneration
+		%
+		\Expense@Title%
+		\Expense@BaseCurrency{#1}{#2}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 5: Expense item
+		%   
+		\Expense@BaseCurrency{#1}{#2}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 6: Print subtotal expenses
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 7: Print subtotal project
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 8: Print total, close invoice
+		%
+		\error@message{\InvoiceCompletedNoExpense}%
+		%
+	\else \error@message{\InternalError}%
+	\fi%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\EBCi}[2]{% Yields state 5: Expenses in BaseCurrency 
+	%				But, unlike base form (no
+	%				'invisible') this version does
+	%				not state the item, it only
+	%				the total amount of expenses. 
+	%
+	% #1 Contents und Datum
+	% #2 Amount in BaseCurrency
+	%
+	\ifcase\Flag % 0: Invoice not started yet
+		%
+		\error@message{\MissingOpening}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 1: Start invoice
+		%
+		\error@message{\MissingProject}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 2: Start project, print title
+		%
+		%\Expense@Title%
+		\Expense@Base@Currency{#1}{#2}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 3: Print remuneration item
+		%
+		\ST@Fee%
+		%\Expense@Title%
+		\Expense@Base@Currency{#1}{#2}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 4: Print subtotal remuneration
+		%
+		%\Expense@Title%
+		\Expense@Base@Currency{#1}{#2}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 5: Expense item
+		%   
+		\Expense@Base@Currency{#1}{#2}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 6: Print subtotal expenses
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 7: Print subtotal project
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 8: Print total, close invoice
+		%
+		\error@message{\InvoiceCompletedNoExpense}%
+		%
+	\else \error@message{\InternalError}%
+	\fi%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\EFC}[5]{% Yields state 5: Expenses in ForeignCurrency
+	%
+	% #1 Contents und Datum
+	% #2 Currency
+	% #3 Amount
+	% #4 Exchange Rate
+	% #5 Amount Zielwaehrung
+	%
+	% Usage:
+	% 1. {Contents}{ForeignCurrency}{ExchangeRate}{}
+	% 2. {Contents}{ForeignCurrency}{}{BaseCurrency}
+	% 3. {Contents}{ForeignCurrency}{ExchangeRate}{BaseCurrency}
+	%
+	\ifcase\Flag % 0: Invoice not started yet
+		%
+		\error@message{\MissingOpening}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 1: Start invoice
+		%
+		\error@message{\MissingProject}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 2: Start project, print title
+		%
+		\Expense@Title%
+		\Expense@ForeignCurrency{#1}{#2}{#3}{#4}{#5}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 3: Print remuneration item
+		%
+		\ST@Fee%
+		\Expense@Title%
+		\Expense@ForeignCurrency{#1}{#2}{#3}{#4}{#5}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 4: Print subtotal remuneration
+		%
+		\Expense@Title%
+		\Expense@ForeignCurrency{#1}{#2}{#3}{#4}{#5}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 5: Expense item
+		%
+		\Expense@ForeignCurrency{#1}{#2}{#3}{#4}{#5}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 6: Print subtotal expenses
+		%
+		\error@message{\ProjectCompletedNoExpense}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 7: Print subtotal project
+		%
+		\error@message{\ProjectCompletedNoExpense}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 8: Print total, close invoice
+		%
+		\error@message{\InvoiceCompletedNoExpense}%
+		%
+	\else \error@message{\InternalError}%
+	\fi%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\EFCi}[5]{% Yields state 5: Expenses in ForeignCurrency
+	%				But, unlike base form (no
+	%				'invisible') this version does
+	%				not state the item, it only
+	%				the total amount of expenses. 
+	%
+	% #1 Contents und Datum
+	% #2 Currency
+	% #3 Amount
+	% #4 Exchange Rate
+	% #5 Amount Zielwaehrung
+	%
+	% Usage:
+	% 1. {Contents}{ForeignCurrency}{ExchangeRate}{}
+	% 2. {Contents}{ForeignCurrency}{}{BaseCurrency}
+	% 3. {Contents}{ForeignCurrency}{ExchangeRate}{BaseCurrency}
+	%
+	\ifcase\Flag % 0: Invoice not started yet
+		%
+		\error@message{\MissingOpening}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 1: Start invoice
+		%
+		\error@message{\MissingProject}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 2: Start project, print title
+		%
+		\Expense@Title%
+		\Expense@Foreign@Currency{#1}{#2}{#3}{#4}{#5}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 3: Print remuneration item
+		%
+		\ST@Fee%
+		% \Expense@Title%
+		\Expense@Foreign@Currency{#1}{#2}{#3}{#4}{#5}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 4: Print subtotal remuneration
+		%
+		% \Expense@Title%
+		\Expense@Foreign@Currency{#1}{#2}{#3}{#4}{#5}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 5: Expense item
+		%
+		\Expense@Foreign@Currency{#1}{#2}{#3}{#4}{#5}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 6: Print subtotal expenses
+		%
+		\error@message{\ProjectCompletedNoExpense}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 7: Print subtotal project
+		%
+		\error@message{\ProjectCompletedNoExpense}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 8: Print total, close invoice
+		%
+		\error@message{\InvoiceCompletedNoExpense}%
+		%
+	\else \error@message{\InternalError}%
+	\fi%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\STExpenses}{% Yields state 6: Ausgabe der ST Expenses
+	%
+	\ifcase\Flag % 0: Invoice not started yet
+		%
+		\error@message{\MissingOpening}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 1: Start invoice
+		%
+		\error@message{\MissingProject}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		%
+	\or	% 2: Start project, print title
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		%
+	\or	% 3: Print remuneration item
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		%
+	\or	% 4: Print subtotal remuneration
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 5: Expense item
+		%
+		\Print@ST@Expenses%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 6: Print subtotal expenses
+		%
+		\warning@message{\ProjectCompletedNoExpense}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 7: Print subtotal project
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 8: Print total, close invoice
+		%
+		\error@message{\InvoiceCompletedNoExpense}%
+		%
+	\else \error@message{\InternalError}%
+	\fi%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\STProject}{% Yields state 7: Ausgabe der ST Project
+	%
+	\ifcase\Flag % 0: Invoice not started yet
+		%
+		\error@message{\MissingOpening}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 1: Start invoice
+		%
+		\error@message{\MissingProject}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 2: Start project, print title
+		%
+		\warning@message{\ProjectEmpty}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 3: Print remuneration item
+		%
+		\ST@Fee%
+		\ST@Project%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 4: Print subtotal remuneration
+		%
+		\ST@Project%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 5: Expense item
+		%
+		\ST@Expenses%
+		\ST@Project%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 6: Print subtotal expenses
+		%
+		\ST@Project%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 7: Print subtotal project
+		%
+		\warning@message{\ProjectSTExists}%
+		%
+	%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+	\or	% 8: Print total, close invoice
+		%
+		\error@message{\InvoiceCompletedNoProjectST}%
+		%
+	\else \error@message{\InternalError}%
+	\fi%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\Discount}[2]{%	Yields no particular state.
+	%			Inserts discount in project total,
+	%			names discount reason
+	%			and amount of discount
+	%
+	\gdef\Discount@Contents{#1}%
+	\setcounter{Discount}{100 * \real{-#2}}%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\Total@Reset}{%
+	\setcounter{Fee}{0}%
+	\setcounter{VAT}{0}%
+	\setcounter{Expenses}{0}%
+	\setcounter{Total}{0}%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\ST@Reset}{%
+	\setcounter{ST@Fee}{0}%
+	\setcounter{ST@VAT}{0}%
+	\setcounter{ST@Expenses}{0}%
+	\setcounter{ST@Project}{0}%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\Print@Value}[1]{%
+	\FPmul\r#1{0.01}%% <- Reduce to BaseCurrency
+	\FPtrunc\r\r{2}%% <- Truncate to two digits
+	\r%		% <- Output data!
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\Message@Value}[1]{%
+	\FPmul\r#1{0.01}%% <- Reduce to BaseCurrency
+	\FPtrunc\r\r{2}%% <- Truncate to two digits
+	\message{\r}%	% <- Output data!
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\Project@Title}[1]{%
+	% Internal command called by \ProjectTitle.
+	%
+	\gdef\Flag{2}%
+	\gdef\Project{#1}%
+	\ST@Reset\addtocounter{Project}{1}%
+	\ifnum\theProject>1 \\\\\else\\\fi%
+	\multicolumn{5}{c}{\textbf{\large#1}}\\%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\Fee@Title}{%
+	\\
+	\noindent\textbf{\Activity}&&\UnitRate&\Count&\Amount\ (\BC)\\
+	\hline%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\Fee@Line}[3]{%
+	%
+	% #1 Contents
+	% #2 Charged Fee per Unit
+	% #3 Count
+	%
+	% Internal command, called by \Fee.
+	%
+	\gdef\Flag{3}%
+	%
+	#1			&	&#2	&#3 &
+%
+%   next is reversed to allow real arithmetic.
+%   intermediate results are stored in integer format,
+%   so calculations are incorrect in case #2 is a real.
+%   fixed by exchanging the 1 and the 100
+%
+		\FPmul\r{100}{#2}% added 2006-01-04
+		\setcounter{One@Fee}{1 *\real{\r} * \real{#3} }%
+%
+		\addtocounter{ST@Fee}{\theOne@Fee}%
+		\addtocounter{Fee}{\theOne@Fee}%
+		\addtocounter{Fee@ctr}{1}%	    increase counter with 1
+		\Print@Value{\theOne@Fee}\\%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\ST@Fee}{%
+	% \gdef\Flag{4}%
+	\ifnum\theST@Fee>0%
+	    \ifthenelse{\theFee@ctr>1} %	    % if more than 1 \Fee line
+		{\Print@ST@Fees%					% print it, else
+		}%
+	    {}%									% do nothing
+		\ifVATnonzero\ST@VAT@Printout\fi%
+	\fi%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\Print@ST@Fees}{%
+	\gdef\Flag{4}%
+	\SubtotalFee &	&	&	&%	print the subtotal of fees
+		\Print@Value{\theST@Fee}\\%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\ST@VAT@Printout}{%
+		\VAT\ (\VAT@rate\%)	 &	&	&	&%
+			\setcounter{ST@VAT}{\theST@Fee * \real{\VAT@rate} / 100}%
+				\Print@Value{\theST@VAT}\\%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\Expense@BaseCurrency}[2]{%
+	#1			& \BC		&	&	&%
+	\gdef\Flag{5}%
+	\FPmul\r{100}{#2}%
+	\setcounter{One@Expense}{1*\real{\r}}%
+	\addtocounter{ST@Expenses}{\theOne@Expense}%
+	\addtocounter{Expenses}{\theOne@Expense}%
+	\addtocounter{Expense@ctr}{1}%advance counter
+				\Print@Value{\theOne@Expense}\\%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\Expense@Base@Currency}[2]{%
+	\gdef\Flag{5}%
+	\FPmul\r{100}{#2}%
+	\setcounter{One@Expense}{1*\real{\r}}%
+	\addtocounter{ST@Expenses}{\theOne@Expense}%
+	\addtocounter{Expenses}{\theOne@Expense}%
+	\addtocounter{Expense@ctr}{1}%advance counter
+		&	&	&	&	\\[-1.2em]% This is an ugly kludge:
+								  %	Inserting an empty line
+								  % which rolls backwards
+								  % makes disappear the spurious
+								  % spaces caused by external
+								  % routines.
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\Expense@ForeignCurrency}[5]{%
+	\gdef\Flag{5}%
+	%
+	% Folgende Angaben sind moeglich:
+	% 1. {Contents}{Currency}{Amount}{Umrechnung}{  }
+	% 2. {Contents}{Currency}{Amount}{          }{BaseCurrency}
+	% 3. {Contents}{Currency}{Amount}{Umrechnung}{BaseCurrency}
+	%
+	#1	 & #2	& #3	& #4&%
+	\ifthenelse{\equal{#5}{}}% Target in BaseCurrency or not?
+		{% Target not in BaseCurrency
+			\FPmul\r{100}{#3}%
+			\FPmul\r \r {#4}%
+		}%
+		{% Target in BaseCurrency
+			\FPmul\r{100}{#5}%
+		}%
+	\setcounter{One@Expense}{1*\real{\r}}%
+	\addtocounter{ST@Expenses}{\theOne@Expense}%
+	\addtocounter{Expenses}{\theOne@Expense}%
+	\addtocounter{Expense@ctr}{1}%advance counter
+	\Print@Value{\theOne@Expense}%
+\\%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\Expense@Foreign@Currency}[5]{%
+	\gdef\Flag{5}%
+	%
+	% Folgende Angaben sind moeglich:
+	% 1. {Contents}{Currency}{Amount}{Umrechnung}{  }
+	% 2. {Contents}{Currency}{Amount}{          }{BaseCurrency}
+	% 3. {Contents}{Currency}{Amount}{Umrechnung}{BaseCurrency}
+	%
+	\ifthenelse{\equal{#5}{}}% Target in BaseCurrency or not?
+		{% Target not in BaseCurrency
+			\FPmul\r{100}{#3}%
+			\FPmul\r\r{#4}%
+		}%
+		{% Target in BaseCurrency
+			\FPmul\r{100}{#5}%
+		}%
+	\setcounter{One@Expense}{1*\real{\r}}%
+	\addtocounter{ST@Expenses}{\theOne@Expense}%
+	\addtocounter{Expenses}{\theOne@Expense}%
+	\addtocounter{Expense@ctr}{1}%advance counter
+		&	&	&	&	\\[-1.2em]% ugly kludge as above
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\Expense@Title}{%
+	\\%
+	\textbf{\Expense}&\Currency&\Amount&\Factor &\BC\\%
+	\hline%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\ST@Expenses}{%
+	% \gdef\Flag{6}%
+	\ifnum\theST@Expenses>0%
+	    \ifthenelse{\theExpense@ctr>1}%	    % if more than 1 Expense line
+		{\Print@ST@Expenses}%				% print it, else
+		{}%									% do nothing
+	\fi%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\Print@ST@Expenses}{%
+	\gdef\Flag{6}%
+		&	&	&	&	\\[-1.2em]% ugly kludge as above
+	\SubtotalExpenses &	&	&	&%	print the subtotal of expenses
+		\Print@Value{\theST@Expenses}\\%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\ST@Project}{%
+	\gdef\Flag{7}%
+	\\
+	%\multicolumn{4}{l}{\SubtotalProject}%
+	%\let\Project\NewProject%
+	%&
+	\SubtotalProject &	&	&	& 
+			\addtocounter{ST@Project}{\theST@Fee}%
+			\addtocounter{ST@Project}{\theST@VAT}%
+			\addtocounter{ST@Project}{\theST@Expenses}%
+			\Print@Value{\theST@Project}\\
+}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\Total@VAT@Printout}{%
+		\setcounter{VAT}{\theFee*\real{\VAT@rate}/100}%
+			\SumVAT	&	&	&	&\Print@Value{\theVAT}\\%
+}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\Tot@l}{%
+	\\\hline
+	\ifnum\theFee>0 \SumFees&	&	&	&%
+				\Print@Value{\theFee}\\ 
+		\ifVATnonzero%
+			\Total@VAT@Printout%
+		\fi%
+	\fi%
+	\ifnum\theExpenses>0 \SumExpenses&	&	&	&%
+				\Print@Value{\theExpenses}\\ 
+	\fi%
+	\ifnum\theDiscount<0 \Discount@Contents&	&	&	&%
+				\Print@Value{\theDiscount}\\ 
+	\fi%
+	\hline\hline
+	\textbf{\Total} &	&	&	&%
+		\message{^^J\Currency: \BC}%
+		\message{^^J\VAT: \VAT@rate}%
+		\addtocounter{Total}{\theFee}%
+		\message{^^J\SumFees: }\Message@Value{\theFee}%
+		\addtocounter{Total}{\theVAT}%
+		\message{^^J\SumVAT: }\Message@Value{\theVAT}%
+		\addtocounter{Total}{\theExpenses}%
+		\message{^^J\SumExpenses: }\Message@Value{\theExpenses}%
+		\ifnum\theDiscount<0 %
+		\addtocounter{Total}{\theDiscount}%
+		\message{^^J\Discount@Contents: }\Message@Value{\theDiscount}%
+		\fi %
+		\textbf{\Print@Value{\theTotal}}%
+		\message{^^J\Total: }%
+			\Message@Value{\theTotal}\message{^^J^^J}\\%
+	\end{longtable}
+	%\end{center}% Removed 20050621 by suggestion from ...
+	\gdef\Flag{8}%
+}
+\endinput
+% vim:ts=4:sw=4

@@ -1,0 +1,376 @@
+\ProvidesPackage{wiki}[2008/07/02 v0.2 LaTeX through Wiki markup]
+%% <- vorige Aenderungen gg. 2008/06/25 verworfen 
+%%
+%% == Legal    == 
+%% (C) 2008 Uwe Lueck http://contact-ednotes.sty.de.vu
+%% License: http://www.latex-project.org/lppl/
+%% -- AUTHOR-MAINTAINED, NO WARRANTY!
+%%
+%% == Features == 
+%% 
+%% The `wiki' package enables LaTeX users to use some of the 
+%% markup used in editing Wikipedia pages, cf. 
+%%
+%%     http://en.wikipedia.org/wiki/Wikipedia:Cheatsheet
+%%
+%% or German:
+%%
+%%     http://de.wikipedia.org/wiki/Hilfe:Bearbeitungshilfe
+%%     http://de.wikipedia.org/wiki/Hilfe:Textgestaltung
+%% 
+%% Advantages of such a kind of markup are: 
+%%
+%%  1. easier and faster to type than LaTeX code; 
+%% 
+%%  2. intuitive, understandable at a glance; 
+%% 
+%%  3. in reading the source code of the document, 
+%%     the markup doesn't much distract from the ''text'' 
+%%     to be printed. 
+%%
+%% There is a binary `easylatex' available on CTAN which is more 
+%% powerful than the `wiki' package; the idea here is that a ''macro 
+%% package'' doing something similar is easier to use and to customize. 
+%%
+%%
+%% === What the Package Supports ===
+%%
+%% 1. ''Italics'' are marked up by surrounding pairs of apostrophes, 
+%%    '''boldface''' needs one apostrophe more on each side. 
+%%    Boldface and italics may be nested or overlap. 
+%%    (This endangers quoting, but I have dealt with it.)
+%%
+%% 2. Surrounding ``equals'' symbols (`=') mark up section headings 
+%%    etc.: `== Section ==', `=== Subsection ===', down to 
+%%    `===== Subparagraph ====='. 
+%%
+%% 3. If a line starts with `*', it becomes an item in an 
+%%    `itemize' environment. Likewise, `#' creates an `enumerate' 
+%%    environment, and `;' makes an item in a `discription' 
+%%    environment (differs from Wiki! -- since I don't understand
+%%    what the Wiki version is good for). `:' makes a `quote' --
+%%    while on Wikipedia instead is used for comments on talk 
+%%    pages. But it is also used for indented math displays, 
+%%    so it may be combined with $...$ here. 
+%%    An indented line is typeset ''verbatim''. Each of these
+%%    environments is ended by a code line without leading blank 
+%%    spaces. 
+%% 
+%%
+%% === Limitations ===
+%%
+%% 1. The markup ``language'' provided here replaces a few most 
+%%    common LaTeX commands only in their most simple versions. 
+%%    (Yet I think that already this makes the code more readable; 
+%%     the more special cases are very rare.) E.g., it's not 
+%%    possible to suppress the italic correction as with 
+%%    `\textit{...\nocorr}'. However, in ``normal'' cases it 
+%%    should be possible to use the more powerful LaTeX markup 
+%%    mixed with ``Wiki'' markup. 
+%%
+%% 2. The parsing algorithms employed here differ in outcome to 
+%%    those of Wikipedia in difficult cases. 
+%% 
+%% 3. Tables, nesting lists, links, Wiki templates and tags 
+%%    are not supported -- and I don't expect that I can afford 
+%%    improving this soon! 
+%%
+%% 4. I still have encountered problems that I didn't understand ...
+%%
+%% == Package Options and User Commands  ==
+%%
+%% \usepackage[<options>]{wiki}, of course. There are <options> 
+%% `noEnvironments', `noFonts', `noHeadings' giving up 
+%% functionality for lists etc., for italics and boldface, 
+%% for section headings etc., respectively. 
+%% 
+%% There are commands \wikimarkup, \wikiEnvironments, 
+%% \wikiFonts, \wikiHeadings to turn respective functionality on 
+%% (unless disabled by package option). \nowikimarkup, 
+%% \nowikiEnvironments, \nowikiFonts, \nowikiHeadings turn them 
+%% off. 
+%%
+%% '''Vital:''' The package does ''not'' execute \wikimarkup 
+%% because this would have strange effects, e.g., packages 
+%% loaded later may break. The user must put activating 
+%% commands into the `document' environment, maybe just preceding 
+%% the first heading. 
+%% 
+%% Dangers to be avoided by \nowiki... are: 
+%% * \wikiHeadings (which also is executed by \wikimarkup) 
+%%   disables TeX assignments using `='. 
+%% * \wikiEnvironments (executed by \wikimarkup) executes macros 
+%%   at every end of a code line (containing no comment marke), 
+%%   and it tries to typeset a following line verbatim if it is 
+%%   indented. 
+%% 
+%%
+%% == Implementation and Further Remarks == 
+
+%% === Commands for Category Codes      === 
+% \RequirePackage{fdcodes}
+  %% <- TODO -- or do away ... -> 
+\providecommand*\AssignCatCode[2]{\catcode`#1=#2\relax}
+\providecommand*\MakeActive[1]{\catcode`#1=\active}
+% \providecommand*\MakeLetter[1]{\catcode`#1=11\relax}
+  %% <- Declaring characters usable in command strings
+  %%    Todo: print arrow indicators like ``->'' as real arrows
+\providecommand*\MakeOther [1]{\catcode`#1=12\relax}
+
+\AssignCatCode{\_}{11} 
+% \MakeLetter\_ %% own macros somewhat LaTeX3-style
+%% Todo \newcommand <-> \def !?
+
+%% === Package Options      ===
+\DeclareOption{noFonts}       {\let\wikiFonts         \empty
+                               \let\nowikiFonts       \relax}
+\DeclareOption{noHeadings}    {\let\wikiHeadings      \empty
+                               \let\nowikiHeadings    \relax}
+\DeclareOption{noEnvironments}{\let\wikiEnvironments  \empty
+                               \let\nowikiEnvironments\relax}
+\DeclareOption{noVerbatim}{% 
+  \def\W_active_return{ \futurelet\@let@token\W_on_firsttoken}}
+  %% \[no]wikiVerbatim must wait, too complex 2008/07/01 
+\ProcessOptions
+
+%% === Auxiliaries for both Fonts and Headings ===
+
+    \@tempswafalse 
+    \ifx\wikiFonts   \empty \else \@tempswatrue \fi
+    \ifx\wikiHeadings\empty \else \@tempswatrue \fi
+    \if@tempswa
+\def\W_start_samecnt{\futurelet\@let@token\W_process_samecnt}
+\def\W_init_samecnt#1#2#3{%
+  \let\W_samesymb  =#1%% repeated symbol 
+  \def\W_repllist  {#2}% replacing strings
+  \def\W_incase_all{#3}% final replacement
+  \def\W_next##1{\W_start_samecnt}}
+\def\W_process_samecnt{%
+  \expandafter \W_splitlist \W_repllist \@nil
+  \W_next} 
+\def\W_splitlist#1#2\@nil{%
+  \def\W_repllist{#2}%
+  \ifx\@let@token\W_samesymb 
+    \ifx\W_repllist\empty \def\W_next##1{\W_incase_all}\fi
+  \else 
+    \def\W_next{#1}%
+  \fi}
+    \fi 
+
+%% === Italics and Boldface ===
+
+%% ==== Code    ====
+    \ifx\wikiFonts\empty \else 
+\def\W_toggle#1#2#3{\def#1{\W_toggle#1{#3}{#2}}#2}
+%% Cf. LaTeX's `\DeclareTextFontCommand':
+\def\W_bf_toggle{%
+  \W_toggle\W_bf_toggle{\bfseries\W_maybe@ic}{\mdseries\W_maybe@ic}}
+\def\W_maybe@ic{\futurelet\@let@token\W_maybe_maybe@ic}
+\def\W_maybe_maybe@ic{%
+  \ifx\@let@token\W_rq_robust \else \expandafter \maybe@ic \fi}
+\def\W_it_toggle{%
+  \W_toggle\W_it_toggle{\itshape\maybe@ic}{\upshape\maybe@ic}}
+%% <- Doesn't support \nocorr. 
+
+\def\W_rq_robust{%% will become meaning of single right quote.
+  \ifx\protect\@typeset@protect
+    \ifmmode \rq \else 
+      \W_init_samecnt{\W_rq_robust}%
+                     {\rq\W_it_toggle}%
+                     {\W_bf_toggle}%
+      \expandafter\expandafter\expandafter \W_start_samecnt
+    \fi
+  \else \rq \fi}
+%% Remark: 
+%% LaTeX's \rq expands to ``other'' apostrophe: 
+\CheckCommand*\rq{'} %% Must be before `\catcode`\'
+%% \wikiFonts -- restoring `...' and ``...'' -- + \nowikiFonts: 
+%% requiring single left quote \active as well: 
+\CheckCommand*{\lq}{`}
+\MakeActive\`\MakeActive\'
+\def\wikiFonts{%
+  \MakeActive\`\MakeActive\'%
+  \def`##1'{\lq ##1\rq}%
+  \let'\W_rq_robust}
+\def\nowikiFonts{\MakeOther`\MakeOther\'}
+\MakeOther\` \MakeOther\'
+    \fi 
+
+%% ==== Remarks ====
+%% Wiki: a''b'''cd typesets `b' in italic with an apostrophe, 
+%%       a''b'''c'''d typsets all after `a' in italic with bold `b'. 
+%%       One might use make a difference depending on \lastskip. 
+%%       Wikimedia seems to read more ahead, maybe entire paragraphs. 
+%%       %% <- Todo: try here!? (Test!) 
+%% 
+%% Todo: Variants using \textit and \textbf (option, switching 
+%%       command)
+%%
+%% german.sty's "` and "' are not affected. 
+%%
+%% Merit: ``...'' resembles ''...''; indeed Wikipedia Guidelines 
+%%        demand to think which of both is appropriate in a
+%%        certain situation. 
+
+%% A test about \ifx with active characters: 
+%\catcode`\`=\active \let`\rq \let'\rq
+%\ifx`'\typeout{OHHH}\else \typeout{OCH}\fi  %% OHHH
+%% <- how typeset code commented out!? (^!? diff. comment char.!?)
+%%    indent %! TODO or no space after %!! TODO!! 
+%%    xEDIT: dann Alt C/D fuer Kommentar/Dok./auskomm. (!?) !!
+
+%% === Section Headings     ===
+
+    \ifx\wikiHeadings\empty \else 
+\providecommand*{\normalequals}{=}
+\MakeActive\=
+\def\wikiHeadings{\MakeActive\=\let=\W_eq_robust}
+\def\nowikiHeadings{\MakeOther\=}
+\def\W_eq_robust{%
+  \ifx\protect\@typeset@protect 
+  %% in case without math mode in heading
+    \ifmmode \normalequals \else 
+      \W_init_samecnt{\W_eq_robust}%
+          {\normalequals\W_sec\W_subsec\W_subsubsec
+           \W_para\W_subpara}%
+          {\W_bf_toggle}%
+      \expandafter\expandafter\expandafter \W_start_samecnt
+    \fi
+  \else \normalequals \fi}
+
+\def\W_sec       #1=={\section{#1}}
+\def\W_subsec    #1==={\subsection{#1}}
+\def\W_subsubsec #1===={\subsubsection{#1}}
+\def\W_para      #1====={\paragraph{#1}}
+\def\W_subpara   #1======{\subparagraph{#1}}
+
+\MakeOther\=
+    \fi 
+
+%% Todo: think of reimplementation by the start-line 
+%%       mechanism which is going to be used for lists. 
+
+%% === Environments         ===
+%% 
+    \ifx\wikiEnvironments\empty \else
+
+%% ==== Prepare Dealing with Indents ====
+
+\MakeActive{\^^M}%
+\def\wikiEnvironments{\MakeActive{\^^M}\let^^M\W_active_return}%
+\def\nowikiEnvironments{\AssignCatCode{\^^M}{5}}%
+\nowikiEnvironments%% TeX <return> restored
+
+\MakeActive{\ }%
+\@ifundefined{W_active_return}{%
+\expandafter\def\expandafter\W_active_return\expandafter{%
+\space\catcode`\ \active\let \W_indent% 
+%% <- \W_indent will start verbatim 
+\futurelet\@let@token\W_on_firsttoken}%
+}{}%% end of \@ifundefined which is true without noVerbatim
+%% Much doubling for saving time (!??):
+\expandafter\def\expandafter\W_list_activereturn\expandafter{%
+\space\catcode`\ \active\let \W_restore_space% 
+%% <- \W_indent will start verbatim 
+\futurelet\@let@token\W_maybe_newitem}%
+% \def\W_restore_space{\catcode`\ 10\relax}%
+  %% <- was vital for a math display in a list ->
+\def\W_restore_space{\catcode`\ 10\ignorespaces}%
+\W_restore_space%% TeX blank space restored
+
+%% ==== Start and End List-Like Environments ====
+
+%% \W_on_firsttoken may be edited (preamble or .cfg):
+\def\W_on_firsttoken{%
+ %  \show\@let@token
+  \W_restore_space
+  \let\W_next\relax %% must be before \W_skip... works
+  \ifx\@let@token\W_active_return \expandafter \W_par \fi
+  %% <- found by guessing/with \show\@let@token
+  \let\W_item\item
+  \W_on_startenv{*}{itemize}%
+  \W_on_startenv{\W_hash}{enumerate}%
+  \W_on_startenv{;}{description}%
+  \let\W_item\relax       %% must precede `quote'
+  \W_on_startenv{:}{quote}%% instead of quotation 2008/07/01
+  \W_next}
+\let\W_hash=#
+\def\W_par#1\W_next{\par}
+\def\W_skiprest_item#1\W_next#2{\W_item}
+
+\MakeActive{\^^M}%
+\def\W_on_startenv#1#2{% 
+  \ifx#1\@let@token%
+    \begin{#2}% 
+      \let\W_itemsymbol#1%
+      \let^^M\W_list_activereturn%
+      \expandafter \W_skiprest_item%
+  \fi}%
+\nowikiEnvironments%
+
+\def\W_maybe_newitem{% 
+  \W_restore_space
+  \ifx\@let@token\W_itemsymbol 
+    \expandafter \W_gobbling_item 
+  \else 
+    \ifx\@let@token\W_restore_space 
+    \else 
+      \ifx\@let@token\W_list_activereturn 
+        \par 
+      \else
+        \edef\W_next{\noexpand\end{\@currenvir}}%
+        \W_next
+      \fi
+    \fi
+  \fi}
+\def\W_gobbling_item#1{\item}
+
+%% ==== Verbatim Environment         ====
+
+\def\W_indent{\begin{W_verbatim}}
+\def\W_verbatim{%
+  \let\obeylines\W_obeylines
+  \@verbatim \frenchspacing\@vobeyspaces}
+\let\endW_verbatim\endverbatim
+
+\MakeActive{\^^M}
+\def\W_obeylines{% 
+  \catcode`\^^M\active%
+  \def^^M{\par\futurelet\@let@token\W_check_verbcont}}%
+\nowikiEnvironments%
+
+\def\W_check_verbcont{% 
+  \ifx\@let@token\@xobeysp 
+    \expandafter \@gobble %% gobble one space
+  \else 
+    \def\W_next{\end{W_verbatim}}%
+    \expandafter \W_next
+  \fi}
+
+%% TODO: enable user to switch between environment ``encodings'' 
+%%       or to disable some of them (edit \W_on_firsttoken)
+
+    \fi %% from \ifx\wikiEnvironments \else
+
+
+%% === Turning Wiki Markup On and Off ===
+
+\def\wikimarkup{\wikiFonts\wikiHeadings\wikiEnvironments}
+\def\nowikimarkup{%
+  \MakeOther\`\MakeOther\'\MakeOther\=\AssignCatCode{\^^M}{5}}
+
+% \wikimarkup %% strange effects here, to be put into document
+
+\AssignCatCode\_{8} 
+\endinput
+
+%% todo: tables, links, templates, (pseudo-)html-tags ... 
+%% TODO: credits: easylatex etc. 
+%% TODO: useful for: ... intuitive markup, ``poor man's WYSIWYG'', 
+%%       ASCII-WYSIWYG. 
+%% Todo: improve Wiki markup: ``tab'' indents instead of `:'
+%%       as in testing for end of list: after finding one 
+%%       leading space, test for another. 
+
+
+

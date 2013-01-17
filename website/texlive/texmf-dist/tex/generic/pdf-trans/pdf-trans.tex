@@ -1,0 +1,1460 @@
+%%% A set of macros for various transformations of TeX boxes.
+%%% (bases on plain and pdfeTeX primitives)
+%
+% Version: 2.2
+% Author: Pawe/l Jackowski (P.Jackowski@gust.org.pl)
+% Public Domain
+%
+% The macro provides a bunch of TeX box transformations. It was initially
+% inspired by trans.tex (BOP, bop@bop.com.pl), remade to work with pdfeTeX.
+% This standalone code gathers parts of pdfeplay macro package.
+%
+% Files:
+%     pdf-trans.tex
+%     example.tex
+%
+% History:
+%     05.2004, v1.0b
+%         * first embryo
+%     11.2004, v1.0
+%         * modified, released
+%     08.2005, v2.0
+%         * general rework;
+%             - fraction-based trigonometry
+%             - pdfliteral dimensions rounding
+%             - some other small changes
+%     09.2005, v2.1
+%         * some adds;
+%             - \setbpround <0..4> sets pdf dimen rounding precision
+%             - \boxgobble <box> macro swallows <box> and returns \hbox{}
+%     10.2005, v2.2
+%         * rework;
+%             - \bboxtrans vs \cboxtrans switches
+%             - \boxext* stuff; yet another scaling approach
+%
+
+\def\starttrans{%
+ \xdef\endtrans{%
+  \catcode`\noexpand\@=\the\catcode`\@
+  \catcode`\noexpand\:=\the\catcode`\:
+ }\catcode`\@=11 \catcode`\:=11 }
+
+\starttrans
+
+% Each transformation macro defined below expands to (h)box. Thus, can be used
+% whenever (h)box can. Each must be followed by the box that is to be
+% transformed. This scheme allows to cumulate transformations, that are applied
+% from right to left. For instance,
+%    \boxrotatebb{30}\boxscale{300}\hbox{Aqq}
+% first enlarges  boxed `Aqq' three times, then rotates it 30 degrees. Thanks
+% to \transboxcheck trick (see below), \copy and \box can be used as well as
+% \hbox, \vbox, \vtop. However, the consequence is that the transformed box
+% can't be void (\boxinfo definition is an exception here). \transbox register
+% contains the box being transformed.
+
+\newbox\transbox
+
+% Whenever we perform relative dimension scaling, a number provided as a macro
+% parameter is divided by \transfactor. Default is percentage (ie. 75 -> 0.75).
+% One may notice, that we often perform the same operation (ie. division)
+% several times instead of defining \transfactor as a float-like string. In
+% example, if there are two dimens, \X and \Y, and both are to be scaled by
+% 0.23, we always say `\numexpr\X*23/\transfactor' and
+% `\numexpr\Y*23/\transfactor' instead of 0.23\X 0.23\Y. In some cases it gives
+% significant preciseness improvement.
+
+\newcount\transfactor
+\transfactor=100
+
+% plus some internal variables
+
+\newdimen\trans:dim
+\newdimen\trans:dim:a
+\newdimen\trans:dim:b
+\newdimen\trans:dim:c
+\newdimen\trans:dim:d
+
+\newcount\trans:count
+
+\def\trans:def{}
+\def\trans:def:a{}
+\def\trans:def:b{}
+\def\trans:def:c{}
+\def\trans:def:d{}
+
+% Here the main trick starts. Each macro usually expands to \hbox\bgroup...,
+% defines \transboxtodo procedure, assigns the following box, then performs
+% \transboxtodo and ends with \egroup. If the box being transformed is generic
+% `\hbox{', TeX finishes the assignment just after opening `{', while the box being
+% assigned (\transbox) is still void. Thus, we check \ifvoid\transbox, and if
+% so, we put \transboxtodo on \aftergroup stack to let TeX finish box
+% assignment. Obviously it crashes, if one tries to transform a void box.
+% So, if you see 'Missing } inserted' error, you are probably trying to transform
+% a void box. You can use \boxinfo to check the situation.
+
+\def\transboxini{%
+ \afterassignment\transboxcheck
+ \setbox\transbox}
+
+\def\transboxcheck{%
+ \ifvoid\transbox
+  \expandafter\aftergroup
+ \fi\transboxtodo}
+
+% When some macro changes box dimensions directly (i.e. \ht\transbox=0pt),
+% we may need to be sure that transformed box behaves like \hbox.
+
+\def\transhboxini{%
+ \afterassignment\transhboxcheck
+ \setbox\transbox}
+
+\def\transhboxcheck{%
+ \ifvoid\transbox
+  \expandafter\aftergroup\expandafter\transhboxwrap
+ \else
+  \expandafter\transhboxwrap
+ \fi}
+
+\def\transhboxwrap{%
+ \ifvbox\transbox
+  \setbox\transbox\hbox{\box\transbox}%
+ \fi
+ \transboxtodo}
+
+\long\def\transboxdef#1\transboxend{%
+ \bgroup\def\transboxtodo{#1\egroup}\transboxini}
+
+\long\def\transhboxdef#1\transboxend{%
+ \bgroup\def\transboxtodo{#1\egroup}\transhboxini}
+
+% Sometimes we need to keep bounding box untouched and transform box content
+% only (or vice versa). Each transformation that affects both the bounding box
+% (via resizing \ht|\wd|\dp) and the box content itself (via \pdfliteral)
+% checks \iftransbbox and \iftranscbox flags. No practical reasons to affect
+% \boxrotatebb by this feature, however.
+
+\newif\iftransbbox
+\newif\iftranscbox
+\transbboxtrue
+\transcboxtrue
+
+\long\def\transbcboxdef#1\transbboxdef#2\transcboxdef#3\transboxend{%
+ \bgroup\edef\transboxtodo{%
+  \unexpanded{#1}%
+  \iftransbbox\unexpanded{#2}\fi
+  \iftranscbox\unexpanded{#3}\else\box\transbox\fi
+ \egroup}\transhboxini}
+
+\def\bboxtranson{%
+ \hbox\bgroup\transbboxtrue
+  \def\transboxtodo{\box\transbox\egroup}\transboxini}
+
+\def\bboxtransoff{%
+ \hbox\bgroup\transbboxfalse
+  \def\transboxtodo{\box\transbox\egroup}\transboxini}
+
+\def\cboxtranson{%
+ \hbox\bgroup\transcboxtrue
+  \def\transboxtodo{\box\transbox\egroup}\transboxini}
+
+\def\cboxtransoff{%
+ \hbox\bgroup\transcboxfalse
+  \def\transboxtodo{\box\transbox\egroup}\transboxini}
+
+\long\def\bboxtrans#1{\iftranscbox\cboxtransoff#1\cboxtranson\else#1\fi}
+\long\def\cboxtrans#1{\iftransbbox\bboxtransoff#1\bboxtranson\else#1\fi}
+
+% User-defined operation on \transbox. Remember, that \transboxcheck assumes
+% initially void \transbox, so #1 should contain something like \box\tranbox,
+% \unvbox\tranbox, \setbox\transbox\voidb@x etc.
+
+\def\hboxtrans{\hbox\transboxdef}
+\def\vboxtrans{\vbox\transboxdef}
+\def\vtoptrans{\vtop\transboxdef}
+\let\boxtrans\hboxtrans
+
+% flip
+
+\def\boxflipx{%
+ \hbox\transboxdef
+  \savebp\trans:def\wd\transbox
+  \pdfliteral{q -1 0 0 1 \trans:def\space 0 cm}%
+  \box\transbox
+  \pdfliteral{Q 1 0 0 1 \trans:def\space 0 cm}%
+ \transboxend}
+
+\def\boxflipy{%
+ \hbox\transboxdef
+  \savebp\trans:def\wd\transbox
+  \pdfliteral{q 1 0 0 -1 0 \tobp{\ht\transbox-\dp\transbox} cm}%
+  \box\transbox
+  \pdfliteral{Q 1 0 0 1 \trans:def\space 0 cm}%
+ \transboxend}
+
+\def\boxflipxy{%
+ \hbox\transboxdef
+  \savebp\trans:def\wd\transbox
+  \pdfliteral{q -1 0 0 -1 \trans:def\space \tobp{\ht\transbox-\dp\transbox} cm}%
+  \box\transbox
+  \pdfliteral{Q 1 0 0 1 \trans:def\space 0 cm}%
+ \transboxend}
+
+\let\boxflip\boxflipxy
+
+% \boxflipy plus \ht\transbox <-> \dp\transbox exchange
+
+\def\boxflipbase{%
+ \hbox\transbcboxdef
+ \transbboxdef
+  \trans:dim=\ht\transbox
+  \ht\transbox=\dp\transbox
+  \dp\transbox=\trans:dim
+ \transcboxdef
+  \pdfliteral{q 1 0 0 -1 0 0 cm}%
+  \savebp\trans:def\wd\transbox
+  \box\transbox
+  \pdfliteral{Q 1 0 0 1 \trans:def\space 0 cm}%
+ \transboxend}
+
+% scale by factor
+
+\def\boxscalexy#1#2{%
+ \hbox\transbcboxdef
+ \transbboxdef
+  \wd\transbox=\dimexpr\wd\transbox*(#1)/\transfactor\relax
+  \ht\transbox=\dimexpr\ht\transbox*(#2)/\transfactor\relax
+  \dp\transbox=\dimexpr\dp\transbox*(#2)/\transfactor\relax
+ \transcboxdef
+  \edef\trans:def:a{\fdivide{#1}\transfactor}%
+  \edef\trans:def:b{\fdivide{#2}\transfactor}%
+  \pdfliteral{q \trans:def:a\space 0 0 \trans:def:b\space 0 0 cm}%
+  \savebp\trans:def\wd\transbox
+  \box\transbox
+  \pdfliteral{Q 1 0 0 1 \trans:def\space 0 cm}%
+ \transboxend}
+
+\def\boxscale#1{\boxscalexy{#1}{#1}}
+\def\boxscalex#1{\boxscalexy{#1}\transfactor}
+\def\boxscaley#1{\boxscalexy\transfactor{#1}}
+\let\boxscalez\boxscale
+
+% scale to dimen
+
+\def\boxscaleto#1#2#3#4{%
+ \hbox\transbcboxdef
+  \trans:dim:a=\dimexpr#1\relax
+  \trans:dim:b=\dimexpr#2\relax
+  \trans:dim:c=\dimexpr#3\relax
+  \trans:dim:d=\dimexpr#4\relax
+ \transbboxdef
+  \wd\transbox=\dimexpr\wd\transbox*\trans:dim:a/\trans:dim:b\relax
+  \ht\transbox=\dimexpr\ht\transbox*\trans:dim:c/\trans:dim:d\relax
+  \dp\transbox=\dimexpr\dp\transbox*\trans:dim:c/\trans:dim:d\relax
+ \transcboxdef
+  \edef\trans:def:a{\fdivide\trans:dim:a\trans:dim:b}%
+  \edef\trans:def:b{\fdivide\trans:dim:c\trans:dim:d}%
+  \pdfliteral{q \trans:def:a\space 0 0 \trans:def:b\space 0 0 cm}%
+  \savebp\trans:def\wd\transbox
+  \box\transbox
+  \pdfliteral{Q 1 0 0 1 \trans:def\space 0 cm}%
+ \transboxend}
+
+\def\boxscalexyto#1#2{\boxscaleto{#1}{\wd\transbox}{#2}{\ht\transbox+\dp\transbox}}
+\def\boxscalexto#1{\boxscaleto{#1}{\wd\transbox}{1sp}{1sp}}
+\def\boxscaleyto#1{\boxscaleto{1sp}{1sp}{#1}{\ht\transbox+\dp\transbox}}
+\def\boxscalehtto#1{\boxscaleto{1sp}{1sp}{#1}{\ht\transbox}}
+\def\boxscaledpto#1{\boxscaleto{1sp}{1sp}{#1}{\dp\transbox}}
+\let\boxscalewdto\boxscalexto
+
+% scale \wd|\ht|\dp to dimen, others uniformly
+
+\def\boxuniscaleto#1#2{%
+ \hbox\transbcboxdef
+  \trans:dim:a=\dimexpr#1\relax
+  \trans:dim:b=\dimexpr#2\relax
+ \transbboxdef
+  \wd\transbox=\dimexpr\wd\transbox*\trans:dim:a/\trans:dim:b\relax
+  \ht\transbox=\dimexpr\ht\transbox*\trans:dim:a/\trans:dim:b\relax
+  \dp\transbox=\dimexpr\dp\transbox*\trans:dim:a/\trans:dim:b\relax
+ \transcboxdef
+  \edef\trans:def:a{\fdivide\trans:dim:a\trans:dim:b}%
+  \pdfliteral{q \trans:def:a\space 0 0 \trans:def:a\space 0 0 cm}%
+  \savebp\trans:def\wd\transbox
+  \box\transbox
+  \pdfliteral{Q 1 0 0 1 \trans:def\space 0 cm}%
+ \transboxend}
+
+\def\boxuniscalexto#1{\boxuniscaleto{#1}{\wd\transbox}}
+\def\boxuniscaleyto#1{\boxuniscaleto{#1}{\ht\transbox+\dp\transbox}}
+\def\boxuniscalehtto#1{\boxuniscaleto{#1}{\ht\transbox}}
+\def\boxuniscaledpto#1{\boxuniscaleto{#1}{\dp\transbox}}
+\let\boxuniscalewdto\boxuniscalexto
+
+% yet another scaling approach; extend \wd|\ht|\dp do dimen, scale accordingly
+
+\def\boxextscaleto#1#2#3{%
+ \hbox\transbcboxdef
+  \trans:dim:a=\wd\transbox
+  \trans:dim:b=\dimexpr#1\relax
+  \trans:dim:c=\dimexpr\ht\transbox+\dp\transbox\relax
+  \trans:dim:d=\dimexpr#2+#3\relax
+  \trans:dim=\dp\transbox
+ \transbboxdef
+  \wd\transbox=\trans:dim:b
+  \ht\transbox=\dimexpr#2\relax
+  \dp\transbox=\dimexpr#3\relax
+ \transcboxdef
+  \edef\trans:def:a{\fdivide\trans:dim:b\trans:dim:a}%
+  \edef\trans:def:b{\fdivide\trans:dim:d\trans:dim:c}%
+  \savebp\trans:def:c\dimexpr-\dp\transbox+(\dp\transbox+\ht\transbox)*\trans:dim/\trans:dim:c\relax
+  \pdfliteral{q \trans:def:a\space 0 0 \trans:def:b\space 0 \trans:def:c\space cm}%
+  \savebp\trans:def\wd\transbox
+  \box\transbox
+  \pdfliteral{Q 1 0 0 1 \trans:def\space 0 cm}%
+ \transboxend}
+
+\def\boxextscale#1#2#3{\boxextscaleto{\wd\transbox+#1}{\ht\transbox+#2}{\dp\transbox+#3}}
+
+% resizing; the result may be different for hboxes and vboxes;
+% since we have \boxextscaleto plus \iftransbbox and \iftranscbox flags,
+% the following two macros are obsolete by now
+
+\def\boxresizeto#1#2#3{%
+ \hbox\transboxdef
+  \ifx\relax#1\relax\else \wd\transbox=\dimexpr#1\relax \fi
+  \ifx\relax#2\relax\else \ht\transbox=\dimexpr#2\relax \fi
+  \ifx\relax#3\relax\else \dp\transbox=\dimexpr#3\relax \fi
+  \box\transbox
+ \transboxend}
+
+\def\boxresize#1#2#3{%
+ \hbox\transboxdef
+  \ifx\relax#1\relax\else \wd\transbox=\dimexpr\wd\transbox+#1\relax \fi
+  \ifx\relax#2\relax\else \ht\transbox=\dimexpr\ht\transbox+#2\relax \fi
+  \ifx\relax#3\relax\else \dp\transbox=\dimexpr\dp\transbox+#3\relax \fi
+  \box\transbox
+ \transboxend}
+
+% extents; to keep things consistent for negative extents, \dp\transbox becomes 0pt
+
+\def\boxextents#1#2#3#4{% <left> <right> <top> <bottom>
+ \hbox\transboxdef
+  \kern\dimexpr#1\relax
+   \vbox{%
+    \kern\dimexpr#3\relax
+    \box\transbox
+    \kern\dimexpr#4\relax
+   }%
+  \kern\dimexpr#2\relax
+ \transboxend}
+
+\def\boxhextent#1#2{\boxextents{#1}{#2}\z@\z@}
+\def\boxvextent#1#2{\boxextents\z@\z@{#1}{#2}}
+\def\boxextent#1{\boxextents{#1}{#1}{#1}{#1}}
+
+% and yet another approach; append extents to box content
+
+\def\boxexts#1#2#3#4{% <left> <right> <top> <bottom>
+ \hbox\transboxdef
+  \trans:dim:a=\wd\transbox
+  \trans:dim:b=\dimexpr\trans:dim:a+#1+#2\relax
+  \trans:dim:c=\dimexpr\ht\transbox+\dp\transbox\relax
+  \trans:dim:d=\dimexpr\trans:dim:c+#3+#4\relax
+  \edef\trans:def:a{\fdivide\trans:dim:b\trans:dim:a}%
+  \edef\trans:def:b{\fdivide\trans:dim:d\trans:dim:c}%
+  \savebp\trans:def:c-\dimexpr#1\relax
+  \savebp\trans:def:d\dimexpr-#4+(#3+#4)*\dp\transbox/\trans:dim:c\relax
+  \pdfliteral{q \trans:def:a\space 0 0 \trans:def:b\space
+                \trans:def:c\space \trans:def:d\space cm}%
+  \savebp\trans:def\wd\transbox
+  \box\transbox
+  \pdfliteral{Q 1 0 0 1 \trans:def\space 0 cm}%
+ \transboxend}
+
+\def\boxhext#1#2{\boxexts{#1}{#2}\z@\z@}
+\def\boxvext#1#2{\boxexts\z@\z@{#1}{#2}}
+\def\boxext#1{\boxexts{#1}{#1}{#1}{#1}}
+
+% raw translation
+
+\def\boxtranslate#1#2{%
+ \hbox\transboxdef
+  \pdfliteral{q 1 0 0 1 \tobp{#1} \tobp{#2} cm}%
+  \savebp\trans:def\wd\transbox
+  \box\transbox
+  \pdfliteral{Q 1 0 0 1 \trans:def\space 0 cm}%
+ \transboxend}
+
+% heuristic rotation by 90 degrees (left and right variants)
+
+\def\boxrevolveleft{%
+ \hbox\transbcboxdef
+  \trans:dim:a=\wd\transbox
+  \trans:dim:b=\ht\transbox
+ \transbboxdef
+  \wd\transbox=\dimexpr\ht\transbox+\dp\transbox\relax
+  \ht\transbox=\trans:dim:a
+  \dp\transbox=\z@
+ \transcboxdef
+  \pdfliteral{q 0 1 -1 0 \tobp{\trans:dim:b} 0 cm}%
+  \savebp\trans:def\wd\transbox
+  \box\transbox
+  \pdfliteral{Q 1 0 0 1 \trans:def\space 0 cm}%
+ \transboxend}
+
+\def\boxrevolveright{%
+ \hbox\transbcboxdef
+  \trans:dim:a=\wd\transbox
+  \trans:dim:b=\dp\transbox
+ \transbboxdef
+  \wd\transbox=\dimexpr\ht\transbox+\dp\transbox\relax
+  \ht\transbox=\trans:dim:a
+  \dp\transbox=\z@
+ \transcboxdef
+  \pdfliteral{q 0 -1 1 0 \tobp{\trans:dim:b} \tobp{\trans:dim:a} cm}%
+  \savebp\trans:def\wd\transbox
+  \box\transbox
+  \pdfliteral{Q 1 0 0 1 \trans:def\space 0 cm}%
+ \transboxend}
+
+\let\boxrevolvepi\boxflipxy
+
+% clockwise rotation relative to base point
+
+\def\boxrotate#1{%
+ \hbox\transboxdef
+  \floatsincos\trans:def:a\trans:def:b{#1}%
+  \pdfliteral{q \trans:def:b\space
+                \negbp\trans:def:a\space % clockwise
+                \trans:def:a\space       % vs anti clockwise
+                \trans:def:b\space
+                0 0 cm}%
+  \savebp\trans:def\wd\transbox
+  \box\transbox
+  \pdfliteral{Q 1 0 0 1 \trans:def\space 0 cm}%
+ \transboxend}
+
+% clockwise rotation relative to base point translated (x,y)
+
+\def\boxrotatexy#1#2#3{%
+ \hbox\transboxdef
+  \floatsincos\trans:def:a\trans:def:b{#1}%
+  \savebp\trans:def:c\dimexpr#2\relax
+  \savebp\trans:def:d\dimexpr#3\relax
+  \pdfliteral{q \trans:def:b\space
+                \negbp\trans:def:a\space
+                \trans:def:a\space
+                \trans:def:b\space
+                \trans:def:c\space
+                \trans:def:d\space cm
+                1 0 0 1 \negbp\trans:def:c\space
+                        \negbp\trans:def:d\space cm}% ?
+  \savebp\trans:def\wd\transbox
+  \box\transbox
+  \pdfliteral{Q 1 0 0 1 \trans:def\space 0 cm}%
+ \transboxend}
+
+\def\boxrotatec#1{\boxrotatexy{#1}{\wd\transbox/2}{(\ht\transbox-\dp\transbox)/2}}
+\def\boxrotatell#1{\boxrotatexy{#1}\z@{-\dp\transbox}}
+\def\boxrotatelr#1{\boxrotatexy{#1}{\wd\transbox}{-\dp\transbox}}
+\def\boxrotateul#1{\boxrotatexy{#1}\z@{\ht\transbox}}
+\def\boxrotateur#1{\boxrotatexy{#1}{\wd\transbox}{\ht\transbox}}
+
+% bbox-wise rotation (left and right variants)
+
+\newif\ifbboxright
+
+\def\box:rotate:bb#1{%
+ \trans:dim:a=\wd\transbox
+ \trans:dim:b=\ht\transbox
+ \trans:dim:c=\dp\transbox
+ \trans:dim:d=\dimexpr\ht\transbox+\dp\transbox\relax
+ \trans:count=\reducetrigangle{#1}\fractperiod\relax
+ \ifcase\fracttrigfourth\trans:count\relax
+  \fr@ct:sin:cos:i\trans:def:a\trans:def:b\trans:count
+  \wd\transbox=\dimexpr\fr@ct:mul\trans:dim:a\trans:def:b
+                      +\fr@ct:mul\trans:dim:d\trans:def:a\relax
+  \ht\transbox=\dimexpr\fr@ct:mul\trans:dim:b\trans:def:b\relax
+  \dp\transbox=\dimexpr\fr@ct:mul\trans:dim:a\trans:def:a
+                      +\fr@ct:mul\trans:dim:c\trans:def:b\relax
+  \savebp\trans:def:c=\dimexpr\fr@ct:mul\trans:dim:c\trans:def:a\relax
+ \or
+  \fr@ct:sin:cos:ii\trans:def:a\trans:def:b\trans:count
+  \wd\transbox=\dimexpr-\fr@ct:mul\trans:dim:a\trans:def:b
+                       +\fr@ct:mul\trans:dim:d\trans:def:a\relax
+  \ht\transbox=\dimexpr-\fr@ct:mul\trans:dim:c\trans:def:b\relax
+  \dp\transbox=\dimexpr-\fr@ct:mul\trans:dim:b\trans:def:b
+                        +\fr@ct:mul\trans:dim:a\trans:def:a\relax
+  \savebp\trans:def:c=\dimexpr-\fr@ct:mul\trans:dim:a\trans:def:b
+                              +\fr@ct:mul\trans:dim:c\trans:def:a\relax
+ \or
+  \fr@ct:sin:cos:iii\trans:def:a\trans:def:b\trans:count
+  \wd\transbox=\dimexpr-\fr@ct:mul\trans:dim:a\trans:def:b
+                       -\fr@ct:mul\trans:dim:d\trans:def:a\relax
+  \ht\transbox=\dimexpr-\fr@ct:mul\trans:dim:a\trans:def:a
+                       -\fr@ct:mul\trans:dim:c\trans:def:b\relax
+  \dp\transbox=\dimexpr-\fr@ct:mul\trans:dim:b\trans:def:b\relax
+  \savebp\trans:def:c=\dimexpr-\fr@ct:mul\trans:dim:a\trans:def:b
+                              -\fr@ct:mul\trans:dim:b\trans:def:a\relax
+ \or
+  \fr@ct:sin:cos:iv\trans:def:a\trans:def:b\trans:count
+  \wd\transbox=\dimexpr\fr@ct:mul\trans:dim:a\trans:def:b
+                      -\fr@ct:mul\trans:dim:d\trans:def:a\relax
+  \ht\transbox=\dimexpr\fr@ct:mul\trans:dim:b\trans:def:b
+                      -\fr@ct:mul\trans:dim:a\trans:def:a\relax
+  \dp\transbox=\dimexpr\fr@ct:mul\trans:dim:c\trans:def:b\relax
+  \savebp\trans:def:c=\dimexpr-\fr@ct:mul\trans:dim:b\trans:def:a\relax
+ \fi
+ \ifbboxright
+  \trans:dim:d=\dimexpr\fr@ct:mul\trans:dim:a\trans:def:a\relax
+  \ht\transbox=\dimexpr\ht\transbox+\trans:dim:d\relax
+  \dp\transbox=\dimexpr\dp\transbox-\trans:dim:d\relax
+  \savebp\trans:def:d\trans:dim:d
+ \else
+  \def\trans:def:d{0}%
+ \fi
+ \edef\trans:def:a{\fr@ct:div\trans:def:a}%
+ \edef\trans:def:b{\fr@ct:div\trans:def:b}%
+ \pdfliteral{q \trans:def:b\space
+               \negbp\trans:def:a\space
+               \trans:def:a\space
+               \trans:def:b\space
+               \trans:def:c\space
+               \trans:def:d\space cm}%
+ \savebp\trans:def=\wd\transbox
+ \box\transbox
+ \pdfliteral{Q 1 0 0 1 \trans:def\space 0 cm}}
+
+\def\boxrotatebbl#1{%
+ \hbox\transboxdef
+  \bboxrightfalse
+  \box:rotate:bb{#1}%
+ \transboxend}
+
+\def\boxrotatebbr#1{%
+ \hbox\transboxdef
+  \bboxrighttrue
+  \box:rotate:bb{#1}%
+ \transboxend}
+
+% the default is left variant
+
+\bboxrightfalse
+
+\def\boxrotatebb#1{%
+ \hbox\transboxdef
+  \box:rotate:bb{#1}%
+ \transboxend}
+
+% slanting; \boxslantx{<x>}\boxslanty{<y>} is NOT equivalent to \boxslantxy{<x>}{<y>}
+
+\def\boxslant#1#2{%
+ \hbox\transboxdef
+  \fractsincos\trans:def:a\trans:def:b{#1}%
+  \fractsincos\trans:def:c\trans:def:d{#2}%
+  \edef\trans:def:a{\fdivide\trans:def:a\trans:def:b}%
+  \edef\trans:def:c{\fdivide\trans:def:c\trans:def:d}%
+  \pdfliteral{q 1 \trans:def:c\space \trans:def:a\space 1 0 0 cm}%
+  \savebp\trans:def\wd\transbox
+  \box\transbox
+  \pdfliteral{Q 1 0 0 1 \trans:def\space 0 cm}%
+ \transboxend}
+
+\let\boxslantxy\boxslant
+\def\boxslantx#1{\boxslant{#1}{0}} % not \z@!!
+\def\boxslanty#1{\boxslant{0}{#1}}
+
+% bounding box wise slanting (left and right variant)
+
+\def\box:slant:bb#1#2{%
+ \trans:dim:a=\wd\transbox
+ \trans:dim:b=\ht\transbox
+ \trans:dim:c=\dp\transbox
+ \trans:dim:d=\dimexpr\ht\transbox+\dp\transbox\relax
+ \trans:count=\reducetrigangle{#1}{2*\fractfourth}\relax
+ \ifcase\fracttrigfourth\trans:count\relax
+  \fr@ct:sin:cos:i\trans:def:a\trans:def:b\trans:count
+  \wd\transbox=\dimexpr\trans:dim:a+\trans:dim:d*\trans:def:a/\trans:def:b\relax
+  \savebp\trans:def:c=\dimexpr\trans:dim:c*\trans:def:a/\trans:def:b\relax
+ \or
+  \fr@ct:sin:cos:ii\trans:def:a\trans:def:b\trans:count
+  \wd\transbox=\dimexpr\trans:dim:a-\trans:dim:d*\trans:def:a/\trans:def:b\relax
+  \savebp\trans:def:c=\dimexpr-\trans:dim:b*\trans:def:a/\trans:def:b\relax
+ \fi
+ \edef\trans:def{\fdivide\trans:def:a\trans:def:b}%
+ \trans:count=\reducetrigangle{#2}{2*\fractfourth}\relax
+ \ifcase\fracttrigfourth\trans:count\relax
+  \fr@ct:sin:cos:i\trans:def:a\trans:def:b\trans:count
+  \ht\transbox=\dimexpr\trans:dim:b+\trans:dim:a*\trans:def:a/\trans:def:b\relax
+ \or
+  \fr@ct:sin:cos:ii\trans:def:a\trans:def:b\trans:count
+  \dp\transbox=\dimexpr\trans:dim:c-\trans:dim:a*\trans:def:a/\trans:def:b\relax
+ \fi
+ \ifbboxright
+  \trans:dim:d=\dimexpr-\trans:dim:a*\trans:def:a/\trans:def:b\relax
+  \ht\transbox=\dimexpr\ht\transbox+\trans:dim:d\relax
+  \dp\transbox=\dimexpr\dp\transbox-\trans:dim:d\relax
+  \savebp\trans:def:d\trans:dim:d
+ \else
+  \def\trans:def:d{0}%
+ \fi
+ \edef\trans:def:a{\fdivide\trans:def:a\trans:def:b}%
+ \pdfliteral{q 1
+               \trans:def:a\space
+               \trans:def\space
+               1
+               \trans:def:c\space
+               \trans:def:d\space cm}%
+ \savebp\trans:def=\wd\transbox
+ \box\transbox
+ \pdfliteral{Q 1 0 0 1 \trans:def\space 0 cm}}
+
+\def\boxslantbbl#1#2{%
+ \hbox\transboxdef
+  \bboxrightfalse
+  \box:slant:bb{#1}{#2}%
+ \transboxend}
+
+\def\boxslantbbr#1#2{%
+ \hbox\transboxdef
+  \bboxrighttrue
+  \box:slant:bb{#1}{#2}%
+ \transboxend}
+
+\def\boxslantbb#1#2{%
+ \hbox\transboxdef
+  \box:slant:bb{#1}{#2}%
+ \transboxend}
+
+\def\boxslantbbx#1{\boxslantbb{#1}{0}} % not \z@!!
+\def\boxslantbby#1{\boxslantbb{0}{#1}}
+\def\boxslantbbry#1{\boxslantbbr{0}{#1}}
+\def\boxslantbbly#1{\boxslantbbl{0}{#1}}
+
+% on-fly conversion to XObject (\pdfxform)
+
+\def\boxxform{%
+ \hbox\transboxdef
+  \immediate\pdfxform\transbox
+  \pdfrefxform\pdflastxform
+ \transboxend}
+
+\def\boxxformspec#1\boxxform{%
+ \hbox\transboxdef
+  \immediate\pdfxform#1\transbox
+  \pdfrefxform\pdflastxform
+ \transboxend}
+
+% Some previous version of pdftrans had \boxclip defined as \boxpath{}{W n}. This didn't
+% work properly since \boxpath restores the graphic state before placing the box itself
+% (see below).
+
+% clipping
+
+\def\boxclip{%
+ \hbox\transboxdef
+  \savebp\trans:def\wd\transbox
+  \pdfliteral{q 0 \tobp{-\dp\transbox} \trans:def\space
+              \tobp{\ht\transbox+\dp\transbox} re W n}%
+  \box\transbox
+  \pdfliteral{Q 1 0 0 1 \trans:def\space 0 cm}%
+ \transboxend}
+
+% up and down
+
+\def\boxraise#1{%
+ \hbox\transboxdef
+  \raise\dimexpr#1\relax\box\transbox
+ \transboxend}
+
+\def\boxlower#1{%
+ \hbox\transboxdef
+  \lower\dimexpr#1\relax\box\transbox
+ \transboxend}
+
+\let\boxbaselineup\boxlower
+\let\boxbaselinedown\boxraise
+
+\def\boxbaselineat#1{% baseline at #1 of the total box vdim
+ \hbox\transboxdef
+  \lower\dimexpr(\ht\transbox+\dp\transbox)*(#1)/\transfactor-\dp\transbox\relax
+  \box\transbox
+ \transboxend}
+
+\def\boxmoveleft#1{%
+ \vbox\transboxdef
+  \moveleft\dimexpr#1\relax\box\transbox
+ \transboxend}
+
+\def\boxmoveright#1{%
+ \vbox\transboxdef
+  \moveright\dimexpr#1\relax\box\transbox
+ \transboxend}
+
+% rule-like spec of the box size (risky hack)
+
+\def\b@x:rule#1#2#{%
+ #1\transboxdef
+  \setbox0\hbox{\vrule width\wd\transbox height\ht\transbox depth\dp\transbox #2}%
+  \wd\transbox=\wd0
+  \ht\transbox=\ht0
+  \dp\transbox=\dp0
+  \box\transbox
+ \transboxend#1}
+
+\def\hboxr{\b@x:rule\hbox}
+\def\vboxr{\b@x:rule\vbox}
+\def\vtopr{\b@x:rule\vtop}
+\let\boxr\hboxr
+
+% reboxing; restore box natural dimensions (without shrink or stretch).
+
+\def\revbox{%
+ \vbox\transboxdef
+  \unvbox\transbox
+ \transboxend}
+
+\def\revtop{%
+ \vtop\transboxdef
+  \unvbox\transbox
+ \transboxend}
+
+\def\rehbox{%
+ \hbox\transboxdef
+  \unhbox\transbox
+ \transboxend}
+
+% just wrap
+
+\def\hboxwrap{%
+ \hbox\transboxdef
+  \box\transbox
+ \transboxend}
+
+\def\vboxwrap{%
+ \vbox\transboxdef
+  \box\transbox
+ \transboxend}
+
+\def\vtopwrap{%
+ \vtop\transboxdef
+  \box\transbox
+ \transboxend}
+
+% show boxes
+
+\def\boxshow#1#2#3{%
+ \hbox\transboxdef
+  \savebp\trans:def:a\wd\transbox
+  \savebp\trans:def:b\dimexpr\ht\transbox+\dp\transbox\relax
+  \savebp\trans:def:c\dp\transbox
+  \box\transbox
+  \pdfliteral{%
+  q #1
+  1 0 0 1 \negbp\trans:def:a\space 0 cm
+  0 \negbp\trans:def:c\space \trans:def:a\space \trans:def:b\space re S
+  #2
+  0 0 m
+  \trans:def:a\space 0 l S #3 Q}%
+ \transboxend}
+
+\def\boxsh{\boxshow{0 0 1 RG}{0 0 .8 RG [2 2]1 d}{}}
+
+% box painted according to graphic state parameters (ie. on layer).
+
+\def\boxgs#1#2{%
+ \hbox\transboxdef
+  \pdfliteral{q #1}%
+  \savebp\trans:def\wd\transbox
+  \box\transbox
+  \pdfliteral{#2 Q 1 0 0 1 \trans:def\space 0 cm}%
+ \transboxend}
+
+% markers around the box
+
+\def\boxmarkers#1#2#3{%
+ \hbox\transboxdef
+  \copy\transbox
+  \trans:dim:a=\dimexpr#1\relax
+  \trans:dim:b=\dimexpr#2\relax
+  \pdfliteral{q #3}%
+  \savebp\trans:def-\dp\transbox
+  \box:markers:h
+  \savebp\trans:def\ht\transbox
+  \box:markers:h
+  \savebp\trans:def-\wd\transbox
+  \box:markers:v
+  \savebp\trans:def\z@
+  \box:markers:v
+  \pdfliteral{S Q}%
+  \setbox\transbox\box\voidb@x
+ \transboxend}
+
+\def\box:markers:h{%
+  \savebp\trans:def:a\trans:dim:a
+  \savebp\trans:def:b\trans:dim:b
+  \pdfliteral{%
+   \trans:def:a\space\trans:def\space m \trans:def:b\space\trans:def\space l}%
+  \savebp\trans:def:a\dimexpr-\wd\transbox-\trans:dim:a\relax
+  \savebp\trans:def:b\dimexpr-\wd\transbox-\trans:dim:b\relax
+  \pdfliteral{%
+   \trans:def:a\space\trans:def\space m \trans:def:b\space\trans:def\space l}}
+
+\def\box:markers:v{%
+  \savebp\trans:def:a\dimexpr-\dp\transbox-\trans:dim:a\relax
+  \savebp\trans:def:b\dimexpr-\dp\transbox-\trans:dim:b\relax
+  \pdfliteral{%
+   \trans:def\space \trans:def:a\space m \trans:def\space \trans:def:b\space l}%
+  \savebp\trans:def:a\dimexpr\ht\transbox+\trans:dim:a\relax
+  \savebp\trans:def:b\dimexpr\ht\transbox+\trans:dim:b\relax
+  \pdfliteral{%
+   \trans:def\space \trans:def:a\space m \trans:def\space \trans:def:b\space l}}
+
+% for sake of compatibility...
+
+\def\boxm#1#2{\boxmarkers{#1}{#2}{}}
+\let\boxmarks\boxmarkers
+
+% simple phantom
+
+\def\boxphantom{%
+ \hbox\transboxdef
+  \hbox to\wd\transbox
+   {\vrule width\z@ height\ht\transbox depth\dp\transbox\hss}%
+ \transboxend}
+
+% simple smash
+
+\def\boxsmash{%
+ \hbox\transhboxdef
+  \wd\transbox=\z@
+  \ht\transbox=\z@
+  \dp\transbox=\z@
+  \box\transbox
+ \transboxend}
+
+\def\hboxsmash{%
+ \hbox\transhboxdef
+  \wd\transbox=\z@
+  \box\transbox
+ \transboxend}
+
+\def\vboxsmash{%
+ \vbox\transhboxdef
+  \ht\transbox=\z@
+  \dp\transbox=\z@
+  \box\transbox
+ \transboxend}
+
+\def\boxgobble{%
+ \hbox\transboxdef
+%  \global\setbox\transbox=\box\voidb@x
+ \transboxend}
+
+% say something about the following box (this one can be followed void box)
+
+\def\box:about#1{%
+ \hbox\bgroup
+  \def\transboxtodo{%
+   \trans:dim:a=\wd\transbox
+   \trans:dim:b=\ht\transbox
+   \trans:dim:c=\dp\transbox
+   \box\transbox
+   \hbox to\z@{\hss
+    \hbox to\trans:dim:a{\hss
+     \lower\trans:dim:c\vbox to\z@{\vss
+      \vbox to\dimexpr\trans:dim:b+\trans:dim:c{\vss\tt
+       #1\vbox{\vskip1ex
+        \halign{\hskip1ex plus 1fil####&####\hskip1ex plus 1fil\cr
+         \trans:def\span\cr
+         wd & \the\trans:dim:a\cr
+         ht & \the\trans:dim:b\cr
+         dp & \the\trans:dim:c\cr}%
+       \vskip1ex
+       }%
+      \vss}%
+     }%
+    \hss}%
+   }%
+   \egroup}\def\trans:def{}\def\trans:def:a{}\box:@bout}
+
+\def\box:@bout#1{%
+ \ifcase
+  \ifx#1\hbox 0 \else
+  \ifx#1\vbox 1 \else
+  \ifx#1\vtop 2 \else
+  \ifx#1\box  3 \else
+  \ifx#1\copy 4 \else 5 \fi\fi\fi\fi\fi
+ \edef\trans:def{\trans:def\string\hbox}\expandafter\transboxini\or
+ \edef\trans:def{\trans:def\string\vbox}\expandafter\transboxini\or
+ \edef\trans:def{\trans:def\string\vtop}\expandafter\transboxini\or
+ \edef\trans:def{\trans:def\string\box}\expandafter\boxabout:register\or
+ \edef\trans:def{\trans:def\string\copy}\expandafter\boxabout:register\or
+ \ifx#1\trans:def:a\errmessage{`#1' is not a box}\fi\let\trans:def:a#1% endless loop otherwise
+ \edef\trans:def{\trans:def\string#1->}\expandafter\expandafter\expandafter\box:@bout\fi
+ #1}
+
+\def\boxabout:register#1{%
+ \let\trans:def:a#1%
+ \afterassignment\boxabout:r@gister\trans:count}
+
+\def\boxabout:r@gister{%
+ \edef\trans:def{\trans:def\the\trans:count\space
+  (\ifvoid\trans:count void\else
+   \ifhbox\trans:count hbox\else
+   \ifvbox\trans:count vbox\fi\fi\fi)}%
+ \afterassignment\transboxtodo
+ \setbox\transbox\trans:def:a\trans:count}
+
+\def\boxinfo{\box:about{\boxpath{.3 w 0 G 0 0 .3 0 k}{B}}}
+\def\boxabout#1{\box:about{\boxgs{#1}{}}}
+
+% paint box path as a background of the box
+
+\def\boxpath#1#2{%
+ \hbox\transboxdef
+  \savebp\trans:def:a\wd\transbox
+  \savebp\trans:def:b\dimexpr\ht\transbox+\dp\transbox\relax
+  \savebp\trans:def:c\dp\transbox
+  \pdfliteral{q #1
+              0
+              \negbp\trans:def:c\space
+              \trans:def:a\space
+              \trans:def:b\space re #2 Q}%
+  \box\transbox
+ \transboxend}
+
+\def\boxroundpath#1#2#3{%
+ \hbox\transboxdef
+  \savebp\trans:def:a\wd\transbox
+  \savebp\trans:def:b\ht\transbox
+  \savebp\trans:def:c\dp\transbox
+  \trans:dim:d=\dimexpr#1\relax
+  \savebp\trans:def:d\trans:dim:d
+  \pdfliteral{q #2}%
+  \pdfliteral{0 \trans:def:d\space m}%
+  \savebp\trans:def\dimexpr\ht\transbox-\trans:dim:d \relax
+  \pdfliteral{%
+   0 \trans:def\space l 0 \trans:def:b\space \trans:def:d\space \trans:def:b\space y}%
+  \savebp\trans:def\dimexpr\wd\transbox-\trans:dim:d \relax
+  \pdfliteral{\trans:def\space \trans:def:b\space l}%
+  \savebp\trans:def\dimexpr\ht\transbox-\trans:dim:d \relax
+  \pdfliteral{%
+   \trans:def:a\space \trans:def:b\space \trans:def:a\space \trans:def\space y}%
+  \savebp\trans:def\dimexpr\dp\transbox-\trans:dim:d \relax
+  \pdfliteral{\trans:def:a\space \negbp\trans:def\space l}%
+  \savebp\trans:def\dimexpr\wd\transbox-\trans:dim:d \relax
+  \pdfliteral{%
+   \trans:def:a\space \negbp\trans:def:c\space \trans:def\space \negbp\trans:def:c\space y
+   \trans:def:d\space \negbp\trans:def:c\space l}%
+  \savebp\trans:def\dimexpr\dp\transbox-\trans:dim:d \relax
+  \pdfliteral{%
+   0 \negbp\trans:def:c\space 0 \negbp\trans:def\space y 0 \trans:def:d\space l}%
+  \pdfliteral{h #3 Q}%
+  \box\transbox
+ \transboxend}
+
+\def\boxedgypath#1#2#3{%
+ \hbox\transboxdef
+  \savebp\trans:def:a\wd\transbox
+  \savebp\trans:def:b\ht\transbox
+  \savebp\trans:def:c\dp\transbox
+  \trans:dim:d=\dimexpr#1\relax
+  \savebp\trans:def:d\trans:dim:d
+  \pdfliteral{q #2}%
+  \pdfliteral{0 \trans:def:d\space m}%
+  \savebp\trans:def\dimexpr\ht\transbox-\trans:dim:d \relax
+  \pdfliteral{0 \trans:def\space l \trans:def:d\space \trans:def:b\space l}%
+  \savebp\trans:def\dimexpr\wd\transbox-\trans:dim:d \relax
+  \pdfliteral{\trans:def\space \trans:def:b\space l}%
+  \savebp\trans:def\dimexpr\ht\transbox-\trans:dim:d \relax
+  \pdfliteral{\trans:def:a\space \trans:def\space l}%
+  \savebp\trans:def\dimexpr\dp\transbox-\trans:dim:d \relax
+  \pdfliteral{\trans:def:a\space \negbp\trans:def\space l}%
+  \savebp\trans:def\dimexpr\wd\transbox-\trans:dim:d \relax
+  \pdfliteral{\trans:def\space \negbp\trans:def:c\space l
+   \trans:def:d\space \negbp\trans:def:c\space l}%
+  \savebp\trans:def\dimexpr\dp\transbox-\trans:dim:d \relax
+  \pdfliteral{0 \negbp\trans:def\space l 0 \trans:def:d\space l}%
+  \pdfliteral{h #3 Q}%
+  \box\transbox
+ \transboxend}
+
+% obsolete
+
+\let\boxsquarepath\boxedgypath
+
+%%% ARITHMETIC
+
+% some shortcuts
+
+\def\expandnumberafter#1#2{\expandafter#1\expandafter{\number#2}}
+
+\def\expandtwonumbersafter#1#2#3{%
+ \expandafter#1\expandafter
+ {\number#2\expandafter}\expandafter
+ {\number#3}}
+
+\def\expandthreenumbersafter#1#2#3#4{%
+ \expandafter#1\expandafter
+ {\number#2\expandafter}\expandafter
+ {\number#3\expandafter}\expandafter
+ {\number#4}}
+
+\def\expandnumexprafter#1#2{\expandafter#1\expandafter{\number\numexpr#2}}
+
+\def\expandtwonumexprafter#1#2#3{%
+ \expandafter#1\expandafter
+ {\number\numexpr#2\expandafter}\expandafter
+ {\number\numexpr#3}}
+
+\def\expandthreenumexprafter#1#2#3#4{%
+ \expandafter#1\expandafter
+ {\number\numexpr#2\expandafter}\expandafter
+ {\number\numexpr#3\expandafter}\expandafter
+ {\number\numexpr#4}}
+
+\def\expanddimexprafter#1#2{\expandafter#1\expandafter{\the\dimexpr#2}}
+
+% Whenever we write a dimen into PDF code, we need to convert it from TeX units
+% to Postscript big points. We handle that as precise as possible, using the
+% fact that eTeX handles 64bit numbers as temporary results of expressions such
+% as A*B/C. A is dimension in points, B is \pt:f@ctor and C is \bp:f@ctor. Note
+% that factor 100pt/100bp is more precise than 1pt/1bp or 10pt/10bp, but NOT
+% less precise than 1000pt/1000bp. Thus, 100 is the optimum.
+
+\edef\pt:f@ctor{\number\dimexpr100pt} % NOT \dimexpr100\p@!
+\edef\bp:f@ctor{\number\dimexpr100bp} %
+
+\begingroup
+ \catcode`\P=12
+ \catcode`\T=12
+ \lccode`P=`p
+ \lccode`T=`t
+ \lowercase{\gdef\with@ut:pt#1PT{#1}}
+\endgroup
+
+\def\withoutpt{\expandafter\with@ut:pt}
+\def\big:p@ints#1#2{#1\the\dimexpr#2*\pt:f@ctor/\bp:f@ctor\relax}
+\def\negbp#1{\withoutpt\the\dimexpr-#1pt\relax}
+
+% If we assume that \pdfdecimaldigits never exceeds possible range (0..4),
+% we can implement PDF dimens rounding in the following way:
+
+\def\t@bp{\big:p@ints\withoutpt}
+
+\def\roundbp#1{%
+ \expandafter\expandafter
+ \csname r@und:bp:\romannumeral\pdfdecimaldigits\expandafter\endcsname
+ \expandafter\with@ut:pt\the\dimexpr(#1)*\pt:f@ctor/\bp:f@ctor\relax0000\relax}
+
+\def\r@und:bp:    #1.#2#3\relax{\number\numexpr#1#2/10\relax}
+\def\r@und:bp:i   #1.#2#3#4\relax{\roundbponce{#1}{#2#3}\relax}
+\def\r@und:bp:ii  #1.#2#3#4#5\relax{\roundbponce{#1}{#2#3#4}\relax}
+\def\r@und:bp:iii #1.#2#3#4#5#6\relax{\roundbponce{#1}{#2#3#4#5}\relax}
+\def\r@und:bp:iv  #1.#2#3#4#5#6#7\relax{\roundbponce{#1}{#2#3#4#5#6}\relax}
+
+% To speed-up things one may say
+
+\def\setbpround#1{% 0..4
+ \edef\roundbp##1{%
+  \unexpanded{\expandafter\expandafter\expandafter}\expandafter\noexpand
+  \csname r@und:bp:\romannumeral#1\endcsname
+  \unexpanded{\expandafter\with@ut:pt\the}%
+  \dimexpr(##1)*\unexpanded{\pt:f@ctor/\bp:f@ctor}\relax0000\relax}}
+
+\def\roundbponce#1#2{%
+ \number\numexpr#1\ifnum#1<0-\else+\fi
+ (\m@ne+\expandafter\r@und:bp:once\number\numexpr1#2/10\relax}
+
+\def\r@und:bp:once#1#2\relax{#1)\relax\ifnum#2>0.#2\fi}
+
+\def\savebp#1{%
+ \def\s@vebp{%
+  \edef#1{\tobp{\bp:dim@n}}}%
+ \afterassignment\s@vebp\bp:dim@n}
+
+\newdimen\bp:dim@n
+
+\def\disablebpround{\let\tobp\t@bp}
+\def\enablebpround{\let\tobp\roundbp}
+
+%\disablebpround
+\enablebpround
+
+% Lets play with basic arithmetic operations. To make things consistent, each
+% function expands to \numexpr|\dimexpr, even if could be easily expanded to
+% digits. This approach ensures predictable behaviour whenever a \function is
+% followed by \expandafter or \relax. To avoid evaluating the same expressions
+% twice or more, each function expands its parameters before performing the
+% final operation. This scheme makes temporary macros reusable.
+
+% absolute value
+
+\def\absint{\expandnumexprafter\absoluteint}
+\def\absoluteint#1{\numexpr\ifnum#1<\z@-\fi#1}
+\def\absdim{\expanddimexprafter\absolutedim}
+\def\absolutedim#1{\dimexpr\ifdim#1<\z@-\fi#1}
+
+% Various approaches to integer division:
+% floor(a/b) -- the largest integer LOWER than a/b
+%  ceil(a/b) -- the lowest integer HIGHER than a/b
+%   int(a/b) -- the integer part (floor for a/b>=0 and ceil for a/b<0)
+%  nint(a/b) -- rounding (the nearest integer)
+
+\def\expanddivisionafter#1#2#3{%
+ \expandnumexprafter#1{#2/#3}{#2}{#3}}
+
+\def\divfloor{\expandtwonumexprafter\dividefloor}
+\def\dividefloor{\expanddivisionafter\divide:fl@@r}
+\def\divide:fl@@r#1#2#3{%
+ \numexpr#1%
+ \ifcase\ifnum#2<0 \ifnum#3<0 1 \else 0 \fi
+        \else      \ifnum#3<0 1 \else 0 \fi \fi
+ \ifnum\numexpr#1*#3>#2-\@ne\fi\or
+ \ifnum\numexpr#1*#3<#2-\@ne\fi\fi}
+
+\def\divceil{\expandtwonumexprafter\divideceil}
+\def\divideceil{\expanddivisionafter\divide:c@il}
+\def\divide:c@il#1#2#3{%
+ \numexpr#1%
+ \ifcase\ifnum#2<0 \ifnum#3<0 1 \else 0 \fi
+        \else      \ifnum#3<0 1 \else 0 \fi \fi
+ \ifnum\numexpr#1*#3<#2+\@ne\fi\or
+ \ifnum\numexpr#1*#3>#2+\@ne\fi\fi}
+
+\def\divint{\expandtwonumexprafter\divideint}
+\def\divideint{\expanddivisionafter\divide:int}
+\def\divide:int#1#2#3{%
+ \numexpr#1%
+ \ifcase\ifnum#2<0 \ifnum#3<0 3 \else 1 \fi
+        \else      \ifnum#3<0 2 \else 0 \fi \fi
+ \ifnum\numexpr#1*#3>#2-\@ne\fi\or
+ \ifnum\numexpr#1*#3<#2+\@ne\fi\or
+ \ifnum\numexpr#1*#3>#2+\@ne\fi\or
+ \ifnum\numexpr#1*#3<#2-\@ne\fi\fi}
+
+\def\divnint{\expandtwonumexprafter\dividenint}
+\def\dividenint#1#2{\numexpr#1/#2}
+
+% modulo
+
+\def\mod{\expandtwonumexprafter\modulo}
+\def\modulo{\expanddivisionafter\do:m@dulo}
+\def\do:m@dulo#1#2#3{\numexpr#2-#3*\divide:fl@@r{#1}{#2}{#3}\relax}
+
+% If we don't divide (by) negative numbers, the following macros works
+% a bit faster.
+
+\def\divfloorpos{\expandtwonumexprafter\dividefloorpos}
+\def\dividefloorpos{\expanddivisionafter\divide:fl@@r:pos}
+\def\divide:fl@@r:pos#1#2#3{\numexpr#1\ifnum\numexpr#1*#3>#2-\@ne\fi}
+
+\def\divceilpos{\expandtwonumexprafter\divideceilpos}
+\def\divideceilpos{\expanddivisionafter\divide:c@il:pos}
+\def\divide:c@il:pos#1#2#3{\numexpr#1\ifnum\numexpr#1*#3<#2+\@ne\fi}
+
+\let\divintpos\divfloorpos
+\let\divideintegerpos\dividefloorpos
+
+\def\modpos{\expandtwonumexprafter\modulopos}
+\def\modulopos{\expanddivisionafter\modulo:p@s}
+\def\modulo:p@s#1#2#3{\numexpr#2-#3*\divide:fl@@r:pos{#1}{#2}{#3}\relax}
+
+% One sticky problem in all the division related macros above... We always
+% check if some rounding is present using the formula
+%     \divident/\divisor*\divisor <=> \divident
+% It works fine if one say (2\maxdimen)/\maxdimen, but arithmetic overflow
+% occurs for (2\maxdimen)/(\maxdimen+1) or (2\maxdimen)/2. Thus, can be used
+% for reasonably small numbers.
+
+% Having an integer division we can round float-like strings
+
+\def\floatround#1{\divnint{\dimexpr#1pt}\p@}
+\def\floatfloor#1{\divfloor{\dimexpr#1pt}\p@}
+\def\floatceil#1{\divceil{\dimexpr#1pt}\p@}
+\def\floatint#1{\divint{\dimexpr#1pt}\p@}
+\def\floatnint#1{\divnint{\dimexpr#1pt}\p@}
+
+% Now lets implement integer by integer division with float-like result. The
+% following approach is quite fast and precise enough for most practical
+% purposes, but resulting floats are limited to \maxdimen expressed in points
+% (16383.99998).
+
+\def\fdivide{\expandtwonumexprafter\flo@t:divide}
+\def\flo@t:divide#1#2{\withoutpt\the\dimexpr\numexpr#1*\p@/#2\relax sp\relax}
+
+% Note, that \fdivide produce a float-like string that can be used as a factor
+% preceding a dimen (i.e \hsize=\fdivide{2}{7}\hsize). For sake of preciseness
+% however, internally we always use \dimexpr\hsize*2/7 in such cases (see
+% pdftrans.tex).
+
+% Yet another approach to division with float-like result. \divfloat produce a
+% float-like string with fixed precision. There is still numeric overflow risk
+% mentioned above. No preciseness and result limitation, however.
+
+\def\divfloat{% <divisor> <divident> <preciseness>
+ \expandthreenumexprafter\dividefloat}
+
+\def\dividefloat#1#2#3{%
+ \expandnumberafter\divide:flo@t % \absoluteint returns \numexpr
+ {\absoluteint{\divideint{#1}{#2}}}{#1}{#2}{#3}}
+
+\def\divide:flo@t#1#2#3{% it is not enough to check the sign of #1
+ \ifnum#2<0 \ifnum#3>0 -\fi\else
+ \ifnum#2>0 \ifnum#3<0 -\fi\fi\fi
+ #1.\expandthreenumexprafter\divide:fl@@t
+ {#1}{\absoluteint{#2}}{\absoluteint{#3}}}
+
+\def\divide:fl@@t#1#2#3{%
+ \expandnumexprafter\divide:flo@t:modulo{#2-#1*#3}{#3}}
+
+\def\divide:flo@t:modulo#1#2{%
+ \ifnum#1<214748365
+  \expandtwonumbersafter\divide:flo@t:result{#10}{#2\expandafter}%
+ \else
+  \expandtwonumexprafter\divide:flo@t:modulo{#1/2}{#2/2\expandafter}%
+ \fi}
+
+\def\divide:flo@t:result#1#2#3{%
+ \ifnum#3>1
+  \expandtwonumexprafter\divide:flo@t:repeat
+  {#3-\@ne}{\dividefloorpos{#1}{#2}\expandafter}%
+ \else
+  \number\divide:flo@t:last{#1}{#2}\relax
+  \expandafter\gobbletwo
+ \fi{#1}{#2}}
+
+\def\divide:flo@t:repeat#1#2#3#4{%
+ #2\expandnumexprafter\divide:flo@t:modulo{#3-#2*#4}{#4}{#1}}
+
+\newcount\floatprecision
+\floatprecision=6
+
+\def\roundlast{\let\divide:flo@t:last\dividenint}
+\def\floorlast{\let\divide:flo@t:last\divideint}
+\roundlast
+
+% One may say \let\tobp\roundfixedbp to enable alternative (fixed) rounding.
+
+\def\tofixedbp#1{\divfloat{\dimexpr#1}\b@\floatprecision}
+\def\roundfixedbp#1{\divfloat{\dimexpr#1}\b@\pdfdecimaldigits}
+
+% And now comes a real challenge -- trigonometry. In the first approach, values
+% of trigonometric functions were predefined for angles of range 0..90. Real
+% angle values were not supported. Now things are a bit slower, but much more
+% precise. In particular, we handle real angles values. The trigonometry
+% implementation is excerpted from trans.tex and originally was inspired by
+% mf.web. The clue is that any angle value (not only integer) can be
+% represented as a series of predefined ,,coins''. Trigonometric functions can
+% be then recursively calculated as follows:
+%
+% sin(a+b) = sin(a)cos(b) + sin(b)cos(a)
+% cos(a+b) = cos(a)cos(b) - sin(a)sin(b)
+%
+% Big thanks for BOP team for encourage.
+
+\def\fractdegree#1{\numexpr16*\dimexpr#1pt}           % 2^20sp = 16pt = 1degree
+\edef\fractfactor{\number\numexpr\maxdimen+\@ne}      % 2^30
+\edef\fractfourth{\number\numexpr90*\fractdegree\@ne} % 90 degrees
+\edef\fractperiod{\number\numexpr4*\fractfourth}      % 360 degrees
+
+\def\reducefractangle#1{% reduce to 0..#2
+ \expandnumberafter\reduce:fr@ct:angle{\fractdegree{#1}}}
+
+\def\reduce:fr@ct:angle#1#2{%
+ \ifnum#1<0
+  \numexpr#2-\modpos{-#1}{#2}\relax
+ \else
+  \modpos{#1}{#2}%
+ \fi}
+
+% For sake of backward compatibility we leave a hook for integer angles
+
+\def\reduceintangle#1#2{%
+ \expandtwonumexprafter\reduce:int:@ngle{#1}{#2/\fractdegree\@ne}}
+
+\def\reduce:int:@ngle#1#2{\fractdegree{\reduce:fr@ct:angle{#1}{#2}}}
+
+\def\enablefractangle{\let\reducetrigangle\reducefractangle}
+\def\disablefractangle{\let\reducetrigangle\reduceintangle}
+\enablefractangle
+
+% some macro shortcuts
+
+\def\fracttrigfourth#1{% returns 0..3 (quarter)
+ \dividefloorpos{#1}\fractfourth}
+
+\def\fr@ct:mul#1#2{#1*#2/\fractfactor}
+\def\fr@ct:div#1{\fdivide{#1}\fractfactor}
+
+% constant fractions
+
+\def\fr@ct:angle#1{\ifcase\numexpr#1\relax
+62914560\or % 60
+47185920\or % 45
+31457280\or % 30
+16777216\or % 2^4
+ 8388608\or % 2^3
+ 4194304\or % 2^2
+ 2097152\or % 2^1
+ 1048576\or % 2^0
+  524288\or % 2^-1
+  262144\or % 2^-2
+  131072\or % 2^-3
+   65536\or % 2^-4
+   32768\or % 2^-5
+   16384\or % 2^-6
+    8192\or % 2^-7
+    4096\or % 2^-8
+    2048\or % 2^-9
+    1024\or % 2^-10
+     512\or % 2^-11
+     256\or % 2^-12
+     128\or % 2^-13
+      64\or % 2^-14
+      32\or % 2^-15
+      16\or % 2^-16
+       8\or % 2^-17
+       4\or % 2^-18
+       2\or % 2^-19
+       1\fi}% 2^-20
+
+\def\fr@ct:sin#1{\ifcase\numexpr#1\relax
+929887697\or % 60
+759250125\or % 45
+536870912\or % 30
+295963357\or % 2^4
+149435979\or % 2^3
+ 74900443\or % 2^2
+ 37473049\or % 2^1
+ 18739379\or % 2^0
+  9370046\or % 2^-1
+  4685068\or % 2^-2
+  2342539\or % 2^-3
+  1171270\or % 2^-4
+   585635\or % 2^-5
+   292818\or % 2^-6
+   146409\or % 2^-7
+    73204\or % 2^-8
+    36602\or % 2^-9
+    18301\or % 2^-10
+     9151\or % 2^-11
+     4575\or % 2^-12
+     2288\or % 2^-13
+     1144\or % 2^-14
+      572\or % 2^-15
+      286\or % 2^-16
+      143\or % 2^-17
+       71\or % 2^-18
+       36\or % 2^-19
+       18\fi}% 2^-20
+
+\def\fr@ct:cos#1{\ifcase\numexpr#1\relax
+ 536870912\or % 60
+ 759250125\or % 45
+ 929887697\or % 30
+1032146887\or % 2^4
+1063292242\or % 2^3
+1071126243\or % 2^2
+1073087729\or % 2^1
+1073578288\or % 2^0
+1073700939\or % 2^-1
+1073731603\or % 2^-2
+1073739269\or % 2^-3
+1073741185\or % 2^-4
+1073741664\or % 2^-5
+1073741784\or % 2^-6
+1073741814\or % 2^-7
+1073741822\or % 2^-8
+1073741823\or % 2^-9
+1073741824\or % 2^-10
+1073741824\or % 2^-11
+1073741824\or % 2^-12
+1073741824\or % 2^-13
+1073741824\or % 2^-14
+1073741824\or % 2^-15
+1073741824\or % 2^-16
+1073741824\or % 2^-17
+1073741824\or % 2^-18
+1073741824\or % 2^-19
+1073741824\fi}% 2^-20
+
+% I like \ifcase...\or...\fi acting as arrays because of its readability.
+% For sake of speed however, we say:
+
+\trans:count=0
+\loop
+ \expandafter\edef\csname
+   fractangle:\the\trans:count\endcsname{\fr@ct:angle\trans:count}
+ \expandafter\edef\csname
+   fractsinvalue:\the\trans:count\endcsname{\fr@ct:sin\trans:count}
+ \expandafter\edef\csname
+   fractcosvalue:\the\trans:count\endcsname{\fr@ct:cos\trans:count}
+ \ifnum\trans:count<27
+ \advance\trans:count by1
+\repeat
+\def\fr@ct:angle#1{\csname fractangle:\number#1\endcsname}
+\def\fr@ct:sin#1{\csname fractsinvalue:\number#1\endcsname}
+\def\fr@ct:cos#1{\csname fractcosvalue:\number#1\endcsname}
+
+% Here the main loop starts.
+
+\def\fracttrig#1{% <angle> -> <sine> <cosine> <command>
+ \expandnumexprafter\fr@ct:trig{\reducetrigangle{#1}\fractperiod}}
+
+\def\fr@ct:trig#1{%
+ \csname fr@ct:trig:\romannumeral\fracttrigfourth{#1}+\@ne\endcsname
+ {#1}}
+
+\def\fr@ct:trig:i#1#2#3{% <angle> <sine> <cosine>
+ \expandthreenumexprafter\fr@ct:trig:cont{#1}{#2}{#3}\z@}
+
+\def\fr@ct:trig:ii#1#2#3{%
+ \expandthreenumexprafter\fr@ct:trig:cont{#1-\fractfourth}{#3}{-#2}\z@}
+
+\def\fr@ct:trig:iii#1#2#3{%
+ \expandthreenumexprafter\fr@ct:trig:cont{#1-2*\fractfourth}{-#2}{-#3}\z@}
+
+\def\fr@ct:trig:iv#1#2#3{%
+ \expandthreenumexprafter\fr@ct:trig:cont{#1-3*\fractfourth}{-#3}{#2}\z@}
+
+\def\fr@ct:trig:cont#1#2#3#4{% <angle> <sine> <cosine> <index>
+ \ifcase
+  \ifnum#1>0 \ifnum#1<\fr@ct:angle{#4} 0 \else 1 \fi \else 2 \fi
+  \expandafter\fr@ct:trig:cont\expandafter
+  {\number#1\expandafter}\expandafter
+  {\number#2\expandafter}\expandafter
+  {\number#3\expandafter}\expandafter
+  {\number\numexpr#4+\@ne\expandafter}\or
+  \expandafter\fr@ct:trig:cont\expandafter
+  {\number\numexpr#1-\fr@ct:angle{#4}\expandafter}\expandafter
+  {\number\numexpr\fr@ct:mul{#2}{\fr@ct:cos{#4}}%
+                 +\fr@ct:mul{#3}{\fr@ct:sin{#4}}\expandafter}\expandafter
+  {\number\numexpr\fr@ct:mul{#3}{\fr@ct:cos{#4}}%
+                 -\fr@ct:mul{#2}{\fr@ct:sin{#4}}\expandafter}\expandafter
+  {\number\numexpr#4+\@ne\expandafter}\or
+  \fracttrigend{#2}{#3}\fi}
+
+% ...and finally, execute the next command with two first parameters being
+% scaled sine and cosine.
+
+\def\fracttrigend#1#2\fi#3{\fi#3{#1}{#2}}
+
+\def\fractsincos#1#2#3{\fracttrig{#3}\z@\fractfactor\fr@ct:sin:cos#1#2}
+\def\fr@ct:sin:cos#1#2#3#4{\def#3{#1}\def#4{#2}}
+
+% In pdftrans we use the following shortcuts
+
+\def\fr@ct:sin:cos:i#1#2#3{\fr@ct:trig:i{#3}\z@\fractfactor\fr@ct:sin:cos#1#2}
+\def\fr@ct:sin:cos:ii#1#2#3{\fr@ct:trig:ii{#3}\z@\fractfactor\fr@ct:sin:cos#1#2}
+\def\fr@ct:sin:cos:iii#1#2#3{\fr@ct:trig:iii{#3}\z@\fractfactor\fr@ct:sin:cos#1#2}
+\def\fr@ct:sin:cos:iv#1#2#3{\fr@ct:trig:iv{#3}\z@\fractfactor\fr@ct:sin:cos#1#2}
+
+\def\floatsincos#1#2#3{\fracttrig{#3}\z@\fractfactor\flo@t:sin:c@s#1#2}
+\def\flo@t:sin:c@s#1#2#3#4{%
+ \edef#3{\fr@ct:div{#1}}%
+ \edef#4{\fr@ct:div{#2}}}
+
+\endtrans
+\endinput

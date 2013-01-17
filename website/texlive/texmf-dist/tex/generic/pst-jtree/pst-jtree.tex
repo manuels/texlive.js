@@ -1,0 +1,657 @@
+%% pst-jtree.tex
+%% COPYRIGHT 2010 by John Frampton, j.frampton@neu.edu.
+%
+% This work may be distributed and/or modified under the
+% conditions of the LaTeX Project Public License, either version 1.3
+% of this license or (at your option) any later version.
+%
+% This work has the LPPL maintenance status "maintained".
+% This Current Maintainer of this work is John Frampton
+%
+% Please NOTIFY ME about bugs and incompatibilities.
+%
+\def\fileversion{2.6}
+\def\filedate{2011/01/04}
+\message{`PST-jTree' v\fileversion\space\space <\filedate> (jf)}
+%
+\csname JTreeLoaded\endcsname
+\let\JTreeLoaded\endinput
+\ifx\PSTricksLoaded\endinput \else \input pstricks \fi\relax
+\ifx\PSTnodesLoaded\endinput \else \input pst-node \fi\relax
+\ifx\PSTXKeyLoaded\endinput \else \input pst-xkey \fi\relax
+%
+% commands for manipulating character codes
+\begingroup
+\catcode`@=11
+\gdef\jStoreCat#1{%
+   \expandafter\edef\csname @OldCat\string#1\endcsname
+      {\noexpand\catcode\noexpand`\noexpand#1=\the\catcode`#1}%
+}
+\gdef\jRestoreCat#1{\edef\tempa{@OldCat\string#1}%
+   \expandafter\csname\tempa\endcsname \ignorespaces}
+\catcode`@=12
+\global\let\OtherAt=@
+\endgroup
+\def\jTempChangeCat#1#2{\jStoreCat#1\catcode`#1=#2\ignorespaces}
+\jTempChangeCat @{11}
+\def\j@StoreCats#1{%
+   \XKV@for@n{#1}\@char{\expandafter\jStoreCat\@char}%
+}
+\def\j@ChangeCat#1#2{\catcode`#1=#2}
+\def\j@MakeAllOther#1{%
+   \XKV@for@n{#1}\@char{\expandafter\j@ChangeCat\@char{12}}%
+}
+\def\j@TempMakeAllOther#1{%
+   \XKV@for@n{#1}\@char{\expandafter\jTempChangeCat\@char{12}}%
+   \ignorespaces
+}
+\def\j@RestoreCats#1{%
+   \XKV@for@n{#1}\@char{\expandafter\jRestoreCat\@char}%
+   \ignorespaces
+}
+\def\tempjtree@cats{\jTempChangeCat ^{7}\j@TempMakeAllOther{",>,<}}
+\def\jtree@cats{\catcode`^=7 \j@MakeAllOther{",>,<}}
+\def\unjtree@cats{\j@RestoreCats{^,",>,<}}
+\tempjtree@cats
+%
+% register resources
+\newdimen\@xpos
+\newdimen\@ypos
+\newdimen\@@xpos
+\newdimen\@@ypos
+\newdimen\max@left
+\newdimen\max@right
+\newdimen\max@down
+\newdimen\jt@dima
+\newdimen\jt@dimb
+\newdimen\jt@dimc
+\newdimen\jt@dimd
+\newdimen\jt@dime
+\newbox\tree@box
+\newbox\@nodebox
+\newtoks\jtEverytree
+\newtoks\jteverytree
+\newtoks\jteverylabel
+\newcount\@CurrState
+%
+\newif\if@omit
+%
+% from eplain - \@futurenonspacelet, \@getoptionalarg
+\def\@futurenonspacelet#1{\def\cs{#1}%
+   \afterassignment\@stepone\let\@nexttoken=
+}
+\begingroup
+\def\\{\global\let\@stoken= }%
+\\ %
+\endgroup
+\def\@stepone{\expandafter\futurelet\cs\@steptwo}%
+\def\@steptwo{\expandafter\ifx\cs\@stoken\let\@@next=\@stepthree
+   \else\let\@@next=\@nexttoken\fi \@@next}%
+\def\@stepthree{\afterassignment\@stepone\let\@@next= }%
+\def\@getoptionalarg#1{%
+   \let\@optionaltemp = #1%
+   \let\@optionalnext = \relax
+   \@futurenonspacelet\@optionalnext\@bracketcheck
+}
+\def\@bracketcheck{%
+   \ifx [\@optionalnext
+      \expandafter\@@getoptionalarg
+   \else
+      \let\@optionalarg = \empty
+      \expandafter\@optionaltemp
+   \fi
+}
+\def\@@getoptionalarg[#1]{%
+   \def\@optionalarg{#1}%
+   \@optionaltemp
+}
+% end eplain utilities
+\def\psset@optionalarg{%
+   \ifx\@optionalarg\empty \else
+      \expandafter\psset\expandafter{\@optionalarg}\fi
+}
+\def\jt@xovery#1#2{%
+   \jt@ytox@a#1//\@nil#2\ignorespaces}
+\def\jt@ytox@a#1/#2/#3\@nil#4{%
+   \def\temp{#2}\ifx \temp\@empty
+      \def\@denom{1}\else\def\@denom{#2}\fi
+   \pst@dimc=\@denom pt \pst@dimd=#1pt  \pst@dimd=-\pst@dimd
+   \pst@divide\pst@dimc\pst@dimd#4}
+%%%
+\def\expandaftertwice{\expandafter\expandafter\expandafter}
+\def\@empty{}
+\def\@nullbox{\omit}
+\def\psinterpolate(#1)(#2)#3#4{{\SpecialCoor
+   \pst@getcoor{#1}\pst@tempa%
+   \pst@getcoor{#2}\pst@tempb%
+   \pnode(!%
+     \pst@tempa /YA exch \pst@number\psyunit div def
+     /XA exch \pst@number\psxunit div def
+     \pst@tempb /YB exch \pst@number\psyunit div def
+     /XB exch \pst@number\psxunit div def
+     /dx XB XA sub def
+     /dy YB YA sub def
+     dx #3\space mul XA add dy #3\space mul YA add){#4}
+   }\ignorespaces}
+%% PSTricks parameters
+%%
+% labelgap,labelgapt,labelgapb,everytree,everylabel,branch,triratio
+% scaleby,baretopadjust,treevshift,dirA,dirB,etcratio
+\def\jtreevalue#1#2#3\@nil{\ifx#2!%
+   \pssetlength\pst@dimb{#3}
+   \expandafter\pst@dima\csname jt@#1\endcsname
+   \advance\pst@dima by \pst@dimb
+   \else
+      \pssetlength\pst@dima{#2#3}\fi }
+\pst@addfams{jtree}
+\def\define@inckey#1{%  incremental key
+   \define@key[psset]{jtree}{#1}%
+      {\jtreevalue{#1}##1\@nil
+      \expandafter\edef\csname jt@#1\endcsname{\the\pst@dima}}%
+}
+\def\defin@inckeys#1{\XKV@for@n{#1}\@parname{%
+   \expandafter\define@inckey\expandafter{\@parname}%
+}}
+\defin@inckeys{labelgapt,labelgapb,labeloffset,%
+   labelstrutt,labelstrutb,baretopadjust}
+\define@key[psset]{jtree}{labelgap}
+   {\psset{labelgapt=#1,labelgapb=#1}}
+\define@key[psset]{jtree}{everylabel}{\jteverylabel={#1}}
+\define@key[psset]{jtree}{everytree}{\jteverytree={#1}}
+% 12/29/09 parameter eval added
+\define@key[psset]{jtree}{eval}{#1}
+\define@key[psset]{jtree}{triratio}{\edef\jt@triratio{#1}}
+\define@key[psset]{jtree}{treevshift}{%
+   \jtreevalue{labelgapt}#1\@nil
+   \edef\jt@treevshift{\the\pst@dima}}
+\define@key[psset]{jtree}{branch}{\let\branch@type=#1}
+\def\@@strut #1 #2 \@nil{\psset{labelstrutt=#1}%
+   \psset{labelstrutb=#2}}
+\define@key[psset]{jtree}{labelstrut}{\@@strut #1 \@nil}
+\define@boolkey[psset]{jtree}[jt@]{normallabelstrut}[true]%
+   {\ifjt@normallabelstrut \NormalLabelStrut \fi}
+\def\NormalLabelStrut{%
+   \psset{labelstrut={\the\ht\strutbox} {\the\dp\strutbox}}}
+\def\@@scale #1 #2 #3\@nil{\ifx#2\@nil \edef\@yscale{#1}%
+   \else \edef\@yscale{#2}\fi \edef\@xscale{#1}}
+\define@key[psset]{jtree}{scalexby}{\edef\jt@scalexby{#1}}
+\define@key[psset]{jtree}{scaleyby}{\edef\jt@scaleyby{#1}}
+\define@key[psset]{jtree}{scaleby}{\@@scale #1 {\@nil} \@nil
+   \psset{scalexby=\@xscale,scaleyby=\@yscale}}
+% dir parameter for PSTricks, used to set angleA and angleB
+\def\ps@dir(#1:#2){#1 #2 }
+\def\ps@dirtoangle{\pst@number\psyunit mul exch
+      \pst@number\psxunit mul atan }
+\define@key[psset]{jtree}{dirA}
+   {\edef\psk@angleA{\ps@dir#1\noexpand\ps@dirtoangle}}
+\define@key[psset]{jtree}{dirB}
+   {\edef\psk@angleB{\ps@dir#1\noexpand\ps@dirtoangle}}
+% syntax: \psset{dirA=(1:1)} (note :) sets angleA to point in
+%  the (1,1) direction
+%  end new parameter
+%
+\def\jt@maxafter{\xdef\jt@@maxafter{%
+   \noexpand\max@left=\the\max@left
+   \noexpand\max@right=\the\max@right
+   \noexpand\max@down=\the\max@down}%
+   \aftergroup\jt@@maxafter}
+\def\jt@positionafter{\xdef\jt@@positionafter{%
+   \noexpand\@xpos=\the\@xpos
+   \noexpand\@ypos=\the\@ypos}%
+   \aftergroup\jt@@positionafter}
+\def\vartri@after{\xdef\vartri@@after{%
+   \noexpand\@@xpos=\the\@@xpos
+   \noexpand\@@ypos=\the\@@ypos}%
+   \aftergroup\vartri@@after}
+%
+% leaf definitions
+\def\defenter{\j@TempMakeAllOther{>,<}\@getoptionalarg}
+\def\defreturn{\j@RestoreCats{>,<}}
+%
+\def\defbranch{\defenter\defbranch@a}
+\def\defbranch@a<#1>#2(#3)#4(#5){%
+   \jt@xovery{#5}\temp
+   \expandaftertwice\edef\@nameuse{leaf@#1}%
+      {\noexpand\def\noexpand\@leaf{%
+         \noexpand\@@branch{\@optionalarg}{#3}{\temp}}}%
+   \defreturn
+   \ignorespaces
+}
+\def\@@branch#1#2#3{\@@xpos=\@xpos \@@ypos=\@ypos
+   {\psset{#1}\psset@optionalarg
+      \pssetylength\pst@dimd{#2}
+   \pst@dimc=#3\pst@dimd
+   \pst@divide\psxunit\psyunit\temp
+   \pst@dimc=\temp\pst@dimc
+   \pst@dimc=\jt@scalexby\pst@dimc
+   \pst@dimd=\jt@scaleyby\pst@dimd
+   \advance\@ypos by -\pst@dimd
+   \advance\@xpos by \pst@dimc
+   \branch@type(\@@xpos,\@@ypos)(\@xpos,\@ypos)%
+   \jt@positionafter
+   \ifdim\@xpos < \max@left \max@left=\@xpos \fi
+   \ifdim\@xpos > \max@right \max@right=\@xpos \fi
+   \ifdim\@ypos < \max@down \max@down=\@ypos \fi
+   \jt@maxafter}%
+}
+\def\deftriangle{\defenter\deftriangle@a}
+\def\deftriangle@a#1<#2>#3(#4)#5(#6)#7(#8){%
+   \jt@xovery{#6}\tempA
+   \jt@xovery{#8}\tempB
+   \expandaftertwice\edef\@nameuse{leaf@#2}%
+      {\noexpand\def\noexpand\@leaf{%
+         \noexpand\@@triangle{\@optionalarg}{#4}{\tempA}{\tempB}}}%
+   \defreturn
+   \ignorespaces
+}
+\def\@@triangle#1#2#3#4{\@@xpos=\@xpos \@@ypos=\@ypos
+   {\psset{#1}\psset@optionalarg
+   \jt@dima=\@xpos \jt@dimb=\@ypos
+   \pssetylength\jt@dimc{#2}
+   \jt@dimd=#3\jt@dimc
+   \jt@dime=#4\jt@dimc
+   \pst@divide\psxunit\psyunit\temp
+   \jt@dimd=\temp\jt@dimd
+   \jt@dime=\temp\jt@dime
+   \jt@dimd=\jt@scalexby\jt@dimd
+   \jt@dime=\jt@scalexby\jt@dime
+   \jt@dimc=\jt@scaleyby\jt@dimc
+   \advance\@ypos by -\jt@dimc
+   \advance\@xpos by \jt@dimd
+   \ifdim\@xpos < \max@left \max@left=\@xpos \fi
+   \advance\jt@dime by -\jt@dimd  \jt@dimc=\jt@dime  % width
+   \advance\jt@dime by \@xpos
+   \ifdim\jt@dime > \max@right \max@right=\jt@dime \fi
+   \jt@maxafter
+   \branch@type(\jt@dima,\jt@dimb)(\@xpos,\@ypos)
+   \branch@type(\jt@dima,\jt@dimb)(\jt@dime,\@ypos)
+   \branch@type(\@xpos,\@ypos)(\jt@dime,\@ypos)
+   \advance\@xpos by \jt@triratio\jt@dimc
+   \xdef\temp{\the\jt@dimc}%
+   \jt@positionafter}%
+   \edef\triwd{\temp}%
+}
+\def\defvartriangle{\defenter\defvartriangle@a}
+\def\defvartriangle@a#1<#2>#3(#4){%
+   \expandaftertwice\edef\@nameuse{leaf@#2}%
+      {\noexpand\@CurrState=\State@vartri
+      \noexpand\def\noexpand\@leaf{%
+          \noexpand\@@vartriangle{\@optionalarg}{#4}}}%
+   \defreturn
+   \ignorespaces
+}
+\def\@@vartriangle#1#2{\@@xpos=\@xpos \@@ypos=\@ypos
+   {\expandafter\psset\expandafter{\jf@@pars}%
+   \edef\@vartriratio{\jt@triratio}%
+   \psset{#1}\psset@optionalarg
+   \pssetylength\jt@dimc{#2}
+   \jt@dimc=\jt@scaleyby\jt@dimc
+   \advance\@ypos by -\jt@dimc
+   \jt@dimc=\@xpos
+   \jt@dimd=\@vartriratio\wd\@nodebox
+   \advance\jt@dimc by -\jt@dimd
+   \ifdim\jt@dimc < \max@left \max@left=\jt@dimc \fi
+   \jt@dimd=\jt@dimc \advance\jt@dimd by \wd\@nodebox
+   \ifdim\jt@dimd > \max@right \max@right=\jt@dimd \fi
+   \@xpos=\jt@dimc \advance\@xpos by .5\wd\@nodebox
+   \branch@type(\@@xpos,\@@ypos)(\jt@dimc,\@ypos)
+   \branch@type(\@@xpos,\@@ypos)(\jt@dimd,\@ypos)
+   \branch@type(\jt@dimc,\@ypos)(\jt@dimd,\@ypos)
+   \jt@maxafter \jt@positionafter}%
+}
+\def\jt@setnode{\jt@dime=\@xpos \advance\jt@dime by \jt@labeloffset
+   \ifx\@explabel\@empty\else
+      \pnode(\@xpos,\@ypos){\@explabel:t}\fi
+   \jt@dima=\ht\@nodebox
+   \jt@dimb=\dp\@nodebox
+   \jt@dimc=\wd\@nodebox
+   \@ifCurrState\State@root
+         \xdef\@topadjust{\the\jt@dima}%
+         \global\@CurrState=\State@normal
+      \else
+         \if@omit \else
+            \ifdim\jt@dima>\jt@labelstrutt
+               \else \jt@dima=\jt@labelstrutt \fi
+            \advance\jt@dima by \jt@labelgapt \fi
+      \fi
+   \advance\@ypos by -\jt@dima
+   \ifx\@explabel\@empty
+      \rput[B](\jt@dime,\@ypos){\unhbox\@nodebox}\else
+      \rput[B](\jt@dime,\@ypos){%
+         \rnode{\@explabel}{\unhbox\@nodebox}}\fi
+   \if@omit \else
+      \ifdim\jt@dimb > \jt@labelstrutb
+         \else \jt@dimb = \jt@labelstrutb \fi
+      \advance\jt@dimb by \jt@labelgapb   \fi
+   \advance\@ypos by -\jt@dimb
+   \ifx\@explabel\@empty\else
+      \pnode(\@xpos,\@ypos){\@explabel:b}\fi
+   \jt@positionafter
+   \ifdim\@ypos<\max@down \max@down=\@ypos\fi
+   \jt@dima=\jt@dime \advance\jt@dima by .5\jt@dimc
+   \ifdim\jt@dima > \max@right \max@right=\jt@dima \fi
+   \jt@dima=\jt@dime \advance\jt@dima by -.5\jt@dimc
+   \ifdim\jt@dima < \max@left \max@left=\jt@dima \fi
+   \jt@maxafter
+}
+\def\jtp@err#1{\errmessage{JTREE ERROR: #1}}
+\chardef\State@root=0
+\chardef\State@normal=1
+\chardef\State@vartri=2
+\chardef\State@colonB=3
+\chardef\State@colonA=4
+\def\@ifCurrState#1{\ifnum\@CurrState=#1}
+\def\start{\xdef\@topadjust{\jt@baretopadjust}\@CurrState=\State@root
+   \jtp@parse }
+%
+% \@preparenext is used extensive by the parser.  It removes a
+%   following space token and expands the token which follows.
+\def\@preparenext#1{%
+   \def\@@hold{\expandafter #1}%
+   \@futurenonspacelet\temp\@@hold   % \temp is a dummy
+}
+%%%% main parser
+\def\jtp@parse{\@preparenext\jtp@parseA}
+\def\jtp@parseA{\futurelet\temp\jtp@parseD}
+\def\jtp@parseD{%
+   \ifx\temp\bgroup \let\next\jtp@label \else
+   \ifx\temp<\let\next\jtp@branch \else
+   \ifx\temp^\let\next\jtp@HatOp \else
+   \ifx\temp:\let\next\jtp@colon \else
+   \ifx\temp!\let\next\jtp@insertlabel \else
+   \ifx\temp\OtherAt \let\next\jtp@insertlabel \else
+   \ifx\temp(\let\next\jtp@lparen \else
+   \ifx\temp)\let\next\jtp@rparen \else
+   \ifx\temp.\let\next\jtp@exit \else
+   \ifx\temp"\let\next\jtp@evalnext \else
+   \ifx\temp\adjoin \jtp@err{MISSING PERIOD??}\else
+   \ifx\temp\endjtree \jtp@err{MISSING PERIOD??}\else
+      \jtp@err{INVALID ITEM}%
+   \fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi \next
+}
+%%%% labels
+\def\jtp@TestForOmit{\futurelet\temp\jtp@TestForOmitA}
+\def\jtp@TestForOmitA{\global\@omittrue
+   \ifx\temp\omit \let\next\@gobble
+      \else \ifx\temp\pnode \let\next\relax
+      \else \ifx\temp\elc \let\next\relax
+      \else \global\@omitfalse
+         \def\next{\the\jteverylabel}\fi\fi\fi \next
+}
+%%
+\def\jtp@label{\unjtree@cats\jtp@label@}
+\def\jtp@label@#1{\def\@stuff{#1}\jtree@cats\@preparenext\jtp@labelA}
+%\def\jtp@label#1{\def\@stuff{#1}\@preparenext\jtp@labelA}
+\def\jtp@labelA{\expandafter\@getoptionalarg\expandafter\jtp@labelB}
+\def\jtp@labelB{\@preparenext\jtp@labelC}
+\def\jtp@labelC{\@ifnextchar \OtherAt
+   \jtp@labelD{\def\@explabel{}\jtp@labelE}}
+\def\testlabel#1.#2\@nil{\def\temp{#2}\ifx\temp\@empty
+   \else \jtp@err{SPACE MUST FOLLOW @TAG OR !TAG}\fi}
+\def\jtp@labelD#1#2 {\def\@explabel{#2}\testlabel#2.\@nil\jtp@labelE}
+\def\jtp@labelE{\bgroup\psset@optionalarg
+   \setbox\@nodebox\hbox{\expandafter\jtp@TestForOmit\@stuff}%
+   \@ifCurrState\State@vartri \@leaf \fi
+   \jt@setnode\vartri@after\jt@positionafter\egroup
+   \@ifCurrState\State@vartri \@CurrState=\State@normal \fi
+   \@ifnextchar !\jtp@labelF\jtp@labelG}
+\def\jtp@labelF #1 {%
+   \testlabel#1.\@nil
+   \expandaftertwice\xdef\@nameuse{coords@#1}{%
+      \noexpand\@xpos=\the\@xpos\noexpand\@ypos=\the\@ypos}%
+   \jtp@labelH
+}
+\def\jtp@labelG{\@ifnextchar (\jtp@lparen\jtp@labelH}
+\def\jtp@labelH{%
+   \@ifCurrState\State@colonB
+      \jt@maxafter\egroup \@CurrState=\State@normal
+      \def\next{\jtp@parse <colonB>}%
+      \else
+      \let\next\jtp@parse
+      \fi
+   \next
+}
+%%%% branches
+\def\colon@error{\jtp@err{(pars) + target should follow : operator}}
+\def\jtp@branch<#1>{%
+   \ifnum\@CurrState=\State@root
+         \@CurrState=\State@normal
+      \else
+         \ifnum\@CurrState=\State@colonA
+               \@CurrState=\State@colonB
+            \else
+               \ifnum\@CurrState=\State@colonB
+                  \colon@error
+               \fi
+         \fi
+   \fi
+   \expandaftertwice\ifx\@nameuse{leaf@#1}\relax
+      \jtp@err{unknown branch, <#1>}%
+      \fi
+   \@nameuse{leaf@#1}%
+   \@preparenext
+   \jtp@branchA
+}
+\def\jtp@branchA{\expandafter\@getoptionalarg\expandafter\jtp@branchB}
+\def\jtp@branchB{%
+   \@ifCurrState\State@vartri
+         \edef\jf@@pars{\@optionalarg}%
+         \let\next\jtp@varbranch
+      \else
+         \let\next\jtp@mkbranch
+      \fi
+   \next
+}
+\def\jtp@mkbranch{\@leaf\jtp@parse}
+\def\jtp@varbranch{\@preparenext\jtp@varbranchA}
+\def\jtp@varbranchA{\@ifnextchar\bgroup \jtp@label
+   {\jtp@err{vartriangle (pars) should be followed by a label}%
+      \fi \next}}
+%%%  the rest
+\def\jtp@colon#1{%
+   \ifnum\@CurrState<\State@colonB
+      \else \colon@error \fi
+   \bgroup
+   \@CurrState=\State@colonA
+   \jtp@parse <colonA>%
+}
+\def\jtp@lparen#1{%
+   \@ifCurrState\State@root
+      \global\@CurrState=\State@normal
+      \gdef\@topadjust{0pt}%
+      \fi
+   \bgroup
+   \@CurrState=\State@normal
+   \jtp@parse
+}
+\def\jtp@rparen#1{%
+   \jt@maxafter\egroup
+   \@ifCurrState\State@colonB
+         \def\next{%
+            \jt@maxafter
+            \egroup
+            \@CurrState=\State@normal
+            \jtp@parse <colonB>%
+            }%
+      \else
+         \def\next{\jtp@parse}%
+      \fi
+   \next
+}
+\def\jtp@exit#1{\ignorespaces}
+\def\jtp@insertlabel{\jtp@parse{\omit}}
+\def\jtp@HatOp#1{\@ifCurrState\State@normal \else
+      \jtp@err{misplaced ^ operator}\fi
+   \@xpos=\@@xpos \@ypos=\@@ypos\jtp@parse}
+\def\jtp@evalnext#1#2{\ifnum\@CurrState>1
+      \jtp@err{misplaced " evaluation}\fi #2\jtp@parse}
+%%% end of parser
+%
+\def\adjoin at #1 {%
+   \expandaftertwice\ifx\@nameuse{coords@#1}\relax
+         \writeln{* * coords@#1 unknown * *}%
+         \let\next\more@gobble
+      \else
+         \@nameuse{coords@#1}%
+         \let\next\jtp@parse
+      \fi
+      \next
+}
+\def\more@gobble#1.{\ignorespaces}
+\def\adjoinop#1 ={%
+   \@ifCurrState\State@root
+      \xdef\@topadjust{\jt@baretopadjust}\fi
+   \adjoin at !#1
+}
+\def\jtree{\@getoptionalarg\jtree@a}
+\def\jtree@a{\leavevmode
+   \setbox\tree@box\hbox\bgroup
+   \tempjtree@cats
+   \expandaftertwice\def\@nameuse{coords@!}{\@xpos=0pt \@ypos=0pt}%
+   \ifjt@normallabelstrut  \NormalLabelStrut \fi
+   \the\jtEverytree
+   \the\jteverytree
+   \psset@optionalarg
+   \@CurrState=\State@root
+   \def\@topadjust{\jt@baretopadjust}%
+   \@xpos=0pt \@ypos=0pt
+   \max@left=\maxdimen \max@right=-\maxdimen \max@down=0pt
+   \ignorespaces
+}
+\define@key[psset]{jtree}{bbadjust}{\@bbadjust#1 \@nil}
+\def\@bbadjust{\futurelet\temp\@@bbadjust}
+\def\@@bbadjust{\ifx\temp\@nil \let\next\@gobble
+   \else \let\next\@@@bbadjust \fi \next}
+\def\@@@bbadjust #1 #2 {%
+   \expandafter\def\csname jt@bb#1adjust\endcsname{#2}%
+   \@bbadjust
+}
+\psset{bbadjust=height 0pt depth 0pt left 0pt right 0pt}
+\def\jt@afterpic{%
+   \pssetlength\jt@dime\@topadjust
+   \psaddtolength\jt@dime\jt@treevshift
+   \xdef\jt@@afterpic
+      {%
+      \noexpand\def\noexpand\@topadjust{\the\jt@dime}%
+      \noexpand\edef\noexpand\@extraht{\jt@bbheightadjust}%
+      \noexpand\edef\noexpand\@extraleft{\jt@bbleftadjust}%
+      \noexpand\edef\noexpand\@extraright{\jt@bbrightadjust}%
+      }%
+   \aftergroup\jt@@afterpic
+}
+\def\endjtree{%
+   \advance\max@down by -\jt@bbdepthadjust
+   \jt@afterpic\jt@maxafter\egroup
+   \advance\max@left by -\@extraleft
+   \advance\max@right by \@extraright
+   \dp\tree@box=-\max@down
+   \vbox{%
+   \kern\@extraht
+      \hbox{\kern-\max@left
+         \raise\@topadjust \box\tree@box
+         \kern\max@right}%
+   }%
+}
+% alternates to \psline for drawing branches
+\let\branch@type=\psline
+\def\blank(#1)(#2){\ignorespaces}
+% branch with centered elision
+\def\brokenbranch(#1,#2)(#3,#4){%
+   {\psline(#1,#2)(#3,#4)
+   \jt@dima=#1\jt@dimb=#2\jt@dimc=#3\jt@dimd=#4%
+   \jt@dima=.5\jt@dima \advance\jt@dima by .5\jt@dimc
+   \jt@dimb=.5\jt@dimb \advance\jt@dimb by .5\jt@dimd
+   \rput(\jt@dima,\jt@dimb){\pscirclebox*{\vrule
+         height3pt width0pt\dots}}}%
+   \ignorespaces
+}
+% \etc branches (trail off into ...)
+\def\psset@etcratio#1{\edef\jt@etcratio{#1}}
+%  determines the proportion of the branch devoted to ...
+\newpsstyle{etc}{nodesepB=0,nodesepA=1pt,linestyle=dotted,
+   linewidth=1.2pt,dotsep=2pt}
+\def\etcbranch(#1,#2)(#3,#4){{\jt@dima=#1\jt@dimb=#3%
+   \jt@dimc=\jt@dimb
+   \advance\jt@dimc by \jt@etcratio\jt@dima
+   \advance\jt@dimc by -\jt@etcratio\jt@dimb
+   \jt@dima=#2\jt@dimb=#4%
+   \jt@dimd=\jt@dimb
+   \advance\jt@dimd by \jt@etcratio\jt@dima
+   \advance\jt@dimd by -\jt@etcratio\jt@dimb
+   \psline[arrows=-cc](#1,#2)(\jt@dimc,\jt@dimd)
+   \pcline[style=etc](\jt@dimc,\jt@dimd)(#3,#4)}%
+   \ignorespaces
+}
+\def\etc{[branch=\etcbranch,scaleby=.7]}
+% the default is that \etc is 70% the length of \rb and 75% of
+%    it is dots
+% Incremental tree building
+\def\stuff{\@getoptionalarg\stuff@A}
+\def\stuff@A{\ifx\@optionalarg\@empty no def\else
+   \expandaftertwice\ifx\@nameuse{stuff@@\@optionalarg}\relax
+      {\tt [}\expandafter\tt\@optionalarg]\else
+   \@nameuse{stuff@@\@optionalarg}\fi\fi
+}
+\def\defstuff[#1]#2{%
+   \expandaftertwice\def\@nameuse{stuff@@#1}{#2}\ignorespaces}
+% support for multiline labels
+\def\multiline{\setbox0=\hbox{\strut}\vrule height\ht0 width0pt
+   \xdef\@temp@{\the\dp0}%
+   \vtop\bgroup\let\\=\cr\halign\bgroup \hfil##\hfil\cr}
+\def\endmultiline{\vrule depth\@temp@ width0pt
+   \crcr\egroup\egroup}
+%
+\def\triline#1{\hbox to\triwd{#1}}
+% empty label comment
+\defin@inckeys{elcxoffset,elcyoffset}
+\define@key[psset]{jtree}{elcref}
+   {\edef\jt@elcref{#1}}
+\psset{elcxoffset=.8ex,elcyoffset=0,elcref=bl}
+\def\elc{\@getoptionalarg\@elc}
+\def\@elc#1{\psset@optionalarg
+   \rput[\jt@elcref]%
+      (\jt@elcxoffset,\jt@elcyoffset){#1}}
+%
+\unjtree@cats
+\jRestoreCat @
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% the lines below can be commented out and replaced by
+% personalized settings
+%
+\defbranch<left>(1)(1)
+\defbranch<4left>(1)(2)
+\defbranch<bigleft>(2)(1)
+\defbranch<wideleft>(1)(1/2)
+\defbranch<4wideleft>(1)(2/3)
+\defbranch<right>(1)(-1)
+\defbranch<4right>(1)(-2)
+\defbranch<bigright>(2)(-1)
+\defbranch<wideright>(1)(-1/2)
+\defbranch<4wideright>(1)(-2/3)
+\defbranch<vert>(1)(1/0)
+\defbranch<shortvert>(.5)(1/0)
+\deftriangle<tri>(1)(1)(-1)
+\defvartriangle<vartri>(1)
+\defbranch<colonA>(1)(1)
+\defbranch<colonB>(1)(-1)
+\def\jtlong{[scaleby=2.3]}
+\def\jtshort{[scaleby=.5]}
+\def\jtwide{[scaleby=2 1]}
+\def\jtbig{[scaleby=2]}
+\def\jtjot{[scaleby=1.3]}
+\newpsstyle{arrows1}{arrows=-,
+   arrowsize=1ex,arrowlength=1.5,arrowinset=.4}
+\newpsstyle{arrows2}{arrows=->,
+   arrowsize=.7ex,arrowlength=2.1,arrowinset=.35}
+\psset{treevshift=0,unit=1em,xunit=2em,yunit=1em,everytree={},
+   etcratio=.75,triratio=.5}
+\newpsstyle{defaulttree}{labelgap=.35ex,scaleby=1,
+   everylabel=\strut,triratio=.5,baretopadjust=1.3ex,
+   linewidth=.12ex,style=arrows1,
+   normallabelstrut=true,labeloffset=0}
+\psset{style=defaulttree}
+\jtEverytree={\let\!\adjoinop}
+\jteverytree={}
+
+\endinput
+

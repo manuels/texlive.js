@@ -1,0 +1,499 @@
+%@(#) sfg.sty: Signal flow graphs
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% This is the style file sfg.sty for drawing signal flow graphs in LaTeX2e.
+%
+%               Version 0.9, 1.7.1998, Hanspeter Schmid
+%               Version 0.91, 22.08.2007 hv scalebox->\psscalebox
+%
+% If you find an error, or if you want me to implement some more 
+% functions, want me to include more references to books on sfgs,
+% or if you just want to say `hello thank you, I find you package
+% useful', please don't hesitate and contact me:
+%
+%   Hanspeter Schmid, schmid@isi.ee.ethz.ch, 
+%                     http://www.isi.ee.ethz.ch/~schmid/
+%
+%% This program can be redistributed and/or modified under the terms
+%% of the LaTeX Project Public License Distributed from CTAN
+%% archives in directory macros/latex/base/lppl.txt.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% History: (Version numbers are going towards 3/pi.  
+%           sfg.sty is not good enough yet to be called v1.0)
+%
+% created: 26.1.96, hps, (v0)
+% modified for submission to CTAN: 1.7.98, hps, (v0.9) 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Plans:   - make a proper dtx-file out of this mess.  I'll do this if
+%            and when I find the time to do it.
+%          - include an sfg branch which has snake form, e.g. \sfgsnake
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% SEE DESCRIPTION AFTER THE \endinput
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\NeedsTeXFormat{LaTeX2e}
+\RequirePackage[nomessages]{fp}
+\RequirePackage{pstricks}
+\ProvidesPackage{sfg}[2007/08/22]
+\typeout{Style sfg, by Hanspeter Schmid, version 0.91}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Line thicknesses:
+\newdimen\sfg@Li   \sfg@Li=0.40pt         % normal lines (LaTeX `thin')
+\newdimen\sfg@Lii  \sfg@Lii=1.80\sfg@Li   % thick lines (`thick') (hacked)
+\newdimen\sfg@Liii \sfg@Liii=3\sfg@Li     % thickness of heavy lines
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% internal functions
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\sfg@degtorad{0.01745329252}% conversion factor deg -> rad
+\def\sfg@radtodeg{57.2957795132}% conversion factor rad -> deg
+
+\def\sfg@curvescale{0.577350269}% standard sfgcurve angle, cot(60 deg)
+
+\def\sfg@arrowloc{0.5}          % standard location of the arrow is in 
+                                % the middle of an sfg branch
+
+                                % calculate the angle of vector (#1,#2) 
+                                % in degrees, given that #1 
+                                % is positive, ...
+                                % ... and finally add #3.
+\def\sfg@angleadd#1#2#3{{%      % formula: arcsin(#3/sqrt(#1^2+#2^2))
+  \FPmul\sfg@xx{#1}{#1}\FPmul\sfg@yy{#2}{#2}%
+  \FPadd\sfg@rr\sfg@xx\sfg@yy\FProot\sfg@len\sfg@rr{2}%
+                                % calculate length of vector
+  \FPdiv\sfg@sin{#2}\sfg@len\FParcsin\sfg@result\sfg@sin% angle
+  \FPmul\sfg@resultb\sfg@result\sfg@radtodeg%
+  \FPadd\sfg@result\sfg@resultb{#3}%
+  \FPtrunc\sfg@angle\sfg@result{2}\global\let\sfg@angle\sfg@angle}}%
+
+                                % ... and finally subtract from #3.
+\def\sfg@anglesub#1#2#3{{%
+  \FPmul\sfg@xx{#1}{#1}\FPmul\sfg@yy{#2}{#2}%
+  \FPadd\sfg@rr\sfg@xx\sfg@yy\FProot\sfg@len\sfg@rr{2}%
+                                % calculate length of vector
+  \FPdiv\sfg@sin{#2}\sfg@len\FParcsin\sfg@result\sfg@sin% angle
+  \FPmul\sfg@resultb\sfg@result\sfg@radtodeg%
+  \FPsub\sfg@result{#3}\sfg@resultb%
+  \FPtrunc\sfg@angle\sfg@result{2}\global\let\sfg@angle\sfg@angle}}% 
+
+                                
+\def\sfg@arrow#1{%              % rotateable bezier-curve based arrow 
+  \begin{picture}(0,0){%        % zero-dimensional
+      \rput{#1}(0,0){%          % rotate counter-clockwise by #1 degrees
+        \psscalebox{\sfg@arrowlen}{% scale by factor \sfg@arrowlen
+          \pscustom*[linetype=1,linewidth=\sfg@Li]{% draw arrow
+          \psbezier(0.5,0)(0.15,-0.0825)(-0.075,-0.1625)(-0.5,-0.375)%
+          \psline(-0.5,0.375)%
+          \psbezier(-0.075,0.1625)(0.15,0.0825)(0.5,0)}}}}%
+  \end{picture}}%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% functions to configure the signal flow graphs
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                % set the package's numerical parameters
+
+\def\sfgsetunit#1{%             % unitlength
+  \setlength{\unitlength}{#1}%
+  \psset{unit=#1, linewidth=\sfg@Li}}%
+
+\def\sfgsetangle#1{%            % incidence angle of sfgcurves
+  {\FPmul\sfg@tmp\sfg@degtorad{#1}%
+    \FPcot\sfg@curvescale\sfg@tmp%
+    \global\let\sfg@curvescale\sfg@curvescale}}%
+
+\def\sfgsetarrowloc#1{%         % location of the arrow on sfgbranches
+  \def\sfg@arrowloc{#1}}%
+
+\def\sfgsetsize#1#2#3#4{%       % size of arrows and nodes ...
+  \gdef\sfg@noderad{#1}\gdef\sfg@arrowlen{#2}%
+  \gdef\sfg@nlabel{#3}\gdef\sfg@alabel{#4}%
+                                % label distances for \NW, \NE, \SW, \SE
+  \FPmul\sfg@nlabeld{#3}{0.707106781188}% multiply with 1/sqrt(2)
+  \global\let\sfg@nlabeld\sfg@nlabeld%
+  \FPmul\sfg@alabeld{#3}{0.707106781188}%
+  \global\let\sfg@alabeld\sfg@alabeld%
+  }%
+
+\def\sfgsetlines#1#2#3{%        % line thicknesses
+  \sfg@Li=#1\sfg@Lii=#2\sfg@Li\sfg@Liii=#3\sfg@Li%
+  \psset{linewidth=\sfg@Li}}
+                                
+\def\sfgsetcompass{%            % define macros for label placement    
+  \gdef\E{0}\gdef\NE{1}\gdef\N{2}\gdef\NW{3}%
+  \gdef\W{4}\gdef\SW{5}\gdef\S{6}\gdef\SE{7}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% drawing signal flow graphs
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\sfgtermnode#1#2{%          % terminal node (white with black line}
+  \begin{picture}(0,0){%        % zero-size pictures make life easier
+      \put(0,0){%
+                                % circle, radius \sfg@noderad
+        \pscircle*[linecolor=white,dimen=outer](0,0){\sfg@noderad}% 
+        \pscircle[linewidth=\sfg@Lii](0,0){\sfg@noderad}}%
+                                % label placement
+      \ifcase#1                 % E (east)
+                                % text #2 in a distance of \sfg@nlabel
+        \put(\sfg@nlabel,0){\makebox(0,0)[l]{#2}}% 
+      \or                       % NE (north-east)
+        \put(\sfg@nlabeld,\sfg@nlabeld){\makebox(0,0)[bl]{#2}}%
+      \or                       % N (...)
+        \put(0,\sfg@nlabel){\makebox(0,0)[b]{#2}}%
+      \or                       % NW (\sfg@tmp := -\sfg@nlabel)
+        \FPneg\sfg@tmp{\sfg@nlabeld}% 
+        \put(\sfg@tmp,\sfg@nlabeld){\makebox(0,0)[br]{#2}}%
+      \or                       % W
+        \FPneg\sfg@tmp{\sfg@nlabel}%
+        \put(\sfg@tmp,0){\makebox(0,0)[r]{#2}}%
+      \or                       % SW
+        \FPneg\sfg@tmp{\sfg@nlabeld}%
+        \put(\sfg@tmp,\sfg@tmp){\makebox(0,0)[tr]{#2}}%
+      \or                       % S
+        \FPneg\sfg@tmp{\sfg@nlabel}%
+        \put(0,\sfg@tmp){\makebox(0,0)[t]{#2}}%
+      \or                       % SE
+        \FPneg\sfg@tmp{\sfg@nlabeld}%
+        \put(\sfg@nlabeld,\sfg@tmp){\makebox(0,0)[tl]{#2}}%
+      \else                     % no label
+        \PackageWarning{sfg}%
+        {sfgtermnode: label placement option #1 unknown}%
+      \fi%
+  }\end{picture}}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\sfgnode#1#2{%              % normal node (just black)
+  \begin{picture}(0,0){%
+      \put(0,0){%
+        \pscircle*[linewidth=0pt](0,0){\sfg@noderad}}% filled circle
+                                % label placement, comments -> sfgtermnode
+      \ifcase#1 \put(\sfg@nlabel,0){\makebox(0,0)[l]{#2}}%
+      \or\put(\sfg@nlabeld,\sfg@nlabeld){\makebox(0,0)[bl]{#2}}%
+      \or\put(0,\sfg@nlabel){\makebox(0,0)[b]{#2}}%
+      \or\FPneg\sfg@tmp{\sfg@nlabeld}%
+        \put(\sfg@tmp,\sfg@nlabeld){\makebox(0,0)[br]{#2}}%
+      \or\FPneg\sfg@tmp{\sfg@nlabel}%
+        \put(\sfg@tmp,0){\makebox(0,0)[r]{#2}}%
+      \or\FPneg\sfg@tmp{\sfg@nlabeld}%
+        \put(\sfg@tmp,\sfg@tmp){\makebox(0,0)[tr]{#2}}%
+      \or\FPneg\sfg@tmp{\sfg@nlabel}%
+        \put(0,\sfg@tmp){\makebox(0,0)[t]{#2}}%
+      \or\FPneg\sfg@tmp{\sfg@nlabeld}%
+        \put(\sfg@nlabeld,\sfg@tmp){\makebox(0,0)[tl]{#2}}%
+      \else\PackageWarning{sfg}%
+        {sfgnode: label placement option #1 unknown}%
+      \fi%
+  }\end{picture}}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\sfgbranch#1#2#3#4{%         % straight sfg branch
+  \begin{picture}(0,0){%        
+                                % determine in which quadrant the vector's
+                                % end point (x,y) lies (x=#1, y=#2)
+      \FPset\sfg@flag{0}%       % use a bit-flag
+      \FPifzero{#1}\FPadd\sfg@flag\sfg@flag{1}\fi%   % x=0 -> bit 0 
+      \FPifneg{#1}\FPadd\sfg@flag\sfg@flag{2}\fi%    % x<0 -> bit 1 
+      \FPifzero{#2}\FPadd\sfg@flag\sfg@flag{4}\fi%   % y=0 -> bit 2 
+      \FPifneg{#2}\FPadd\sfg@flag\sfg@flag{8}\fi%    % y<0 -> bit 3
+                                % case-distinction: correct the main values
+                                % of arcsin 
+                                % #2#1
+                                % -0-0
+      \ifcase\sfg@flag          % 0000 first quadrant
+        \sfg@angleadd{#1}{#2}{0}%
+      \or                       % 0001 positive y-axis
+        \FPset\sfg@angle{90}%
+      \or                       % 0010 second quadrant
+        \sfg@anglesub{#1}{#2}{180}%
+      \or                       % 0011 impossible
+      \or                       % 0100 positive x-axis
+        \FPset\sfg@angle{0}%
+      \or                       % 0101 zero vector
+        \FPset\sfg@angle{0}%
+        \PackageWarning{sfg}{sfgbranch: zero-length branch drawn.}%
+      \or                       % 0110 negative x-axis
+        \FPset\sfg@angle{180}%
+      \or                       % 0111 impossible
+      \or                       % 1000 third quadrant
+        \sfg@angleadd{#1}{#2}{0}%
+      \or                       % 1001 negative y-axis
+        \FPset\sfg@angle{-90}%
+      \or                       % 1010 fourth quadrant
+        \sfg@anglesub{#1}{#2}{180}%
+      \else                     % every other bit pattern is impossible.
+      \fi %                     % now draw the line
+      \put(0,0){\psline[linewidth=\sfg@Li,arrows=C-C](0,0)(#1,#2)}%
+                                % calculate centre of arrow and label
+      \FPmul\sfg@dx{#1}\sfg@arrowloc\FPmul\sfg@dy{#2}\sfg@arrowloc%
+      \put(\sfg@dx,\sfg@dy){%   % place arrow and label
+        \sfg@arrow{\sfg@angle}%
+                                % label placement (see sfgtermnode)
+        \ifcase#3\put(\sfg@alabel,0){\makebox(0,0)[l]{#4}}% 
+        \or\put(\sfg@alabeld,\sfg@alabeld){\makebox(0,0)[bl]{#4}}%
+        \or\put(0,\sfg@alabel){\makebox(0,0)[b]{#4}}%
+        \or\FPneg\sfg@tmp{\sfg@alabeld}%
+        \put(\sfg@tmp,\sfg@alabeld){\makebox(0,0)[br]{#4}}%
+        \or\FPneg\sfg@tmp{\sfg@alabel}%
+        \put(\sfg@tmp,0){\makebox(0,0)[r]{#4}}%
+        \or\FPneg\sfg@tmp{\sfg@alabeld}%
+        \put(\sfg@tmp,\sfg@tmp){\makebox(0,0)[tr]{#4}}%
+        \or\FPneg\sfg@tmp{\sfg@alabel}%
+        \put(0,\sfg@tmp){\makebox(0,0)[t]{#4}}%
+        \or\FPneg\sfg@tmp{\sfg@alabeld}%
+        \put(\sfg@alabeld,\sfg@tmp){\makebox(0,0)[tl]{#4}}%
+        \else\PackageWarning{sfg}%
+        {sfgbranch: label placement option #3 unknown}%
+        \fi %
+        } %
+      }\end{picture}}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\sfgcurve#1#2#3#4#5{%       % curved sfg branch
+  \begin{picture}(0,0){%        % qadrant ... (see sfgbranch)
+      \FPset\sfg@flag{0}%
+      \FPifzero{#1}\FPadd\sfg@flag\sfg@flag{1}\fi%
+      \FPifneg{#1}\FPadd\sfg@flag\sfg@flag{2}\fi% 
+      \FPifzero{#2}\FPadd\sfg@flag\sfg@flag{4}\fi%
+      \FPifneg{#2}\FPadd\sfg@flag\sfg@flag{8}\fi% 
+      \ifcase\sfg@flag\sfg@angleadd{#1}{#2}{0}%
+      \or\FPset\sfg@angle{90}%
+      \or\sfg@anglesub{#1}{#2}{180}%
+      \or\or\FPset\sfg@angle{0}%
+      \or\FPset\sfg@angle{0}% 
+      \or\FPset\sfg@angle{180}%
+      \or\or\sfg@angleadd{#1}{#2}{0}%
+      \or\FPset\sfg@angle{-90}%
+      \or\sfg@anglesub{#1}{#2}{180}%
+      \else\fi %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+      {%                        % calculate path shift and new 
+                                % arrow location:
+                                % mid: vector to the straight 
+                                % path's arrow midpoint
+        \FPmul\sfg@midx{#1}{0.5}\FPmul\sfg@midy{#2}{0.5}%
+                                % p: rotate mid 90 degrees counterclockwise
+        \FPneg\sfg@px\sfg@midy\FPset\sfg@py\sfg@midx%
+                                % len: length of p (and therefore mid)
+        \FPmul\sfg@xx\sfg@px\sfg@px\FPmul\sfg@yy\sfg@py\sfg@py%
+        \FPadd\sfg@rr\sfg@xx\sfg@yy\FProot\sfg@len\sfg@rr{2}%
+                                % scale: #3/len
+        \FPdiv\sfg@scale{#3}\sfg@len%
+                                % a: p scaled to the absolute length #3
+        \FPmul\sfg@ax\sfg@px\sfg@scale\FPmul\sfg@ay\sfg@py\sfg@scale%
+                                % d: mid+a; vector to the arrow centre
+        \FPadd\sfg@dx\sfg@ax\sfg@midx\FPadd\sfg@dy\sfg@ay\sfg@midy%
+                                % export this value
+        \global\let\sfg@dx\sfg@dx\global\let\sfg@dy\sfg@dy% exported
+                                % now calculate the four additional 
+                                % bezier points. Two of them are at the
+                                % intersections of the tangents and 
+                                % the line parallel to mid through 
+                                % the point (dx,dy).
+                                % Their distance from arrow centre:
+                                % dist = len-(|#3|*cot(alpha))
+        \FPabs\sfg@three{#3}\FPmul\sfg@tmp{\sfg@three}\sfg@curvescale%
+        \FPsub\sfg@dist\sfg@len\sfg@tmp%
+                                % now compare this to 2*arrowlength,
+                                % which is the minimum allowed value if
+                                % sfg paths shouldn't look crippled
+        \FPmul\sfg@limit\sfg@arrowlen{2}%
+        \FPiflt\sfg@dist\sfg@limit%
+          \PackageWarning{sfg}%
+          {sfgcurve: incidence angle has been made steeper}%
+l          \FPset\sfg@dist\sfg@limit%
+        \fi%
+                                % calculate the new scalefactor:
+        \FPdiv\sfg@scale\sfg@dist\sfg@len%
+                                % a: mid scaled to length dist
+        \FPmul\sfg@ax\sfg@midx\sfg@scale\FPmul\sfg@ay\sfg@midy\sfg@scale%
+                                % d.b = mid+a
+        \FPadd\sfg@dxb\sfg@ax\sfg@dx\FPadd\sfg@dyb\sfg@ay\sfg@dy%
+                                % d.a = mid-a
+        \FPsub\sfg@dxa\sfg@dx\sfg@ax\FPsub\sfg@dya\sfg@dy\sfg@ay%
+                                % Two more bezier points lie in between
+                                % these points and the curves end points
+                                % .i = (d.a)/2
+        \FPdiv\sfg@xi\sfg@dxa{2}\FPdiv\sfg@yi\sfg@dya{2}%
+                                % .iv = (d.b + (#1,#2) )/2
+        \FPadd\sfg@tmpx\sfg@dxb{#1}\FPadd\sfg@tmpy\sfg@dyb{#2}%
+        \FPdiv\sfg@xiv\sfg@tmpx{2}\FPdiv\sfg@yiv\sfg@tmpy{2}%
+                                % and now draw the path with bezier lines
+        \put(0,0){\psbezier[linewidth=\sfg@Li]{-}%
+          (0,0)(\sfg@xi,\sfg@yi)(\sfg@dxa,\sfg@dya)(\sfg@dx,\sfg@dy)}%
+        \put(0,0){\psbezier[linewidth=\sfg@Li]{-}%
+          (#1,#2)(\sfg@xiv,\sfg@yiv)(\sfg@dxb,\sfg@dyb)(\sfg@dx,\sfg@dy)}%
+        }%
+      \put(\sfg@dx,\sfg@dy){%   
+        \sfg@arrow{\sfg@angle}%
+                                % label placement (see sfgtermnode)
+        \ifcase#4\put(\sfg@alabel,0){\makebox(0,0)[l]{#5}}% 
+        \or\put(\sfg@alabeld,\sfg@alabeld){\makebox(0,0)[bl]{#5}}%
+        \or\put(0,\sfg@alabel){\makebox(0,0)[b]{#5}}%
+        \or\FPneg\sfg@tmp{\sfg@alabeld}%
+        \put(\sfg@tmp,\sfg@alabeld){\makebox(0,0)[br]{#5}}%
+        \or\FPneg\sfg@tmp{\sfg@alabel}%
+        \put(\sfg@tmp,0){\makebox(0,0)[r]{#5}}%
+        \or\FPneg\sfg@tmp{\sfg@alabeld}%
+        \put(\sfg@tmp,\sfg@tmp){\makebox(0,0)[tr]{#5}}%
+        \or\FPneg\sfg@tmp{\sfg@alabel}%
+        \put(0,\sfg@tmp){\makebox(0,0)[t]{#5}}%
+        \or\FPneg\sfg@tmp{\sfg@alabeld}%
+        \put(\sfg@alabeld,\sfg@tmp){\makebox(0,0)[tl]{#5}}%
+        \else\PackageWarning{sfg}%
+        {sfgcurve: label placement option #4 unknown}%
+        \fi %
+        }}\end{picture}}%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\endinput % That's it.  I Hope you have a fast computer.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Documentation
+~~~~~~~~~~~~~
+This style file defines some commands to draw signal flow graphs using
+LaTeX2e.  Signal flow graphs (sfg) are used by electrical and
+electronics engineers and graph theorists.  If you haven't heard of
+sfgs before, then sfg.sty is probably not useful for you.
+
+If you really want to know what a signal flow graph is, you might read
+one of the references given below.
+
+The package sfg requires the packages `pstricks' and `fp'.  It
+therefore requires LaTeX2e and a reasonably fast machine.
+
+To draw a signal flow graph, you should proceed as follows:
+
+1. Insert \usepackage{pstricks,sfg} in your LaTeX2e-file.
+2. Draw your sfg on graph paper (*) and determine the size of the 
+   picture in units (squares).
+   (*) I mean the paper with a 4mm, 5mm or 1/8in grid on it ...
+3. Set the unitlength using \sfgsetunit.
+4. Set the arrowlength, node radius and label offsets using \sfgsetsize.
+5. In a LaTeX picture environment of the size you determined above,
+   - first draw all paths using \sfgbranch and \sfgcurve,
+   - then draw all nodes using \sfgnode and \sfgtermnode.
+
+
+Setting the Controlling Parameters
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+\sfgsetunit{length} sets \unitlength and the PS unit to `length', and
+        defines the default pstricks linewidth as 0.4pt.  This has an
+        influence on ALL ps-tricks commands that are used afterwards.
+
+\sfgsetsize{nr}{al}{no}{ao} sets the node radius to `nr' units, the
+        arrowlength to `al' units, the offset of the nodes' labels to
+        `no' units and the offset of the arrows' labels to `ao' units.
+        All four parameters are numbers.
+
+\sfgsetangle{an} sets the incidence angle of sfgcurves `an' degrees.
+        Default value: 60 degrees.
+
+\sfgsetarrowloc{mid} sets the location of the sfgbranch's arrow.  0.5
+        means in the middle, 0.1 means 10% of the branch length from
+        the first node.
+        Default value: 0.5
+
+\sfgsetlines{li_len}{lii}{liii} sets the line thickness \sfg@Li (used
+        for all lines) to `li_len', the thickness \sfg@Lii (used for
+        terminal nodes) to `lii'*`li_len', and the thickness \sfg@Liii
+        to `liii'*`li_len'.  It also resets the default pstricks
+        linewidth to the new \sfg@Li.
+
+        Default values:  \sfg@Li=0.40pt    
+                         \sfg@Lii=1.80\sfg@Li
+                         \sfg@Liii=3\sfg@Li 
+
+
+Drawing signal flow graph (sfg) branches
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+\sfgbranch{dx}{dy}{pos}{text} draws a straight sfg branch from (0,0)
+        to (dx,dy). An arrow is placed in the middle of the branch,
+        and a label `text' is typeset near the arrow. The parameter
+        `pos' is explained below (see \sfgnode).
+
+        The distance of the label from the arrow's centre as well as
+        the arrow's length can be set using \sfgsetsize.
+
+        The location of the arrow can be changed using
+        \sfgsetarrowloc.
+
+\sfgcurve{dx}{dy}{off}{pos}{text} draws a curved sfg path from (0,0)
+        to (dx,dy). The arrow's position is `off' units left of the
+        middle of the path (`off' can be negative to put the arrow
+        right of the path). The curve leaves the endpoints in an angle
+        of 60 degrees (this value can be changed using \sfgsetangle)
+        if possible. If the arrow is too far away from the straight
+        path, the angle is increased to guarantee a ``nice'' curve,
+        and a warning message is issued.
+
+
+Drawing Nodes
+~~~~~~~~~~~~~
+\sfgnode{pos}{text} draws a node with label `text'. `pos' decides
+        where the label is typeset. It is a number between 0 and 7.
+        After the command
+
+        \sfgsetcompass
+
+        eight macros named after compass directions can be used.
+
+        
+              3    2    1                 \NW   \N    \NE
+                                                       
+              4    .    0         or       \W    .    \E 
+                                                       
+              5    6    7                 \SW   \S    \SE
+
+        The distance of the label from the node's centre as well as the 
+        node's radius can be set using \sfgsetsize.
+
+\sfgtermnode{pos}{text} draws a terminal node (black circle filled white).
+
+
+Example:
+~~~~~~~~
+\documentclass[11pt,a4paper]{article}
+\usepackage{pstricks,sfg}
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+
+\begin{document}
+\sfgsetunit{0.5cm}
+\sfgsetsize{0.12}{0.4}{0.5}{0.3}
+\sfgsetcompass
+\begin{picture}(27,4)
+                                % branches related to node 2
+  \put(6,2){\sfgbranch{3}{0}\S{$\frac{1}{R_1}$}}
+  \put(9,2){\sfgbranch{3}{0}\N{\boldmath $Z_2$}}
+  \put(18,2){\sfgcurve{-9}{0}{2}\S{$\frac{1}{R_2}$}}
+  \put(24,2){\sfgcurve{-15}{0}{-2}\N{$sC_1$}}
+                                % branches related to node 3
+  \put(12,2){\sfgbranch{3}{0}\N{$\frac{1}{R_2}$}}
+  \put(15,2){\sfgbranch{3}{0}\N{\boldmath $Z_3$}}
+                                % input, voltage gain, output
+  \put(0,2){\sfgcurve{6}{0}{2}\N{$1$}}
+  \put(18,2){\sfgcurve{6}{0}{-2}\S{$\alpha_{\mathrm{V}}$}}
+  \put(24,2){\sfgbranch{3}{0}\S{$1$}}
+                                % nodes
+  \put(0,2){\sfgtermnode\S{$V_{\mathrm{in}}$}}
+  \put(3,2){\sfgnode\S{$I_1$}}
+  \put(6,2){\sfgnode\S{$V_1$}}
+  \put(9,2){\sfgnode\S{$I_2$}}
+  \put(12,2){\sfgnode\S{$V_2$}}
+  \put(15,2){\sfgnode\S{$I_3$}}
+  \put(18,2){\sfgnode\S{$V_3$}}
+  \put(21,2){\sfgnode\S{$I_4$}}
+  \put(24,2){\sfgnode\S{$V_4$}}
+  \put(27,2){\sfgtermnode\S{$V_{\mathrm{out}}$}}
+\end{picture}
+\end{document}
+
+
+References
+~~~~~~~~~~
+   [Chen, 1995, Chapters 7, 8 and 18]
+          Wai-Kai Chen. The Circuits and Filters Handbook. CRC Press,
+          Inc., 1995.
+
+or have a look at the original papers by Samuel Mason:
+
+   [119]  
+          Samuel J. Mason. Feedback theory --- some properties of signal 
+          flow graphs. Proceedings of the Institute of Radio Engineers,  
+          41(9):1144-1156, September 1953. 
+   [120]  
+          Samuel J. Mason. Feedback theory --- further properties of
+          signal flow graphs. Proceedings of the Institute of Radio
+          Engineers, 44(7):920-926, July 1956.

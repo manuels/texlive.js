@@ -1,0 +1,541 @@
+\ifx\QUIRE\relax\endinput\else\let\QUIRE=\relax\fi % \input only once
+%
+% quire.tex: Macros for making booklets, printing double pages, and
+%	     printing outlines and crop marks.
+% version: 1.0  release: 19 January 1991
+%
+% copyright (c) 1991 Marcel R. van der Goot
+%	You can use these macros to typeset documents. You may
+%	distribute this file freely, provided that you also distribute
+%	the accompanying documentation.
+%	    You may make changes to this file, or extract portions
+%	of it for inclusion in other files, provided that
+%	    (1) you change the name of the file;
+%	    (2) you give proper credit and include copyright
+%		information where applicable;
+%	    (3) explain how an unchanged version can be obtained; and
+%	    (4) document the usage of your macros/changes (if usage
+%		of your macros is not worth documenting, they must not
+%		be worth using).
+%	You are not allowed to use the name ``Midnight Macros'' for
+%	any changed files.
+%	    The above rules for making changes do not apply where it
+%	is explicitly noted in this file that something can be changed
+%	to conform to your local installation.
+%
+% USAGE:
+%   See the file quire.doc
+%
+% original: csvax.cs.caltech.edu [131.215.131.131] in pub/tex
+%	    (use anonymous ftp). Also in various archives.
+%
+% Caltech, Pasadena  ---  Marcel van der Goot
+%			  marcel@cs.caltech.edu
+%			    Caltech 256--80
+%			    Pasadena, CA 91125
+%			    USA
+%			    (818) 356--4603
+%
+
+% update history:
+% version 1.0: This one.
+%	release 19 Jan 1991: This one.
+%	
+
+%%%%%% CODE: (you don't need to read this to use the macros)
+
+%%%%%%%%%%%%%%% registers accessible by the user
+
+% dimens related to pages:
+\newdimen\vorigin
+\newdimen\horigin
+\newdimen\vtotal
+\newdimen\htotal
+% also used: dimens \voffset, \hoffset
+
+% dimens related to sheets
+\newdimen\shoutline
+\newdimen\shstaplewidth
+\newdimen\shstaplelength
+\newdimen\shcrop
+\newdimen\shvoffset
+\newdimen\shhtotal
+\newdimen\shthickness
+\newdimen\shvcorrection
+\newdimen\shhcorrection
+
+% token register related to sheets
+\newtoks\shfootline
+
+%%%%%%%%%%%%%%% the implementation
+
+% Private identifiers are prefixed with `q_'; in the comments below,
+% this prefix is omitted for readability.
+
+\shoutline=\catcode`_ sp % minor trick to remember the original catcode
+\catcode`_=11 % letter
+
+%%%%% The stack
+% A stack of boxes is needed to store pages that cannot be printed yet.
+% The stack is formed by \stackbox, an hbox storing the stacked boxes,
+% and \stacktop, the top box on the stack. The stack top can be accessed
+% by \copy\stacktop or \box\stacktop, but the latter should only be
+% used if the next stack operation is \pop. There is no stackcounter
+% implemented, because we don't need it here.
+
+\newbox\q_stackbox % an hbox keeping the stacked boxes but one
+\newbox\q_stacktop % the topmost box
+
+\def\q_push#1% #1 = a box
+   {\global\setbox\q_stackbox=
+      \hbox{\unhbox\q_stackbox \box\q_stacktop}%
+    \global\setbox\q_stacktop=#1%
+   }
+
+\def\q_pop
+   {\global\setbox\q_stackbox=
+      \hbox{\unhbox\q_stackbox \global\setbox\q_stacktop=\lastbox}%
+   }
+
+
+%%%%% Handling pages
+% \makepage takes a box representing the printed material (this box is the
+% argument of \shipout), and makes it into a page. A page is represented
+% by an hbox with height \vtotal, width \htotal, and depth 0.
+
+\def\q_makepage#1% #1 = textpage, return = an hbox (\vtotal+0)*\htotal
+   {\hbox to\htotal
+	 {\boxmaxdepth=0pt
+    	  \advance\vorigin by\voffset
+    	  \advance\horigin by\hoffset
+          \kern\horigin
+          \vbox to\vtotal
+	       {\kern\vorigin
+                #1%
+		\vss
+	       }%
+          \hss
+	 }%
+   }
+
+% \doublepage takes two pages produced by \makepage, and puts them next
+% to each other in a vbox. Between the two pages there is two times the
+% space specified by \thickoffset. \doublepage draws lines around the
+% produced vbox, and draws `staples' in the center.
+
+\newdimen\q_thickoffset
+
+\def\q_doublepage#1#2% #1 and #2 are page boxes,
+     % return = vbox ((\vtotal+2\shoutline)+0)*
+     %               (2(\htotal+\thickoffset+\shoutline))
+   {\vbox{\vbox to0pt{\vss\q_vcrop\kern3mm}%
+	  \hrule height\shoutline depth0pt
+          \hbox{\hbox to0pt{\hss\q_hcrop\kern3mm}%
+		\vrule width\shoutline
+	        #1%
+                \kern\q_thickoffset
+		\q_fold
+		\kern\q_thickoffset
+		#2%
+		\vrule width\shoutline
+		\hbox to0pt{\kern3mm\q_hcrop\hss}%
+	       }%
+	  \hrule height\shoutline depth0pt
+	  \vbox to0pt{\kern3mm\q_vcrop\vss}%
+         }%
+   }
+
+% \fold returns an hbox containing the two `staples'. The hbox has
+% width 0 so that it does not interfere with the separation between
+% double pages.
+
+\def\q_fold % return = an hbox (\vtotal+0)*0
+   {\hbox to0pt
+         {\divide\vtotal by 4
+          \advance\vtotal by-0.5\shstaplelength
+	  \hss
+	  \vbox{\kern\vtotal
+	        \hrule width\shstaplewidth height\shstaplelength depth0pt
+		\kern 2\vtotal
+		\hrule width\shstaplewidth height\shstaplelength depth0pt
+		\kern\vtotal
+	       }%
+          \hss
+	 }%
+   }
+
+% \vcrop returns an hbox containing the three vertical crop marks,
+% \hcrop a vbox with the two horizontal marks.
+
+\def\q_vcrop % return = an hbox (15mm+0)*(2(\htotal+\thickoffset+\shoutline))
+   {\hbox{\kern\shoutline
+	  \hbox to0pt{\vrule height15mm depth0pt width\shcrop\hss}%
+	  \kern\htotal \kern\q_thickoffset
+	  \hbox to0pt{\hss\vrule height15mm depth0pt width\shcrop\hss}%
+	  \kern\q_thickoffset \kern\htotal
+	  \hbox to0pt{\hss\vrule height15mm depth0pt width\shcrop}%
+	  \kern\shoutline
+	 }%
+   }
+
+\def\q_hcrop % return = a vbox (vtotal+0)*15mm
+   {\vbox{\vbox to0pt{\hrule width15mm height\shcrop depth0pt\vss}%
+	  \nointerlineskip
+	  \kern\vtotal
+	  \vbox to0pt{\vss\hrule width15mm height\shcrop depth0pt}%
+	 }%
+   }
+
+
+%%%%% Shipout routines
+% Suppose Q is the number of pages per quire (rounded upwards to the
+% nearest multiple of 4), then there are Q/2 sheets per quire. The first
+% Q/2 pages have to be stacked, which is done by the shipout routine
+% \collect. The next Q/2 pages have to be combined with the stacked ones
+% into double pages, which are then printed. This is done by the shipout
+% routine \combine. \goal is the number Q/2, \sheetnr is used to count the
+% sheets of the current quire, \qnr counts sheets in completed quires
+% (\count0 is set to the actual sheet number when a sheet is shipped out).
+% The current shipout routine is held in \ship, \shipbox is the box
+% that must be shipped out. \oldship is the original \shipout.
+% In order to print partial quires if there is not enough memory to
+% store Q/2 pages, the user can specify a range of sheets that should
+% be printed. This range is tested with \ifrange; sheets that fall
+% outside the range are counted, but otherwise ignored.
+%
+% Normally, \shipout resets \deadcycles to 0 and a call of the output
+% routine (by TeX's page-breaking mechanism) increments it. We do not
+% want to reset \deadcycles until enough pages for a quire have been
+% collected, because as long as \deadcycles is not 0, TeX will produce
+% more pages. We cannot allow it to be continuously incremented either,
+% since TeX gives an error message if it becomes too high. Therefore,
+% we set it to 1 if we need more pages. (Actually, the algorithm below
+% always requires a full quire, even if only a partial one is printed.)
+%
+% In \shfootline we want to be able to print the page number of the
+% actual pages. To save the page number, we use a ``dirty trick''
+% (the only one in these macros, as far as I can tell): we push a box
+% with the pagenumber as width on the stack. We recover the pagenumber by
+% using that width as a count, which replaces the dimen (\wd) by its
+% value in sp. The pagenumbers are also shipped out as \count1 and 2.
+
+\newcount\q_sheetnr
+\newcount\q_qnr
+
+\newif\ifq_range
+
+\newbox\q_shipbox
+
+\def\q_collect
+   {\message{[(\the\count0)]}%
+    \global\advance\q_sheetnr by1 \q_checkrange
+    \ifq_range
+         \q_push{\q_makepage{\box\q_shipbox}}%
+	 \q_push{\hbox to\count0 sp{}}% dirty trick
+    \fi
+    \global\deadcycles=1
+    \ifnum\q_sheetnr=\q_goal
+         \global\q_thickoffset=0pt
+	 \global\let\q_ship=\q_combine
+    \fi
+   }
+
+\def\q_combine
+   {{\ifq_range
+	  \count1=\wd\q_stacktop \q_pop % \firstpageno
+	  \count2=\count0 % \secondpageno
+          \ifodd\q_sheetnr % stacktop is an odd page
+	       \q_print{\q_makepage{\box\q_shipbox}}{\box\q_stacktop}%
+	  \else\q_print{\box\q_stacktop}{\q_makepage{\box\q_shipbox}}%
+	  \fi
+	  \q_pop
+     \else\message{[(\the\count0)]}%
+     \fi
+     \ifodd\q_sheetnr\global\advance\q_thickoffset by\shthickness\fi
+     \global\advance\q_sheetnr by-1 \q_checkrange
+     \ifnum\q_sheetnr=0
+	  \global\advance\q_qnr by\q_goal
+	  \global\let\q_ship=\q_collect
+	  \global\deadcycles=\q_cycles
+     \else\global\deadcycles=1
+     \fi
+   }}
+
+\def\q_print#1#2% two page boxes
+   {{\count0=\q_qnr \advance\count0 by\q_sheetnr
+     \setbox0=\hbox to\shhtotal
+	          {\hss
+	           \boxmaxdepth=0pt
+	           \vbox{\offinterlineskip
+		         \q_doublepage{#1}{#2}%
+		         \kern1pc
+		         \hbox{\kern\q_thickoffset
+			       \hbox to 2\htotal{\the\shfootline}%
+			      }%
+		        }%
+	           \hss
+		  }%
+     \hoffset=-1truein % defeat the annoying 1 inch offset
+     \voffset=\shvoffset
+     \ifodd\count0
+	  \advance\hoffset by\shhcorrection
+	  \advance\voffset by\shvcorrection
+     \fi
+     \q_oldship\box0
+     \xdef\q_cycles{\the\deadcycles}%
+   }}
+
+
+%%%%% shipout
+% This is perhaps the most obscure part, although it actually has little
+% to do with the problem at hand.
+% What I would have liked to do is define the above \collect and \combine
+% as taking a parameter #1 and then use #1 instead of \shipbox. Then
+% we could just say \let\shipout=\collect etc. Unfortunately, that doesn't
+% work: The actual \shipout is not a macro but a built-in command that
+% must be followed by a <box>. As a result, \shipout\box0 works
+% fine, but \shipout{\box0} generates an error (because the first `{' is
+% not the start of a <box>). On the other hand, \collect\box0 would make
+% #1 -> \box instead of \box0, and therefore wouldn't work; only
+% \collect{\box0} would work. It really seemed highly preferrable to make
+% the shipout replacements work in the same way as the original. Therefore,
+% \boat will read a box and put it in \shipbox, and then call \ship.
+% This has the additional advantage that the box is actually constructed
+% before the shipout replacement does anything (if you do
+% \collect{\hbox {...}} the box is only constructed when #1 is used).
+% The routine \boat must be followed by a <box> because of the \setbox.
+% Again, I would have liked to do
+%  \def\boat{\afterassignment\ship\setbox\shipbox=}
+% but \afterassignment behaves different for a <box> of the form
+% \hbox {...} than for one of the form \box0. \tstship tests whether
+% the assignment has actually taken place, or whether we are at the
+% beginning of an \hbox {<here> ...} etc. This way of testing
+% is not perfect, it doesn't work if you try to ship out a void box. However,
+% that is a strange thing to do, and this is by far the easiest solution
+% I could come up with.
+
+\def\q_boat
+   {{\setbox255=\box\q_shipbox}% makes \shipbox void
+    \afterassignment\q_tstship
+    \global\setbox\q_shipbox= % \boat must be followed by a <box>
+   }
+
+\def\q_tstship
+   {\ifvoid\q_shipbox\aftergroup\q_ship
+    \else\q_ship
+    \fi
+   }
+
+%%%%% Public routines for making quires
+% The routine that sets up printing quires is \makequire. It takes 3
+% arguments, the number of pages per quire (Q before rounding), the
+% number of the first sheet in the printing range, and the extend
+% (in sheet numbers) of the printing range. It uses these numbers to
+% define \checkrange, used by the output routines.
+% If there is sufficient memory to print a full quire, then \quire
+% can be used instead of \makequire. \quire only takes the number of
+% pages.
+
+\def\q_init
+   {\global\q_sheetnr=0\global\q_qnr=0
+    \global\let\q_oldship=\shipout
+    \global\let\shipout=\q_boat
+    \xdef\q_cycles{\the\deadcycles}%
+    \global\let\endquire=\q_endquire
+   }
+
+\def\makequire#1#2#3% #1 = nr of pages, #2 = first sheet, #3 = size of range
+   {{\count0=#1%
+     \advance\count0 by3 \divide\count0 by4 \multiply\count0 by2
+     \xdef\q_goal{\the\count0}%
+     \count0=#2%
+     \count1=#3\advance\count1 by\count0 \advance\count1 by-1
+     \let\nox=\noexpand
+     \xdef\q_checkrange
+	 {\nox\ifnum \q_sheetnr < \the\count0
+	      \nox\global\nox\q_rangefalse
+          \nox\else\nox\ifnum \the\count1 < \q_sheetnr
+	      \nox\global\nox\q_rangefalse
+	  \nox\else \nox\global\nox\q_rangetrue
+		    \nox\q_parity
+	  \nox\fi\nox\fi
+	 }%
+     \q_init
+     \global\let\q_ship=\q_collect
+   }}
+
+\def\quire#1% #1 = nr of pages
+   {\makequire{#1}{0}{1000}%
+   }
+
+% \endquire can be used to finish the quire before the end of the
+% input is reached. It ships out the current page, then ships out empty
+% boxes until the quire is finished.
+
+\let\endquire=\relax % if \endquire is used when \quire is not
+
+\def\q_endquire
+   {{\vfill\supereject
+     \loop
+     \ifnum\q_sheetnr>0 \shipout\vbox{}%
+     \repeat
+     \global\let\shipout=\q_oldship
+   }}
+
+% Normally both even and odd sheets are printed. However, one can surpress
+% one class by using \shonly#1. If #1 = 0, both are printed. Otherwise
+% only sheets with the same parity as #1 are printed.
+
+\def\shonly#1% a number
+   {\ifnum #1=0
+         \gdef\q_parity{}%
+    \else\ifodd#1%
+         \gdef\q_parity{\ifodd\q_sheetnr\else\global\q_rangefalse\fi}%
+    \else\gdef\q_parity{\ifodd\q_sheetnr\global\q_rangefalse\fi}%
+    \fi\fi
+   }
+
+% In LaTeX, \end is redefined to set \deadcycles to 0 before it does the
+% actual \end. This means that the quire is not actually finished if the
+% text doesn't have enough pages (see the earlier discussion about
+% \deadcycles). You cannot solve this by using \endquire, because then
+% not all output is actually finished (also because of various LaTeX
+% definitions). Therefore, in \latexquire, we redefine \@@end, which is
+% what LaTeX thinks is the original \end, to do an \endquire just before
+% the actual \end.
+
+{
+\catcode`@=11
+\gdef\latexquire
+   {\global\let\q_end=\@@end
+    \gdef\@@end{\endquire\q_end}%
+   }
+}
+
+%%%%% Some extras
+% Quires are not so easy to preview. Therefore we also define
+% \qtwopages for printing double pages (without reordening them) and
+% \qonepage for printing single pages (with outlines etc.). Most of
+% the needed routines were already there anyway.
+% \two is the shipout routine used for \qtwopages. It uses \qnr to
+% count pages, \sheetnr to distinguish between the first and the second
+% page of a pair. (We count with \qnr because \endquire wants \sheetnr
+% to be 0 at the end. But note that \parity looks at \sheetnr to determine
+% whether the page must be printed.
+
+\def\q_two
+   {{\ifodd\q_sheetnr % second page
+          \global\q_sheetnr=0
+	  \ifq_range
+	       \count1=\wd\q_stacktop \q_pop % \firstpageno
+	       \count2=\count0 % \secondpageno
+	       \q_print{\box\q_stacktop}{\q_makepage{\box\q_shipbox}}%
+	       \q_pop
+	  \else\message{[(\the\count0)]}%
+	  \fi
+	  \global\deadcycles=\q_cycles
+     \else % first page
+	  \message{[(\the\count0)]}%
+	  \global\advance\q_qnr by1
+	  \global\q_sheetnr=\q_qnr
+	  \global\q_rangetrue \q_parity
+	  \ifq_range
+	       \q_push{\q_makepage{\box\q_shipbox}}%
+	       \q_push{\hbox to\count0 sp{}}% that same dirty trick again
+	  \fi
+	  \global\deadcycles=1
+	  \global\q_sheetnr=1
+     \fi
+   }}
+
+\def\qtwopages
+   {\q_init
+    \global\let\q_ship=\q_two
+    \global\q_thickoffset=0pt
+   }
+
+% \one is the output routine for \qonepage. \qnr is used to count
+% the pages (again because of \endquire).
+
+\def\q_one
+   {{\global\advance\q_qnr by1
+     \global\q_sheetnr=\q_qnr
+     \global\q_rangetrue \q_parity
+     \global\q_sheetnr=0
+     \ifq_range
+	  \count1=\count0 \count2=0
+	  \divide\htotal by2
+	  \q_print{\q_makepage{\box\q_shipbox}}{\q_makepage{}}%
+     \else\message{[(\the\count0)]}%
+     \fi
+     \global\deadcycles=\q_cycles
+   }}
+
+\def\qonepage
+   {\q_init
+    \global\let\q_ship=\q_one
+    \global\q_thickoffset=0pt
+    \global\let\q_fold=\relax
+   }
+
+% restore \catcode`_ to whatever it was
+
+\catcode`_=\shoutline
+
+\countdef\firstpageno=1
+\countdef\secondpageno=2
+
+\shonly0 % to make sure that \parity is defined
+
+%%%%% Initial values for user parameters
+
+\shfootline={\tenrm\qquad\jobname\qquad\number\count0{} (\number\count1,
+	     \number\count2)\hfil}
+
+\shhtotal=22in
+\shthickness=.2mm
+\shvcorrection=0pt
+\shhcorrection=0pt
+
+\shvoffset=0pt
+\shoutline=1.5pt
+\shstaplewidth=1.5pt
+\shstaplelength=2cm
+\shcrop=3pt
+
+\vorigin=1in
+\horigin=1in
+
+\htotal=8.5in
+\vtotal=11in
+
+%%%%% Local definitions
+% The above is the standard file quire.tex.
+% CHANGE: What follows are local definitions; you should replace them with
+% appropriate values for your own installation.
+
+\def\Pmaser
+   {\shhtotal=220.02true mm
+    \shthickness=0.21true mm
+    \message{maser: flip paper so that short sides remain in place, %
+	     align closest right-hand corner in tray.}%
+   }
+
+\def\Pmaserlandscape
+   {\shhtotal=281true mm
+    \shthickness=0.21true mm
+    \message{maser landscape: flip paper so that long sides remain in place, %
+	     align closest right-hand corner in tray.}%
+   }
+
+\def\Phaser
+   {\shhtotal=216.4truemm
+    \shthickness=0.21truemm
+    \message{haser: rotate (but do not flip) pages 180 degrees, and reorder.}
+   }
+
+\def\Phaserlandscape
+   {\shhtotal=283truemm
+    \shthickness=0.21truemm
+    \message{haser landscape: do not flip or rotate pages, but reorder them.}
+   }

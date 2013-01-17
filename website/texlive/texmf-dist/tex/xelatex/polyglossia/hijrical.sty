@@ -1,0 +1,95 @@
+\ProvidesPackage{hijrical}
+        [2010/07/12 v0.2 %
+         Islamic calendar]
+\RequirePackage{calc}
+\RequirePackage{arabicnumbers}
+\@ifpackageloaded{bidi}{}{\newif\if@RTL\@RTLfalse}
+\@ifpackageloaded{l3calc}{\PackageError{hijrical}{\MessageBreak
+Package l3calc is loaded, which replaces the functionality of
+calc. Computation of Hijri dates will not work properly with
+% FIXME by Arthur: François couldn’t possibly mean ‘l3calc’ on the
+% following line :-)  Find out if he meant ‘calc’.
+l3calc! The latest version of expl3 on CTAN no longer loads
+l3calc. Please update expl3!
+}{}}{}
+
+\@ifundefined{@Remainder}{\input{cal-util.def}}{}
+
+%% The following functions are straightforward implementation 
+%% of Reingold & Dershowitz, Calendrical Calculations, The Millenium Edition
+%%
+
+\def\@FixedFromHijri#1#2#3#4{% year,month,day,counter
+\@ifundefined{c@#4}{\newcounter{#4}}{}%
+\setcounter{tmpA}{#2/2}% see errata of Reingold+Dershowitz
+%\message{tmpA is \thetmpA}%
+\setcounter{tmpB}{(3+11*#1)/30}%
+%\message{tmpB is \thetmpB}%
+\setcounter{#4}{227014+(#1-1)*354+\value{tmpB}+(29*(#2-1))+\value{tmpA}+#3}%
+}
+
+\newcounter{Hijriday}\newcounter{Hijrimonth}\newcounter{Hijriyear}
+
+\def\HijriFromGregorian#1#2#3{% year,month,day
+\@FixedFromGregorian{#1}{#2}{#3}{RDdate}%
+\setcounter{Hijriyear}{(30*(\value{RDdate}-227015)+10646)/10631}%
+\@FixedFromHijri{\value{Hijriyear}}{1}{1}{tmpx}%
+%\message{tmpx is \thetmpx}%
+\setcounter{tmpB}{\value{RDdate}-\value{tmpx}}%
+%\message{tmpB is \thetmpB}%
+\setcounter{Hijrimonth}{((11*\value{tmpB})+330)/325}%
+\@FixedFromHijri{\value{Hijriyear}}{\value{Hijrimonth}}{1}{tmpy}%
+%\message{tmpy is \thetmpy}%
+\setcounter{Hijriday}{1+\value{RDdate}-\value{tmpy}}%
+}
+
+%\HijriFromGregorian{\year}{\month}{\day}%
+
+%\def\PlainHijritoday{%
+%\theHijriday.\theHijrimonth.\theHijriyear}
+
+\def\Hijridate#1#2#3{%
+    \HijriFromGregorian{#1}{#2}{#3}%
+    \FormatHijriDate}
+
+% added option \Hijritoday[n] (default 0) for adjusting the date + n days
+\@ifundefined{@hijri@correction}{\gdef\@hijri@correction{0}}{}
+\newcommand\Hijritoday[1][\@hijri@correction]{%
+ \@ifundefined{c@adj@day}{\global\newcounter{adj@day}}{}%
+ \setcounter{adj@day}{\the\day+#1}% 
+ \Hijridate{\year}{\month}{\value{adj@day}}}
+%\def\Hijritoday{\Hijridate{\year}{\month}{\day}}
+\let\hijritoday=\Hijritoday
+%FIXME necessary?
+%\def\Hijrisetreg{%
+% \HijriFromGregorian{\year}{\month}{\day}}
+
+\def\HijriMonthTranslit#1{\ifcase#1\or Muḥarram\or Ṣafar\or Rabīʿ I\or Rabīʿ II\or%
+Jumādā I\or Jumādā II\or Rajab\or Shaʿbān\or Ramaḍān\or%
+Shawwāl\or Dhū ’l-Qaʿda\or Dhū ’l-Ḥijja\fi}
+
+\def\HijriMonthArabic#1{\ifcase#1\or محرم\or صفر\or ربيع الأول\or ربيع الآخر\or%
+جمادى الأولى\or جمادى الآخرة\or رجب\or شعبان\or رمضان\or%
+شوال\or ذو القعدة\or ذو الحجة\fi}
+
+%% This macro is now locale-aware!
+\def\FormatHijriDate{%
+  \@ifundefined{FormatHijriDate@\languagename}%
+    {\if@RTL\FormatHijriDate@defaultRTL\else\FormatHijriDate@defaultLTR\fi}%
+    {\csname FormatHijriDate@\languagename\endcsname}}
+
+\newcommand\DefineFormatHijriDate[2]{%
+   \@namedef{FormatHijriDate@#1}{#2}}
+
+% we provide this as a reasonable default.
+% Further definitions are in polyglossia’s language definition files.
+\DefineFormatHijriDate{defaultRTL}{\@ensure@RTL{%
+\arabicdigits{\value{Hijriday}}\space\HijriMonthArabic{\value{Hijrimonth}}\space\arabicdigits{\value{Hijriyear}}}}
+
+\DefineFormatHijriDate{defaultLTR}{%
+\number\value{Hijriday}\space\HijriMonthTranslit{\value{Hijrimonth}}\space\number\value{Hijriyear}}
+\endinput
+
+%TODO
+\def\CYearsFromHijri#1{%yields the corr julian or gregorian years
+} % e.g. \CYearsFromHijri{425} -> 1033/34

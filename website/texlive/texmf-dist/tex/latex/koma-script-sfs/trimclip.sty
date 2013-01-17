@@ -1,0 +1,260 @@
+%% Copyright (C) 2011-2012 by Martin Scharrer <martin@scharrer-online.de>
+%% ----------------------------------------------------------------------
+%% This work may be distributed and/or modified under the
+%% conditions of the LaTeX Project Public License, either version 1.3
+%% of this license or (at your option) any later version.
+%% The latest version of this license is in
+%%   http://www.latex-project.org/lppl.txt
+%% and version 1.3 or later is part of all distributions of LaTeX
+%% version 2005/12/01 or later.
+%%
+%% This work has the LPPL maintenance status `maintained'.
+%%
+%% The Current Maintainer of this work is Martin Scharrer.
+%%
+%% This work consists of the files trimclip.dtx, adjustbox.ins
+%% and the derived files trimclip.sty,
+%% tc-dvips.def, tc-pdftex.def, tc-pgf.def and tc-xetex.def.
+%% Further author information are located in the .def files.
+%%
+\ProvidesPackage{trimclip}[%
+    2012/05/16
+    v1.0
+    Trim and clip general TeX material]
+\def\tc@driver{tc-\Gin@driver}
+\DeclareOption{pgf}{\def\tc@driver{tc-pgf.def}\PassOptionsToPackage{pgf}{graphicx}}
+\DeclareOption{pdftex}{\def\tc@driver{tc-pdftex.def}\PassOptionsToPackage{pdftex}{graphicx}}
+\DeclareOption{xetex}{\def\tc@driver{tc-xetex.def}\PassOptionsToPackage{xetex}{graphicx}}
+\DeclareOption{dvips}{\def\tc@driver{tc-dvips.def}\PassOptionsToPackage{dvips}{graphicx}}
+\DeclareOption{dvipdfm}{\def\tc@driver{tc-xetex.def}\PassOptionsToPackage{xetex}{graphicx}}
+\DeclareOption{dvipdf}{\def\tc@driver{tc-xetex.def}\PassOptionsToPackage{xetex}{graphicx}}
+\DeclareOption*{%
+    \@ifpackageloaded{graphics}{%
+        \edef\tc@driver{tc-\CurrentOption.def}%
+        \begingroup
+        \edef\@tempa{\CurrentOption.def}%
+        \ifx\@tempa\Gin@driver\else
+            \let\on@line\@gobble
+            \PackageWarning{trimclip}{%
+                A different clipping driver was requested than the\MessageBreak
+                one used for 'graphics/x'! This is not recommended\MessageBreak
+                and can lead to defect output files.%
+            }%
+        \fi
+        \endgroup
+    }{%
+        \def\tc@driver{tc-\Gin@driver}%
+        \PassOptionsToPackage\CurrentOption{graphicx}%
+    }%
+}
+\ProcessOptions*\relax
+\RequirePackage{graphicx}[1999/02/16]
+\RequirePackage{collectbox}[2011/08/22]
+\RequirePackage{adjcalc}
+\def\tc@readvalues#1{%
+    \tc@@readvalues#1 {} {} {} \\%
+}
+\def\tc@@readvalues#1 #2 #3 #4 #5\\{%
+  \adjsetlengthdefault\tc@llx{#1}%
+  \ifx\@nnil#2\@nnil
+    \tc@lly\tc@llx
+    \tc@urx\tc@llx
+    \tc@ury\tc@llx
+  \else
+    \adjsetlengthdefault\tc@lly{#2}%
+    \ifx\@nnil#3\@nnil
+      \tc@urx\tc@llx
+      \tc@ury\tc@lly
+    \else
+      \adjsetlengthdefault\tc@urx{#3}%
+      \adjsetlengthdefault\tc@ury{#4}%
+    \fi
+  \fi
+}%
+\newdimen\tc@llx
+\newdimen\tc@lly
+\newdimen\tc@urx
+\newdimen\tc@ury
+\newcommand\trimbox{%
+    \collectboxcheckenv{trimbox}%
+    \@ifstar
+        \trimbox@s
+        \trimbox@
+}
+\def\trimbox@#1{%
+    \collectbox{\@trimclip\@trimbox{#1}}%
+}
+\def\trimbox@s#1{%
+    \collectbox{\@trimclip\@viewportbox{#1}}%
+}
+\expandafter\newcommand\expandafter*\csname trimbox*\endcsname{%
+    \@collectboxisenv{trimbox*}%
+    \trimbox@s
+}
+\newcommand\clipbox{%
+    \collectboxcheckenv{clipbox}%
+    \@ifstar
+        \clipbox@s
+        \clipbox@
+}
+\def\clipbox@#1{%
+    \collectbox{\@trimclip\@clipbox{#1}}%
+}
+\def\clipbox@s#1{%
+    \collectbox{\@trimclip\@clipvpbox{#1}}%
+}
+\expandafter\newcommand\expandafter*\csname clipbox*\endcsname{%
+    \@collectboxisenv{clipbox*}%
+    \clipbox@s
+}
+\newcommand\marginbox{%
+    \collectboxcheckenv{marginbox}%
+    \@ifstar
+        \marginbox@s
+        \marginbox@
+}
+\def\marginbox@#1{%
+    \@collectbox{\@trimclip\@marginbox{#1}}%
+}
+\def\marginbox@s#1{%
+    \@collectbox{\@trimclip\@marginraisebox{#1}}%
+}
+\expandafter\newcommand\expandafter*\csname marginbox*\endcsname{%
+    \@collectboxisenv{marginbox*}%
+    \marginbox@s
+}
+\def\@trimclip#1#2{%
+    \tc@readvalues{#2}%
+    #1%
+        \collectedbox
+        \tc@llx
+        \tc@lly
+        \tc@urx
+        \tc@ury
+    \usebox\collectedbox
+}
+\def\tc@correctbaseline#1{%
+    \ifdim\dp#1<\z@
+        \raise\dp#1%
+    \else
+    \ifdim\ht#1<\z@
+        \lower\ht#1%
+    \fi\fi
+    \box#1%
+}%
+\def\tc@correctdims#1{%
+    \ifdim\dp#1<\z@ \dp#1=\z@ \fi
+    \ifdim\wd#1<\z@ \wd#1=\z@ \fi
+    \ifdim\ht#1<\z@ \ht#1=\z@ \fi
+}
+\def\@trimbox#1#2#3#4#5{%
+    \setbox#1=\hbox{%
+        %
+        \tc@llx=#2\relax
+        \tc@lly=#3\relax
+        \advance\tc@lly-\dp#1%
+        \tc@urx=#4\relax
+        \advance\tc@urx-\wd#1%
+        \tc@ury=#5\relax
+        \advance\tc@ury-\ht#1%
+        %
+        % Set dimensions now.
+        % This allows that the arguments can refer
+        % to the original dimensions without issues.
+        \hskip-\tc@llx
+        \dp#1-\tc@lly
+        \wd#1-\tc@urx
+        \ht#1-\tc@ury
+        %
+        \tc@correctbaseline{#1}%
+    }%
+    \tc@correctdims{#1}%
+}
+\def\@marginbox#1#2#3#4#5{%
+    \setbox#1=\hbox{%
+        %
+        \tc@llx=#2\relax
+        \tc@lly=#3\relax
+        \advance\tc@lly\dp#1%
+        \tc@urx=#4\relax
+        \advance\tc@urx\wd#1%
+        \tc@ury=#5\relax
+        \advance\tc@ury\ht#1%
+        %
+        % Set dimensions now.
+        % This allows that the arguments can refer
+        % to the original dimensions without issues.
+        \hskip\tc@llx
+        \dp#1\tc@lly
+        \wd#1\tc@urx
+        \ht#1\tc@ury
+        %
+        \box#1%
+    }%
+    \tc@correctdims{#1}%
+}
+\def\@marginraisebox#1#2#3#4#5{%
+    \setbox#1=\hbox{%
+        %
+        \tc@llx=#2\relax
+        \tc@lly=#3\relax
+        \tc@urx=#4\relax
+        \advance\tc@urx\wd#1%
+        \tc@ury=#5\relax
+        \advance\tc@ury\ht#1%
+        %
+        % Set dimensions now.
+        % This allows that the arguments can refer
+        % to the original dimensions without issues.
+        \hskip\tc@llx
+        \wd#1\tc@urx
+        \ht#1\tc@ury
+        % Copy original tty values (ury is taken as temp dimension)
+        \tc@ury=\tc@lly
+        \advance\tc@lly\dp#1%
+        \dp#1\tc@lly
+        % Raise bu original tty value (now in ury)
+        \raise\tc@ury\box#1%
+    }%
+    \tc@correctdims{#1}%
+}
+\def\@viewportbox#1#2#3#4#5{%
+    \setbox#1=\hbox{%
+        %
+        % Assign values
+        \tc@llx=#2\relax
+        \tc@lly=#3\relax
+        \tc@urx=#4\relax
+        \tc@ury=#5\relax
+        %
+        % Set dimensions now.
+        % This allows that the arguments can refer
+        % to the original dimensions without issues.
+        \hskip-\tc@llx
+        \dp#1-\tc@lly
+        \wd#1\tc@urx
+        \ht#1\tc@ury
+        %
+        \tc@correctbaseline{#1}%
+    }%
+    \tc@correctdims{#1}%
+}
+\def\@clipbox#1#2#3#4#5{%
+    \@trimbox{#1}{#2}{#3}{#4}{#5}%
+    \@cliptoboxdim{#1}%
+}
+\def\@clipvpbox#1#2#3#4#5{%
+    \@viewportbox{#1}{#2}{#3}{#4}{#5}%
+    \@cliptoboxdim{#1}%
+}
+\InputIfFileExists{\tc@driver}{%
+    {\let\on@line\@gobble
+    \PackageInfo{trimclip}{Using driver '\tc@driver'.}}%
+}{%
+    \input{tc-pgf.def}%
+    {\let\on@line\@gobble
+    \PackageInfo{trimclip}{No clipping driver '\tc@driver' available.\MessageBreak Using fall-back PGF driver.}}%
+}
+\endinput
+%%
+%% End of file `trimclip.sty'.

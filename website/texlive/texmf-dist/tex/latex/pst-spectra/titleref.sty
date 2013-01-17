@@ -1,0 +1,152 @@
+%  TITLEREF.STY  ver 3.1  2001-04-05   Donald Arseneau   <asnd@triumf.ca>
+%  This is free unsupported software, released to the public domain.
+%
+%  This package provides a "\titleref" command to cross-reference the titles 
+%  of sections.  The "\label" command is changed to remember the title for 
+%  such a reference.  Use "\titleref" just like "\ref" and "\pageref".  
+%
+%  Titles for numbered sectioning units and for floats with captions are
+%  the same as the respective TOC, LOF, or LOT entry (even when no TOC is
+%  printed).  When a short title is provided ("\section[short]{long}")
+%  it will be used for the "\titleref".  This is especially useful for
+%  figure captions.  Unnumbered sections take their title reference from
+%  the printed title.  Beware!  This turns the title into a moving argument
+%  when it normally is not, and will cause weird errors if there are
+%  `fragile' commands present.
+%
+%  Enumerated lists do not have titles and simply inherit the title of
+%  their section.
+%
+%  The format of the title reference is controlled by the command
+%  "\theTitleReference", which can be redefined with "\renewcommand".
+%  It takes two parameters: the number and the title. The number is
+%  just the regular "\ref" and it is WRONG in unnumbered sections.
+%  Beware!  The default definition is the unadorned title.  You could
+%  do, for example, "\renewcommand{\theTitleReference}[2]{#1\ \emph{#2}}".
+%
+%  The title of the current section is also available without "\label":
+%  Use the command "\currenttitle" to generate a "\titleref" to the current
+%  section.  If you have redefined "\theTitleReference" to print the number
+%  with the title, be aware that the two may not correspond:  In a numbered
+%  list the number will show the current item but the title will show the
+%  current section, but in an unnumbered section the number will show
+%  some previous section number.
+%
+%  Options:  [usetoc]  and  [nostar]
+%
+%  In the default operation, the titles are recorded by a command inserted
+%  into the various sectioning commands ("\@sect", "\@ssect", "\@chapter",
+%  "\@schapter", "\@part", "\@spart", and "\@caption").  If this creates
+%  conflicts with some other package, you can use an entirely different
+%  method by specifying "\usepackage[usetoc]{titleref}".  As the name
+%  implies, this option records the titles from the table-of-contents
+%  entry without redefining the sectioning commands.  (This is the method
+%  used in older versions.)
+%
+%  Since there are no TOC entries for the `star' versions of sectioning 
+%  commands, they are still redefined.  The additional option "[nostar]"
+%  ("\usepackage[usetoc,nostar]{titlerrf}") prevents the redefinitions,
+%  but then "\section*" will not generate a title reference.  If you try
+%  to refer to the title of an unnumbered section while "[nostar]" is in
+%  effect, you will get the title of the previous section.
+%
+%  Under the "[usetoc]" option, the current title will always be overridden
+%  by an "\addcontentsline" command before the "\label", even for starred
+%  section commands under the "[nostar]" option.
+%
+%  The big problem with the "[usetoc]" method is that "\titleref" will
+%  not refer to a "\label" which was given in the title or caption itself;
+%  the label must be placed after the sectioning command or the caption.
+%  If you make a title-reference to a label given in a title, you will get
+%  a warning message.
+%
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{titleref}[2001/04/05 v3.1 \space 
+    Cross-references with titles.]
+
+\newcommand{\theTitleReference}[2]{#2}
+%
+\let\TR@old@label\label
+%
+% This redefinition of \label is intended to work with other redirections
+% of \label, if they record extra information in a similar way.
+\def\label#1{\@bsphack\begingroup
+  \protected@edef\@currentlabel{\protect\TR@TitleReference
+      {\@currentlabel}{\TR@currentTitle}}%
+  \TR@old@label{#1}%
+  \endgroup \@esphack}%
+%
+\def\TR@gettitle#1{\begingroup \let\protect\@unexpandable@protect
+    \let\label\TR@nestwarn \let\index\@gobble \let\glossary\@gobble
+    \let\markboth\@gobbletwo \let\@mkboth\@gobbletwo \let\markright\@gobble
+    \edef\@tempa{\noexpand\def\noexpand\TR@currentTitle{#1}}%
+  \expandafter\endgroup\@tempa}
+%
+\let\TR@nestwarn\@gobble
+%
+\let\TR@TitleReference\@firstoftwo
+%
+% Allow aux file to be used after titleref is removed:
+\AtBeginDocument{\immediate\write\@mainaux{\string\let
+  \string\TR@TitleReference\string\@firstoftwo}}
+%
+\DeclareRobustCommand{\titleref}[1]{\begingroup \let\numberline\@gobble
+  \let\TR@TitleReference\TR@theTR % interrupt recursion of \ref
+  \ref{#1}\endgroup}
+%
+\DeclareRobustCommand{\currenttitle}{\begingroup \let\numberline\@gobble
+  \theTitleReference\@currentlabel\TR@currentTitle\endgroup}
+%
+%
+\def\TR@theTR{0}
+\DeclareOption{usetoc}{\edef\TR@theTR{1\TR@theTR}}%
+\DeclareOption{nostar}{\edef\TR@theTR{\TR@theTR 1}}%
+\ProcessOptions\relax
+%
+%  Put hooks in "star" commands if not [usetoc,nostar]
+\ifnum\TR@theTR<100
+%
+\AtBeginDocument{\let\TR@old@ssect\@ssect
+  \def\@ssect#1#2#3#4#5{\TR@gettitle{#5}\TR@old@ssect{#1}{#2}{#3}{#4}{#5}}%
+ \@ifundefined{@schapter}{}{\let\TR@old@schapter\@schapter
+  \def\@schapter#1{\TR@gettitle{#1}\TR@old@schapter{#1}}}
+ \@ifundefined{@spart}{}{\let\TR@old@spart\@spart
+  \def\@spart#1{\TR@gettitle{#1}\TR@old@spart{#1}}}
+}
+%
+\fi
+%
+%  Put hooks in other commands if not [usetoc]
+\ifnum\TR@theTR<9
+%
+\AtBeginDocument{%
+ \let\TR@old@sect\@sect \def\@sect#1#2#3#4#5#6[#7]{\TR@gettitle{#7}%
+  \TR@old@sect{#1}{#2}{#3}{#4}{#5}{#6}[{#7}]}%
+ \@ifundefined{@chapter}{}{\AtBeginDocument{\let\TR@old@chapter\@chapter
+  \def\@chapter[#1]{\TR@gettitle{#1}\TR@old@chapter[{#1}]}}}
+ \@ifundefined{@part}{}{\AtBeginDocument{\let\TR@old@part\@part
+  \def\@part[#1]{\TR@gettitle{#1}\TR@old@part[{#1}]}}}%
+ \let\TR@old@caption\@caption \long\def\@caption#1[#2]#3{\TR@gettitle{#2}%
+  \TR@old@caption{#1}[{#2}]{#3}}
+}
+%
+\else % [usetoc], hook into \addcontentsline and prohibit labels in titles
+%
+\DeclareRobustCommand\TR@nestwarn[1]{\PackageWarning{titleref}%
+  {Label \string"#1\string" was put in a title,\MessageBreak
+   so the \noexpand\titleref is incorrect}}
+%
+\let\TR@old@addcontentsline\addcontentsline
+%
+\def\addcontentsline#1#2#3{%
+  \TR@old@addcontentsline{#1}{#2}{#3}%
+  \TR@gettitle{\relax#3}}
+%
+\fi
+%
+\let\TR@currentTitle\@empty
+%
+% proper definition:
+\def\TR@theTR{\let\TR@TitleReference\@firstoftwo \theTitleReference}
+%
+\endinput % the end

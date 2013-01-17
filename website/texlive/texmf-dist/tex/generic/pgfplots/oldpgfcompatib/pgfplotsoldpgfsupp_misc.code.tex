@@ -1,0 +1,777 @@
+
+% ======================================================
+% compatibility with PGF 2.0
+% ======================================================
+\def\pgfutil@gobble@until@relax#1\relax{}
+
+\expandafter\ifx\csname w@pgf@writea\endcsname\relax
+\csname newwrite\endcsname\w@pgf@writea
+\fi
+
+\expandafter\ifx\csname r@pgf@reada\endcsname\relax
+\csname newread\endcsname\r@pgf@reada
+\fi
+\let\pgfutil@inputcheck=\r@pgf@reada
+
+\pgfutil@ifundefined{pgf@texdist@protect}{%
+	\def\pgf@texdist@protect{}%
+}{}
+
+% from pgfutil-common.tex:
+
+% Usage:
+% \pgfutilstrreplace{<token>}{<replacement>}{<string>}
+%
+% -> will assign the modified string into \pgfretval.
+%
+% #1: the string to search (one or more tokens)
+% #2: zero, one or more tokens which will be inserted instead of '#1'.
+% #3: the string to search in
+\long\def\pgfutilstrreplace#1#2#3{%
+	\def\pgfretval{}%
+	\long\def\pgfutil@search@and@replace@@##1#1##2\pgf@EOI{%
+		\expandafter\def\expandafter\pgfretval\expandafter{\pgfretval ##1#2}%
+		\pgfutil@search@and@replace@loop{#1}{##2}%
+	}%
+	\pgfutil@search@and@replace@loop{#1}{#3}%
+}
+\long\def\pgfutil@search@and@replace@loop#1#2{%
+	\pgfutil@in@{#1}{#2}%
+	\ifpgfutil@in@
+		\def\pgf@loc@TMPa{\pgfutil@search@and@replace@@ #2\pgf@EOI}%
+	\else
+		\expandafter\def\expandafter\pgfretval\expandafter{\pgfretval #2}%
+		\let\pgf@loc@TMPa=\relax
+	\fi
+	\pgf@loc@TMPa
+}%
+% Solves a linear equation system of size 2x2 using gauss elimination.
+%
+% It employs TeX register arithmetics to do so.
+% #1: should contain 4 sets of braces with matrix entries, 
+% 	{<a11>}{<a12>}
+% 	{<a21>}{<a22>}
+% 	where each entry should be a number without unit.
+% #2: should contain 2 sets of braces with the right-hand-side,
+% 	{<r1>}{<r2>}
+% 	where each entry should be a number without unit.
+%
+% It will assign \pgfmathresult to contain two sets of braces with the
+% result.
+%
+% Example:
+% \pgfutilsolvetwotwoleq{
+% 	{0.24}{1}
+% 	{-0.97}{0}
+% }{
+% 	{-7}
+% 	{18}
+% }
+% -> yields \pgfmathresult={−18.55618}{−2.54642}
+%
+% The algorithm employs column pivotisation.
+\def\pgfutilsolvetwotwoleq#1#2{%
+	\begingroup
+		\dimendef\aa=0
+		\dimendef\ab=1
+		\dimendef\ba=2
+		\dimendef\bb=3
+		\dimendef\ra=4
+		\dimendef\rb=5
+		\dimendef\tmpa=6
+		\dimendef\tmpb=7
+		\edef\pgf@temp{#1}%
+		\expandafter\pgfutilsolvetwotwoleq@A\pgf@temp
+		\edef\pgf@temp{#2}%
+		\expandafter\pgfutilsolvetwotwoleq@r\pgf@temp
+		%
+		\pgfutilsolvetwotwoleq@ifislarger\aa\ba{%
+			% identity "permutation":
+			\def\Pa{a}%
+			\def\Pb{b}%
+		}{%
+			% permutation matrix: switch rows!
+			\def\Pa{b}%
+			\def\Pb{a}%
+		}%
+		% \pivot := 1/aa
+		\pgfmathreciprocal@
+			{\csname m\Pa a\endcsname}%
+		\let\pivot=\pgfmathresult
+		%
+		% \factor := 1/aa * ba 
+		\csname \Pb a\endcsname=\pivot\csname \Pb a\endcsname
+		\edef\factor{\expandafter\pgf@sys@tonumber\csname \Pb a\endcsname}%
+		%
+		% bb -= ba/aa * ab
+		\tmpa=-\factor\csname \Pa b\endcsname
+		\advance\csname \Pb b\endcsname by\tmpa
+		%
+		% rb -= ba/aa * ra
+		\tmpa=-\factor\csname r\Pa\endcsname
+		\advance\csname r\Pb\endcsname by\tmpa
+		%
+		% xb := rb / bb (the modified rb and modified bb!)
+		\pgfmathdivide@
+			{\expandafter\pgf@sys@tonumber\csname r\Pb\endcsname}
+			{\expandafter\pgf@sys@tonumber\csname \Pb b\endcsname}%
+		\expandafter\let\csname pgfmathresult\Pb\endcsname=\pgfmathresult
+		%
+		% ra -= xb * ab
+		\tmpa=\csname pgfmathresult\Pb\endcsname\csname \Pa b\endcsname
+		\advance\csname r\Pa\endcsname by-\tmpa
+		%
+		% xa := 1/aa * ra  (the modified ra!)
+		\tmpa=\pivot\csname r\Pa\endcsname
+		\expandafter\edef\csname pgfmathresult\Pa\endcsname{\pgf@sys@tonumber\tmpa}%
+		%
+		\edef\pgfmathresult{%
+			{\csname pgfmathresult\Pa\endcsname}%
+			{\csname pgfmathresult\Pb\endcsname}%
+		}%
+		\pgfmath@smuggleone\pgfmathresult
+	\endgroup
+}%
+\def\pgfutilsolvetwotwoleq@ifislarger#1#2#3#4{%
+	\tmpa=#1
+	\ifdim\tmpa<0pt
+		\multiply\tmpa by-1
+	\fi
+	\tmpb=#2
+	\ifdim\tmpb<0pt
+		\multiply\tmpb by-1
+	\fi
+	\ifdim\tmpa>\tmpb
+		#3%
+	\else
+		#4%
+	\fi
+}%
+\def\pgfutilsolvetwotwoleq@A#1#2#3#4{%
+	\def\maa{#1}\def\mab{#2}%
+	\def\mba{#3}\def\mbb{#3}%
+	\aa=#1pt \ab=#2pt
+	\ba=#3pt \bb=#4pt
+}
+\def\pgfutilsolvetwotwoleq@r#1#2{%
+	\ra=#1pt \rb=#2pt
+}%
+
+
+%%%%%%%
+%%%%%%%
+
+% from pgfmoduleshapes.code.tex:
+% Invoke an anchor
+\def\pgf@sh@reanchor#1#2{%
+  \pgfutil@ifundefined{pgf@anchor@#1@#2}%
+  {%
+    \pgfutil@ifundefined{pgf@anchor@generic@#2}{%
+	    \pgfmathsetcounter{pgf@counta}{#2}%
+	    \csname pgf@anchor@#1@border\endcsname{\pgfqpointpolar{\c@pgf@counta}{1pt}}%
+    }{%
+        \csname pgf@anchor@generic@#2\endcsname{#1}%
+    }%
+  }%
+  {\csname pgf@anchor@#1@#2\endcsname}%
+}
+
+% Defines a generic anchor, i.e. one which gets the associated shape
+% as first argument.
+%
+% #1: the anchor name.
+% #2: the code of the anchor. It may depend upon '##1', the shape's
+% name.
+%
+% The anchor will be defined locally in the current TeX scope.
+\def\pgfdeclaregenericanchor#1#2{%
+	\expandafter\def\csname pgf@anchor@generic@#1\endcsname##1{#2}%
+}%
+
+% from pgfcoretransformations.code.tex :
+\def\pgfgettransformentries#1#2#3#4#5#6{%
+	\edef#1{\pgf@pt@aa}%
+	\edef#2{\pgf@pt@ab}%
+	\edef#3{\pgf@pt@ba}%
+	\edef#4{\pgf@pt@bb}%
+	\edef#5{\the\pgf@pt@x}%
+	\edef#6{\the\pgf@pt@y}%
+}%
+\def\pgfsettransformentries#1#2#3#4#5#6{%
+	\pgfsettransform{{#1}{#2}{#3}{#4}{#5}{#6}}%
+}%
+
+% pgfutil@loop (from plain.tex)
+
+\def\pgfutil@loop#1\pgfutil@repeat{\def\pgfutil@body{#1}\pgfutil@iterate}
+\def\pgfutil@iterate{\pgfutil@body \let\pgfutil@next\pgfutil@iterate \else\let\pgfutil@next\relax\fi \pgfutil@next}
+\let\pgfutil@repeat=\fi % this makes \loop...\if...\repeat skippable
+
+\def\pgfqpointxy#1#2{%
+  \pgf@x=#1\pgf@xx%
+  \advance\pgf@x by #2\pgf@yx%
+  \pgf@y=#1\pgf@xy%
+  \advance\pgf@y by #2\pgf@yy}
+\def\pgfqpointxyz#1#2#3{%
+  \pgf@x=#1\pgf@xx%
+  \advance\pgf@x by #2\pgf@yx%
+  \advance\pgf@x by #3\pgf@zx%
+  \pgf@y=#1\pgf@xy%
+  \advance\pgf@y by #2\pgf@yy%
+  \advance\pgf@y by #3\pgf@zy}
+\def\pgfcoordinate#1#2{%
+  \edef\pgf@temp{#1}%
+  \ifx\pgf@temp\pgfutil@empty% do nothing
+  \else%
+    \pgf@process{\pgfpointtransformed{#2}}%
+    \expandafter\gdef\csname pgf@sh@ns@#1\endcsname{coordinate}%
+    \expandafter\xdef\csname pgf@sh@np@#1\endcsname{%
+      \noexpand\def\noexpand\centerpoint{\noexpand\pgfqpoint{\the\pgf@x}{\the\pgf@y}}%
+    }
+    \expandafter\gdef\csname pgf@sh@nt@#1\endcsname{{1}{0}{0}{1}{0pt}{0pt}}%
+    \expandafter\global\expandafter\let\csname pgf@sh@ma@#1\endcsname\pgfutil@empty%
+    \expandafter\gdef\csname pgf@sh@pi@#1\endcsname{\pgfpictureid}%
+  \fi%
+}
+% A "quick" variant of \pgfpointscale which doesn't invoke the math parser for '#1'.
+% #1 must be a number without units, no registers are accepted.
+\def\pgfqpointscale#1#2{%
+  \pgf@process{#2}%
+  \pgf@x=#1\pgf@x%
+  \pgf@y=#1\pgf@y%
+}
+% ======================================================
+
+\def\pgfutilensuremath#1{%
+	\ifmmode#1\else$#1$\fi
+}
+\def\tikzifinpicture#1#2{%
+	\pgfutil@ifundefined{filldraw}{#2}{#1}%
+}%
+
+\def\tikz@fig@scan@name(#1){%
+	\pgfkeysvalueof{/tikz/name/.@cmd}#1\pgfeov% CF : this is now ALWAYS consistent with 'name=' option; allows overrides.
+	\tikz@@scan@fig}%
+
+\tikzoption{ybar}[]{\let\tikz@plot@handler=\pgfplothandlerybar}
+\tikzoption{xbar}[]{\let\tikz@plot@handler=\pgfplothandlerxbar}
+\tikzoption{ybar interval}[]{\let\tikz@plot@handler=\pgfplothandlerybarinterval}
+\tikzoption{xbar interval}[]{\let\tikz@plot@handler=\pgfplothandlerxbarinterval}
+\tikzoption{const plot}[]{\let\tikz@plot@handler=\pgfplothandlerconstantlineto}
+\tikzoption{const plot mark left}[]{\let\tikz@plot@handler=\pgfplothandlerconstantlineto}
+\tikzoption{const plot mark right}[]{\let\tikz@plot@handler=\pgfplothandlerconstantlinetomarkright}
+\tikzoption{const plot mark mid}[]{\let\tikz@plot@handler=\pgfplothandlerconstantlinetomarkmid}
+\tikzoption{jump mark right}[]{\let\tikz@plot@handler=\pgfplothandlerjumpmarkright}
+\tikzoption{jump mark left}[]{\let\tikz@plot@handler=\pgfplothandlerjumpmarkleft}
+\tikzoption{jump mark mid}[]{\let\tikz@plot@handler=\pgfplothandlerjumpmarkmid}
+
+\def\tikz@plot@samples{25}
+\def\tikz@plot@domain{-5:5}
+\def\tikz@plot@var{\x}
+\def\tikz@plot@samplesat{-5,-4.5833333,...,5}
+
+\tikzoption{mark}{
+	\def\tikz@plot@mark{#1}%
+	\def\tikz@temp{none}% this check is relatively new
+	\ifx\tikz@temp\tikz@plot@mark
+		\let\tikz@plot@mark=\pgfutil@empty
+	\fi
+}
+
+% the 'pt' suffix is new:
+\pgfdeclareplotmark{ball}
+{%
+  \def\tikz@shading{ball}%
+  \shade (0pt,0pt) circle (\pgfplotmarksize);%
+}
+
+% the 'every mark' style is new:
+\tikzset{
+	no marks/.style={mark=none},%
+	every mark/.style={},
+	mark options/.style={%
+		every mark/.style={#1}%
+	}}
+\def\tikz@@@plot{%
+    \def\pgfplotlastpoint{\pgfpointorigin}%
+    \tikz@plot@handler%
+    \tikz@plot@data%
+    \global\let\tikz@@@temp=\pgfplotlastpoint%
+    \ifx\tikz@plot@mark\pgfutil@empty%
+    \else%
+      % Marks are drawn after the path.
+      \setbox\tikz@figbox=\hbox{%
+        \unhbox\tikz@figbox%
+        \hbox{{%
+          \pgfinterruptpath%
+            \pgfscope%
+              \let\tikz@options=\pgfutil@empty%
+              \let\tikz@transform=\pgfutil@empty%
+			  \tikzset{every mark}%
+              \tikz@options%
+              \ifx\tikz@mark@list\pgfutil@empty%
+                \pgfplothandlermark{\tikz@transform\pgfuseplotmark{\tikz@plot@mark}}%
+              \else
+                \pgfplothandlermarklisted{\tikz@transform\pgfuseplotmark{\tikz@plot@mark}}{\tikz@mark@list}%
+              \fi
+              \tikz@plot@data%
+            \endpgfscope
+          \endpgfinterruptpath%
+        }}%
+      }%
+    \fi%
+    \global\setbox\tikz@tempbox=\copy\tikz@figbox%
+    %\global\let\tikz@after@path@smuggle=\tikz@after@path
+  \endgroup%
+  \setbox\tikz@figbox=\box\tikz@tempbox%  
+  \tikz@make@last@position{\tikz@@@temp}%  
+  %\expandafter\tikz@scan@next@command\tikz@after@path@smuggle%
+  \tikz@scan@next@command%
+}
+
+
+
+
+% ======================================================
+
+
+\newif\ifpgfmathcomparison
+
+% Assigns \pgfmathresult to 1.0 if #1 ~= #1.
+%
+% It will also set the boolean \ifpgfmathcomparison accordingly
+% (globally).
+\def\pgfmathapproxequalto#1#2{%
+	\edef\pgfmath@marshal{%
+		\noexpand\pgfmathparse{#2}
+		\noexpand\let\noexpand\pgfmath@arg\noexpand\pgfmathresult%
+		\noexpand\pgfmathparse{#1}%
+	}%
+	\pgfmath@marshal%
+	\pgfmathapproxequalto@{\pgfmathresult}{\pgfmath@arg}}
+\def\pgfmathapproxequalto@#1#2{%
+	\begingroup%
+		\pgfmath@x#1pt%
+		\pgfmath@y#2pt%
+		\advance\pgfmath@x-\pgfmath@y%
+		\ifdim\pgfmath@x<0pt
+			\multiply\pgfmath@x by-1
+		\fi
+		\ifdim\pgfmath@x<0.0001pt\relax%
+			\def\pgfmathresult{1.0}%
+			\global\pgfmathcomparisontrue
+		\else%
+			\def\pgfmathresult{0.0}%
+			\global\pgfmathcomparisonfalse
+		\fi%
+	\pgfmath@smuggleone\pgfmathresult
+	\endgroup%
+}
+
+\newif\ifpgfmarktext@usetikznode
+\pgfkeys{
+	/pgf/text mark/.initial=p,
+	/pgf/text mark style/.initial=,
+	/pgf/text mark as node/.is if=pgfmarktext@usetikznode,
+	/pgf/text mark as node/.default=true,
+	%
+	% backw. compat: the extra search path confuses the '.unknown'
+	% handlers, so this here is deprecated:
+	/pgf/text mark/style/.style={/pgf/text mark style={#1}},%
+	/pgf/text mark/as node/.style={/pgf/text mark as node=#1},%
+}%
+
+\pgfdeclareplotmark{text}
+{
+	\pgfkeysgetvalue{/pgf/text mark style}\pgfmarktext@style
+	\pgfkeysgetvalue{/pgf/text mark}\pgfmarktext@
+	\ifpgfmarktext@usetikznode
+		\expandafter\node\expandafter[\pgfmarktext@style]{\pgfmarktext@};
+	\else
+		\expandafter\pgftext\expandafter[\pgfmarktext@style]{\pgfmarktext@}%
+	\fi
+}
+
+% A fix for the overlay option and matrices:
+\def\pgf@matrix@startcell{%
+  %
+  % Step 1: Init the list of nodes for this cell
+  %
+  \let\pgf@nodecallback=\pgf@matrix@nodecallback%
+  %
+  % Step 2: Setup the bounding box
+  %
+  \pgfinterruptboundingbox%
+  %
+  % Step 3: Reset the transformation matrix
+  %
+  \pgftransformreset%
+  %
+  % Step 4: Collect everything in a cell box
+  %
+  \setbox\pgf@matrix@cell=\hbox\bgroup\bgroup%
+	% make sure that cell pictures are not affected if matrizes have
+	% 'overlay' option on:
+	\pgf@relevantforpicturesizetrue
+    \pgfsys@beginpicture%
+    \normalbaselines%
+    % Find out whether the cell is empty:
+    \pgfutil@ifnextchar\let%
+    {% ok, candidate, check following symbol
+      \afterassignment\pgf@matrix@empty@check\let\pgf@matrix@temp=% get rid of \let
+    }%
+    {% no, not empty
+      \pgf@matrix@empty@cell@false%
+      \pgfmatrixbegincode%
+    }%
+}
+
+% From pgfmoduleplot.code.tex:
+{
+	\catcode`\%=12
+	\catcode`\"=12
+	\xdef\pgf@gnuplot@head@pgf@two@oo#1{set terminal table; set output "#1.table"; set format "%.5f"}
+	\ifx\pgf@gnuplot@head\pgf@gnuplot@head@pgf@two@oo
+		\xdef\pgf@gnuplot@head#1{set table "#1.table"; set format "%.5f"}
+	\else
+		\xdef\pgf@gnuplot@head{set table \noexpand\pgf@plottablefile@quoted; set format "%.5f"}
+	\fi
+}
+
+% From pgfcorescopes.code.tex:
+\def\pgfresetboundingbox{%
+    \global\pgf@picmaxx=-16000pt\relax%
+    \global\pgf@picminx=16000pt\relax%
+    \global\pgf@picmaxy=-16000pt\relax%
+    \global\pgf@picminy=16000pt\relax%
+}%
+
+% from pgfcorepathconstruct.code.tex:
+
+
+\def\pgfpatharctomaxstepsize{45}
+
+% A specialized arc operation for an arc on an (axis--parallel) ellipse.
+%
+% In contrast to \pgfpatharc, it explicitly interpolates start- and end points.
+%
+% In contrast to \pgfpatharcto, this routine is numerically stable and
+% quite fast since it relies on a lot of precomputed information.
+%
+% #1 center of ellipse
+% #2 angle of last path position inside of the ellipse
+% #3 end angle
+% #4 end point (a \pgfpoint)
+% #5 xradius
+% #6 yradius
+% #7 the ratio xradius/yradius of the ellipse
+% #8 the ratio yradius/xradius of the ellipse
+% Example:
+%	\def\cx{1cm}% center x
+%	\def\cy{1cm}% center y
+%	\def\startangle{0}%
+%	\def\endangle{45}%
+%	\def\a{5cm}% xradius
+%	\def\b{10cm}% yradius
+%	\pgfmathparse{\a/\b}\let\abratio=\pgfmathresult
+%	\pgfmathparse{\b/\a}\let\baratio=\pgfmathresult
+%
+% \pgfpathmoveto{\pgfpoint{\cx+\a*cos(\startangle)}{\cy+\b*sin(\startangle)}}%
+% \pgfpatharctoprecomputed
+% 	{\pgfpoint{\cx}{\cy}}
+% 	{\startangle}
+% 	{\endangle}
+% 	{\pgfpoint{\cx+\a*cos(\endangle)}{\cy+\b*sin(\endangle)}}%
+% 	{\a}
+% 	{\b}
+% 	{\abratio}
+% 	{\baratio}
+%
+\def\pgfpatharctoprecomputed#1#2#3#4#5#6#7#8{%
+	\begingroup
+	% Implementation idea:
+	% 
+	% let 
+	%   m = center (#1)
+	%   \gamma_0 = start angle
+	%   \gamma_1 = end angle
+	%   a = x radius
+	%   b = y radius
+	%
+	% an axis parallel ellipse is parameterized by
+	% C(\gamma) = m + ( a cos(\gamma), b sin(\gamma) ), \gamma in [0,360].
+	%
+	% Now, consider the segment \gamma(t), 
+	%   \gamma:[0,1] -> [\gamma_0,\gamma_1],
+	%            t   ->  \gamma_0 + t(\gamma_1 - \gamma_0)
+	% and
+	%   C(\gamma(t)) which is defined on [0,1].
+	%
+	% I'd like to approximate the arc by one or more cubic bezier
+	% splines which interpolate through the last and first provided
+	% points.
+	%
+	% In general, a Bezier spline C:[0,1] -> \R of order n fulfills
+	% C'(0) = n ( P_1 - P_0 ),
+	% C'(1) = n ( P_n - P_{n-1} ).
+	% For n=3 and given P_0 and P_3, I can directly compute P_1 and P_2 once I know
+	% the derivatives at t=0 and t=1.
+	%
+	% The derivatives in our case are 
+	%   ( C \circ \gamma )'(t) = C'[\gamma(t)] * \gamma'(t) 
+	%   	= ( -a pi/180 sin(\gamma(t)),  b pi/180 cos(\gamma(t)) ) * (\gamma_1 - \gamma_0).
+	% The pi/180 comes into play since we are working with degrees.
+	%
+	% Expression (C\circ\gamma)'(0) using P_0 and (C \circ \gamma)'(1)
+	% using P_3 yields the expressions
+	%   (C \circ \gamma)'(0) = 
+	%   	pi/180 * (\gamma_1 - \gamma_0)* [ - a/b(P_0^y - my), b/a (P_0^x - mx) ]
+	%   (C \circ \gamma)'(1) = 
+	%   	pi/180 * (\gamma_1 - \gamma_0)* [ - a/b(P_3^y - my), b/a (P_3^x - mx) ]
+	%
+	% defining 
+	%  scaleA = a/b * pi / (3*180) * (\gamma_1 - \gamma_0)
+	% and
+	%  scaleB = b/a * pi / (3*180) * (\gamma_1 - \gamma_0)
+	% yields the direct expressions for the intermediate bezier
+	% control points
+	%
+	% P_1 = [
+	%   P_0^x - scaleA* ( P_0^y -my),
+	%   P_0^y + scaleB* ( P_0^x -mx) ]
+	% and
+	% P_2 = [
+	%   P_3^x + scaleA* ( P_3^y -my),
+	%   P_3^y - scaleB* ( P_3^x -mx) ].
+	%
+	% This works fast, with few operations, if
+	% - a/b and b/a are known in advance
+	% - P_0 and P_3 are known in advance
+	% - \gamma_0 and \gamma_1 are known.
+	%
+	% It is also reliable if (\gamma_1 - \gamma_0) is small
+	%
+	\pgf@process{#1}%
+	\edef\pgfpath@center@x{\the\pgf@x}%
+	\edef\pgfpath@center@y{\the\pgf@y}%
+	\def\pgfpath@completearcend{#4}%
+	% compute scale (#3-#2) * pi/(3*180) = (#3 - #2) * pi/27 * 1/20
+	% splitting pi/(3*180) into two scales has higher TeX accuracy
+	\pgf@xa=#2pt
+	\pgf@xb=#3pt
+	\edef\pgfpath@startangle{#2pt}%
+	\edef\pgfpath@endangle{\pgf@sys@tonumber\pgf@xb}%
+	%
+	\pgf@ya=\pgf@xb
+	\advance\pgf@ya by-\pgf@xa
+	%
+	\ifx\pgfpatharctomaxstepsize\pgfutil@empty
+		\def\pgfpath@N{1}%
+		\pgf@xc=\pgf@ya
+	\else
+		\pgf@xc=\pgf@ya% compute N = floor((gamma_1 - gamma_0) / max) +1
+		\ifdim\pgf@xc<0pt
+			\multiply\pgf@xc by-1
+		\fi
+		\divide\pgf@xc by\pgfpatharctomaxstepsize\relax
+		\afterassignment\pgfutil@gobble@until@relax
+		\c@pgf@counta=\the\pgf@xc\relax
+		\advance\c@pgf@counta by1
+		\edef\pgfpath@N{\the\c@pgf@counta}%
+		%
+		\pgf@xc=\pgf@ya
+		\divide\pgf@xc by\c@pgf@counta
+	\fi
+	%
+	\edef\pgfpath@h{\pgf@sys@tonumber\pgf@xc}%
+	%
+%\message{pgfpathellipse: using N =\pgfpath@N\space spline points y0 = \pgfpath@startangle, y0+i*h, yN=\pgfpath@endangle, i=1,...,(\pgfpath@N-1), with h=\pgfpath@h\space mesh width (total arc angle \pgf@sys@tonumber\pgf@ya).}%
+	%
+	%
+	\pgf@xc=0.116355283466289\pgf@xc % pi/27
+	\divide\pgf@xc by20
+	\pgf@xa=#7\pgf@xc
+	\edef\pgfpath@scale@A{\pgf@sys@tonumber\pgf@xa}%
+	\pgf@xa=#8\pgf@xc
+	\edef\pgfpath@scale@B{\pgf@sys@tonumber\pgf@xa}%
+	%
+	% compute intermediate spline segments for
+	%  i = 1,...,N-1
+	% this is a no-op for N=1.
+	\c@pgf@countd=1
+	\pgfutil@loop
+	\ifnum\c@pgf@countd<\pgfpath@N\relax
+		%
+		\pgf@xa=\pgfpath@startangle % compute \pgf@xa = y_0 + i*h
+		\pgf@xb=\pgfpath@h pt
+		\multiply\pgf@xb by\c@pgf@countd
+		\advance\pgf@xa by\pgf@xb
+		\edef\pgfpath@angle@i{\pgf@sys@tonumber\pgf@xa}%
+%\message{angle \the\c@pgf@countd: \pgfpath@angle@i...}%
+		%
+		\pgfpatharcofellipse@{%
+			\pgfpoint
+				{\pgfpath@center@x + #5*cos(\pgfpath@angle@i)}
+				{\pgfpath@center@y + #6*sin(\pgfpath@angle@i)}
+		}%
+		%
+		\advance\c@pgf@countd by1
+	\pgfutil@repeat
+	%
+	% compute final spline segment. It only differs insofar as the
+	% final point is already known explicitly and should be
+	% interpolated without additional math error.
+%\message{angle \pgfpath@N: \pgfpath@endangle...}%
+	\pgfpatharcofellipse@{\pgfpath@completearcend}%
+	\endgroup
+}%
+\def\pgfpatharcofellipse@#1{%
+	\begingroup
+	\pgf@process{#1}%
+	\edef\pgfpath@endpt{\global\pgf@x=\the\pgf@x\space\global\pgf@y=\the\pgf@y\space}%
+	%
+	\pgfpathcurveto{
+		\begingroup
+		\global\pgf@x=\pgf@path@lastx
+		\global\pgf@y=\pgf@path@lasty
+		\pgf@xa=\pgf@x \advance\pgf@xa by-\pgfpath@center@x
+		\pgf@ya=\pgf@y \advance\pgf@ya by-\pgfpath@center@y
+		\global\advance\pgf@x by-\pgfpath@scale@A\pgf@ya
+		\global\advance\pgf@y by \pgfpath@scale@B\pgf@xa
+		\endgroup
+	}{%
+		\begingroup
+		\pgfpath@endpt
+		\pgf@xa=\pgf@x \advance\pgf@xa by-\pgfpath@center@x
+		\pgf@ya=\pgf@y \advance\pgf@ya by-\pgfpath@center@y
+		\global\advance\pgf@x by \pgfpath@scale@A\pgf@ya
+		\global\advance\pgf@y by-\pgfpath@scale@B\pgf@xa
+		\endgroup
+	}{%
+		\pgfpath@endpt
+	}%
+	\endgroup
+}
+
+% bugfix for pgf 2.10, pgfmathfunctions.basic.code.tex :
+%
+\newif\ifpgfmath@divide@period
+\def\pgfmathdivide@#1#2{%
+	\begingroup%
+		\pgfmath@x=#1pt\relax%
+		\pgfmath@y=#2pt\relax%
+		\let\pgfmath@sign=\pgfmath@empty%
+		\ifdim0pt=\pgfmath@y%
+			\pgfmath@error{You've asked me to divide `#1' by `#2', %
+				but I cannot divide any number by `#2'}%				
+		\fi%
+		\afterassignment\pgfmath@xa%
+		\c@pgfmath@counta\the\pgfmath@y\relax%
+		\ifdim0pt=\pgfmath@xa%
+			\divide\pgfmath@x by\c@pgfmath@counta%
+		\else%
+			\ifdim0pt>\pgfmath@x%
+				\def\pgfmath@sign{-}%
+				\pgfmath@x=-\pgfmath@x%
+			\fi%
+			\ifdim0pt>\pgfmath@y%
+				\expandafter\def\expandafter\pgfmath@sign\expandafter{\pgfmath@sign-}%
+				\pgfmath@y=-\pgfmath@y%
+			\fi%
+			\ifdim1pt>\pgfmath@y%
+				\pgfmathreciprocal@{\pgfmath@tonumber{\pgfmath@y}}%
+				\pgfmath@x=\pgfmath@sign\pgfmathresult\pgfmath@x%
+			\else%
+				\def\pgfmathresult{0}%
+				\pgfmath@divide@periodtrue%
+				\c@pgfmath@counta=0\relax%
+				\pgfmathdivide@@%
+				\pgfmath@x=\pgfmath@sign\pgfmathresult pt\relax%
+			\fi%
+		\fi%
+		\pgfmath@returnone\pgfmath@x%
+	\endgroup%	
+}
+\def\pgfmath@small@number{0.00002}
+\def\pgfmathdivide@@{%
+	\let\pgfmath@next=\relax%
+	\ifdim\pgfmath@small@number pt<\pgfmath@x%
+		\ifdim\pgfmath@small@number pt<\pgfmath@y%
+			\ifdim\pgfmath@y>\pgfmath@x%
+				\ifpgfmath@divide@period%
+					\expandafter\def\expandafter\pgfmathresult\expandafter{\pgfmathresult.}%
+					\pgfmath@divide@periodfalse%
+				\fi%
+				\pgfmathdivide@dimenbyten\pgfmath@y%
+				\ifdim\pgfmath@y>\pgfmath@x%
+					\expandafter\def\expandafter\pgfmathresult\expandafter{\pgfmathresult0}%
+				\fi%
+			\else%
+				\c@pgfmath@counta=\pgfmath@x%
+				\c@pgfmath@countb=\pgfmath@y%
+				\divide\c@pgfmath@counta by\c@pgfmath@countb%
+				\pgfmath@ya=\c@pgfmath@counta\pgfmath@y%
+				\advance\pgfmath@x by-\pgfmath@ya%
+				\def\pgfmath@next{%
+					\toks0=\expandafter{\pgfmathresult}%
+					\edef\pgfmathresult{\the\toks0 \the\c@pgfmath@counta}%
+				}%
+				\ifpgfmath@divide@period
+				\else
+					% we are behind the period. It may happen that the
+					% result is more than one digit - in that case,
+					% introduce special handling:
+					\ifnum\c@pgfmath@counta>9 %
+						\expandafter\pgfmathdivide@advance@last@digit\pgfmathresult CCCCC\@@
+						\advance\c@pgfmath@counta by-10 %
+						\ifnum\c@pgfmath@counta=0
+							\let\pgfmath@next=\relax
+						\fi
+					\fi
+				\fi
+				\pgfmath@next
+			\fi%
+			\let\pgfmath@next=\pgfmathdivide@@%
+		\fi%
+	\fi%
+	\pgfmath@next%
+}
+
+% advances the last digit found in the number. Any missing digits are
+% supposed to be filled with 'C'.
+\def\pgfmathdivide@advance@last@digit#1.#2#3#4#5#6#7\@@{%
+	\pgfmath@ya=\pgfmathresult pt %
+	\if#2C%
+		\pgfmath@xa=1pt %
+	\else
+		\if#3C%
+			\pgfmath@xa=0.1pt %
+		\else
+			\if#4C%
+				\pgfmath@xa=0.01pt %
+			\else
+				\if#5C%
+					\pgfmath@xa=0.001pt %
+				\else
+					\if#6C%
+						\pgfmath@xa=0.0001pt %
+					\else
+						\pgfmath@xa=0.00001pt %
+					\fi
+				\fi
+			\fi
+		\fi
+	\fi
+	\advance\pgfmath@ya by\pgfmath@xa
+	\edef\pgfmathresult{\pgfmath@tonumber@notrailingzero\pgfmath@ya}%
+}%
+
+{
+\catcode`\p=12
+\catcode`\t=12
+\gdef\Pgf@geT@NO@TRAILING@ZERO#1.#2pt{%
+	#1.%
+	\ifnum#2=0 \else #2\fi
+}
+}
+\def\pgfmath@tonumber@notrailingzero#1{\expandafter\Pgf@geT@NO@TRAILING@ZERO\the#1}

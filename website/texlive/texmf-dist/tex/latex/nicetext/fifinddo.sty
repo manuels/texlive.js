@@ -1,0 +1,1148 @@
+%% Macro package `fifinddo.sty' for LaTeX2e,    %% FIDO, FIND!
+%% copyright (C) 2009-2012 Uwe L\"uck, 
+%%   http://www.contact-ednotes.sty.de.vu 
+%% -- author-maintained in the sense of LPPL below -- 
+%% for processing tex(t) files 
+%% (checking, filtering, converting, substituting, expanding, ...)
+ 
+\def\fileversion{0.51} \def\filedate{2012/03/17}
+
+%% This file can be redistributed and/or modified under 
+%% the terms of the LaTeX Project Public License; either 
+%% version 1.3c of the License, or any later version.
+%% The latest version of this license is in
+%%
+%%     http://www.latex-project.org/lppl.txt
+%%
+%% We did our best to help you, but there is NO WARRANTY. 
+%% Please report bugs, problems, and suggestions via 
+%% 
+%%   http://www.contact-ednotes.sty.de.vu 
+%% 
+%% For the full documentation, look for `fifinddo.pdf'. 
+%% Its source starts in `fifinddo.tex'.
+%%
+%% === Format and package version ===
+\NeedsTeXFormat{LaTeX2e}[1994/12/01] 
+% 1994/12/01: \newcommand* etc. 
+\ProvidesPackage{fifinddo}[\filedate\space v\fileversion\space
+                           filtering TeX(t) files by TeX (UL)] 
+%% 
+%% === Category codes ===
+%%
+%% We use the ``underscore" as ``compound identifier." 
+\catcode`\_=11 %% underscore used in control words
+%%
+%% |\MakeOther| is a synonym for `\@makeother', needed for matching 
+%% special characters from the input file. It is exemplified by 
+%% |\fdPatternCodes| which is the default of |\PatternCodes|. 
+%% The latter is used in setup macros for reading patterns. 
+%% We offer |\SetPatternCodes{<commands>}| 
+%% (redefining `\PatternCodes')
+%% and |\ResetPatternCodes| 
+%% (for returning to `\fdPatternCodes') 
+%% so setup scripts such as 'mdoccorr.cfg' have shorter lines.
+\@ifundefined{MakeOther}{\let\MakeOther\@makeother}{}
+\newcommand*{\fdPatternCodes}{\MakeOther\&\MakeOther\$} 
+\newcommand*{\SetPatternCodes}{\def\PatternCodes}
+\newcommand*{\ResetPatternCodes}{\let\PatternCodes\fdPatternCodes}
+\newcommand*{\PatternCodes}{} \ResetPatternCodes
+  %% TODO adding/removing; `*' may be wrong 2010/03/29
+%%
+%% It would be bad to have `\MakeOther\%' and `\MakeOther\ ' here in 
+%% that this may have unexpected, weird effects with arguments of 
+%% setup macros. (With `\MakeOther\ ' you must not indent within a
+%% setup command, and if you add `\MakeOther\%' the setup command 
+%% must stay in one line.)
+%% Therefore neither `\dospecials' nor `\@sanitize' are 
+%% used. Curly braces remain untouched as default delimiters in setup 
+%% macros. For matching them, you must use `\MakeOther\{' and 
+%% `\MakeOther\}'   %% corr. 2010/11/09
+%% in your `\PatternCodes', or |\Delimiters| to introduce 
+%% new ones at the same time, e.g., `\Delimiters\[\]': 
+\newcommand*{\Delimiters}[2]{%
+  \MakeOther\{\MakeOther\}\catcode`#1\@ne \catcode`#2=\tw@}
+%%
+%% For replacing strings or for defining other strings of ``other" 
+%% characters by `\edef', you can use some \LaTeX\ constructs---here 
+%% are copies |\PercentChar| and |\BackslashChar| of them
+%% (do you need more?): 
+\newcommand*{\PercentChar}{}   \let\PercentChar\@percentchar
+\newcommand*{\BackslashChar}{} \let\BackslashChar\@backslashchar
+%% %% <- corr. typo 2010/11/25
+%%
+%% |\BasicNormalCatcodes| restores Plain~\TeX's 
+%% \textbf{macro parsing} and comment character:
+\newcommand*{\BasicNormalCatCodes}{%
+  \catcode`\\\z@ \Delimiters\{\}%
+%   \restorecr !?
+  \catcode`\ =10 \catcode`\%=14}
+%% However, reading files \emph{line by line} makes parsing of 
+%% macro parameters somewhat difficult 
+%% when the parameter code spans code lines. 
+%% A line must not end with a curly brace when a macro requires
+%% another parameter; instead, it must contain the curly left 
+%% brace for the next parameter.
+%%
+%% |\MakeActiveDef\<char>{<expand-to>}| makes <char> an active 
+%% character expanding to <expand-to> 
+\newcommand*{\MakeActiveDef}[1]{%
+    \catcode`#1\active 
+    \begingroup
+        \lccode`\~`#1\relax \lowercase{\endgroup \def~}} 
+%% (cf. `\@sverb'/`\do@noligs' in \LaTeX's 'doc.sty'). 
+%% This even allows defining active characters with parameters
+%% (suggested by Heiko Oberdiek LATEX-LIST 2010/09/18, 
+%%  may be nice for UTF-8).
+%% The macro has been used for conversion of text encodings. 
+%% %% <- TODO atari.fdf
+%%
+%% 
+%%  == File handling ==
+%% %% structured 2011/11/19
+%% Peter Wilson's \ctanpkgref{newfile}
+%% provides more powerful file handling. 
+%% % <- TODO relevant? 2009/04/12
+%%
+%% === Opening, Writing to, Closing Output ===
+%% \label{sec:output}
+\newwrite\result_file %% or write to \@mainaux!? TODO
+%% |\ResultFile{<output>}| opens (and empties) a file 
+%% <output> to be written into. 
+\newcommand*{\ResultFile}[1]{%
+  \def\result_file_name{#1}%
+  \typeout{`fifinddo' generating `\result_file_name'}%  %% 2011/10/23
+  \immediate\openout\result_file=#1}
+%% |\WriteResult{<balanced>}| writes a <balanced> line into 
+%% <output> (or more lines with `^^J').
+\newcommand*{\WriteResult}[1]{% 
+  \immediate\write\result_file{#1}}
+%% |\WriteProvides| writes a `\ProvidesFile' command to the 
+%% opened <output> file. This should be used when <output> 
+%% is made as \LaTeXe\ input. 
+\newcommand*{\WriteProvides}{%
+  \WriteResult{%
+    \string\ProvidesFile{\result_file_name}% 
+      [\the\year/\two@digits\month/\two@digits\day\space 
+       automatically generated with fifinddo.sty]}}%
+%% |\CloseResultFile| closes <output>:
+\newcommand*{\CloseResultFile}{% 
+    \immediate\closeout\result_file
+    \typeout{`fifinddo'                     %% 2011/10/23
+             \space\space\space             %% 2011/10/26
+             closing `\result_file_name'}} 
+%%
+%% === Processing Input ===
+%% \label{sec:input} 
+%% %% opt arg 2010/04/06:
+%% |\ProcessFileWith[<changes>]{<input>}{<loop-body>}| 
+%% opens a file <input> 
+%% and runs a loop on its lines the main body of which is <loop-body>. 
+%% When the <loop> starts, a new line of <input> is stored as macro 
+%% |\fdInputLine|. The optional argument <changes> may change 
+%% category codes used in reading <input>. It may be useful to 
+%% read macros with arguments and active characters expanding 
+%% in writing to the output file. Even these expansions may be 
+%% defined here (local to the group like everything else 
+%% happening here, unless ...). 
+%% Macros |\BasicNormalCatcodes| and |\MakeActiveDef| 
+%% have been created for this purpose (see previous section TODO).
+%% (It may be better to store 
+%% these <changes> in another macro <macro> and to call 
+%% `\ProcessFileWith[<macro>]{<input>}{<loop-body>}').
+%% More possible uses of some usual \TeX\ category codes may be
+%% (some of)
+%% \begin{itemize}
+%% \item avoiding matching substrings of control words, 
+%% \item skipping blank spaces as \TeX\ does it usually,
+%% %% <- macro parsing + ...!?
+%% \item catching \emph{balanced} input pieces,
+%% \item ignoring comments, 
+%% \item ignoring certain characters. 
+%% \end{itemize}
+\newcommand*{\ProcessFileWith}[3][]{%
+%% v0.5: Variant of \LaTeX's `\IfFileExists'---failed so far 
+%% because I had omitted the blank space:
+  \openin\@inputcheck#2 % space essential!  2011/11/19
+  \ifeof\@inputcheck 
+    \PackageError{fifinddo}{File `#2' not here}%
+                           {Mistyped?}%
+  \else
+    \typeout{`fifinddo' processing `#2'}%%  2010/04/15
+%% %% 2011/11/19:
+%% ... moves into conditional with v0.5. Resetting line counter:
+    \global\c@fdInputLine=\z@ 
+    \begingroup 
+      \MakeOther\{\MakeOther\}\@sanitize
+%% ... switching into ``plain text mode"; from `docstrip.tex': 
+      % \MakeOther\^^A\MakeOther\^^K%% irrelevant, not LaTeX
+%% <- cf. \TeX book 
+%%    pp.~43ff., 368ff.,                            %% 2011/11/19
+%%    ``extended keyboards", up-/downarrow;
+%%    -> ``math specials", cf. ``space specials"
+      \endlinechar\m@ne
+      \MakeOther\^^I% ASCII horizontal tab -- guessed!? ^^L!?
+%% With v0.31, we support non-ASCII:
+      \count@=128
+      \loop
+      \ifnum\count@<\@cclvi
+        \catcode\count@=12
+        \advance\count@\@ne
+      \repeat
+      #1%
+      \loop \ifeof\@inputcheck \else 
+        \read\@inputcheck to \fdInputLine
+        \ignorespaces #3%
+%% v0.42 supports |\IfFDpreviousInputEmpty|, 
+%% cf. section \ref{sec:tails}:
+        \expandafter \let 
+          \expandafter \IfFDpreviousInputEmpty
+            \ifx\fdInputLine\@empty \@firstoftwo
+              \else                 \@secondoftwo \fi
+      \repeat
+    \endgroup
+  \fi
+  \closein\@inputcheck
+%% Added for v0.5, cf. Sec.~\ref{sec:final-input}
+  \ifFinalInputFile
+    \CloseResultFile \FinalInputFilefalse
+  \fi
+} 
+%% % TODO: write EOF for debugging!?---%% 2010/03/18
+%% % Another difference to some \ctanpkgref{verbatimcopy}
+%% % is that `\CopyFile' really was meant to 
+%% % be used for creating a \acro{HTML} file from some \emph{number} of 
+%% % sources, especially for shared head sections (however, 
+%% % I have used macros for this purpose so far), a navigation column, 
+%% % the main varying ``blog-like" content, and finally a shared 
+%% % footer section.
+%% % In the meantime, however, I have chosen another variant 
+%% % for generating \acro{HTML} that 
+%% % replaces an empty line by a line consisting of \verb+<p>+. 
+%% % 
+%% |\CopyFile[<changes>]{<file>}| 
+%% is an application of `\ProcessFileWith' 
+%% that ``copies" the content of file <file> 
+%% into the file specified by 
+%% `\ResultFile'.   %% was `\WriteResult'. 2011/08/06
+%% However, optional <changes> allows some 
+%% ``modifications" while ``copying"---especially, 
+%% conversion of text encodings by active characters 
+%% and expanding macros for generating \acro{HTML} 
+%% or other code. The ``starred" variant 
+%% |\CopyFile*| copies one empty line only 
+%% when one empty line in the input file is followed 
+%% by more of them. 
+\newcommand*{\CopyFile}{%
+    \@ifstar{\let\FD@copy@style\FD@compress@voids \FD@copyfile}%
+            {\let\FD@copy@style\CopyLine          \FD@copyfile}}
+\newcommand*{\FD@copyfile}[2][]{%
+    \ProcessFileWith[#1]{#2}{\FD@copy@style\message{.}}}
+%% % <- message 2010/11/13; 2011/08/22:
+%% You should find a file `copyfile.tex' providing a dialogue 
+%% for ``compressing" files this way. As soon as you have a 
+%% useful conversion mapping file (defining |\TextCodes|), 
+%% you can also use it for text encoding conversions.
+%%
+%% |\CopyLine|:
+\newcommand*{\CopyLine}{\WriteResult\fdInputLine}
+%% (... added `\space' without success with macro arguments 
+%%  2010/04/26 --- `\BlogCodes' has used a better solution 
+%%  later).
+\newcommand*{\FD@compress@voids}{%
+    \IfFDinputEmpty{\IfFDpreviousInputEmpty\relax\CopyLine}%
+                   \CopyLine}
+%% 
+%% === A Combining Shorthand ===
+%% \label{sec:final-input}
+%% Before v0.5, the general idea was that some number of \strong{input} 
+%% files would be combined for creating a single \strong{output} file 
+%% (e.g., as opposed to \ctanpkgref{verbatimcopy}, regarding 
+%% `\CopyFile').
+%% According to experience, however, a \strong{single} input file 
+%% typically suffices for generating an output file. 
+%% Then |\CloseResultFile| (Sec.~\ref{sec:output}) 
+%% may be called ``implicitly". The flag |\ifFinalInputFile|
+%% will control (and generalize!) this 
+%% (in `\ProcessFileWith', Sec.~\ref{sec:input}), 
+%% and will be reset if changed 
+%% (thinking of generating another file in the same \TeX\ run).
+%% 
+%% So 
+%% |\ProcessFinalFileWith[<changes>]{<input>}{<loop-body>}| 
+%% % |\ProcessFinalFileWith| works like `\ProcessFileWith'
+%% works as with `\ProcessFileWith'
+%% except that `\CloseResultFile' is issued after processing, 
+%% so you can omit the latter.
+\newif\ifFinalInputFile
+\newcommand*{\ProcessFinalFileWith}{%
+    \FinalInputFiletrue \ProcessFileWith}
+%%
+%% \pagebreak                               %% 2011/11/19 again
+%%  == Basic handling of substring conditionals ==
+%% \label{sec:theory}
+%% %% TODO move theory to fifinddo.tex 2009/04/12
+%% === ``Substring Theory" === 
+%% \begin{flushright}\it
+%% I wished I could study string theory,\\
+%% but I only could study substring theory.
+%% \end{flushright}
+%% A \TeX\ macro, say, `\find' whose parameter text 
+%% (cf. \TeX book p.~203)
+%% starts with `#1<pattern>#2&' stops \TeX\ with an error if it does 
+%% not find <pattern> and then `&'. Otherwise we have a situation 
+%% `\find<split1><pattern><split2>&', and `\find' reads <split1> as 
+%% #1 and <split2> as #2. An important point to note is that <split1> 
+%% will not contain <pattern>, but possibly <pattern> has more 
+%% occurrences in <split2>. In this sense, `\find' uses the 
+%% \emph{first} occurrence of <pattern> it finds in order to delimit #1. 
+%% Finding the \emph{last} occurrence of <pattern> therefore needs a 
+%% special idea. 
+%%
+%% In order to use `\find' for a test whether <pattern> is in 
+%% <target>, we build a ``sandbox" |\find<sand>&|, where <sand> 
+%% contains <target> \emph{and additionally} <pattern>---as a 
+%% ``dummy;" so `&' delimits the search and `\find' finds 
+%% <pattern> either in <target> or somewhere else before `&'. 
+%%
+%% Consider the simple sandbox |\find<target><pattern>&|. 
+%% We can test #1 and #2 on being empty by `\ifx$#1$' and `\ifx$#2$'. 
+%% If #2 is empty, <pattern> is \emph{not} in <target>. 
+%% If #1 is empty at the same time, <target> is empty. 
+%% If #1 is empty and #2 is not, <pattern> \emph{starts} 
+%% <target>!\footnote{%% 2011/01/25:
+%%                    This is just as wrong as the next claim.}
+%% This can be used to implement 
+%% Wikipedia-like lists                 %% TODO 2009/04/11
+%% and to distinguish package code from comments in 
+%% 'makedoc'.\footnote{%% 2011/01/25: 
+%%                     Due to the special substrings to test in this 
+%%                     application, this is true although the 
+%%                     surrounding claims are wrong.}
+%%
+%% If #2 is \emph{not} empty, <pattern> occurs in <target>---or this once 
+%% was \emph{thought}, some time in developping the present package, 
+%% as well as in the version of 'substr.sty' marked 
+%% `2005-11-29',\footnote{\url{http://ctan.org/pkg/substr}. 
+%%                        'substr' does not change category codes 
+%%                        as 'fifinddo' does 
+%%                        and uses \cs{@nil} as delimiter instead of 
+%%                        our &&.} try 
+%% (if that version still is installed)\footnote{The ``feature" has 
+%%                        been fixed with v1.2 as of 2009/10/20 of 
+%%                        'substr.sty'.}
+%% \[`\IfSubStringInString{<str1><str2><str1>}{<str1><str2>}{YES}{NO}'\] 
+%% which works \emph{verbatim} as well as considering <str1> and 
+%% <str2> \emph{placeholders}, e.g., for
+%% \begin{center}
+%%   `\IfSubStringInString{day after day}{day after }{YES}{NO}'\footnote{%
+%%     Likewise \texttt{t\string\^ete-\string\`a-t\string\^ete} ...}\\ 
+%%     %% <- `e' was missing 2010/03/17
+%%   `\IfSubStringInString{AMSTERDAM}{AMSTERD}{YES}{NO}'\\
+%%   `\IfSubStringInString{TORONTO}{TORON}{YES}{NO}'\\
+%%   `\IfSubStringInString{bonbon}{bon}{YES}{NO}'\footnote{%
+%%     Polynesian: `aku aku', `rongorongo', `wiki wiki' ...}\\
+%%   `\IfSubStringInString{bonobo}{bono}{YES}{NO}'
+%%   (an ape)
+%% \end{center}
+%% or `\IfSubStringInString{ionization}{ionizat}{YES}{NO}'.\footnote{%
+%%   Read 'substr.sty' or try ``normal" things to convince yourself 
+%%   that the syntax indeed is 
+%%   &\IfSubStringInString{<pattern>}{<target>}{<yes>}{<no>}.} 
+%% Same with \LaTeX's internal `\in@':\footnote{\cs{in@} has been 
+%%              fixed after my warning on Heiko Oberdiek's proposal---at 
+%%              least in the repository.---On 2009/04/21 
+%%              I learn from Manuel P\'egouri\'e-Gonnard 
+%%              that the first versions of his 'ted' 
+%%              had a similar bug, fixed on v1.05 essentially like here; 
+%%              Steven Segletes confirms that his 'stringstrings' doesn't 
+%%              suffer the problem (returning positions of substrings and 
+%%              numbers of occurrences).}
+%% \begin{center}
+%% % \[
+%%    `\makeatletter \in@{bonbon}{bon}\ifin@ YES\else NO\fi \makeatother'
+%% %% \makeatletter \in@{bonbon}{bon}\ifin@ YES\else NO\fi \makeatother
+%% %% \IfSubStringInString{ionization}{ionizat}{YES}{NO}
+%% % \]
+%% \end{center}
+%%
+%% In general, the previous approach \emph{fails if and exactly if} 
+%% <pattern> has a \emph{period} $p$---less than its length---in the sense of that 
+%% the $p$th token to the right or left of each token in <pattern> 
+%% is the \emph{same} token. 
+%% `AMSTERDAM' has a period 7,                  %% was 8 2011/01/20
+%% `day after day' 10, `bonbon' 3, `bonobo' 4.
+%% There is a counterexample <target> of length $p$ iff 
+%% <pattern> has period $p$, namely the first substring of <pattern> 
+%% having length $p$. If the length of <pattern> exceeds a multiple 
+%% $mp$ of its period, the first $mp$ tokens of <pattern> form 
+%% a counterexample <target>. 
+%%
+%% Therefore, a sandbox must have something between <target> and 
+%% <pattern>.\footnote{Must? Actually, I preferred this solution to 
+%%   other ideas like measuring the length of <split2>.}
+%% We choose |\find<target>~<pattern>$&| as standard. 
+%% The `$' will be used as an argument delimiter to get rid of the dummy 
+%% <pattern> in <split2>, as well as to decide whether the match was 
+%% in <target> or in the dummy part of the sandbox. 
+%% The `$' can be replaced by another tilde `~' in order to 
+%% test whether <target> \emph{ends} on a <pattern>, defining a macro 
+%% like `\findatend' whose parameter text starts with `#1<pattern>~#2&'.
+%% 
+%% === Plan for proceeding ===
+%% When we check a file for several patterns, we seem to need 
+%% \emph{two} macros for each pattern: one that has the pattern 
+%% in its parameter text and one that stores the pattern for building 
+%% the sandbox.\footnote{If it were for the pattern only, the parsing 
+%%   macro might suffice and the macro calling it might extract the 
+%%   pattern from a ``dummy expansion." Somewhat too much for me now; 
+%%   on the other hand the calling macro also hands some ``current" 
+%%   informations to the parsing macro---oh, even this could be 
+%%   handled by a general ``calling" macro \dots}
+%%   %% TODO 2009/04/15
+%% We use a separate \emph{``name space"} for each of 
+%% both kinds. The parsing macro and the macro building the sandbox 
+%% will have a common \emph{``identifier"} by which the user or 
+%% programmer calls them. Actually, she will usually (first) call 
+%% the sandbox box builder. The sandbox builder calls the parsing 
+%% macro. When \emph{all} occurrences of a pattern in the target are 
+%% looked for, the parser may call itself. 
+%%
+%% Actually, the parsing macro will execute certain actions 
+%% depending on what it finds in the sandbox, so we call it a 
+%% \emph{``substring conditional"}. It may read additional arguments 
+%% after the sandbox that store information gathered before. 
+%% This is especially useful for designing \emph{``expandable"} 
+%% chains (sequences) of conditionals where macros cannot store information in 
+%% macros. The macro setting up the sandbox will initialize such 
+%% extra arguments at the same time. 
+%%
+%% It may be more efficient \emph{not} to use the following setup 
+%% macros but to type the macros yourself, just using the following 
+%% as templates. The setup macros are especially useful with patterns 
+%% that contain ``special characters," as when you are looking for 
+%% %% TODO repetition of single right quote not working 2010/03/19
+%% lines that might be package comments. 
+%%
+%% === Meta-Setup ===
+%%
+%% A setup command <setup-cmd> will have the following syntax: 
+%% \[|<setup-cmd>{<job-id>}[<changes>]{<pattern>}<more-args>|\]
+%% <changes> will, in the first instance, be category code changes 
+%% for reading <pattern> overriding the settings in `\PatternCodes'. 
+%% They are executed after the latter in a local group. 
+%% It may be safer to redefine `\PatternCodes' instead 
+%% of using the optional <changes> argument.
+%%
+%% A macro 
+%% \[|\StartFDsetup{<do-setup>}{<job-id>}[<changes>]|\]
+%% shared by setup commands 
+%% may read <job-id> and <changes> for <setup-cmd>. 
+%% |<do-setup>| will be the macro that reads <pattern> (and more) 
+%% and processes it. It must contain `\endgroup' to match 
+%% `\begingroup' from `\FD_prepare_pattern'.
+%% <job-id> is stored in a macro |\fdParserId|.
+%% The default for <changes> is \emph{nothing}.
+\newcommand*{\StartFDsetup}[1]{%
+    \let\FD_do_setup#1%
+    \afterassignment\FD_prepare_pattern
+    \def\fdParserId}
+\newcommand*{\FD_prepare_pattern}[1][]{%
+    \begingroup \PatternCodes #1\FD_do_setup}
+%% So <setup-cmd> should be set up about as follows:
+%% \begin{quote}
+%%   `\newcommand*{<setup-cmd>}{\StartFDsetup<do-setup>}'\\
+%%   `\newcommand*{<do-setup>}[<args>]{<action>}'
+%% \end{quote}
+%% <do-setup>'s first argument will be the <pattern> argument
+%% of <setup-cmd>.---With v0.5, we learn from the previous and provide 
+%% \[|\MakeSetupCommand{<setup-cmd>}{<do-setup>}[<args>]{<action>}|\]
+\newcommand*{\MakeSetupCommand}[2]{\newcommand*#1{\StartFDsetup#2}%
+                                   \newcommand*#2}
+%%
+%% === Setup for conditionals ===
+%% `substr_cond' is the ``name space" for substring conditionals. 
+%% A colon separates it from \emph{``job identifiers"} in the actual 
+%% macro names. 
+\def\substr_cond{substr_cond:}
+%%
+%% |\MakeSubstringConditional{<id>}[<changes>]{<pattern>}| 
+%% starts the definition of a conditional with identifier <id> 
+%% and pattern <pattern>. <changes> optionally add commands to 
+%% be executed after `\PatternCodes' in a local group. 
+%% `\begingroup' |\mk_substr_cond{<pattern>}| %% TODO!? 2010/03/22
+%% can be directly called by other programmer setup commands when 
+%% `\fdParserId' and <pattern> have been read.
+\MakeSetupCommand{\MakeSubstringConditional}{\mk_substr_cond}[1]{%
+  %% #1 pattern string
+  \endgroup \@namedef{\substr_cond \fdParserId}##1#1##2&}
+%% This really is not \LaTeX. We are starting defining a macro 
+%% `\substr_cond:<id>' in primitive \TeX\ with `\def' in the form
+%% \[`\def\substr_cond:<id>#1<pattern>#2&'\]
+%% where `\csname' etc. render \lq`:<id>'\rq\ part of the macro 
+%% name.\footnote{%% 2010/11/27:
+%%                Loosely speaking of ``the parser" <parser> around 
+%%                here somehow refers to this macro---but rather to 
+%%                its ``parameter text" only, 
+%%                according to \TeX book p.~203. Such a macro, 
+%%                however, won't ``parse" only, but it will also 
+%%                execute some job on the results of parsing. 
+%%                Or: a ``mere parsing" macro might be macro that 
+%%                transforms a ``weird" Plain \TeX\ parameter text
+%%                into a ``simple" parameter text of another macro, 
+%%                consisting of hash marks and digits only. E.g.: 
+%%                &\def&\Foo#1<pattern>#2&&{&\foo{#1}{#2}}.}
+%% The user or programmer macro produces the part of the definition 
+%% until the delimiter `&' to match the sandbox. You have to add 
+%% (maybe) #3 etc. and the `{<definition text>}' 
+%% just as with primitive \TeX.
+%%
+%% === Setup for sandboxes === 
+%% There was a \emph{question:} will we rather see 
+%% \emph{string macros} or \emph{strings from macro arguments}? 
+%% The input file content always comes 
+%% as `\fdInputLine' first, so we at least \emph{must account} for 
+%% the possibility of string macros as input.
+%%
+%% One easy way to apply several checks and substitutions to 
+%% `\fdInputLine' before the result is written to <output> is 
+%% `\let\OutputString\fdInputLine' and then let `\OutputString' 
+%% be to what each job refers as \emph{its} 
+%% input and output, finally `\WriteResult{\OutputString}'. 
+%% (`\fdInputLine' might better not be touched, it could be used 
+%% for a final test whether any change applied for some message on 
+%% screen, even with an entirely expandable chain of actions.)
+%% This way each job, indeed each recursive substitution of a single 
+%% string must start with expanding `\OutputString'. 
+%%
+%% On the other hand, there is the idea of \emph{``expandable" 
+%% chains of substitutions}. We may, e.g., define a macro, say, 
+%% `\manysubstitutions{<macro-name>}', such that 
+%% `\WriteResult{\manysubstitutions{\fdInputLine}}'
+%% writes to <output> the result of applying many expandable 
+%% substitutions to `\fdInputLine'. 
+%% Such a macro `\manysubstitutions' may read `\fdInputLine', 
+%% but it must not redefine any macros. 
+%% Instead, the substitution macros it calls must read results 
+%% of previous substitutions as \emph{arguments}.
+%% 
+%% Another aspect: 
+%% the order of substitutions should be easy to 
+%% change. Therefore expanding of string macros should rather be 
+%% controlled by the way a job is \emph{called}, not right here 
+%% at the \emph{definition} of the job. For this reason, 
+%% a variant of the sandbox builder expanding some macro was given up. 
+%% %% <- TODO!? 2010/03/25 
+
+%% `setup_substr_cond' is the name space for macros that build
+%% sandboxes and initialize arguments for conditional macros. 
+\def\setup_substr_cond{setup_substr_cond:}
+%% \begin{center}                           %% 2011/11/13
+%% |\MakeSetupSubstringCondition{<id>}[<changes>]{<pattern>}{<more-args>}|
+%% \end{center}
+%% % <- TODO allow `%' and ` ' for breaking code lines. 
+%% ---same <id>, <changes>, <pattern> as for 
+%% `\MakeSubstringConditional' (this is bad, there may be 
+%% |\MakeSubstringConditional*{<more-args>}|)---creates the 
+%% % <- TODO: store args in \Make...Conditional
+%% corresponding sandbox, by default without tilde wrap. 
+%% <more-args> may contain `{#1}' to store the string that was tested,
+%% also `{<id>}' for calling repetitions and `{<pattern>}' for screen 
+%% or log informations. 
+\MakeSetupCommand{\MakeSetupSubstringCondition}
+                 {\mk_setup_substr_cond}[2]{%
+%% |\mk_setup_substr_cond{<pattern>}{<more-args>}| 
+%% %% without \begingroup 2010/03/29
+%% can be directly called by other programmer setup commands after 
+%% `\fdParserId' and <pattern> have been read.
+  %% #1 pattern string
+  %% #2 additional arguments, e.g., `{#1}' to keep tested string
+  \endgroup 
+  \expandafter \protected@edef                 %% protected 2011/11/21
+%% ... keeps `\protect' instead of just not expanding, 
+%% but I cannot implement `\UseBlogLigs' otherwise right now.
+   \csname \setup_substr_cond \fdParserId \endcsname ##1{%
+      \noexpandcsname \substr_cond \fdParserId \endcsname
+%% By `\edef', the name of the substring conditional is stored here 
+%% as a single token. The rest of the sandbox follows. 
+          ##1\FD_noexpand~#1\dollar_tilde&#2}%
+%% <- `\noexpand~' as before v0.5 replaced for v0.51 according to 
+%% Sec.~\ref{sec:pseudo-tilde}.
+  \let\dollar_tilde\sandbox_dollar}
+%% If a tilde `~' has been used instead of `$', the default 
+%% is restored. 
+\def\sandbox_dollar{$}
+\let\dollar_tilde\sandbox_dollar
+%% % The following general tool |\make_not_expanding_cs| has been used 
+%% The following general tool |\noexpandcsname| has been used 
+%% (many definitions in 'latex.ltx' could have used it): %% 2009/04/10
+% \def\make_not_expanding_cs#1{%
+%     \expandafter \noexpand \csname #1\endcsname}
+%% <- 2011/11/20 ->
+\def\noexpandcsname{\expandafter\noexpand\csname}
+%%
+%% === Getting rid of the tildes ===
+%% |\let~\TildeGobbles| can be used to suppress dummy patterns 
+%% (contained in <split2>) 
+%% in `\write'ing or with `\edef'. ... will probably become obsolete 
+%% ... however, it is helpful in that you needn't care 
+%% whether there is a dummy wrap left at all. (2009/04/13)
+\newcommand{\TildeGobbles}{}       \def\TildeGobbles#1${} 
+%% |\RemoveDummyPattern| is used to remove the dummy pattern 
+%% \emph{immediately}, not waiting for `\write'ing
+%% or other ``total" expansion:   %% 2009/04/13
+\newcommand{\RemoveDummyPattern}{} \def\RemoveDummyPattern#1~#2${#1}
+%% |\RemoveDummyPatternArg<macro>{<arg>}| executes 
+%% `\RemoveDummyPattern' in the next argument: 
+\newcommand*{\RemoveDummyPatternArg}[2]{% 
+  \expandafter #1\expandafter {\RemoveDummyPattern #2}} 
+%% |\RemoveTilde| is used to remove the tilde that separated 
+%% the dummy pattern from <split1>. 
+%% %% An alternative policy is to pass  %% TODO 2011/01/25
+%% %% <target> (as an argument) to the parsing macro. 
+\newcommand{\RemoveTilde}{} \def\RemoveTilde#1~{#1}
+%% |\RemoveTildeArg<macro>{<arg>}| executes `\RemoveTilde' 
+%% in the next argument: 
+\newcommand*{\RemoveTildeArg}[2]{% 
+  \expandafter #1\expandafter {\RemoveTilde #2}} 
+%%
+%% === Alternative Setup ===
+%% \label{sec:pseudo-tilde}
+%% 'blog.sty' v0.7---``ligatures"---has problems with the tilde. 
+%% We call a different setup by |\FDpseudoTilde| and go back 
+%% to the original one by |\FDnormalTilde| 
+%% (which, however, works only for new processing jobs and 
+%%  processing another file---at present, TODO  2011/11/21):
+\newcommand*{\FDnormalTilde}{%
+    \let\FD_noexpand\noexpand                               %% v0.51
+%% v0.5 had a modification of `~' that corrupted typesetting.
+    \let\RemoveTilde\FD_remove_normal_tilde} 
+\let\FD_remove_normal_tilde\RemoveTilde
+\FDnormalTilde
+\newcommand*{\FDpseudoTilde}{%
+    \def\FD_noexpand~{\noexpand\pseudo_tilde}%              %% v0.51
+    \let\RemoveTilde\FD_remove_pseudo_tilde}
+\def\FD_remove_pseudo_tilde#1\pseudo_tilde{#1}
+%% TODO 2012/01/20: This way outer braces of splits or the 
+%% target token list are removed. With 'blog.sty', this has been 
+%% relevant for displaying code only (where using source braces 
+%% for displaying braces, instead of using `\{' and `\}', 
+%% it was a bad habit anyway). In order to fix this, the target 
+%% token list must be surrounded with some additional dummy things, 
+%% and `\RemoveTildeArg' must add another trick. 
+%% %% <- stored in "bad" directory.
+%%
+%% === Calling conditionals ===
+%% |\ProcessStringWith{<target-string>}{<id>}| \ builds the sandbox 
+%% to search <target-string> for the <pattern> associated with the 
+%% parser-conditional that is identified by <id>, the sandbox then 
+%% calls the parser. 
+%% % Finally, the command \emph{``returns"} the 
+%% % result of applying job <id> to <target-string>---in the sense of 
+%% % \emph{expanding} to it. %% more precisely 2010/03/25
+%% %% <- removed again, wrong 2010/03/26
+\newcommand*{\ProcessStringWith}[2]{%
+  \csname \setup_substr_cond #2\endcsname{#1}}
+%% |\ProcessExpandedWith{<string-macro>}{<id>}| does the same but with 
+%% %% changed, intro toks 2010/04/06:
+%% a \emph{macro} <string-macro> 
+%% (like `\fdInputLine' or `\OutputString') 
+%% that stores the string to be tested.
+%% |\ProcessExpandedWith{\the<toks>}{<id>}| with a token list 
+%% parameter or register <toks> may be used as well.
+\newcommand*{\ProcessExpandedWith}[2]{%
+  \csname \setup_substr_cond #2\expandafter \endcsname
+    \expandafter{#1}}
+%% I would have preferred the reversed order of arguments which seems 
+%% to be more natural, but the present one is more efficient. 
+%% Macros with reversed order are currently stored after `\endinput' 
+%% in section~\ref{sec:pondered}, maybe they once return. 
+%% %% <- minor corr.s 2010/11/27
+%%
+%% Anyway, most desired will be |\ProcessInputWith{<id>}| just 
+%% applying to `\fdInputLine':
+\newcommand*{\ProcessInputWith}[1]{%
+%   \csname \setup_substr_cond #1\expandafter \endcsname
+%     \expandafter{\fdInputLine}}
+% %% (Definition almost copied for efficiency.)
+  \ProcessExpandedWith\fdInputLine{#1}}             %% 2011/11/21
+%% TODO: error when undefined 2009/04/07
+%%
+%% === Copy jobs ===
+%% A job identifier <id> may also be considered a mere \emph{hook}, 
+%% a \emph{placeholder} for a parsing job. What function actually is 
+%% called may depend on conditions that change while reading the 
+%% <input> file. %%% On a certain condition, 
+%% |\CopyFDconditionFromTo{<id1>}{<id2>}| 
+%% \emph{creates or redefines a sandbox builder} with identifier <id2> 
+%% that afterwards behaves like the sandbox builder <id1>. 
+%% So you can store a certain behaviour as <id1> in advance in order 
+%% once to change the behaviour of <id2> into that of <id1>. 
+\newcommand*{\CopyFDconditionFromTo}[2]{%
+  \expandafter \let 
+    \csname \setup_substr_cond #2\expandafter \endcsname 
+      \csname \setup_substr_cond #1\endcsname}
+%% (Only the \emph{sandbox} is copied here---what about 
+%% changing conditionals?) %% TODO 
+%%
+%% An ``almost" example is typesetting documentation from a package 
+%% file where the ``Legalese" header might be typeset verbatim 
+%% although it is marked as ``comment." (The present %% 2009/04/07
+%% example changes ``hand-made" macros instead.)
+%%
+%% This feature could have been placed more below as a ``programming 
+%% tool."
+%%
+%% 
+%%  == Programming tools ==
+%% === Tails of conditionals ===
+%% \label{sec:tails}
+%% When creating complex \emph{expandable} conditionals, 
+%% this may amount to have primitive `\if' ... `\fi' conditionals 
+%% nested quite deeply, once perhaps too deep for \TeX's memory. 
+%% To avoid this, you can apply the common `\expandafter' trick 
+%% which finishes the current `\if' ... `\fi' before an inside 
+%% macro is executed (cf. \TeX book p.~219 on ``tail recursion").
+%%
+%% Internally tests whether certain strings are present at certain 
+%% places will be carried out by tests on emptiness or 
+%% %% onwards) %% !? 2009/12/28
+%% on starting with `~'. E.g., 
+%% ``#1~=~<split1> empty" indicates that either the <pattern> 
+%% starts a line or the line is empty altogether (this must be 
+%% decided by another test). 
+%%
+%% |\IfFDempty{<arg>}{<when-empty>}{<when-not-empty>}| \ 
+%% is used to test <arg> on emptyness (without expanding it): 
+\newcommand*{\IfFDempty}[1]{%
+  \ifx$#1$\expandafter \@firstoftwo  \else
+          \expandafter \@secondoftwo \fi}
+%% |\IfFDinputEmpty{<when-empty>}{<when-not-empty>}| is a variant of 
+%% the previous to execute <when-empty> if the loop processing <input> 
+%% finds an empty line---otherwise <when-not-empty>.
+\newcommand*{\IfFDinputEmpty}{%
+  \ifx\fdInputLine\@empty \expandafter \@firstoftwo  \else
+                          \expandafter \@secondoftwo \fi}
+%% |\IfFDdollar{<arg>}{<when-dollar>}{<when-not-dollar>}| 
+%% %% <- dollar<-empty
+%% is another variant, testing <split2> for being `$', 
+%% main indicator of there is a match anywhere in <target> 
+%% (as opposed to starting or ending match):
+\newcommand*{\IfFDdollar}[1]{%
+  \ifx$#1\expandafter \@firstoftwo  \else
+         \expandafter \@secondoftwo \fi}
+%% It is exemplified and explained in section~\ref{sec:replchain}.
+%% (The whole policy requires that `~' remains active in any 
+%%  testing macros here!)
+%%
+%% However, you might always just type the replacement text 
+%% (in one line) instead of 
+%% such an `\If'\,... (for efficiency \dots)
+%%
+%% If expandability is not desired, you can just chain macros that 
+%% rework (so re-define) `\OutputString' or so. 
+%%
+%% 2009/04/11: tending towards combining ...
+%% Keeping empty input and empty arguments apart is useful in that 
+%% \emph{one} test of emptiness per input line should suffice---it
+%% may be left open whether this should be the first of all tests 
+%% \dots
+%% 
+%% |\IfFDpreviousInputEmpty{<when-empty>}{<when-not-empty>}|
+%% (v0.42)
+%% is a companion of `\IfFDpreviousInputEmpty' referring to 
+%% `\fdInputLine' as of the \emph{previous} run of the loop 
+%% in `\ProcessFileWith', cf. section~\ref{sec:input}, 
+%% where its choice among its two arguments is determined. 
+%% It is initialized as follows:
+\newcommand*{\IfFDpreviousInputEmpty}[2]{#2}
+%% ---which is same as
+\let\IfFDpreviousInputEmpty\@secondoftwo
+%% ... working like `false', somewhat. 
+%% Together with `\IfFDinputEmpty', it can be used to compress
+%% multiple adjacent empty lines into a single one 
+%% when copying a file.
+%%
+%% === Line counter ===
+%% A \LaTeX\ counter |fdInputLine| may be useful for screen or log 
+%% messages, moreover you can use it to control processing of the 
+%% <input> file ``from outside," not dependent on what the parsing 
+%% macros find. The header of the file might be typeset verbatim, 
+%% but we may be too lazy to define the ``header" in terms of 
+%% what is in the file. We just decide that the first ... lines 
+%% are the ``header," even without counting just trying whether 
+%% the output is fine. It may be necessary to change that number 
+%% manually when the header changes. 
+%% 
+%% You also can insert lines in <output> 
+%% which have no counterpart in <input>---if you know what you are 
+%% doing. With 'makedoc', there is a hook `\EveryComment' that can 
+%% be used to issue commands ``from outside" at a place where 
+%% executing the command is safe or appropriate. 
+\newcounter{fdInputLine}
+%% You then must insert \ |\CountInputLines| \ in the second argument 
+%% of `\ProcessFileWith' (or in a macro called from there) 
+%% so that the counter is stepped. %% TODO!? 2009/04/07
+\newcommand*{\CountInputLines}{\global\advance\c@fdInputLine\@ne}
+%% At present %% 2009/04/07 TODO 
+%% the counter is reset by `\ProcessFileWith', this may change. 
+%%
+%% |\IfInputLine{<relation><number>}{<true>}{<false>}|, when called 
+%% from the processing loop (second argument of `\ProcessFileWith')
+%% issues <true> commands if `\value{fdInputLine}<relation><number>' 
+%% is true, otherwise <false>. <relation> is one out of 
+%% \HardNVerb+<+, `=', `>'. %% 2010/03/24 2010/03/29
+\newcommand*{\IfInputLine}[1]{%
+  \ifnum\c@fdInputLine#1\relax \expandafter \@firstoftwo
+  \else                        \expandafter \@secondoftwo \fi}
+%%
+%% === ``Identity job" `LEAVE' and ``default job" `*' ===
+%% \label{sec:LEAVE}\label{sec:*}
+%% The job with identifier |LEAVE| 
+%% \emph{leaves} an (expandable) chain of jobs 
+%% (as expandable replacement in section~\ref{sec:replchain}) 
+%% and \emph{leaves} the processed string without changing it 
+%% and without the braces enclosing it:
+\expandafter \let 
+  \csname \setup_substr_cond LEAVE\endcsname \@firstofone
+%% I.e., `\ProcessStringWith{<string>}{LEAVE}' expands to <string> 
+%% ... \ProcessStringWith{(Indeed!)}{LEAVE}
+%% 
+%% |LEAVE| is used for ``chaining" jobs---there will be a routine 
+%% (Sec.~\ref{sec:auto-chain}) 
+%% to define the action of a job, including what job to run 
+%% \emph{next} after the present one has been finished.
+%% Using this routine, the final job will call `LEAVE'.
+%%
+%% |*| may be considered a ``meta-job"---it does not directly 
+%% set up a sandbox, it just ``redirects" to the job that has been 
+%% declared most recently. When job ids are assigned automatically, 
+%% with `*' you can call that job without knowing its actual id:
+\@namedef{\setup_substr_cond*}{%
+    \csname \setup_substr_cond \fdParserId \endcsname}
+%% As an important example, when all the jobs in the chain are 
+%% expandable, you can call the chain by 
+%% \[|\WriteResult{\ProcessInputWith{*}}|\]
+%% in the body of the file processing loop (Sec.~\ref{sec:input}).
+%% TODO: test!                                          %% 2011/11/21
+%%
+%%  == Setup for expandable chains of replacements ==
+%% \label{sec:replchain}%% TODO makedoc: provide less visible label/ref 2009/04/11 
+%% By the following means, you can create macros 
+%% (`\Transform' among them) such that, e.g., 
+%% \[`\edef\OutputString{\Transform{<string>}}'\] renders `\OutputString' 
+%% the result of applying a chain (sequence) of stringwise replacements 
+%% to <string>. 
+%% You can even write a transformed input <string> to a file 
+%% without defining anything after `\read to'\,.\,.\,. %% corr. 2010/11/24
+%% In this case however, you don't get any statistical message 
+%% about what happened or not. With `\edef\OutputString' you can at 
+%% least issue some `changed!' or `left!' (maybe `\message{!}' vs.\ 
+%% `\message{.}'). 
+%% There is an application in 'makedoc' for ``typographical upgrading" 
+%% from plain text to \TeX\ input. 
+%%
+%% === The backbone macro ===
+%% |\repl_all_chain_expandable| will be the backbone of the 
+%% replacements. It is called by some parsing macro <parser>
+%% and receives from the latter <split1>~=~#1 and <split2>~=~#2. 
+%% #3 is the result of what happened so far. 
+\def\repl_all_chain_expandable#1#2#3#4#5#6{%
+  %% #1, #2 splits, #3 past,   #4 substitute, 
+  %% #5 repeat parser,         #6 pass to 
+%   \ifx~#2\expandafter\@firstoftwo\else\expandafter\@secondoftwo\fi 
+%% The previous line (or something similar!?) %% add. 2010/11/24
+%% would be somewhat faster, but let us exemplify 
+%% `\IfFDdollar' from section~\ref{sec:tails} instead: 
+  \IfFDdollar{#2}%
+%% If #2 starts with `$'---with category code 3, ``math shift"!, 
+%% it \emph{is} `$', due to not reading `$' 
+%% from input with its standard category code 3
+%% and the sandbox construction (where `$' appears with its standard 
+%% category code). %% TODO might be explained earlier 2009/04/11
+%%                 %%      or refer to here. 
+%% And this is the case \emph{exactly} when the <pattern> from 
+%% <parser> didn't match, again due to the input category codes. 
+%% Now on \emph{no} match, the sandbox builder #6 is called 
+%% with target string #3#1 where the last tested string is attached
+%% to previous results. The ending `~' is removed, #6 inserts a new 
+%% wrap for the new dummy pattern. 
+             {\RemoveTildeArg #6{#3#1}}%
+%% Otherwise ... the \emph{sandbox builder} <sandbox>
+%% (that will be shown below) that called <parser> 
+%% initialized #5 to be that <parser> itself. (<parser> otherwise 
+%% wouldn't know who it is.) So <parser> calls itself with another sandbox 
+%% `#2&'. Note that #2 contains \lq`~<pattern>$'\rq\ due to the initial 
+%% <sandbox> building. 
+             {#5#2&{#3#1#4}{#4}#5#6}}
+%% #4 is the replacement string that <sandbox> passed to <parse>. 
+%% The first argument after the `&' is previous stuff plus 
+%% the recently skipped <split1> 
+%% plus #4 replacing the string <pattern> that was matched. 
+%% 
+%% Finally, #5 and #6 again ``recall" <parser> and the sandbox 
+%% builder to which to change in case of no other match. 
+%%
+%% % TODO move following up!? 2009/04/11
+%% === The basic setup interface macro ===
+%% |\MakeExpandableAllReplacer{<id>}[<chng>]{<find>}{<replace>}{<id-next>}|\\ 
+%% [\topsep] 
+%% %% \[|\MakeExpandableAllReplacer{<id>}[<chng>]{<find>}{<replace>}{<id-next>}|\]
+%% creates sandbox and parser with common identifier <id> and search 
+%% pattern <find>. Each occurrence of <find> will be replaced by 
+%% <replace>. When <find> is not found, the sandbox builder for 
+%% <id-next> is called. This may be another replacing macro of the 
+%% same kind. To return the result without further transformations, 
+%% call job `LEAVE' (section~\ref{sec:LEAVE}).
+%% Optional argument <chng> changes category codes locally 
+%% for reading <find> and <replace>.
+%% %% <- added <cat>, <pattern> -> <find> 2010/03/19
+\MakeSetupCommand{\MakeExpandableAllReplacer}
+                 {\mk_setup_xpdbl_all_repl}[3]{%
+  %% #1 pattern, #2 substitute, #3 pass to
+  \endgroup
+%% We take pains to call next jobs by single 
+%% command strings and store them this way, not by `\csname', 
+%% as `\ProcessStringWith' would do it. `\edef\@tempa' 
+%% is used for this purpose, but \dots
+    \protected@edef\@tempa{%                %% protected 2011/11/21
+      \noexpand\mk_setup_substr_cond{#1}{%
+        {}{#2}%
+        \noexpand\noexpand
+%% That `\edef\@tempa' must \emph{not expand} 
+%% tokens %%% the controll words after they have been %% 2011/11/20
+%% computed from `\csname' etc. 
+%% Moreover, expansion of the parser commands 
+%% must be avoided another time when `\@tempa' is executed. 
+          \noexpandcsname \substr_cond \fdParserId \endcsname
+        \noexpand\noexpand
+          \noexpandcsname \setup_substr_cond #3\endcsname}}%
+%% Those internal setup commands start with `\endgroup' to switch back 
+%% to standard category codes. We must match them here by 
+%% `\begingroup'.
+    \begingroup \@tempa
+    \begingroup \mk_substr_cond{#1}{%
+      \repl_all_chain_expandable{##1}{##2}}}
+%% The final command is the one that we explained first. %% TODO 2009/04/11 
+%%
+%% === Automatic chaining ===
+%% \label{sec:auto-chain}
+%% With v0.31, %% "Half-automatic" \Prepend...
+%% \[|\PrependExpandableAllReplacer{<id>}[<cat>]{<find>}{<replace>}|\]
+%% % |\PrependExpandableAllReplacer{<id>}[<cat>]{<find>}{<replace>}| 
+%% % \\[\topsep]
+%% was hoped to be a slight relief in composing replacement chains. 
+%% It does something like invoking `\MakeExpandableAllReplacer' 
+%% with <prev-setup-id> for the last <next-id> argument
+%% where <prev-setup-id> is the <id> of the job that was set up most 
+%% recently. If you have adjacent lines 
+%% \begin{quote}
+%%  \leavevmode\hbox to 0pt\bgroup
+%%   `\MakeExpandableAllReplacer{<id-0>}{<find-0>}{<subst-0>}{LEAVE}'% 
+%%  \hss\egroup \\
+%%   `\PrependExpandableAllReplacer{<id-1>}{<find-1>}{<subst-1>}'\\
+%%   `\PrependExpandableAllReplacer{<id-2>}{<find-2>}{<subst-2>}'
+%% \end{quote}
+%% and call <id-2>, it will call <id-1>, and the latter will call 
+%% <id-0>. So you can reorder the chain by moving `\Prepend'... lines. 
+%%
+%% With v0.5, 
+%% |\PrependExpandableAllReplacer*[<cat>]{<find>}{<replace>}|
+%% saves you from inventing and typing <id>, it is automatically 
+%% generated; or the `*' replaces the <id> argument.
+\newcommand*{\PrependExpandableAllReplacer}{%
+    \let\fdParserId_before\fdParserId
+    \@ifstar{\stepcounter{fd_line_job}%
+             \edef\@tempa{%
+                \noexpand\StartFDsetup 
+                    \noexpand\prep_xpdbl_all_repl
+                        {\number\value{fd_line_job}}}%
+             \@tempa}%
+            {\StartFDsetup\prep_xpdbl_all_repl}}
+\newcommand*{\prep_xpdbl_all_repl}[2]{%
+    \mk_setup_xpdbl_all_repl{#1}{#2}{\fdParserId_before}}%
+    %% #1 pattern, #2 substitute, #3 pass to
+%% |\StartPrependingChain| makes `\MakeExpandableReplacer' 
+%% superfluous, in the sense that 
+%% the above chain setup can be achieved as well like this:
+%% \begin{quote}
+%%   `\StartPrependingChain'\\
+%%   `\PrependExpandableAllReplacer{<id-0>}{<find-0>}{<subst-0>}'\\
+%%   `\PrependExpandableAllReplacer{<id-1>}{<find-1>}{<subst-1>}'\\
+%%   `\PrependExpandableAllReplacer{<id-2>}{<find-2>}{<subst-2>}'
+%% \end{quote}
+%% or with v0.5:
+%% \begin{quote}
+%%   `\StartPrependingChain'\\
+%%   `\PrependExpandableAllReplacer*{<find-0>}{<subst-0>}'\\
+%%   `\PrependExpandableAllReplacer*{<find-1>}{<subst-1>}'\\
+%%   `\PrependExpandableAllReplacer{<start>}{<find-2>}{<subst-2>}'
+%% \end{quote}
+%% This adds a code line, but this way you can choose
+%% the final ``real" job more easily. So you can think of 
+%% `\StartPrependingChain' as ``initializing a chain of 
+%% prependments." As to the `*' version, the example suggests 
+%% using an explicit <id> argument finally if you want to invoke 
+%% the chain explicitly by a line job identity 
+%% (without counting the declaration lines---however, 
+%% note job `*' according to Sec.~\ref{sec:*}).
+\newcommand*{\StartPrependingChain}{% 
+    \def\fdParserId{LEAVE}%
+    \setcounter{fd_line_job}{0}} %% 2011/11/13; TODO \Nameprefix...
+\newcounter{fd_line_job}
+%%
+%% === `CorrectHook' launching the replacement chain ===
+%% %% 2010/03/29:
+%% |\MakeDocCorrectHook{<string>}| belongs to 'makedoc', 
+%% but in the meantime ('nicetext' release 0.3) 
+%% I have proposed to use it with 'fifinddo' only as well
+%% (running files `fdtxttex.tpl', `fdtxttex.tex'). 
+%% Therefore I offer some simplification |\SetCorrectHookJob{<job-id>}|
+%% for defining `\MakeDocCorrectHook' \emph{here.} 
+\newcommand*{\SetCorrectHookJob}[1]{%
+    \def\MakeDocCorrectHook##1{\ProcessStringWith{##1}{#1}}}
+%% |\SetCorrectHookJobLast| just uses the job that was set up 
+%% most recently.
+\newcommand*{\SetCorrectHookJobLast}
+            {\SetCorrectHookJob\fdParserId}
+%% |\CorrectedInputLine| results from `\MakeDocCorrectHook' when the 
+%% latter is applied to `\fdInputLine': %% reworded for breaking 2011/09/13
+\newcommand*{\CorrectedInputLine}{%
+    \expandafter \MakeDocCorrectHook \expandafter{\fdInputLine}}
+%%
+%%  == Leave package mode ==
+%% We restore the underscore `_' for math subscripts. 
+%% (This might better depend on something \dots) %% TODO 2009/04/07
+\catcode`\_=8 
+%%
+\endinput 
+%% \TeX\ ignores the rest of the file when it is \emph{input} 
+%% ``in the sense of `\input'", as opposed to just reading 
+%% the file line by line to a macro like `\fdInputLine'. 
+%%
+%% == Pondered ==
+%% \label{sec:pondered}
+  %% TODO abbreviated commands (aliases) \MkSubstrCond...
+  %% TODO \@onlypreamble!?
+\newcommand*{\ApplySubstringConditional}[1]{%
+  %% #1 identifier; text to be searched expected next
+  \csname setup_substr_cond:#1\endcsname}
+\newcommand*{\ApplySubstringConditionalToExpanded}[1]{% 2009/03/31+
+  \csname setup_substr_cond:#1\expandafter \endcsname \expandafter}
+\newcommand*{\ApplySubstringConditionalToInputString}[1]{% 2009/03/31+
+  \csname setup_substr_cond:#1\expandafter \endcsname 
+    \expandafter {\fdInputLine}}
+  %% TODO or `\OutputString', even `\read' to `\OutputString'!?
+% \newcommand*{\ApplySubstringConditionalToExpanded}[2]{%
+%   %% note: without assignments, robust!
+%   %% BUT the `\csname ... \expandafter \endcsname' method is faster
+%   \expandafter \reversed_apply_substr_cond
+%     \expandafter {#2}{#1}}
+% \newcommand*{\reversed_apply_substr_cond}[2]{%
+%   \ApplySubstringConditional{#2}{#1}}
+  %% ODER: 
+% \newcommand*{\expand_attach_arg}[2]{%% 2009/03/31
+%   %% #1 command with previous args, TODO cf. LaTeX3
+%   \expandafter \attach_arg \expandafter {#1}{#2}}
+%   %% actually #1 may contain more than one token, 
+%   %% only first expanded
+% \newcommand*{\attach_arg}[2]{#2{#1}}
+% \newcommand*{\ApplySubstringConditionalToExpanded}[2]{%
+%   \expandafter \attach_arg \expandafter 
+%     {#2}{\ApplySubstringConditional{#1}}}
+%%
+%%
+%%
+%% == VERSION HISTORY ==
+%%
+v0.1   2009/04/03   very first version, tested on morgan.sty
+v0.2   2009/04/05   counter fdInputLine, \ProvidesFile moved from 
+                    \ProcessFile to \ResultFile, \CopyFD...,
+                    category section first, more sectioning, 
+                    suppressing empty code lines before section 
+                    titles; discussion, \Delimiters
+       2009/04/06   more discussion
+       2009/04/07   more discussion, factored \WriteProvides out from 
+                    \ResultFile, \ProcessExpandedWith corrected
+       2009/04/08   \InputString -> \fdInputline; 
+                    removed \ignorespaces 
+       2009/04/09   \WhenInputLine[2] -> \IfInputline[3], 
+                    \ProcessInputWith, typos, 
+                    \WriteProvides message `with'
+       2009/04/10   \make_not_expanding_cs
+                    DISCOVERED ``IF SUBSTRING" ALGORITHM WRONG
+                    (<str1><str2><str1> in <str1><str2>)
+v0.3   2009/04/11   SOME THINGS GIVEN UP EARLIER WILL BE REMOVED, 
+                    TO BE STORED IN THE COPY AS OF 2009/04/10
+                    mainly: sandbox setup (tilde/dollar) 
+                    REAL ADDITION: setup for expandable replacing 
+       2009/04/12   played with `chain' vs. `sequence';
+                    plain `...', `cf.', `etc.' for `mdcorr.cfg'
+       2009/04/13   \RemoveTilde...
+       2009/04/15   reworked text, same mistake \in@
+v0.31  2009/04/21f. comments on ted, stringstrings 
+       2009/12/28   "onwards)" !? "safer", not "more safe"
+       2010/03/10   the loop starts
+       2010/03/17   corr. t^ete; set up -> setup for
+       2010/03/18   TODO EOF, ctan.org/pkg/newfile; non-ASCII
+       2010/03/19   extended description of \MakeExpandableAll...; 
+                    '' -> "
+       2010/03/20   \ctanpkgref
+       2010/03/22   \StartFDsetup, \Prepend...
+       2010/03/23   URL for `substr.sty'
+SENT TO CTAN
+
+v0.4   2010/03/24   removed \pagebreak before "substrings"; 
+                    <relation> with \IfInputLine precisely
+       2010/03/25   todo \ProcessExp... more precisely, etc.
+       2010/03/26   ... was wrong, removed
+       2010/03/29   \SetPatternCodes, \ResetPatternCodes, 
+                    \SetCorrectHookJob, \SetCorrectHookJobLast; 
+                    <relation> with \HardNVerb; 
+                    don't mention \begingroup with 
+                    \mk_setup_substr_cond; renamed v0.4
+belonged to nicetext RELEASE 0.4
+v0.4a  2010/04/04   copyright 2010
+belonged to nicetext RELEASE 0.41
+
+v0.41  2010/04/06   more on \ProcessExpanded...; 
+                    \ProcessFile... gets opt arg
+       2010/04/13   \ProcessFile{<file>}... shows <file>
+used by blog.sty v0.1, v0.2
+v0.42  2010/11/09   typo corr.
+       2010/11/10   \IfFDpreviousInputEmpty
+       2010/11/11   \BasicNormalCatcodes from blog.sty, 
+                    \CopyFile*, \CopyLine; v3. -> v0.3; 
+                    LPPL v1.3c
+       2010/11/12   \CatCode replaced (implemented in niceverb only)
+       2010/11/13   \CopyFile with \message{.}
+       2010/11/24   reworked doc. of replacement setup; 
+                    \StartPrependingChain
+       2010/11/25   corr. typo \@backslash...; doc. changes;
+                    \CopyLine indeed, not \fdCopyLine
+       2010/11/27   footnote on "parser", other doc. corr.s
+       2011/01/20   corr. "period" AMSTERDAM
+       2011/01/25   updated (C); footnotes to `substring theory';
+                    TODO with \RemoveTilde; some manual line spacings 
+                    (adding `\ ')
+       -> r0.42 
+v0.43  2011/08/06   doc.: mistake \WriteResult/\ResultFile,
+       2011/08/22         use \acro
+       2011/09/12f. \CorrectedInputLine - reworded for breaking
+       -> r0.44
+v0.44  2011/10/23   messages from \ResultFile and \CloseResultFile
+       -> r0.46
+v0.45  2011/10/26   little modification of \CloseResultFile message, 
+                    "sacrificing" \pagebreak before Sec. 4 -- fine!
+v0.5   2011/11/13   \PrependExpandableAllReplacer*, \MakeSetupCommand; 
+                    doc.: {center} with too long verbatim quote
+       2011/11/19   input check fixed, doc. there adjusted, 
+                    \ifFinalInputFile, \ProcessFinalFileWith, job `*' 
+       2011/11/20   \noexpandcsname; "default job" lowercase
+       2011/11/21   \ProcessInputWith "less efficient", 
+                    \protected@edef, "pseudo-tilde"
+       -> r0.5
+v0.51  2012/01/20   updated (C); TODO on pseudo-tilde
+       2012/03/17   fixed \FDnormalTilde/\FDpseudoTilde
+
+TODO: cleveref 2010/03/18

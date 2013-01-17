@@ -1,0 +1,94 @@
+# -*- CPERL -*-
+package LaTeXML::Package::Pool;
+use strict;
+use LaTeXML::Package;
+RawTeX('\newif\ifnotes\notesfalse');
+RawTeX('\newif\ifproblems\problemsfalse');
+LoadClass('omdoc');
+DefConstructor('\usetheme{}','');
+RequirePackage('stex');
+RequirePackage('latexml');
+RequirePackage('amssymb');
+RequirePackage('graphicx');
+RequirePackage('tikz');
+RequirePackage('amsmath');
+DefRegister('\slidewidth'     => Dimension('13.5cm'));
+DefRegister('\slideheight'     => Dimension('9cm'));
+DefEnvironment('{note}','#body');
+DefEnvironment('{frame}[]',
+   "<omdoc:omgroup layout='slide'>"
+  .  "#body\n"
+  ."</omdoc:omgroup>\n\n",
+ afterDigestBegin=>sub {
+   $_[1]->setProperty(theory=>LookupValue('current_module')); });
+DefConstructor('\frametitle{}',
+  "\n<omdoc:metadata><dc:title>#1</dc:title></omdoc:metadata>");
+DefEnvironment('{problems}','#body');
+#DefMacro('\defemph{}','{\textcolor{magenta}{#1}}');
+#DefMacro('\notemph{}','{\textcolor{magenta}{#1}}');
+DefMacro('\textwarning',"");
+DefMacro('\title[]{}', '\@add@frontmatter{ltx:title}{#1}');
+DefMacro('\date[]{}', '\@add@frontmatter{ltx:date}[role=creation]{#1}');
+DefMacro('\author[]{}', sub { andSplit(T_CS('\@author'),$_[1]); });#$
+DefConstructor('\titleframe',"<omdoc:ignore>titleframe elided here</omdoc:ignore>");
+DefEnvironment('{titleframewith}',
+               "<omdoc:ignore>begin elided titleframe</omdoc:ignore>"
+               . "#body"
+              ."<omdoc:ignore>end elided titleframe</omdoc:ignore>");
+DefEnvironment('{titleslide}',"");
+DefEnvironment('{titleslide}',"<omdoc:omgroup>#body</omdoc:omgroup>");
+DefEnvironment('{ttitle}', "\n<dc:title>#body</dc:title>");
+DefMacro('\tikzinput[] {}','\includegraphics[#1]{#2}');
+
+DefEnvironment('{columns}','#body');
+DefEnvironment('{column}{}','#body');
+DefConstructor('\uncover','#1');
+#Define a Beamer Overlay Parameter type
+ DefParameterType('BeamerOverlay', sub {
+   my ($gullet) = @_;
+   my $tok = $gullet->readXToken;
+   if (ref $tok && ToString($tok) eq '<') {
+     $gullet->readUntil(T_OTHER('>'));
+   } else {
+     $gullet->unread($tok) if ref $tok;
+     undef; }},
+     reversion=> sub {
+ (T_OTHER('<'), $_[0]->revert, T_OTHER('>'));
+       });
+
+#Take the "from" field of the overlay range
+sub overlayFrom {
+  return "" unless defined $_[0];
+  my $overlay=ToString($_[0]); $overlay =~ /^(\d+)/; $1;}
+
+#Reuse the CMP itemizations, only adjust the \item constructors.
+DefMacro('\beamer@group@item[] OptionalBeamerOverlay IfBeginFollows', sub {
+  my($gullet,$tag,$overlay,$needwrapper)=@_;
+  $overlay=$overlay||T_OTHER("");
+  ( T_CS('\group@item@maybe@unwrap'),
+    ($needwrapper ? (Invocation(T_CS('\beamer@group@item@wrap'),$tag,$overlay)->unlist) : ()) ); });
+DefConstructor('\beamer@group@item@wrap {} OptionalBeamerOverlay',
+       "<omdoc:omtext ?#2(overlay='&overlayFrom(#2)')()>"
+       . "?#1(<dc:title>#1</dc:title>)()"
+             . "<omdoc:CMP>",
+       beforeDigest=>sub {
+ Let('\group@item@maybe@unwrap','\group@item@unwrap');
+ #$_[0]->bgroup;
+return; },
+       properties=>sub{ RefStepItemCounter(); });
+
+#DefConstructor('\beamer@itemize@item[] OptionalBeamerOverlay',
+#       "<omdoc:li ?#2(overlay='&overlayFrom(#2)')() >"
+#     . "?#1(<dc:title>#1</dc:title>)()",
+#       properties=>sub{ RefStepItemCounter(); });
+DefConstructor('\beamer@enumerate@item[] OptionalBeamerOverlay',
+       "<omdoc:li ?#2(overlay='&overlayFrom(#2)')() >"
+     . "?#1(<dc:title>#1</dc:title>)()",
+       properties=>sub{ RefStepItemCounter(); });
+DefConstructor('\beamer@description@item[] OptionalBeamerOverlay',
+       "<omdoc:di ?#2(overlay='&overlayFrom(#2)')() >"
+       . "?#1(<omdoc:dt>#1</omdoc:dt>)()<omdoc:dd>", # trust di and dt to autoclose
+       properties=>sub{ RefStepItemCounter(); });
+DefMacro('\putgraphicsat{}{}{}','\mygraphics[#2]{#3}');
+DefMacro('\putat{}{}','#2');
+1;

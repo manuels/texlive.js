@@ -1,0 +1,821 @@
+% File:        vpe.sty
+% Project:     vpe
+% Version:     2012/04/18 v0.2
+% Author:      Heiko Oberdiek
+%
+% Function:    Source specials for pdf files.
+%
+% Copyright:   Copyright (C) 2000, 2012 Heiko Oberdiek.
+%
+%              This program may be distributed and/or modified under
+%              the conditions of the LaTeX Project Public License,
+%              either version 1.2 of this license or (at your option)
+%              any later version. The latest version of this license
+%              is in
+%                http://www.latex-project.org/lppl.txt
+%              and version 1.2 or later is part of all distributions
+%              of LaTeX version 1999/12/01 or later.
+%
+%              See file `vpe.txt' for a list of files that
+%              belong to this project.
+%
+% Requirement: * Linux/Unix or Windows/Dos
+%              * enabled \write18 feature.
+%              * LaTeX2e
+%
+% Use:         * \usepackage{vpe}
+%                See file `vpe.txt' for further documentation.
+%
+% History:     2000/09/15 v0.1:  first public release
+%              2012/04/18 v0.2
+%
+% \vpe@ is the prefix for internal command names.
+%
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{vpe}%
+[2012/04/18 v0.2 Source specials for pdf files (HO)]
+
+\RequirePackage{keyval}
+
+%*** options
+
+%*** active/inactive
+\DeclareOption{active}{\vpe@oktrue}
+\DeclareOption{inactive}{\vpe@okfalse}
+\newif\ifvpe@ok
+\vpe@oktrue
+
+%*** dupes
+\DeclareOption{dupes}{\vpe@dupestrue}
+\DeclareOption{nodupes}{\vpe@dupesfalse}
+\newif\ifvpe@dupes
+\vpe@dupestrue
+
+%*** form, revert, acroform
+\DeclareOption{form}{\vpe@formtrue}
+\DeclareOption{noform}{\vpe@formfalse}
+\newif\ifvpe@form
+\vpe@formfalse
+\DeclareOption{acroform}{\vpe@acroformtrue}
+\DeclareOption{noacroform}{\vpe@acroformfalse}
+\newif\ifvpe@acroform
+\vpe@acroformtrue
+
+%*** debug
+\DeclareOption{debug}{%
+  \def\vpe@debug#1{\typeout{*** #1 ***}}%
+}
+\let\vpe@debug\@gobble
+
+%*** system
+\DeclareOption{linux}{\def\vpe@system{linux}}
+\DeclareOption{unix}{\def\vpe@system{linux}}
+\DeclareOption{win}{\def\vpe@system{win}}
+\DeclareOption{dos}{\def\vpe@system{win}}
+\let\vpe@system\@empty
+
+
+%*** driver specific options
+\DeclareOption{pdftex}{\let\vpe@annot\vpe@annotpdftex}
+\DeclareOption{dvips}{\let\vpe@annot\vpe@annotdvips}
+\DeclareOption{ps2pdf}{\let\vpe@annot\vpe@annotdvips}
+\DeclareOption{pdfmark}{\let\vpe@annot\vpe@annotdvips}
+\def\vpe@annotpdftex#1{\pdfannot\vpe@rule{#1}}
+\def\vpe@dvips@pdfmark#1{\special{ps:SDict begin[#1 pdfmark end}}
+\def\vpe@annotdvips#1{%
+  \vpe@dvips@pdfmark{%
+    /Rect[%
+      currentpoint
+        exch 1 72 div Resolution mul sub
+        exch \vpe@depth\space 1 add 72 div Resolution mul add
+      currentpoint
+        exch \vpe@width\space 1 add 72 div Resolution mul add
+        exch \vpe@height\space 1 add 72 div Resolution mul sub%
+    ]%
+    #1%
+    /ANN%
+  }%
+}
+\let\vpe@annot\vpe@annotdvips
+
+
+\DeclareOption{everyhbox}{\vpe@everyhboxtrue}
+\DeclareOption{noeveryhbox}{\vpe@everyhboxfalse}
+\newif\ifvpe@everyhbox
+
+%*** disable options
+\DeclareOption*{%
+  \expandafter\let\csname vpeorg@\expandafter
+  \@gobbletwo\CurrentOption\@empty\@empty\endcsname \@empty%
+}
+
+%*** keyval options
+\def\vpe@revert#1#2{%
+  \expandafter\ifx\csname vpe@#1\endcsname\relax
+  \else
+    \csname vpe@#1%
+      \@gobble\iftrue\csname if#1\endcsname
+        false%
+      \else
+        true%
+      \fi
+    \endcsname
+  \fi
+}
+
+\define@key{vpe}{active}[true]{\csname vpe@ok#1\endcsname}
+\define@key{vpe}{inactive}[true]{\vpe@revert{ok}{#1}}
+\define@key{vpe}{dupes}[true]{\csname vpe@dupes#1\endcsname}
+\define@key{vpe}{nodupes}[true]{\vpe@revert{dupes}{#1}}
+\define@key{vpe}{form}[true]{\csname vpe@form#1\endcsname}
+\define@key{vpe}{noform}[true]{\vpe@revert{form}{#1}}
+\define@key{vpe}{acroform}[true]{\csname vpe@acroform#1\endcsname}
+\define@key{vpe}{noacroform}[true]{\vpe@revert{acroform}{#1}}
+\define@key{vpe}{command}{\def\vpe@command{#1}}
+\define@key{vpe}{system}{\def\vpe@system{#1}}
+\define@key{vpe}{width}{\def\vpe@width{#1}}
+\define@key{vpe}{height}{\def\vpe@height{#1}}
+\define@key{vpe}{depth}{\def\vpe@depth{#1}}
+\define@key{vpe}{color}{\def\vpe@color{#1}}
+\define@key{vpe}{border}{\def\vpe@border{#1}}
+\define@key{vpe}{flag}{\def\vpe@flag{#1}}
+\define@key{vpe}{attr}{\def\vpe@attr{#1}}
+\define@key{vpe}{application}{\def\vpe@application{#1}}
+\define@key{vpe}{parameters}{\def\vpe@parameters{#1}}
+\define@key{vpe}{progname}{\def\vpe@progname{#1}}
+\define@key{vpe}{everyhbox}[true]{\csname vpe@everyhbox#1\endcsname}
+\def\vpesetup{\setkeys{vpe}}
+\def\vpe@command{vpe}
+\def\vpe@width{12}
+\def\vpe@height{12}
+\def\vpe@depth{2}
+\def\vpe@border{0 0 1}
+\def\vpe@color{1 1 0}
+\def\vpe@flag{0}%  8 = not zoomed, 16 = not rotated
+\let\vpe@attr\@empty
+\def\vpe@application{pfe.exe}
+\def\vpe@parameters{-g $d $s}
+\newif\ifvpe@pdftex
+\ifx\eTeXversion\@undefined
+  \def\vpe@progname{latex}
+\else
+  \def\vpe@progname{elatex}
+\fi
+\ifx\pdfoutput\@undefined
+\else
+  \ifx\pdfoutput\relax
+  \else
+    \ifcase\pdfoutput
+    \else
+      \let\vpe@annot\vpe@annotpdftex
+      \vpe@pdftextrue
+      \ifx\eTeXversion\@undefined
+        \def\vpe@progname{pdflatex}%
+      \else
+        \def\vpe@progname{pdfelatex}%
+      \fi
+    \fi
+  \fi
+\fi
+
+%*** option processing
+
+\InputIfFileExists{vpe.cfg}{}{}
+
+\ProcessOptions
+
+%*** help file
+% File for read informations of commands
+% launched by \write18:
+\newread\vpe@read
+\immediate\openout\vpe@read=\jobname.vpe
+\immediate\closeout\vpe@read
+\openin\vpe@read=\jobname.vpe
+
+%*** get system info
+\ifx\vpe@system\@empty
+  \immediate\write18{\vpe@command\space -system \jobname.vpe}
+  \def\vpesystem#1{\gdef\vpe@system{#1}}%
+  \begingroup
+    \endlinechar-1 %
+    \read\vpe@read to \vpe@temp
+    \vpe@temp
+  \endgroup
+  \ifx\vpe@system\@empty
+    \PackageWarningNoLine{vpe}{%
+      Option \string`system\string' is not specified and\MessageBreak
+      the automatic detection failed,\MessageBreak
+      therefore package loading is aborted%
+    }%
+    \closein\vpe@read
+    \let\VPE\relax
+    \expandafter\expandafter\expandafter\endinput
+  \fi
+\fi
+\let\vpesystem\@gobble
+
+\newif\ifvpe@linux
+\def\vpe@temp{linux}
+\ifx\vpe@system\vpe@temp
+  \vpe@linuxtrue
+\else
+  \def\vpe@temp{win}
+  \ifx\vpe@system\vpe@temp
+  \else
+    \PackageWarningNoLine{vpe}{%
+      Unknown value `\vpe@system' of option \string`system\string',%
+      \MessageBreak
+      therfore package loading is aborted%
+    }%
+    \closein\vpe@read
+    \let\VPE\relax
+    \expandafter\expandafter\expandafter\endinput
+  \fi
+\fi
+
+%*** /AcroForm in the catalog for `revert' menu item of AR4.05
+\ifvpe@acroform
+  \ifvpe@pdftex
+    \AtEndDocument{%
+      \@ifundefined{SubmitObject}{%
+        \pdfcatalog{/AcroForm<</Fields[]/NeedAppearances true>>}%
+      }{%
+        % /AcroForm already set by hyperref's pdftex driver
+      }%
+    }%
+  \else
+    \vpe@dvips@pdfmark{%
+      \string{Catalog\string}%
+      <</AcroForm<</Fields[]/NeedAppearances true>>>>%
+      /PUT%
+    }%
+  \fi
+\fi
+
+%*** form variant
+
+% definition without form:
+\def\vpe@insertmark{%
+  \vpe@annot{%
+    /Subtype/Link%
+    \ifx\vpe@border\vpe@borderdefault
+    \else
+      /Border[\vpe@border]%
+    \fi
+    \ifx\vpe@color\vpe@colordefault
+    \else
+      /C[\vpe@color]%
+    \fi
+    \ifnum\vpe@flag=0
+    \else
+      /F \vpe@flag
+    \fi
+    /A<<%
+      /Type/Action%
+      /S/Launch%
+      \ifvpe@linux
+        /F(\vpe@temp\vpe@removeslash\vpe@peekfile.vpe)%
+      \else
+        /Win<<%
+          /F(\vpe@application)%
+          /P(\vpe@temp)%
+        >>%
+      \fi
+    >>%
+    \vpe@attr
+  }%
+}%
+
+\ifvpe@form
+  \ifvpe@pdftex
+
+    \RequirePackage[pdftex]{color}
+    \RequirePackage{pifont}
+
+    \newcount\vpe@count
+    \vpe@count0
+
+    \setbox\@tempboxa=\hbox{%
+      \color{yellow}%
+      \raisebox{-.4\totalheight}{%
+        \ding{56}%
+      }%
+    }
+    \edef\vpe@mark@width{\the\wd\@tempboxa}
+    \edef\vpe@mark@height{\the\ht\@tempboxa}
+    \edef\vpe@mark@depth{\the\dp\@tempboxa}
+    \immediate\pdfxform\@tempboxa
+    \edef\vpe@mark@objN{ \the\pdflastxform\space 0 R}
+    \setbox\@tempboxa=\hbox{%
+      \colorbox{yellow}{%
+        \color{black}%
+        \ding{56}%
+      }%
+    }
+    \immediate\pdfxform\@tempboxa
+    \edef\vpe@mark@objD{ \the\pdflastxform\space 0 R}
+
+    \def\vpe@insertmark{%
+      \global\advance\vpe@count1 %
+      \begingroup
+        \setbox\@tempboxa\hbox{%
+          \normalfont
+          \kern\vpe@mark@width
+          \scriptsize\ttfamily
+          \setlength{\fboxsep}{0.5ex}%
+          \colorbox{yellow}{%
+            \color{black}%
+            \space\vpe@peekfile, \vpe@line
+          }%
+        }%
+        \dimen@\ht\@tempboxa
+        \advance\dimen@-\vpe@mark@height
+        \advance\dimen@-\vpe@mark@depth
+        \edef\vpe@temp{%
+          width\the\wd\@tempboxa
+          height\the\dimen@
+        }%
+        \dimen@\dp\@tempboxa
+        \advance\dimen@\vpe@mark@height
+        \advance\dimen@\vpe@mark@depth
+        \edef\vpe@temp{%
+          \vpe@temp
+          depth\the\dimen@
+        }%
+        \immediate\pdfxform\@tempboxa
+        \pdfannot\vpe@temp{%
+          /Subtype/Widget%
+          /FT/Btn%
+          /Ff 65537% readonly (bit 1) + checkbox button (bit 17)
+          /T(v\the\vpe@count)%
+          /AS/X%
+          /AP<</N<</F \the\pdflastxform\space 0 R>>>>%
+        }%
+      \endgroup
+      \pdfannot width\vpe@mark@width
+                height\vpe@mark@height
+                depth\vpe@mark@depth{%
+        /Subtype/Widget%
+        /FT/Btn%
+        /Ff 65536%
+        /T(m\the\vpe@count)%
+        /H/P%
+        /AP<</N\vpe@mark@objN/D\vpe@mark@objD>>%
+        /AA<<%
+          /E<<%
+            /Type/Action%
+            /S/SetState%
+            /T(v\the\vpe@count)%
+            /AS/F%
+          >>%
+          /X<<%
+            /Type/Action%
+            /S/SetState%
+            /T(v\the\vpe@count)%
+            /AS/X%
+          >>%
+        >>%
+        /A<<%
+          /Type/Action%
+          /S/Launch%
+          \ifvpe@linux
+            /F(\vpe@temp\vpe@removeslash\vpe@peekfile.vpe)%
+          \else
+            /Win<<%
+              /F(\vpe@application)%
+              /P(\vpe@temp)%
+            >>%
+          \fi
+        >>%
+        \vpe@attr
+      }%
+    }%
+  \fi
+\fi
+\let\vpe@formtrue\relax
+\let\vpe@formfalse\relax
+
+%*** src marker
+
+\def\vpe@src{\vpe@special{\the\inputlineno}}
+\def\vpe@src@sphack{\vpe@special@sphack{\the\inputlineno}}
+\def\vpe@srcfirst{\vpe@special1}
+\def\vpe@srclast{\vpe@special\vpe@peeklast}
+
+\let\VPE\vpe@src
+
+\newif\ifvpe@document
+\AtBeginDocument{%
+  \vpe@documenttrue
+  \vpe@src
+}
+
+\def\vpe@special{%
+  \ifcase
+    \ifvpe@ok
+      \ifvpe@document
+        \ifnum\lastpenalty=\z@
+          \ifdim\lastskip=\z@
+          \else 1%
+          \fi
+        \else 1%
+        \fi
+      \else 1%
+      \fi
+    \else 1%
+    \fi
+    0 %
+    \expandafter\vpe@@special
+  \else
+    \expandafter\@gobble
+  \fi
+}
+\def\vpe@special@sphack{%
+  \ifcase
+    \ifvpe@ok
+      \ifvpe@document
+        \ifhmode
+        \else 1%
+        \fi
+      \else 1%
+      \fi
+    \else 1%
+    \fi
+    0 %
+    \expandafter\vpe@@special
+  \else
+    \expandafter\@gobble
+  \fi
+}
+\let\vpe@lastspecial\@empty
+\def\vpe@@special#1{%
+  \begingroup
+    \vpe@okfalse % prevent nesting
+    \let\vpe@temp\vpe@lastspecial
+    \xdef\vpe@lastspecial{#1 \vpe@peekfile}%
+    \ifvpe@dupes
+      \vpe@@@special{#1}%
+    \else
+      \ifx\vpe@temp\vpe@lastspecial
+      \else
+        \vpe@@@special{#1}%
+      \fi
+    \fi
+  \endgroup
+}
+\def\vpe@@@special#1{%
+  \count@=#1\relax
+  \ifnum\count@<1 \count@=1 \fi
+  \edef\vpe@line{\the\count@}%
+  \ifvpe@linux
+    \let\vpe@temp\@empty
+    \expandafter\vpe@scan\the\count@\@nil
+    \vpe@debug{SRC: \vpe@peekfile, \vpe@line\space(\vpe@temp)}%
+  \else
+    \let\vpe@temp\vpe@parameters
+    \expandafter\vpe@setline\vpe@temp$d\@nil{\the\count@}%
+    \expandafter\vpe@setfile\vpe@temp$s\@nil\vpe@peekfile
+    \vpe@debug{SRC: \vpe@peekfile, \vpe@line}%
+  \fi
+  \vpe@insertmark
+}
+
+\def\vpe@rule{%
+  width\vpe@width bp height\vpe@height bp depth\vpe@depth bp%
+}
+\def\vpe@borderdefault{0 0 1}
+\def\vpe@colordefault{0 0 0}
+\def\vpe@scan#1#2\@nil{%
+  \count@=#1\relax
+  \ifnum\count@>\ifx\vpe@temp\@empty 5 \else 4 \fi
+    \advance\count@ by -5
+    \def\p{.}%
+  \else
+    \let\p\@empty
+  \fi
+  \@whilenum\count@>0 \do{%
+    \advance\count@ by -1
+    \edef\vpe@temp{\vpe@temp/}%
+  }%
+  \edef\vpe@temp{\vpe@temp\p./}%
+  \ifx\\#2\\%
+  \else
+    \@ReturnAfterFi{%
+      \vpe@scan#2\@nil
+    }%
+  \fi
+}
+\long\def\@ReturnAfterFi#1\fi{\fi#1}
+
+\def\vpe@removeslash#1{%
+  \if/#1%
+  \else
+    #1%
+  \fi
+}
+
+\def\vpe@setline#1$d#2\@nil#3{%
+  \ifx\limits#2\limits
+  \else
+    \edef\vpe@temp{#1#3\vpe@remline#2\@nil}%
+  \fi
+}
+\def\vpe@remline#1$d\@nil{#1}
+\def\vpe@setfile#1$s#2\@nil#3{%
+  \ifx\limits#2\limits
+  \else
+    \def\vpe@temp{#1#3\vpe@remfile#2\@nil}%
+  \fi
+}
+\def\vpe@remfile#1$s\@nil{#1}
+
+%*** def check
+\def\vpe@redef#1{%
+  \expandafter\ifx\csname vpeorg@#1\endcsname\@empty
+    \begingroup
+      \let\on@line\@empty
+      \PackageInfo{vpe}{src marker in %
+        \expandafter\string\csname #1\endcsname\space
+        disabled%
+      }%
+    \endgroup
+    \expandafter\@gobble
+  \else
+    \expandafter\let
+    \csname vpeorg@#1\expandafter\endcsname
+    \csname #1\endcsname
+    \expandafter\@firstofone
+  \fi
+}
+% #1: active character or special case (eg: ~, \\)
+% #2: string for command names (eg: TILDE, NL)
+\def\vpe@redefspecial#1#2{%
+  \expandafter\ifx\csname vpeorg@#2\endcsname\@empty
+    \begingroup
+      \let\on@line\@empty
+      \PackageInfo{vpe}{src marker in \string#1 disabled}%
+    \endgroup
+    \expandafter\@gobble
+  \else
+    \expandafter\let\csname vpeorg@#2\endcsname#1%
+    \expandafter\@firstofone
+  \fi
+}
+\def\vpe@check#1{%
+  \expandafter\ifx\csname vpeorg@#1\endcsname\@empty
+    \begingroup
+      \let\on@line\@empty
+      \PackageInfo{vpe}{src marker in %
+        \expandafter\string\csname #1\endcsname\space
+        disabled%
+      }%
+    \endgroup
+    \expandafter\@gobble
+  \else
+    \expandafter\@firstofone
+  \fi
+}
+
+%*** file name stack
+\newcount\vpe@sp % stack pointer
+\global\vpe@sp=0
+
+\newif\ifvpe@stack
+\vpe@stacktrue
+\AtEndDocument{\global\vpe@stackfalse}
+
+\def\vpe@push#1{%
+  \ifvpe@stack
+    \global\advance\vpe@sp by 1
+    \vpe@debug{PUSH(\the\vpe@sp): #1}%
+    \immediate\write18{%
+      \vpe@command\space
+        -sty
+        -progname=\vpe@progname\space
+        \ifx\vpe@debug\@gobble\else -v \fi
+        #1 %
+        \jobname.vpe%
+    }%
+    \gdef\vpe@file{#1}%
+    \gdef\vpe@last{10000}%
+    \ifeof\vpe@read
+      \vpe@debug{EOF: \jobname.vpe}%
+    \else
+      \begingroup
+        \endlinechar-1 %
+        \read\vpe@read to \vpe@temp
+        \vpe@temp
+      \endgroup
+    \fi
+    \vpe@debug{%
+      LEVEL: \the\vpe@sp, FILE: \vpe@file, LAST: \vpe@last
+    }%
+    \expandafter\xdef\csname vpeF\the\vpe@sp\endcsname{\vpe@file}%
+    \expandafter\xdef\csname vpeL\the\vpe@sp\endcsname{\vpe@last}%
+  \fi
+}
+\def\vpeentry#1#2{%
+  \gdef\vpe@file{#1}%
+  \gdef\vpe@last{#2}%
+}
+\def\vpe@pop{%
+  \ifvpe@stack
+    \global\advance\vpe@sp by -1 %
+    \vpe@debug{POP(\the\vpe@sp)}%
+  \fi
+}
+\def\vpe@peekfile{%
+  \csname vpeF\the\vpe@sp\endcsname
+}
+\def\vpe@peeklast{%
+  \csname vpeL\the\vpe@sp\endcsname
+}
+
+\vpe@push{\jobname}
+
+\AtEndDocument{%
+  \vpe@debug{MAKE SYMBOL LINKS}%
+  \immediate\write18{%
+    \vpe@command\space
+    \ifx\vpe@debug\@gobble\else -v \fi\jobname.pdf%
+  }%
+}
+
+%*** file input
+\def\vpe@doinput#1#2{%
+  \VPE
+  \vpe@push{#2}%
+  \vpe@srcfirst
+  #1{#2}%
+  \vpe@srclast
+  \vpe@pop
+  \VPE
+}
+
+\vpe@redef{input}{%
+  \def\input{\@ifnextchar\bgroup\vpe@input\vpeorg@input}
+  \def\vpe@input{\vpe@doinput\vpeorg@input}
+}
+\vpe@redef{@input}{%
+  \def\@input#1{%
+    \IfFileExists{#1}\@firstofone\@gobble\vpe@doinput
+    \vpeorg@@input{#1}%
+  }%
+}
+
+\vpe@redef{include}{\def\include{\vpe@doinput\vpeorg@include}}
+
+\vpe@redef{newpage}{%
+  \def\newpage{%
+    \VPE
+    \vpeorg@newpage
+    \vpe@emptyeverypar
+  }%
+}
+\vpe@redef{clearpage}{\def\clearpage{\vpeorg@clearpage\VPE}}
+
+%*** everypar
+\def\vpe@everypar{\everypar\expandafter{\the\everypar\VPE}}
+\def\vpe@emptyeverypar{%
+  \edef\vpe@temp{\the\everypar}%
+  \ifx\vpe@temp\@empty
+    \everypar{\VPE}%
+  \fi
+}
+\iffalse
+\vpe@redef{everypar}{%
+  \def\everypar#1#{\vpe@everypar}
+  \def\vpe@everypar#1{%
+    \vpeorg@everypar{#1\VPE}%
+  }%
+}
+\fi
+\vpe@redef{document}{%
+  \def\document{%
+    \global\vpe@stackfalse
+    \vpeorg@document
+    \global\vpe@stacktrue
+    \VPE
+    \vpe@emptyeverypar
+    \ignorespaces
+  }%
+}
+\vpe@redef{@item}{%
+  \def\@item[#1]{%
+    \vpeorg@@item[{#1}]%
+    \VPE
+    \vpe@doubleeverypar
+    \ignorespaces
+  }%
+}
+\iffalse
+\vpe@redef{@verbatim}{%
+  \def\@verbatim{%
+    \vpeorg@@verbatim
+    \vpe@everypar
+  }%
+}
+\fi
+\vpe@check{@doendpe}{%
+  \def\@doendpe{%
+    \@endpetrue
+    \def\par{%
+      \@restorepar
+      \everypar{\VPE}%
+      \par
+      \@endpefalse
+    }%
+    \everypar{%
+      {\setbox\z@\lastbox}%
+      \everypar{\VPE}%
+      \@endpefalse
+      \VPE
+    }%
+  }%
+}
+\vpe@redef{@arrayparboxrestore}{%
+  \def\@arrayparboxrestore{%
+    \vpeorg@@arrayparboxrestore
+    \vpe@everypar
+  }%
+}
+\vpe@redef{@xsect}{%
+  \def\@xsect#1{%
+    \vpeorg@@xsect{#1}%
+    \vpe@doubleeverypar
+    \ignorespaces
+  }%
+}
+\vpe@redef{@afterheading}{%
+  \def\@afterheading{%
+    \vpeorg@@afterheading
+    \vpe@doubleeverypar
+  }%
+}
+\vpe@redef{@setminipage}{%
+  \def\@setminipage{%
+    \vpeorg@@setminipage
+    \vpe@doubleeverypar
+  }%
+}
+\def\vpe@doubleeverypar{%
+  \expandafter\vpe@@doubleeverypar\the\everypar\everypar!!\@nil
+}
+\def\vpe@@doubleeverypar#1\everypar#2#3\@nil{%
+  \def\vpe@temp{#2}%
+  \ifx\vpe@temp\@empty
+    \everypar\expandafter{\the\everypar\vpe@everypar}%
+  \fi
+  \vpe@everypar
+}
+\vpe@redef{@startsection}{%
+  \def\@startsection{%
+    \if@nobreak
+      \let\vpe@orgeverypar\everypar
+      \let\everypar\vpe@tempeverypar
+    \fi
+    \vpeorg@@startsection
+  }%
+}
+\def\vpe@tempeverypar#1{%
+  \let\everypar\vpe@orgeverypar
+  \everypar{#1\VPE}%
+}
+
+\vpe@check{everymath}{\everymath{\VPE}}
+
+\ifvpe@everyhbox
+  \everyhbox\expandafter{\the\everyhbox\VPE}%
+\fi
+
+\vpe@redef{newline}{\def\newline{\VPE\vpeorg@newline}}
+\vpe@redefspecial{\\}{NL}{\def\\{\VPE\vpeorg@NL}}
+\vpe@redef{tabularnewline}{%
+  \def\tabularnewline{\VPE\tabularnewline}
+}
+
+\vpe@redef{mbox}{%
+  \def\mbox{\VPE\vpe@mbox}
+  \long\def\vpe@mbox#1{\vpeorg@mbox{#1\VPE}}
+}
+
+\vpe@redefspecial{~}{TILDE}{\def~{\VPE\vpeorg@TILDE}}
+
+\vpe@redef{ref}{\def\ref{\VPE\vpeorg@ref}}
+\vpe@redef{cite}{\def\cite{\VPE\vpeorg@cite}}
+
+\vpe@redef{item}{\def\item{\VPE\vpeorg@item}}
+\vpe@redef{trivlist}{\def\trivlist{\VPE\vpeorg@trivlist}}
+\vpe@redef{endtrivlist}{\def\endtrivlist{\VPE\vpeorg@endtrivlist}}
+
+\vpe@redef{@bsphack}{\def\@bsphack{\vpeorg@@bsphack\VPE}}
+\vpe@redef{@esphack}{\def\@esphack{\VPE\vpeorg@@esphack}}
+\vpe@redef{@Esphack}{\def\@Esphack{\VPE\vpeorg@@Esphack}}
+\vpe@redef{@xaddvskip}{\def\@xaddvskip{\vpeorg@@xaddvskip\VPE}}
+
+\vpe@redef{@tabularcr}{\def\@tabularcr{\VPE\vpeorg@@tabularcr}}
+\vpe@redef{@arraycr}{\def\@arraycr{\VPE\vpeorg@@arraycr}}
+
+\vpe@redef{hrule}{\def\hrule{\VPE\vpeorg@hrule}}
+\vpe@redef{vrule}{\def\vrule{\VPE\vpeorg@vrule}}
+\endinput

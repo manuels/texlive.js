@@ -1,0 +1,593 @@
+%% pax.sty
+%% Copyright 2006-2008, 2011, 2012 Heiko Oberdiek
+%
+% This work may be distributed and/or modified under the
+% conditions of the LaTeX Project Public License, either version 1.3
+% of this license or (at your option) any later version.
+% The latest version of this license is in
+%   http://www.latex-project.org/lppl.txt
+% and version 1.3 or later is part of all distributions of LaTeX
+% version 2005/12/01 or later.
+%
+% This work has the LPPL maintenance status `maintained'.
+%
+% The Current Maintainer of this work is Heiko Oberdiek.
+%
+% This work consists of the file pax.sty.
+% See README for more details and documentation.
+%
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{pax}%
+  [2012/04/18 v0.1l Annotation support for PDF graphics (HO)]%
+
+\RequirePackage{ifpdf}
+\ifpdf
+\else
+  \PackageError{pax}{Missing pdfTeX in PDF mode}{%
+    Other drivers are not supported.%
+  }%
+  \expandafter\endinput
+\fi
+
+\begingroup\expandafter\expandafter\expandafter\endgroup
+\expandafter\ifx\csname pdfstrcmp\endcsname\relax
+  \PackageError{pax}{pdfTeX is too old}{%
+    The package uses features of pdfTeX 1.30.%
+  }%
+  \expandafter\endinput
+\fi
+
+\RequirePackage{graphicx}
+\RequirePackage{ltxcmds}[2011/04/18]
+\RequirePackage{kvsetkeys}[2011/04/07]
+\RequirePackage{kvoptions}[2010/12/23]
+\RequirePackage{auxhook}[2011/03/04]
+\RequirePackage{etexcmds}[2011/02/16]
+
+% Hook into \includegraphics of graphicx with one optional
+% star, one optional argument with key value pairs and
+% the graphics name
+\let\PAX@ORG@includegraphics\includegraphics
+\def\includegraphics{%
+  \@ifstar{%
+    \@ifnextchar[{%
+      \begingroup
+        \def\x{\endgroup
+           \PAX@includegraphics[clip,%
+        }%
+      \expandafter\x\@gobble
+    }{%
+      \PAX@includegraphics[clip]%
+    }%
+  }{%
+    \@ifnextchar[{%
+      \PAX@includegraphics
+    }{%
+      \PAX@includegraphics[]%
+    }%
+  }%
+}
+\def\PAX@includegraphics[#1]#2{%
+  \begingroup
+    \sbox0{\PAX@ORG@includegraphics[{#1}]{#2}}%
+    \edef\PAX@inc@width{\the\wd0}%
+    \edef\PAX@inc@height{\the\dimexpr\dp0+\ht0}%
+    \leavevmode
+    \hbox to \wd0{%
+      \rlap{\copy0}%
+      \raise-\dp0\hbox{%
+        \PAX@AddAnnots{#1}{#2}%
+      }%
+      \hfill
+    }%
+  \endgroup
+}
+
+\SetupKeyvalOptions{family=PAX@Gin,prefix=PAX@Gin@}
+\DeclareStringOption[1]{page}
+\DeclareStringOption[0]{angle}
+\DeclareBoolOption{clip}
+\define@key{PAX@Gin}{viewport}{%
+  \ltx@LocalAppendToMacro\PAX@Gin@box@opts{%
+    \PAX@viewport#1\\%
+  }%
+}
+\define@key{PAX@Gin}{trim}{%
+  \ltx@LocalAppendToMacro\PAX@Gin@box@opts{%
+    \PAX@trim#1\\%
+  }%
+}
+\let\PAX@Gin@box@opts\@empty
+
+\def\PAX@viewport#1 #2 #3 #4\\{%
+  \PAX@defaultbp\PAX@vllx{#1}%
+  \PAX@defaultbp\PAX@vlly{#2}%
+  \PAX@defaultbp\PAX@vurx{#3}%
+  \PAX@defaultbp\PAX@vury{#4}%
+  \edef\PAX@page@llx{\dimexpr\PAX@page@llx+\PAX@vllx\relax}%
+  \edef\PAX@page@lly{\dimexpr\PAX@page@lly+\PAX@vlly\relax}%
+  \edef\PAX@page@urx{\dimexpr\PAX@page@llx+\PAX@vlly\relax}%
+  \edef\PAX@page@ury{\dimexpr\PAX@page@lly+\PAX@vury\relax}%
+}
+\def\PAX@trim#1 #2 #3 #4\\{%
+  \PAX@defaultbp\PAX@tllx{#1}%
+  \PAX@defaultbp\PAX@tlly{#2}%
+  \PAX@defaultbp\PAX@turx{#3}%
+  \PAX@defaultbp\PAX@tury{#4}%
+  \edef\PAX@page@llx{\dimexpr\PAX@page@llx+\PAX@tllx\relax}%
+  \edef\PAX@page@lly{\dimexpr\PAX@page@lly+\PAX@tlly\relax}%
+  \edef\PAX@page@urx{\dimexpr\PAX@page@urx-\PAX@turx\relax}%
+  \edef\PAX@page@ury{\dimexpr\PAX@page@ury-\PAX@tury\relax}%
+}
+
+\def\PAX@defaultbp#1#2{%
+  \afterassignment\PAX@def@bp\dimen@#2bp\relax{#1}{#2}%
+}
+\def\PAX@def@bp#1\relax#2#3{%
+  \if!#1!%
+    \edef#2{#3bp}%
+  \else
+    \edef#2{#3}%
+  \fi
+}
+
+% ignore unknown options in family `PAX@Gin'
+\kv@set@family@handler{PAX@Gin}{}
+
+\def\PAX@AddAnnots#1#2{%
+  \kvsetkeys{PAX@Gin}{#1}%
+  \Grot@setangle{\PAX@Gin@angle}%
+  % a little careful, is type of angle int or real?
+  \loop
+  \ifdim\PAX@Gin@angle\p@<360\p@
+  \else
+    \edef\PAX@Gin@angle{\the\numexpr-360+\number\PAX@Gin@angle}%
+  \repeat
+  \loop
+  \ifdim\PAX@Gin@angle\p@<\z@
+    \edef\PAX@Gin@angle{\strip@pt\dimexpr\PAX@Gin@angle\p@+360\p@}%
+  \repeat
+  \ifcase0\ifnum\PAX@Gin@angle=0 1\fi
+          \ifnum\PAX@Gin@angle=90 1\fi
+          \ifnum\PAX@Gin@angle=180 1\fi
+          \ifnum\PAX@Gin@angle=270 1\fi
+    \PackageWarning{pax}{Unsupported value for option angle}%
+  \fi
+  \filename@parse{#2}%
+  \def\PAX@file{\filename@area\filename@base.pax}%
+  \let\[\PAX@parser
+  \def\<{<}%
+  \def\>{>}%
+  \endlinechar=-1 %
+  \InputIfFileExists\PAX@file{%
+  }{%
+    \typeout{* Missing: \PAX@file}%
+  }%
+}
+\def\PAX@parser#1{\PAX@call{cmd}{#1}{}}%
+\def\PAX@call#1#2#3{%
+  \@ifundefined{PAX@#1@#2}\PAX@skip{#3\csname PAX@#1@#2\endcsname}%
+}
+\def\PAX@skip#1\\{}
+\def\PAX@stop#1\\{}
+
+\def\PAX@cmd@page#1#2{%
+  \PAX@filter@page{#1}{%
+    \PAX@getrect{page}#2\@nil
+    \PAX@Gin@box@opts
+    \ifcase0\ifnum\PAX@Gin@angle=90 1\fi
+            \ifnum\PAX@Gin@angle=270 1\fi
+    \else
+      \let\PAX@temp\PAX@inc@width
+      \let\PAX@inc@width\PAX@inc@height
+      \let\PAX@inc@height\PAX@temp
+    \fi
+    \Gscale@div\PAX@scale@x\PAX@inc@width{%
+      \dimexpr\PAX@page@urx-\PAX@page@llx\relax
+    }%
+    \Gscale@div\PAX@scale@y\PAX@inc@height{%
+      \dimexpr\PAX@page@ury-\PAX@page@lly\relax
+    }%
+    \PAX@skip
+  }%
+}
+\def\PAX@filter@page#1{%
+  \ifnum\PAX@Gin@page=#1 %
+    \expandafter\@firstofone
+  \else
+    \ifnum\PAX@Gin@page<#1 %
+      \csname fi\endcsname
+      \csname fi\endcsname
+      \expandafter\PAX@stop\@gobblefour
+    \fi
+    \expandafter\PAX@skip
+  \fi
+}
+\def\PAX@getrect#1#2 #3 #4 #5\@nil{%
+  \@namedef{PAX@#1@llx}{#2bp}%
+  \@namedef{PAX@#1@lly}{#3bp}%
+  \@namedef{PAX@#1@urx}{#4bp}%
+  \@namedef{PAX@#1@ury}{#5bp}%
+}
+
+\def\PAX@cmd@annot#1#2{%
+  \PAX@filter@page{#1}{%
+    \PAX@call{annot}{#2}{}%
+  }%
+}
+\def\PAX@annot@Link#1#2#3{%
+  \def\PAX@link@type{#2}%
+  \PAX@call{link}{#2}{%
+    \begingroup
+    \PAX@getrect{annot}#1\@nil
+    \kvsetkeys{PAX}{#3}%
+  }%
+  \PAX@skip
+}
+\newif\ifPAX@ok
+\PAX@oktrue
+
+\newif\ifPAX@GoTo
+
+\def\PAX@pdf@annot#1{%
+  \ifPAX@Gin@clip
+    \ifdim\PAX@annot@llx<\PAX@page@llx
+      \let\PAX@annot@llx\PAX@pagellx
+    \fi
+    \ifdim\PAX@annot@lly<\PAX@page@lly
+      \let\PAX@annot@lly\PAX@page@lly
+    \fi
+    \ifdim\PAX@annot@urx>\PAX@page@urx
+      \let\PAX@annot@urx\PAX@page@urx
+    \fi
+    \ifdim\PAX@annot@ury>\PAX@page@ury
+      \let\PAX@annot@ury\PAX@page@ury
+    \fi
+    \PAX@okfalse
+    \ifdim\PAX@annot@llx<\PAX@annot@urx
+      \ifdim\PAX@annot@lly<\PAX@annot@ury
+        \PAX@oktrue
+      \fi
+    \fi
+  \else
+    \PAX@oktrue
+  \fi
+  \ifPAX@ok
+    \ifcase 0\ifnum\PAX@Gin@angle=90 1\fi
+             \ifnum\PAX@Gin@angle=180 2\fi
+             \ifnum\PAX@Gin@angle=270 3\fi\space
+      % angle = 0
+      \def\PAX@raise{%
+        \PAX@scale@y\dimexpr\PAX@annot@lly-\PAX@page@lly\relax
+      }%
+      \def\PAX@right{%
+        \PAX@scale@x\dimexpr\PAX@annot@llx-\PAX@page@llx\relax
+      }%
+    \or % angle = 90
+      \def\PAX@raise{%
+        \PAX@scale@x\dimexpr\PAX@annot@llx-\PAX@page@llx\relax
+      }%
+      \def\PAX@right{%
+        \PAX@scale@y\dimexpr\PAX@page@ury-\PAX@annot@ury\relax
+      }%
+    \or % angle = 180
+      \def\PAX@raise{%
+        \PAX@scale@y\dimexpr\PAX@page@ury-\PAX@annot@ury\relax
+      }%
+      \def\PAX@right{%
+        \PAX@scale@x\dimexpr\PAX@page@urx-\PAX@annot@urx\relax
+      }%
+    \or % angle = 270
+      \def\PAX@raise{%
+        \PAX@scale@x\dimexpr\PAX@page@urx-\PAX@annot@urx\relax
+      }%
+      \def\PAX@right{%
+        \PAX@scale@y\dimexpr\PAX@annot@lly-\PAX@page@lly\relax
+      }%
+    \fi
+    \@namedef{%
+      PAX@%
+      \ifcase0\ifnum\PAX@Gin@angle=90 1\fi
+              \ifnum\PAX@Gin@angle=270 1\fi\space
+        width%
+      \else
+        height%
+      \fi
+    }{%
+      \PAX@scale@x\dimexpr\PAX@annot@urx-\PAX@annot@llx\relax
+    }%
+    \@namedef{%
+      PAX@%
+      \ifcase0\ifnum\PAX@Gin@angle=90 1\fi
+              \ifnum\PAX@Gin@angle=270 1\fi\space
+        height%
+      \else
+        width%
+      \fi
+    }{%
+      \PAX@scale@y\dimexpr\PAX@annot@ury-\PAX@annot@lly\relax
+    }%
+    \raise\PAX@raise\hb@xt@\z@{%
+      \kern\PAX@right
+      \ifPAX@GoTo
+        \pdfstartlink\@width\PAX@width\@height\PAX@height\@depth\z@
+            attr{\PAX@set@attrs}%
+            goto name{PAX@\PAX@file @\PAX@key@DestLabel}\relax
+        \pdfendlink
+      \else
+        \pdfannot\@width\PAX@width\@height\PAX@height{%
+          /Subtype/Link%
+          \PAX@set@attrs
+          /A<<%
+            /Type/Action%
+            /S/\PAX@link@type
+            #1%
+          >>%
+        }%
+      \fi
+      \hss
+    }%
+  \fi
+  \endgroup
+}
+
+\def\PAX@set@attrs{%
+  \PAX@attrs\PAX@link@type{%
+    \PAX@set@attr{C}\PAX@key@C
+    \PAX@set@attr{Border}\PAX@key@Border
+    \PAX@set@attr{BS}\PAX@key@BS
+    \PAX@set@attr{H}\PAX@key@H
+  }%
+}
+
+\def\PAX@set@attr#1#2{%
+  \ifx#2\@empty
+  \else
+    /#1 #2%
+  \fi
+}
+
+\def\PAX@attrs#1{%
+  \@ifundefined{PAX@attrs@#1}{%
+    \@ifundefined{hyperref}{%
+      \@firstofone
+    }{%
+      \Hy@setpdfborder
+      /H\@pdfhighlight
+      \@ifundefined{PAX@htype@#1}\@firstofone{%
+        \@ifundefined{@\@nameuse{PAX@htype@#1}bordercolor}\@firstofone{%
+          /C[\@nameuse{@\@nameuse{PAX@htype@#1}bordercolor}]%
+          \@gobble
+        }%
+      }{%
+        \PAX@set@attr{C}\PAX@key@C
+      }%
+      \@gobble
+    }%
+  }{%
+    \@nameuse{PAX@attrs@#1}%
+  }%
+}
+\def\PAX@htype@GoToR{file}
+\def\PAX@htype@GoTo{link}
+\def\PAX@htype@Named{link}
+\def\PAX@htype@URI{url}
+
+\def\PAX@link@URI{%
+  \PAX@pdf@annot{%
+    /URI\PAX@key@URI
+  }%
+}
+\def\PAX@link@Named{%
+  \PAX@pdf@annot{%
+    /N/\pdfescapename{\PAX@key@Name}%
+  }%
+}
+\def\PAX@link@GoToR{%
+  \PAX@pdf@annot{%
+    /F\PAX@key@File
+    /D%
+    \ifx\PAX@key@DestName\@empty
+      [\PAX@key@DestPage\space\PAX@key@DestView]%
+    \else
+      \PAX@key@DestName
+    \fi
+  }%
+}
+
+% GoTo
+
+\AddLineBeginAux{%
+  \string\providecommand{\string\PAX@DestReq}[2]{}%
+}
+\AddLineBeginAux{%
+  \string\providecommand{\string\PAX@DestProv}[2]{}%
+}
+\AtBeginDocument{%
+  \let\PAX@DestReq\@gobbletwo
+  \let\PAX@DestProv\@gobbletwo
+}
+\def\PAX@DestReq#1#2{%
+  \expandafter\gdef\csname PAX@REQ@#1@#2\endcsname{}%
+}
+\def\PAX@DestProv#1#2{%
+  \expandafter\gdef\csname PAX@PROV@#1@#2\endcsname{}%
+}
+
+\def\PAX@link@GoTo{%
+  \ifnum0<0\PAX@key@DestLabel\relax
+    \expandafter\@firstofone
+  \else
+    \endgroup
+    \expandafter\@gobble
+  \fi
+  {%
+    \if@filesw
+      \protected@write\@auxout{}{%
+        \string\PAX@DestReq{\PAX@file}{\PAX@key@DestLabel}%
+      }%
+    \fi
+    % Generate link, if destination exists
+    \@ifundefined{PAX@PROV@\PAX@file @\PAX@key@DestLabel}{%
+      \endgroup
+    }{%
+      \PAX@GoTotrue
+      \PAX@pdf@annot{}%
+    }%
+  }%
+}
+
+% Read destinations
+\def\PAX@cmd@dest#1#2#3#4{%
+  \PAX@filter@page{#1}{%
+    \if@filesw
+      \protected@write\@auxout{}{%
+        \string\PAX@DestProv{\PAX@file}{#2}%
+      }%
+    \fi
+    \@ifundefined{PAX@REQ@\PAX@file @#2}{%
+    }{%
+      \begingroup
+        \let\PAX@key@DestY\PAX@page@ury
+        \let\PAX@key@DestX\PAX@page@llx
+        \kvsetkeys{PAX}{#4}%
+        \let\PAX@dest@llx\PAX@key@DestX
+        \let\PAX@dest@urx\PAX@key@DestX
+        \let\PAX@dest@lly\PAX@key@DestY
+        \let\PAX@dest@ury\PAX@key@DestY
+        \ifx\PAX@key@DestRect\@empty
+        \else
+          \def\PAX@temp{dest}%
+          \expandafter\PAX@getrect\expandafter\PAX@temp
+          \PAX@key@DestRect\@nil
+        \fi
+        \ifPAX@Gin@clip
+          \ifx\PAX@dest@llx<\PAX@page@llx
+            \let\PAX@dest@llx\PAX@page@llx
+          \fi
+          \ifx\PAX@dest@lly<\PAX@page@lly
+            \let\PAX@dest@lly\PAX@page@lly
+          \fi
+          \ifx\PAX@dest@urx>\PAX@page@urx
+            \let\PAX@dest@urx\PAX@page@urx
+          \fi
+          \ifx\PAX@dest@ury>\PAX@page@ury
+            \let\PAX@dest@ury\PAX@page@ury
+          \fi
+          % at least prevent destinations outside the window
+          \ifx\PAX@dest@llx>\PAX@page@urx
+            \PAX@dest@llx\PAX@page@urx
+          \fi
+          \ifx\PAX@dest@lly>\PAX@page@ury
+            \PAX@dest@lly\PAX@page@ury
+          \fi
+          \ifx\PAX@dest@urx<\PAX@page@llx
+            \PAX@dest@urx\PAX@page@llx
+          \fi
+          \ifx\PAX@dest@ury<\PAX@page@lly
+            \PAX@dest@ury\PAX@page@lly
+          \fi
+        \fi
+        % I don't know, what is the best idea for rotated stuff,
+        % perhaps using the corner llx/ury
+        \ifcase 0\ifnum\PAX@Gin@angle=90 1\fi
+                 \ifnum\PAX@Gin@angle=180 2\fi
+                 \ifnum\PAX@Gin@angle=270 3\fi\space
+          % angle = 0
+          \def\PAX@raise{%
+            \PAX@scale@y\dimexpr\PAX@dest@lly-\PAX@page@lly\relax
+          }%
+          \def\PAX@right{%
+            \PAX@scale@x\dimexpr\PAX@dest@llx-\PAX@page@llx\relax
+          }%
+        \or % angle = 90
+          \def\PAX@raise{%
+            \PAX@scale@x\dimexpr\PAX@dest@llx-\PAX@page@llx\relax
+          }%
+          \def\PAX@right{%
+            \PAX@scale@y\dimexpr\PAX@page@ury-\PAX@dest@ury\relax
+          }%
+        \or % angle = 180
+          \def\PAX@raise{%
+            \PAX@scale@y\dimexpr\PAX@page@ury-\PAX@dest@ury\relax
+          }%
+          \def\PAX@right{%
+            \PAX@scale@x\dimexpr\PAX@page@urx-\PAX@dest@urx\relax
+          }%
+        \or % angle = 270
+          \def\PAX@raise{%
+            \PAX@scale@x\dimexpr\PAX@page@urx-\PAX@dest@urx\relax
+          }%
+          \def\PAX@right{%
+            \PAX@scale@y\dimexpr\PAX@dest@lly-\PAX@page@lly\relax
+          }%
+        \fi
+        \edef\PAX@name{name{PAX@\PAX@file @#2}}%
+        \let\PAX@type\@empty
+        \ifcase\pdfstrcmp{#3}{FITR}\relax
+          \def\PAX@type{xyz}% too lazy for now
+        \fi
+        \ifcase\pdfstrcmp{#3}{XYZ}\relax
+          \def\PAX@type{xyz}%
+          \ifx\PAX@key@DestZoom\@empty
+          \else
+            \edef\PAX@type{%
+              \PAX@type
+              zoom\numexpr1000*\number\dimexpr\PAX@key@DestZoom pt\relax
+              /\number\p@\relax
+            }%
+          \fi
+        \fi
+        \ifcase\pdfstrcmp{#3}{FIT}\relax
+          \def\PAX@type{fit}%
+        \fi
+        \ifcase\pdfstrcmp{#3}{FITB}\relax
+          \def\PAX@type{fitb}%
+        \fi
+        \ifcase\pdfstrcmp{#3}{FITH}\relax
+          \def\PAX@type{fith}%
+        \fi
+        \ifcase\pdfstrcmp{#3}{FITBH}\relax
+          \def\PAX@type{fitbh}%
+        \fi
+        \ifcase\pdfstrcmp{#3}{FITV}\relax
+          \def\PAX@type{fitv}%
+        \fi
+        \ifcase\pdfstrcmp{#3}{FITBV}\relax
+          \def\PAX@type{fitbv}%
+        \fi
+        \ifx\PAX@type\@empty
+          \def\PAX@type{xyz}%
+        \fi
+        \raise\PAX@raise\hb@xt@\z@{%
+          \kern\PAX@right
+          \pdfdest\PAX@name\PAX@type\relax
+          \hss
+        }%
+      \endgroup
+    }%
+    \PAX@skip
+  }%
+}
+
+\SetupKeyvalOptions{family=PAX,prefix=PAX@key@}
+\DeclareStringOption{URI}
+\DeclareStringOption{Name}
+\DeclareStringOption{DestName}
+\DeclareStringOption{DestPage}
+\DeclareStringOption{DestView}
+\DeclareStringOption{File}
+\DeclareStringOption{C}
+\DeclareStringOption{Border}
+\DeclareStringOption{BS}
+\DeclareStringOption{H}
+\DeclareStringOption{DestLabel}
+\DeclareStringOption{DestRect}
+\DeclareStringOption{DestZoom}
+\define@key{PAX}{DestX}{%
+  \PAX@defaultbp\PAX@key@DestX{#1}%
+}
+\define@key{PAX}{DestY}{%
+  \PAX@defaultbp\PAX@key@DestY{#1}%
+}
+\endinput

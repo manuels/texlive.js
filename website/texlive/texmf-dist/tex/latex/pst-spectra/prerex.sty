@@ -1,0 +1,849 @@
+%% This is file 'prerex.sty'
+%%
+%% Copyright (C) 2006-12 R. D. Tennent, rdt@cs.queensu.ca
+%% 
+%% This work may be distributed and/or modified under the
+%% conditions of the LaTeX Project Public License, either version 1.3
+%% of this license or (at your option) any later version.
+%% The latest version of this license is in
+%%   http://www.latex-project.org/lppl.txt
+%% and version 1.3 or later is part of all distributions of LaTeX
+%% version 2003/12/01 or later.
+%% 
+%% This work has the LPPL maintenance status "author-maintained".
+%
+% Instructions supported inside  \begin{chart} ... \end{chart}:
+%
+%   \[req|opt]{half|full}course[c] x,y: {course code}{course title}{timetable code}[{color}]  
+%
+%   \mini x,y: {course code}
+%
+%   solid arrow:  \prereq x0,y0,x1,y1:    \prereqc x0,y0,x1,y1;curvature:
+%   dotted arrow: \coreq x0,y0,x1,y1:     \coreqc x0,y0,x1,y1;curvature:
+%   dashed arrow: \recomm x0,y0,x1,y1:    \recommc x0,y0,x1,y1;curvature:
+%
+%   \text x,y: {line of text}
+%
+%   \grid      coordinate grid background
+%
+% Stand-alone instructions (for explanatory notes):
+%
+%   \solidarrow     in-line solid arrow
+%   \dottedarrow    in-line dotted arrow
+%   \dashedarrow    in-line dashed arrow
+%
+%   \lightbox   in-line light course box
+%   \boldbox    in-line bold course box
+%   \dottedbox  in-line dotted course box
+%
+% The following defaults are defined in prerex.sty (but may be re-defined by the user):
+%
+%   \newcommand{\DefaultCurvature}{20}    
+%
+%     where the argument should be in the range 0-100; 0 means no curvature.
+%
+%   \newcommand{\CourseURL}[3]{file:#3.html}
+%
+%     where the arguments supplied at the call are the x and y coordinates
+%     and the course code.
+%
+%   \newcommand{\background}{yellow!15}
+%
+%   \setlength{\unit}{5.7816pt}  length of a coordinate unit; gives 10 pixels per unit at 125dpi
+%   \newcommand{\dpi}{125}
+%   \newcommand\PixelsPerUnit{10}
+%   \setcounter{diagheight}{75}  but reduced to 65 in landscape mode
+%   \newcommand{\solidwidth}{0.5pt}
+%   \newcommand{\dottedwidth}{0.8pt}
+%   \newcommand{\dashedwidth}{0.5pt}
+%   \newcommand{\boldwidth}{1.0pt}
+%   \newcommand{\smallersize}{\relsize{-3}}
+%   \newcommand{\baselineAdj}{-0.5ex}
+%
+% The nominal diagram width is 10 + (\textwidth divided by \unit).
+%
+\NeedsTeXFormat{LaTeX2e}[1995/12/01]
+\ProvidesPackage{prerex}[2012/03/29 v6.3.2 LaTeX style for prerequisite charts, pgf version]
+
+% Changelog:
+%
+%  Version 6.3.2
+%
+%    Use pgf layers to keep grid below arrows below boxes (thanks to Ryan Kavanagh).
+%    Add struts to stand-alone \...box commands.
+%
+%  Version 6.3
+%
+%    Allow "opt" course boxes (with dotted outlines).
+%
+%  Version 6.2
+%
+%    Allow for multi-line "timetable" arguments by using nested tabular environments.
+%
+%  Version 6.1.0
+%
+%    Added commands to specify background color of non-mini course boxes.
+%
+%  Version 6.0.6
+%
+%    Provide \textbullet at mid-point of edges when grid is on.
+%
+%  Version 6.0.5
+%
+%    Changed TARGET attribute in AREA outputs to "new".
+%    New configuration command \baselineAdj.
+%
+%  Version 6.0.4
+%
+%    Added missing initializations of @dy to curved...  macros.
+%
+%  Version 6.0.3
+%
+%    Added required ALT tag to AREA outputs.
+%
+%  Version 6.0
+%  Version 5.7
+%
+%    added implementation details to documentation
+%    generated script now only crops the chart image
+%
+%  Version 5.6
+%  Version 5.5
+%
+%    version increased to keep pace with previewer/vprerex
+%
+%  Version 5.4
+%
+%    code clean-up
+%
+%  Version 5.3
+%
+%    produces an image-generating script in \jobname.sh
+%
+%  Version 5.2
+%
+%    use \grid and \foreach (tikz) instead of \multido
+%    half-course boxes now have a minimum height (5 units) to improve uniformity
+%
+%  Version 5.1
+%
+%    generates image-map data in \jobname_n.html for nth chart when n>1 
+%
+%  Version 5.0
+%
+%    also generates \jobname.html with image-map data for all node URLs
+%    new configuration commands \dpi and \PixelsPerUnit
+%    default \unit length adjusted to give 10 pixels per coordinate unit at 125 dpi
+%
+%  Version 4.4
+%
+%    increase ysep parameter to 1.8pt to separate course-code or text and arrow tails for minis 
+%    and text boxes
+%
+%  Version 4.3
+%
+%    introduce \smallersize configuration command
+%
+%  Version 4.2
+%
+%    using tinting with xcolor package to ease background-color changes 
+%
+%  Version 4.1
+%
+%  Version 4.0
+%
+%   Implement the \text command to place a line of text (centered at the coordinates) in a chart
+%
+%  Version 3.8.1:
+%
+%   adjust arraystretch factors to work with long-ascender fonts such as Futura
+%   adjust inner sep parameters to work with oblique/italic fonts
+%   remove workaround for pgf-1.10 bug described at
+%      http://sourceforge.net/forum/forum.php?thread_id=1621660&forum_id=477363
+%   require version 1.18 (or later) of pgf
+%
+%  Version 3.8:
+%
+%    require version 1.10 (or later) of pgf
+%
+%  Version 3.7:
+%
+%    anchor nodes must be non-null for latex/dvips
+%
+%  Version 3.6:
+%
+%    first pgf-based version
+%
+%  Version 3.5:
+%  Version 3.4:
+%
+%    introduce arrow borders to improve the appearance of crossing arrows
+%    change default widths to artifacts created when arrow borders 
+%      occlude box boundaries
+%
+%  Version 3.3:
+%
+%    arrows (as well as course boxes and minis) are hyperlinked with coordinate URIs
+%
+%  Version 3.2:
+%
+%  Version 3.1:
+%
+%  Version 3.0:
+%
+%   "anchor" hyperlinks are added to coordinate grid to allow computation of
+%      chart coordinates at mouse clicks 
+%
+%  Version 2.0:
+%
+%    CourseURL now takes 3 arguments
+%    box/mini coordinates displayed in (some) PDF viewers when grid on
+%
+%  Version 1.0.2:
+%
+%    using \relsize{-3} rather than \scriptsize
+%    using \textsf in \lightbox and \boldbox
+%
+%  Version 1.0.1:
+%
+%    using \RequirePackage rather than \usepackage (suggested by Herbert Voss)
+%
+
+\newlength{\unit}
+
+\setlength{\unit}{5.7816pt}  % 10 pixels per unit at 125dpi; 1pt = (1/72.27) in.
+\newcommand{\PixelsPerUnit}{10}
+\newcommand{\dpi}{125} 
+
+\RequirePackage{relsize}
+\RequirePackage{calc}
+\RequirePackage{pgf}[2007/06/12] 
+\RequirePackage{tikz}\usetikzlibrary{arrows}
+\RequirePackage{ifthen}
+\RequirePackage{textcomp}
+\RequirePackage{zref-savepos}
+\PassOptionsToPackage{urlcolor=black,colorlinks,raiselinks}{hyperref}
+\RequirePackage{hyperref}
+
+\RequirePackage{xcolor}
+\definecolor{light}{gray}{0.5}
+\definecolor{somewhatlight}{gray}{0.7}
+\definecolor{verylight}{gray}{0.85}
+\definecolor{white}{rgb}{1.0,1.0,1.0} % not transparent, hides grid
+
+
+\newcommand{\DefaultCurvature}{20} % 0 for no curvature
+\newcommand{\CourseURL}[3]{file:#3.html}
+\newcommand{\background}{yellow!15}
+
+\newcommand{\solidwidth}{0.5pt}
+\newcommand{\boldwidth}{1.0pt}
+\newcommand{\dottedwidth}{0.8pt}
+\newcommand{\dashedwidth}{0.5pt}
+\newcommand{\smallersize}{\relsize{-3}}
+\newcommand{\baselineAdj}{-0.5ex}
+
+\newcounter{@myangle}
+\newcounter{@inangle}
+\newcounter{@dx}
+\newcounter{@dy}
+
+\newif\ifgridon
+\gridonfalse
+\newcounter{@gridwidth}
+\newcounter{@gridright}
+\newcounter{@gridheight}
+\newcounter{@gridtop}
+
+\newcounter{@diagwidth}
+\newcounter{diagheight}
+
+\setcounter{diagheight}{75}
+\ifdim\paperwidth>\paperheight
+  \setcounter{diagheight}{65}
+\fi
+
+\newcounter{chart} % in case there is more than one chart in the document
+\newcounter{xNW}\newcounter{yNW}  % coordinates of NW corner of a node
+\newcounter{xSE}\newcounter{ySE}  % coordinates of SE corner of a node
+
+\def\@unitmult{\unit * 5} % used for the grid and as the minimum height of half-course boxes
+
+\def\@outputImapData#1,#2:#3#4#5{%
+% #1,#2         coordinates
+% #3            URL
+% #4            horizontal delta
+% #5            vertical delta
+%
+\setcounter{xNW}{\dpi * \ratio{\zposx{gridOrigin_\thechart}sp}{1in}}% # of pixels from left edge to origin
+\addtocounter{xNW}{(#1-#4)*\PixelsPerUnit}% add # pixels from origin to node (-#4 units)
+\setcounter{xSE}{\dpi * \ratio{\zposx{gridOrigin_\thechart}sp}{1in}}%
+\addtocounter{xSE}{(#1+#4)*\PixelsPerUnit}% add # pixels from origin to node (+#4 units)
+
+\setcounter{yNW}{ \dpi * \ratio{\paperheight}{1in}}  % # of pixels for the whole page
+\addtocounter{yNW}{ 0 - \dpi * \ratio{\zposy{gridOrigin_\thechart}sp}{1in}} % subtract # pixels from bottom edge to origin
+\addtocounter{yNW}{0 - (#2 - #5) * \PixelsPerUnit } % subtract # of pixels from origin to node (-#5) 
+\setcounter{ySE}{ \dpi * \ratio{\paperheight}{1in}}
+\addtocounter{ySE}{0 - \dpi * \ratio{\zposy{gridOrigin_\thechart}sp}{1in}}
+\addtocounter{ySE}{0 - (#2 + #5) * \PixelsPerUnit } % subtract # of pixels from origin to node (+#5)
+
+\immediate\write\@imapfile{<area shape=rect coords="\thexNW,\theyNW,\thexSE,\theySE" href="\CourseURL{#1}{#2}{#3}" target="new" alt="#3">}%
+}
+
+\pgfsetlayers{}
+\def\solidarrow{%
+\tikz[x=\unit,y=\unit,baseline=\baselineAdj]
+\draw[-latex',line width =\solidwidth] (0,0) -- (4,0);
+}
+
+\def\dottedarrow{%
+\tikz[x=\unit,y=\unit,baseline=\baselineAdj]
+\draw[loosely dotted,line width=\dottedwidth,-latex'] (0,0) -- (4,0);
+}
+
+\def\dashedarrow{%
+\tikz[x=\unit,y=\unit,baseline=\baselineAdj]
+\draw[dashed,line width=\dashedwidth,-latex'] (0,0) -- (4,0);
+}
+
+\def\lightbox{%
+\tikz[thin,baseline=\baselineAdj]\node[draw,fill=\background,rounded corners=2pt,inner xsep=1.8pt] 
+{\rule[-2pt]{0pt}{4pt}\textsf{light}};
+}
+
+\def\boldbox{%
+\tikz[baseline=\baselineAdj]\node[draw,line width=\boldwidth,fill=\background,rounded corners=2pt,inner xsep=1.8pt] 
+{\rule[-2pt]{0pt}{4pt}\textsf{\textbf{bold}}};
+}
+
+
+\def\dottedbox{%
+\tikz[baseline=\baselineAdj]\node[draw,dotted,line width=\boldwidth,fill=\background,rounded corners=2pt,inner xsep=1.8pt] 
+{\rule[-2pt]{0pt}{4pt}\textsf{\textsf{dotted}}};
+}
+
+\pgfdeclarelayer{arrows}
+\pgfdeclarelayer{courses}
+\pgfdeclarelayer{grid}
+\pgfsetlayers{grid,arrows,courses,main}
+
+\def\@halfcourse#1,#2:#3#4#5{%
+\begin{pgfonlayer}{courses}%
+\node[draw,thin,fill=\background,rounded corners=2pt,inner ysep=0.5pt,minimum height=\@unitmult](x#1y#2) at (#1,#2)%
+{\textsf{%
+\renewcommand{\arraystretch}{0.8}%
+\href{\CourseURL{#1}{#2}{#3}}{\begin{tabular}{@{\hspace{1pt}}c@{\hspace{1pt}}}%
+\mbox{\smallersize#3}%
+\,\hfill\,%
+\mbox{\smallersize\renewcommand{\arraystretch}{0.5}\begin{tabular}[t]{@{}r@{}}#5\end{tabular}}%
+\\ #4%
+\end{tabular}}}%
+};%
+\@outputImapData#1,#2:{#3}{4}{2}%
+\end{pgfonlayer}%
+}
+
+\def\@halfcoursec#1,#2:#3#4#5#6{%
+\begin{pgfonlayer}{courses}%
+\node[draw,thin,fill=#6,rounded corners=2pt,inner ysep=0.5pt,minimum height=\@unitmult](x#1y#2) at (#1,#2)%
+{\textsf{%
+\renewcommand{\arraystretch}{0.8}%
+\href{\CourseURL{#1}{#2}{#3}}{\begin{tabular}{@{\hspace{1pt}}c@{\hspace{1pt}}}%
+\mbox{\smallersize#3}%
+\,\hfill\,%
+\mbox{\smallersize\renewcommand{\arraystretch}{0.5}\begin{tabular}[t]{@{}r@{}}#5\end{tabular}}%
+\\ #4%
+\end{tabular}}}%
+};%
+\@outputImapData#1,#2:{#3}{4}{2}%
+\end{pgfonlayer}%
+}
+
+\def\@reqhalfcourse#1,#2:#3#4#5{%
+\begin{pgfonlayer}{courses}%
+\node[draw,line width=\boldwidth,fill=\background,rounded corners=2pt,inner ysep=0.5pt,minimum height=\@unitmult](x#1y#2) at (#1,#2)%
+{\textsf{\textbf{%
+\renewcommand{\arraystretch}{0.8}%
+\href{\CourseURL{#1}{#2}{#3}}{\begin{tabular}{@{\hspace{1pt}}c@{\hspace{1pt}}}%
+\mbox{\smallersize#3}%
+\,\hfill\,%
+\mbox{\smallersize\renewcommand{\arraystretch}{0.5}\begin{tabular}[t]{@{}r@{}}#5\end{tabular}}%
+\\ #4%
+\end{tabular}}}%
+}};%
+\@outputImapData#1,#2:{#3}{4}{2}%
+\end{pgfonlayer}%
+}
+
+\def\@reqhalfcoursec#1,#2:#3#4#5#6{%
+\begin{pgfonlayer}{courses}%
+\node[draw,line width=\boldwidth,fill=#6,rounded corners=2pt,inner ysep=0.5pt,minimum height=\@unitmult](x#1y#2) at (#1,#2)%
+{\textsf{\textbf{%
+\renewcommand{\arraystretch}{0.8}%
+\href{\CourseURL{#1}{#2}{#3}}{\begin{tabular}{@{\hspace{1pt}}c@{\hspace{1pt}}}%
+\mbox{\smallersize#3}%
+\,\hfill\,%
+\mbox{\smallersize\renewcommand{\arraystretch}{0.5}\begin{tabular}[t]{@{}r@{}}#5\end{tabular}}%
+\\ #4%
+\end{tabular}}}%
+}};%
+\@outputImapData#1,#2:{#3}{4}{2}%
+\end{pgfonlayer}%
+}
+
+
+\def\@opthalfcourse#1,#2:#3#4#5{%
+\begin{pgfonlayer}{courses}%
+\node[draw,dotted,line width=\boldwidth,fill=\background,rounded corners=2pt,inner ysep=0.5pt,minimum height=\@unitmult](x#1y#2) at (#1,#2)%
+{\textsf{%
+\renewcommand{\arraystretch}{0.8}%
+\href{\CourseURL{#1}{#2}{#3}}{\begin{tabular}{@{\hspace{1pt}}c@{\hspace{1pt}}}%
+\mbox{\smallersize#3}%
+\,\hfill\,%
+\mbox{\smallersize\renewcommand{\arraystretch}{0.5}\begin{tabular}[t]{@{}r@{}}#5\end{tabular}}%
+\\ #4%
+\end{tabular}}}%
+};%
+\@outputImapData#1,#2:{#3}{4}{2}%
+\end{pgfonlayer}%
+}
+
+\def\@opthalfcoursec#1,#2:#3#4#5#6{%
+\begin{pgfonlayer}{courses}%
+\node[draw,dotted,line width=\boldwidth,fill=#6,rounded corners=2pt,inner ysep=0.5pt,minimum height=\@unitmult](x#1y#2) at (#1,#2)%
+{\textsf{%
+\renewcommand{\arraystretch}{0.8}%
+\href{\CourseURL{#1}{#2}{#3}}{\begin{tabular}{@{\hspace{1pt}}c@{\hspace{1pt}}}%
+\mbox{\smallersize#3}%
+\,\hfill\,%
+\mbox{\smallersize\renewcommand{\arraystretch}{0.5}\begin{tabular}[t]{@{}r@{}}#5\end{tabular}}%
+\\ #4%
+\end{tabular}}}%
+};%
+\@outputImapData#1,#2:{#3}{4}{2}%
+\end{pgfonlayer}%
+}
+
+\def\@fullcourse#1,#2:#3#4#5{%
+\begin{pgfonlayer}{courses}%
+\node[draw,thin,fill=\background,rounded corners=2pt,inner ysep=0.5pt](x#1y#2) at (#1,#2)%
+{\textsf{%
+\renewcommand{\arraystretch}{1.7}%
+\href{\CourseURL{#1}{#2}{#3}}{\begin{tabular}{@{\hspace{1pt}}c@{\hspace{1pt}}}%
+\mbox{\smallersize#3}%
+\,\hfill\,%
+\mbox{\smallersize\renewcommand{\arraystretch}{0.5}\begin{tabular}[t]{@{}r@{}}#5\end{tabular}}%
+\\ #4%
+\end{tabular}}}%
+};%
+\@outputImapData#1,#2:{#3}{4}{5}%
+\end{pgfonlayer}%
+}
+
+\def\@fullcoursec#1,#2:#3#4#5#6{%
+\begin{pgfonlayer}{courses}%
+\node[draw,thin,fill=#6,rounded corners=2pt,inner ysep=0.5pt](x#1y#2) at (#1,#2)%
+{\textsf{%
+\renewcommand{\arraystretch}{1.7}%
+\href{\CourseURL{#1}{#2}{#3}}{\begin{tabular}{@{\hspace{1pt}}c@{\hspace{1pt}}}%
+\mbox{\smallersize#3}%
+\,\hfill\,%
+\mbox{\smallersize\renewcommand{\arraystretch}{0.5}\begin{tabular}[t]{@{}r@{}}#5\end{tabular}}%
+\\ #4%
+\end{tabular}}}%
+};%
+\end{pgfonlayer}%
+\@outputImapData#1,#2:{#3}{4}{5}%
+}
+
+\def\@reqfullcourse#1,#2:#3#4#5{%
+\begin{pgfonlayer}{courses}%
+\node[draw,line width=\boldwidth,fill=\background,rounded corners=2pt,inner ysep=0.5pt](x#1y#2) at (#1,#2)%
+{\textsf{\textbf{%
+\renewcommand{\arraystretch}{1.7}%
+\href{\CourseURL{#1}{#2}{#3}}{\begin{tabular}{@{\hspace{1pt}}c@{\hspace{1pt}}}%
+\mbox{\smallersize#3}%
+\,\hfill\,%
+\mbox{\smallersize\renewcommand{\arraystretch}{0.5}\begin{tabular}[t]{@{}r@{}}#5\end{tabular}}%
+\\ #4%
+\end{tabular}}}}%
+};%
+\@outputImapData#1,#2:{#3}{4}{5}%
+\end{pgfonlayer}%
+}
+
+\def\@reqfullcoursec#1,#2:#3#4#5#6{%
+\begin{pgfonlayer}{courses}%
+\node[draw,line width=\boldwidth,fill=#6,rounded corners=2pt,inner ysep=0.5pt](x#1y#2) at (#1,#2)%
+{\textsf{\textbf{%
+\renewcommand{\arraystretch}{1.7}%
+\href{\CourseURL{#1}{#2}{#3}}{\begin{tabular}{@{\hspace{1pt}}c@{\hspace{1pt}}}%
+\mbox{\smallersize#3}%
+\,\hfill\,%
+\mbox{\smallersize\renewcommand{\arraystretch}{0.5}\begin{tabular}[t]{@{}r@{}}#5\end{tabular}}%
+\\ #4%
+\end{tabular}}}}%
+};%
+\@outputImapData#1,#2:{#3}{4}{5}%
+\end{pgfonlayer}%
+}
+
+\def\@fullcoursec#1,#2:#3#4#5#6{%
+\begin{pgfonlayer}{courses}%
+\node[draw,thin,fill=#6,rounded corners=2pt,inner ysep=0.5pt](x#1y#2) at (#1,#2)%
+{\textsf{%
+\renewcommand{\arraystretch}{1.7}%
+\href{\CourseURL{#1}{#2}{#3}}{\begin{tabular}{@{\hspace{1pt}}c@{\hspace{1pt}}}%
+\mbox{\smallersize#3}%
+\,\hfill\,%
+\mbox{\smallersize\renewcommand{\arraystretch}{0.5}\begin{tabular}[t]{@{}r@{}}#5\end{tabular}}%
+\\ #4%
+\end{tabular}}}%
+};%
+\@outputImapData#1,#2:{#3}{4}{5}%
+\end{pgfonlayer}%
+}
+
+\def\@optfullcourse#1,#2:#3#4#5{%
+\begin{pgfonlayer}{courses}%
+\node[draw,dotted,line width=\boldwidth,fill=\background,rounded corners=2pt,inner ysep=0.5pt](x#1y#2) at (#1,#2)%
+{\textsf{%
+\renewcommand{\arraystretch}{1.7}%
+\href{\CourseURL{#1}{#2}{#3}}{\begin{tabular}{@{\hspace{1pt}}c@{\hspace{1pt}}}%
+\mbox{\smallersize#3}%
+\,\hfill\,%
+\mbox{\smallersize\renewcommand{\arraystretch}{0.5}\begin{tabular}[t]{@{}r@{}}#5\end{tabular}}%
+\\ #4%
+\end{tabular}}}%
+};%
+\@outputImapData#1,#2:{#3}{4}{5}%
+\end{pgfonlayer}%
+}
+
+
+\def\@optfullcoursec#1,#2:#3#4#5#6{%
+\begin{pgfonlayer}{courses}%
+\node[draw,dotted,line width=\boldwidth,fill=#6,rounded corners=2pt,inner ysep=0.5pt](x#1y#2) at (#1,#2)%
+{\textsf{%
+\renewcommand{\arraystretch}{1.7}%
+\href{\CourseURL{#1}{#2}{#3}}{\begin{tabular}{@{\hspace{1pt}}c@{\hspace{1pt}}}%
+\mbox{\smallersize#3}%
+\,\hfill\,%
+\mbox{\smallersize\renewcommand{\arraystretch}{0.5}\begin{tabular}[t]{@{}r@{}}#5\end{tabular}}%
+\\ #4%
+\end{tabular}}}%
+};%
+\@outputImapData#1,#2:{#3}{4}{5}%
+\end{pgfonlayer}%
+}
+
+\def\@mini#1,#2:#3{%
+\begin{pgfonlayer}{courses}%
+\ifgridon
+  \node[fill=white,draw=white,inner ysep=1.8pt](x#1y#2) at (#1,#2)%
+  {\textsf{%
+  \href{\CourseURL{#1}{#2}{#3}}{%
+  \mbox{\smallersize#3}}}};%
+\else
+  \node[fill=none,draw=none,inner ysep=1.8pt](x#1y#2) at (#1,#2)%
+  {\textsf{%
+  \href{\CourseURL{#1}{#2}{#3}}{%
+  \mbox{\smallersize#3}}}};%
+\fi
+\@outputImapData#1,#2:{#3}{2}{1}%
+\end{pgfonlayer}%
+}
+
+\def\@text#1,#2:#3{%
+% include coordinates if grid on, but don't hyperlink if grid off
+\begin{pgfonlayer}{courses}%
+\ifgridon
+  \node[fill=white,draw=white,inner ysep=1.8pt](x#1y#2) at (#1,#2)%
+{\href{coord: #1,#2}{\mbox{#3}}};%
+\else
+  \node[fill=none,draw=none,inner ysep=1.8pt](x#1y#2) at (#1,#2){\mbox{#3}};%
+\fi
+\end{pgfonlayer}%
+}
+
+\def\@prereq#1,#2,#3,#4:{%
+  \setcounter{@dy}{#2-#4}
+  \ifnum\the@dy<10 
+    \@straight#1,#2,#3,#4:
+  \else\ifnum#1=#3 
+    \@straight#1,#2,#3,#4:
+  \else\ifnum#2=#4 
+    \@straight#1,#2,#3,#4:
+  \else
+    \@prereqc#1,#2,#3,#4;\DefaultCurvature:
+  \fi\fi\fi
+}
+
+\def\@prereqc#1,#2,#3,#4;#5:{%
+  \ifnum#5=0 
+    \@straight#1,#2,#3,#4:
+  \else
+    \@curved#1,#2,#3,#4;#5:
+  \fi
+} 
+
+\def\@recomm#1,#2,#3,#4:{%
+  \setcounter{@dy}{#2-#4}
+  \ifnum\the@dy<10 
+    \@straightDashed#1,#2,#3,#4:
+  \else\ifnum#1=#3 
+    \@straightDashed#1,#2,#3,#4:
+  \else\ifnum#2=#4 
+    \@straightDashed#1,#2,#3,#4:
+  \else
+    \@recommc#1,#2,#3,#4;\DefaultCurvature:
+  \fi\fi\fi
+}
+
+\def\@recommc#1,#2,#3,#4;#5:{%
+  \ifnum#5=0 
+    \@straightDashed#1,#2,#3,#4:
+  \else
+    \@curvedDashed#1,#2,#3,#4;#5:
+  \fi
+} 
+
+\def\@coreq#1,#2,#3,#4:{%
+  \setcounter{@dy}{#2-#4}
+  \ifnum\the@dy<10 
+    \@straightDotted#1,#2,#3,#4:
+  \else\ifnum#1=#3 
+    \@straightDotted#1,#2,#3,#4:
+  \else\ifnum#2=#4 
+    \@straightDotted#1,#2,#3,#4:
+  \else
+    \@coreqc#1,#2,#3,#4;\DefaultCurvature:
+  \fi\fi\fi
+}
+
+\def\@coreqc#1,#2,#3,#4;#5:{%
+  \ifnum#5=0 
+    \@straightDotted#1,#2,#3,#4:
+  \else
+    \@curvedDotted#1,#2,#3,#4;#5:
+  \fi
+} 
+
+
+
+\def\@straight#1,#2,#3,#4:{%
+  \begin{pgfonlayer}{arrows}
+  \draw[draw=white,line width=1.5pt](x#1y#2) -- (x#3y#4) ;
+  \draw[-latex',draw=white,very thin](x#1y#2) -- (x#3y#4) ;
+  \ifgridon
+    \draw[line width=\solidwidth](x#1y#2) -- node[anchor=mid] {\href{coord: #1,#2,#3,#4}{\textbullet}} (x#3y#4);
+  \else
+    \draw[line width=\solidwidth](x#1y#2) -- (x#3y#4) ;
+  \fi
+  \end{pgfonlayer}
+}
+
+
+\def\@curved#1,#2,#3,#4;#5:{
+  \setcounter{@dy}{#2-#4}
+  \ifnum#3<#1 
+    \setcounter{@dx}{#1-#3}
+    \setcounter{@myangle}{(-#5) * \the@dx * \the@dy * 2}
+  \else 
+    \setcounter{@dx}{#3-#1}
+    \setcounter{@myangle}{#5 * \the@dx * \the@dy * 2}
+  \fi
+  \setcounter{@myangle}{\the@myangle / ((\the@dx + \the@dy) * (\the@dx + \the@dy))}
+  \setcounter{@inangle}{180 - \the@myangle}
+  \begin{pgfonlayer}{arrows}
+  \draw[draw=white,line width=1.5pt](x#1y#2) to[out=\the@myangle,in=\the@inangle,relative] (x#3y#4) ;
+  \draw[-latex',draw=white,very thin](x#1y#2) to[out=\the@myangle,in=\the@inangle,relative] (x#3y#4) ;
+  \ifgridon
+    \draw[line width=\solidwidth](x#1y#2) to[out=\the@myangle,in=\the@inangle,relative] node[anchor=mid] {\href{coord: #1,#2,#3,#4}{\textbullet}} (x#3y#4) ;
+  \else
+    \draw[line width=\solidwidth](x#1y#2) to[out=\the@myangle,in=\the@inangle,relative] (x#3y#4) ;
+  \fi
+  \end{pgfonlayer}
+}
+
+\def\@straightDashed#1,#2,#3,#4:{%
+\begin{pgfonlayer}{arrows}
+\draw[draw=white,line width=1.5pt] (x#1y#2) -- (x#3y#4);
+\draw[-latex',draw=white,very thin] (x#1y#2) -- (x#3y#4);
+\ifgridon
+  \draw[dashed,line width=\dashedwidth] (x#1y#2) -- node[anchor=mid] {\href{coord: #1,#2,#3,#4}{\textbullet}} (x#3y#4) ;
+\else
+  \draw[dashed,line width=\dashedwidth] (x#1y#2) -- (x#3y#4);
+\fi
+\end{pgfonlayer}
+}
+
+\def\@curvedDashed#1,#2,#3,#4;#5:{
+  \setcounter{@dy}{#2-#4}
+  \ifnum#3<#1 
+    \setcounter{@dx}{#1-#3}
+    \setcounter{@myangle}{(-#5) * \the@dx * \the@dy * 2}
+  \else 
+    \setcounter{@dx}{#3-#1}
+    \setcounter{@myangle}{#5 * \the@dx * \the@dy * 2}
+  \fi
+  \setcounter{@myangle}{\the@myangle / ((\the@dx + \the@dy) * (\the@dx + \the@dy))}
+  \setcounter{@inangle}{180 - \the@myangle}
+  \begin{pgfonlayer}{arrows}
+  \draw[draw=white,line width=1.5pt](x#1y#2) to[out=\the@myangle,in=\the@inangle,relative] (x#3y#4) ;
+  \draw[-latex',draw=white,very thin](x#1y#2) to[out=\the@myangle,in=\the@inangle,relative] (x#3y#4) ;
+  \ifgridon
+    \draw[dashed,line width=\dashedwidth](x#1y#2) to[out=\the@myangle,in=\the@inangle,relative] node[anchor=mid] {\href{coord: #1,#2,#3,#4}{\textbullet}} (x#3y#4);
+  \else
+    \draw[dashed,line width=\dashedwidth](x#1y#2) to[out=\the@myangle,in=\the@inangle,relative] (x#3y#4);
+  \fi
+  \end{pgfonlayer}
+}
+
+\def\@straightDotted#1,#2,#3,#4:{%
+  \begin{pgfonlayer}{arrows}
+  \draw[draw=white,line width=1.5pt] (x#1y#2) -- (x#3y#4);
+  \draw[-latex',draw=white,very thin] (x#1y#2) -- (x#3y#4);
+  \ifgridon
+    \draw[loosely dotted,line width=\dottedwidth] (x#1y#2) -- node[anchor=mid] {\href{coord: #1,#2,#3,#4}{\textbullet}} (x#3y#4) ;
+  \else
+    \draw[loosely dotted,line width=\dottedwidth] (x#1y#2) -- (x#3y#4);
+  \fi
+  \end{pgfonlayer}
+}
+
+\def\@curvedDotted#1,#2,#3,#4;#5:{
+  \setcounter{@dy}{#2-#4}
+  \ifnum#3<#1 
+    \setcounter{@dx}{#1-#3}
+    \setcounter{@myangle}{(-#5) * \the@dx * \the@dy * 2}
+  \else 
+    \setcounter{@dx}{#3-#1}
+    \setcounter{@myangle}{#5 * \the@dx * \the@dy * 2}
+  \fi
+  \setcounter{@myangle}{\the@myangle / ((\the@dx + \the@dy) * (\the@dx + \the@dy))}
+  \setcounter{@inangle}{180 - \the@myangle}
+  \begin{pgfonlayer}{arrows}
+  \draw[draw=white,line width=1.5pt](x#1y#2) to[out=\the@myangle,in=\the@inangle,relative] (x#3y#4) ;
+  \draw[-latex',draw=white,very thin](x#1y#2) to[out=\the@myangle,in=\the@inangle,relative] (x#3y#4) ;
+  \ifgridon
+    \draw[loosely dotted,line width=\dottedwidth](x#1y#2) to[out=\the@myangle,in=\the@inangle,relative] node[anchor=mid] {\href{coord: #1,#2,#3,#4}{\textbullet}} (x#3y#4) ;
+  \else
+    \draw[loosely dotted,line width=\dottedwidth](x#1y#2) to[out=\the@myangle,in=\the@inangle,relative] (x#3y#4) ;
+  \fi
+  \end{pgfonlayer}
+}
+
+
+\def\@grid{
+  \gridontrue
+  \renewcommand{\CourseURL}[3]{coord: ##1,##2} % "coord:" makes it look like a URI
+
+  \begin{pgfonlayer}{grid}
+  \draw[line width=0.3pt,draw=verylight] (0,0) grid [step=1]  (\value{@gridright},\value{@gridtop});
+  \draw[line width=0.4pt,draw=somewhatlight] (0,0) grid [step=5] (\value{@gridright},\value{@gridtop});
+   
+  \foreach \i in {0,10,...,\value{@gridright}}
+     \node at (\i,-4){\mbox{\textsf{\small \i}}};
+
+  \foreach \i in {0,10,...,\value{@gridtop}}
+     \node at (-5,\i){\mbox{\textsf{\small \i}}};
+
+  \foreach \i in {0,10,...,\value{@gridright}}
+     \node at (\i,\value{@gridtop}+4){\mbox{\textsf{\small \i}}};
+
+  \foreach \i in {0,10,...,\value{@gridtop}}
+     \node at (\value{@gridright}+5,\i){\mbox{\textsf{\small \i}}};
+
+  % anchors are to allow computation of coordinates from mouse clicks in kpdf/okular:
+  % latex/dvips requires non-null href box
+  \node at (-5,-4) {\href{anchor: -5,-4}{\kern1sp}};
+  \setcounter{@gridtop}{\value{@gridtop} + 4}
+  \setcounter{@gridright}{\value{@gridright} + 5}
+  \node at (\the@gridright,\the@gridtop) {\href{anchor: \the@gridright,\the@gridtop}{\kern1sp}};  
+  \end{pgfonlayer}
+}
+
+%
+%
+%   \begin{chart}  ...  \end{chart}
+%
+%
+
+\newenvironment{chart}
+{ \setcounter{@diagwidth}{10 + 1 * \ratio{\textwidth}{\unit}}
+
+  \newwrite\@imapfile    % image-map data
+  \newwrite\@scriptfile  % shell script to generate image file
+  \ifthenelse{\value{chart} = 0}
+  { \immediate\openout\@imapfile=\jobname.map
+    \immediate\write\@imapfile{<map name="\jobname">}
+  }
+  { \immediate\openout\@imapfile=\jobname_\thechart.map
+    \immediate\write\@imapfile{<map name="\jobname_\thechart">}
+  }
+
+  \let\halfcourse=\@halfcourse
+  \let\halfcoursec=\@halfcoursec
+  \let\reqhalfcourse=\@reqhalfcourse
+  \let\reqhalfcoursec=\@reqhalfcoursec
+  \let\opthalfcourse=\@opthalfcourse
+  \let\opthalfcoursec=\@opthalfcoursec
+  \let\fullcourse=\@fullcourse
+  \let\fullcoursec=\@fullcoursec
+  \let\reqfullcourse=\@reqfullcourse
+  \let\reqfullcoursec=\@reqfullcoursec
+  \let\optfullcourse=\@optfullcourse
+  \let\optfullcoursec=\@optfullcoursec
+  \let\mini=\@mini
+  \let\text=\@text
+  \let\prereq=\@prereq
+  \let\prereqc=\@prereqc
+  \let\coreq=\@coreq
+  \let\coreqc=\@coreqc   
+  \let\recomm=\@recomm
+  \let\recommc=\@recommc
+  \let\grid=\@grid
+  \begin{tikzpicture}[x=\unit,y=\unit]
+  \tikzstyle{every rectangle node}=[inner xsep=1.8pt]
+  \setcounter{@gridwidth}{(\the@diagwidth-5) / 10}
+  \setcounter{@gridright}{10 * \value{@gridwidth}}
+  \setcounter{@gridheight}{\thediagheight / 10}
+  \setcounter{@gridtop}{10 * \value{@gridheight} }
+  \useasboundingbox (0,-2) rectangle (\value{@gridright},\value{@gridtop});
+  node at (0,0) {\kern1sp\zsavepos{gridOrigin_\thechart}};  
+  % access absolute page coordinates of the origin using \zposx and \zposy
+}
+{ 
+  \end{tikzpicture}
+  \write\@imapfile{</map>}
+  \closeout\@imapfile
+  \zsavepos{EndOfChart_\thechart}  % determine cropping coordinates
+  \ifdim\paperwidth<\paperheight 
+    % portrait mode
+    \setcounter{xSE}{\dpi * \ratio{\zposx{EndOfChart_\thechart}sp}{1in}}%
+    \setcounter{ySE}{ \dpi * \ratio{\paperheight}{1in}}
+    \addtocounter{ySE}{0 - \dpi * \ratio{\zposy{EndOfChart_\thechart}sp}{1in}}
+    \addtocounter{ySE}{0 + 2 * \PixelsPerUnit }  % bottom margin
+  \else  
+    % landscape mode
+    \setcounter{xSE}{ \dpi * \ratio{\paperwidth}{1in}}
+    \addtocounter{xSE}{0 - \dpi * \ratio{\zposx{EndOfChart_\thechart}sp}{1in}}%
+    \addtocounter{xSE}{0 + 2 * \PixelsPerUnit }  % bottom margin
+    \setcounter{ySE}{ \dpi * \ratio{\paperheight}{1in}}
+    \addtocounter{ySE}{ 0 - \dpi * \ratio{\zposy{EndOfChart_\thechart}sp}{1in}}
+  \fi
+  \edef\HasH{\expandafter\@gobble\string\#}
+  \ifthenelse{\value{chart} = 0}
+  { % generate a script to crop a chart image
+    \immediate\openout\@scriptfile=\jobname.sh
+    \immediate\write\@scriptfile{\HasH!/bin/sh}
+    %  defer remaining output till cropping coordinates are available
+    \write\@scriptfile{mogrify -crop \thexSE x\theySE +0+0 \jobname.png}
+    \write\@scriptfile{exit 0}
+    \closeout\@scriptfile
+  }
+  { % more than one chart; unlikely a script would be usable
+  }
+  \stepcounter{chart}
+}

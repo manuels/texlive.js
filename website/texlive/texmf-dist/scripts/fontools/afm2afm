@@ -1,0 +1,442 @@
+#! /usr/bin/env perl
+
+=begin COPYRIGHT
+
+----------------------------------------------------------------------------
+
+    Copyright (C) 2005-2012 Marc Penninga.
+
+    This program is free software; you can redistribute it and/or
+    modify it under the terms of the GNU General Public License
+    as published by the Free Software Foundation, either version 2
+    of the License, or (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program; if not, write to
+        Free Software Foundation, Inc.,
+        59 Temple Place,
+        Suite 330,
+        Boston, MA 02111-1307,
+        USA
+
+----------------------------------------------------------------------------
+
+=end COPYRIGHT
+
+=cut
+
+use strict;
+use warnings;
+
+use File::Basename;
+use Getopt::Long;
+use Pod::Usage;
+
+use v5.10;
+
+parse_commandline();
+
+my $afm = read_afm($ARGV[0]);
+
+# If user specified encoding, use that; else, use encoding from .afm file
+my $enc = $ARGV{encoding} ? read_enc($ARGV{encoding})
+        :                   get_enc($afm)
+        ;
+# Make lookup table to quickly see if a character is present in the encoding
+my %char_in_enc = map { ($_ => 1) } @{$enc->{vector}};
+
+print_fontinfo($afm->{fontinfo}, $enc->{scheme});
+print_charmetrics($afm->{metrics}, $enc->{vector});
+print_kerndata($afm->{kernpairs}, $afm->{trackkerns}, \%char_in_enc);
+print_composites($afm->{composites}, \%char_in_enc);
+print "EndFontMetrics\n";
+
+close select *STDOUT if $ARGV{output};
+
+print_mapentry($afm->{fontinfo}, , $enc->{scheme})
+    if $ARGV{encoding} && $ARGV{output};
+
+#-----------------------------------------------------------------------
+#
+#-----------------------------------------------------------------------
+sub parse_commandline {
+    Getopt::Long::GetOptions(
+        'help|?'     => sub { pod2usage(-verbose => 1) },
+        'encoding=s' => \$ARGV{encoding},
+        'output=s'   => \$ARGV{output},
+    )
+    or pod2usage(-verbose => 0);
+
+    pod2usage(-verbose => 0) if @ARGV != 1;
+
+    if ($ARGV{output}) {
+        $ARGV{output} .= '.afm' unless $ARGV{output} =~ m/[.]afm\z/xms;
+        open my $output, '>', $ARGV{output}
+            or die "[ERROR] can't open '$ARGV{output}': $!";
+        select $output;
+    }
+
+    return;
+}
+
+#-----------------------------------------------------------------------
+#
+#-----------------------------------------------------------------------
+sub read_afm {
+    my $filename = shift;
+    open my $afmfile, '<', $filename
+        or die "[ERROR] can't open '$filename': $!";
+
+    my %afm = (
+        fontinfo   => [],
+        metrics    => [],
+        kernpairs  => [],
+        trackkerns => [],
+        composites => [],
+    );
+
+    until ((my $line = <$afmfile>) =~ m/StartCharMetrics/xms) {
+        push @{$afm{fontinfo}}, $line;
+    }
+
+    for (<$afmfile>) {
+        when (m/\A\s* C         \s/xms) { push @{$afm{metrics}},    $_ }
+        when (m/\A\s* KPX       \s/xms) { push @{$afm{kernpairs}},  $_ }
+        when (m/\A\s* TrackKern \s/xms) { push @{$afm{trackkerns}}, $_ }
+        when (m/\A\s* CC        \s/xms) { push @{$afm{composites}}, $_ }
+    }
+
+    close $afmfile;
+
+    return \%afm;
+}
+
+#-----------------------------------------------------------------------
+# Get encoding name and vector from the specified .enc file
+#-----------------------------------------------------------------------
+sub read_enc {
+    my $filename = shift;
+
+    open my $encfile, '<', $filename
+        or die "[ERROR] can't open '$filename': $!";
+    my $data = join ' ', map { s/%.+|\n//xmsg; $_ } <$encfile>;
+    close $encfile;
+
+    my ($scheme, $encoding)
+        = $data =~ m{ /([-\w]+) \s* [[] (.+) []] \s* def }xms
+        or die "[ERROR] parsing encoding file '$filename' failed";
+
+    return { scheme => $scheme,
+             vector => [ $encoding =~ m{ /([.\w]+) }xmsg ],
+    };
+}
+
+#-----------------------------------------------------------------------
+# Get encoding from the input .afm file
+#-----------------------------------------------------------------------
+sub get_enc {
+    my $afm = shift;
+
+    my %enc = ( scheme => 'FontSpecific', vector => [ ('/.undef') x 256 ] );
+
+    for my $line (@{$afm->{fontinfo}}) {
+        if ($line =~ m/EncodingScheme \s+ ([-\w]+)/xms) {
+            $enc{scheme} = $1;
+            last;
+        }
+    }
+    for my $line (@{$afm->{metrics}}) {
+        my ($pos, $name)
+            = $line =~ m/C \s+ ([-]?\d+) .+? N \s+ ([.\w]+)/xms
+            or die;
+        $enc{vector}[$pos] = $name unless $pos == -1;
+    }
+
+    return \%enc;
+}
+
+#-----------------------------------------------------------------------
+#
+#-----------------------------------------------------------------------
+sub print_fontinfo {
+    my ($fontinfo, $scheme) = @_;
+
+    for my $line (@$fontinfo) {
+        $line = "EncodingScheme $scheme\n"
+            if $line =~ m/EncodingScheme/xms;
+        print $line;
+    }
+
+    return;
+}
+
+#-----------------------------------------------------------------------
+# Print character metrics for characters in specified encoding
+#-----------------------------------------------------------------------
+sub print_charmetrics {
+    my ($metrics, $vector) = @_;
+
+    my %metrics = map { m/(WX .+? N \s+ ([.\w]+) .+)/xms; ($2 => $1) }
+                      @$metrics;
+
+    print "StartCharMetrics @{[ scalar grep { $metrics{$_} } @$vector ]}\n";
+    for my $i (0 .. 255) {
+        next unless $metrics{$vector->[$i]};
+        print "C $i ; $metrics{$vector->[$i]}";
+    }
+    print "EndCharMetrics\n";
+
+    return;
+}
+
+#-----------------------------------------------------------------------
+# Print kerning data for characters in specified encoding
+#-----------------------------------------------------------------------
+sub print_kerndata {
+    my ($kernpairs, $trackkerns, $char_in_enc) = @_;
+
+    my @kernpairs = grep { m/\A\s* KPX \s+ ([.\w]+) \s+ ([.\w]+)/xms
+                           and $char_in_enc->{$1}
+                           and $char_in_enc->{$2}
+                         }
+                         @$kernpairs;
+
+    if (@kernpairs || @$trackkerns) {
+        print "StartKernData\n";
+        if (@kernpairs) {
+            print "StartKernPairs @{[ scalar @kernpairs ]}\n";
+            print @kernpairs;
+            print "EndKernPairs\n";
+        }
+        if (@$trackkerns) {
+            print "StartTrackKern @{[ scalar @$trackkerns ]}\n";
+            print @$trackkerns;
+            print "EndTrackKern\n";
+        }
+        print "EndKernData\n";
+    }
+
+    return;
+}
+
+#-----------------------------------------------------------------------
+# Print "composite" info for characters in specified encoding
+#-----------------------------------------------------------------------
+sub print_composites {
+    my ($composites, $char_in_enc) = @_;
+
+    # Each line mentions several characters: the composite and two or more
+    # 'base' characters. We only print the line if all characters are
+    # present in the specified encoding
+    my @composites;
+    COMPOSITE:
+    for my $composite (@$composites) {
+        my @chars = $composite =~ m/(?:CC \s+ ([.\w]+))/xmsg;
+        for my $char (@chars) {
+            next COMPOSITE unless $char_in_enc->{$char};
+        }
+        push @composites, $composite;
+    }
+
+    if (@composites) {
+        print "StartComposites @{[ scalar @composites ]}\n";
+        print @composites;
+        print "EndComposites\n";
+    }
+
+    return;
+}
+
+#-----------------------------------------------------------------------
+#
+#-----------------------------------------------------------------------
+sub print_mapentry {
+    my ($fontinfo, $scheme) = @_;
+
+    my $fontname = '';
+    (my $fontfile = basename($ARGV[0]      // '')) =~ s/[.]afm\z//xms;
+    (my $output   = basename($ARGV{output} // '')) =~ s/[.]afm\z//xms;
+
+    for my $line (@$fontinfo) {
+        if ($line =~ m/FontName \s+ ([-\w]+)/xms) {
+            $fontname = $1;
+            last;
+        }
+    }
+
+    print {*STDOUT} qq(${output} ${fontname} <${fontfile}.pfb ),
+                    qq(<[$ARGV{encoding} "${scheme} ReEncodeFont"\n);
+
+    return;
+
+}
+
+__END__
+
+
+############################################################################
+
+    To create the documentation:
+
+    pod2man --center="Marc Penninga" --release="fontools" --section=1 \
+        afm2afm - | groff -Tps -man - | ps2pdf - afm2afm.pdf
+
+=pod
+
+=head1 NAME
+
+afm2afm - reencode an F<afm> file
+
+=head1 SYNOPSIS
+
+=over 8
+
+=item B<afm2afm>
+
+[B<-help>]
+[B<-encoding> I<encodingfile>]
+[B<-output> I<outputfile>]
+B<afmfile>
+
+=back
+
+
+=head1 DESCRIPTION
+
+B<afm2afm> re-encodes an F<afm> file.
+
+Metrics (including kerning data) for characters not present in the
+chosen encoding are excluded from the output, which resuls in
+much smaller files.
+
+Note that if you don't specify an encoding file, the F<afm> file
+isn't re-encoded, but the unused data is still pruned.
+
+The program also generates an entry for a F<dvips>-style map file,
+but only if the F<afm> file has been re-encoded and
+the output was written to file
+(i.e., if both the I<-encoding> and I<-output> options were specified).
+
+
+=head1 OPTIONS AND ARGUMENTS
+
+=over 4
+
+=item B<-help>
+
+Print a short description of the syntax
+
+=item B<-encoding> I<encodingfile>
+
+Re-encode to the enconding in I<encodingfile>
+
+=item B<-output> I<outputfile>
+
+Write the result to I<outputfile> instead of C<stdout>.
+
+=item B<afmfile>
+
+The F<afm> file to be re-encoded.
+
+=back
+
+Option names may be shortened to a unique prefix.
+
+
+=head1 AUTHOR
+
+Marc Penninga <marcpenninga@gmail.com>
+
+
+=head1 COPYRIGHT
+
+Copyright (C) 2005-2012 Marc Penninga.
+
+
+=head1 LICENSE
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published
+by the Free Software Foundation, either version 2 of the License,
+or (at your option) any later version.
+A copy of the GNU General Public License is included with B<autoinst>;
+see the file F<GPLv2.txt>.
+
+
+=head1 DISCLAIMER
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU General Public License for more details.
+
+
+=head1 RECENT CHANGES
+
+(See the source code for the rest of the story.)
+
+=over 12
+
+=item I<2012-02-01>
+
+Refactored the code; added the "no re-encoding, only pruning"
+functionality.
+
+=back
+
+
+=begin Really_old_history
+
+=over 12
+
+=item I<2005-01-10>
+
+First version
+
+=item I<2005-01-25>
+
+Added printing of mapfile entry
+
+=item I<2005-02-18>
+
+Rewrote some of the code
+
+=item I<2005-03-08>
+
+Input files searched via B<kpsewhich> (where available)
+
+=item I<2005-03-15>
+
+Input files searched using B<kpsewhich> or B<findtexmf> (if available)
+
+=item I<2005-04-15>
+
+Updated creation of mapfile entry; look for font file to deduce the correct
+font file format (pfb, pfa, ttf). If no font file is found,
+pfb is assumed.
+
+=item I<2005-04-20>
+
+Program quits if the specified output file exists
+
+=item I<2005-04-29>
+
+Improved the documentation
+
+=item I<2005-07-29>
+
+Some updates to the documentation
+
+=item I<2006-01-12>
+
+A few minor changes to the code
+
+=back
+
+=cut
+

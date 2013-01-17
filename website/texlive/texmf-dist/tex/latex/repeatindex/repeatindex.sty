@@ -1,0 +1,134 @@
+%%
+%% repeatindex.sty
+%%
+%% Copyright 2001  Harald Harders (h.harders@tu-bs.de)
+%% License is LPPL.
+%%
+%%
+%% This Package repeats item of an index if a page or column
+%% break occurs within a list of subitems. 
+%% This helps to find out to which main item a subitem belongs.
+%%
+%% Example:
+%%
+%%    Main Item A, 1, 3, 6             Main Item A...
+%%       Subitem a, 1                      Subitem g, 1
+%%       Subitem b, 1                      Subitem h, 1
+%%       Subitem c, 2                      Subitem i, 1
+%%       Subitem d, 3                      Subitem j, 1
+%%       Subitem d, 1                  Main Item B, 3, 6
+%%       Subitem e, 4                      Subitem a, 3
+%%       Subitem f, 2                      Subitem b, 4
+%%
+%% To get that behaviour you have to include the package into your
+%% document using  \usepackage{repeatindex}, and you have to produce
+%% the .ind file in a special format in which the entries of the \item
+%% are enclosed in [...] (example:   \item [Main Item A], 1, 3, 6  ).
+%% This can be achieved using repeatindex.ist:
+%%     makeindex -s repeatindex  file
+%%
+%% Problems:
+%% - When an item is repeated a small vertical space is included two
+%%   items later
+%% - If the last item is a subitem and the only entry on the last page
+%%   of the index the repeation is omitted
+%%
+%% This package has not been tested much, yet. Please help me to find
+%% more problems and if possible solutions to my problems.
+%% I have had much trouble in solving the problem that the code
+%% defined in afterpage is executed with a delay.
+%%
+%% Harald Harders, 2001/10/13
+%% h.harders@tu-bs.de
+%%
+\ProvidesPackage{repeatindex}[2001/10/13 v0.01 Repeats index entries]
+% Write text at page and column breaks
+\RequirePackage{afterpage}
+% Include Index stuff
+\RequirePackage{makeidx}
+
+% Command that replaces all contents of afterpage
+\long\def\hhafterpage#1{%
+  \gdef\AP@{{#1\par}}%
+  \global\output{%
+    \the\AP@output
+    \ifnum\outputpenalty>-\@Mi
+      \global\output\expandafter{\the\AP@output}%
+      \aftergroup\AP@@
+    \fi}%
+}
+
+% Entry to be repeated
+% temporary variable
+\def\@entry{}%
+% final variable
+\def\@@entry{}%
+
+\def\@hhempty{\@empty}
+
+\def\entryprefix{\itshape}
+\def\entrypostfix{\dots}
+
+\AtBeginDocument{%
+  % Save original item commands
+  \let\orig@idxitem\@idxitem
+  \let\orig@subitem\subitem
+  \let\orig@subsubitem\subsubitem
+  %
+  % New \item command, has to be used "\item [entry], pages"
+  \renewcommand{\@idxitem}[1][\@empty]{%
+    % call original command
+    \orig@idxitem #1%
+    % save entry in \@arg
+    \def\@arg{#1}%
+    \ifx\@arg\@hhempty
+    \else
+      % if entry not empty (which is the case if called by \subitem or
+      % \subsubitem) copy entry to \@entry
+      \xdef\@entry{#1}%
+      % Delete the contents to be repeated
+      \hhafterpage{}%
+    \fi
+  }%
+  %
+  % New \subitem command, to be used as usual
+  \renewcommand{\subitem}{%
+    % call original command
+    \orig@subitem
+    % set the contents to be repeated on the next page
+    \expandafter\hhafterpage\expandafter{\expandafter\par\expandafter{%
+        \expandafter\expandafter\entryprefix\@@entry\entrypostfix}}%
+    % copy \@entry to \@@entry. This is done to delay the entry to be
+    % put onto the page, due to a strange behaviour of afterpage (some
+    % text of the next page is executed before the afterpage text is
+    % put onto the page).
+    \xdef\@@entry{\@entry}%
+  }%
+  %
+  % New \subsubitem command, to be used as usual
+  \renewcommand{\subsubitem}{%
+    % call original command
+    \orig@subsubitem
+    % set the contents to be repeated on the next page
+    \expandafter\hhafterpage\expandafter{\expandafter\par\expandafter{%
+        \expandafter\expandafter\itshape\@@entry\dots}}%
+    % copy \@entry to \@@entry. This is done to delay the entry to be
+    % put onto the page, due to a strange behaviour of afterpage (some
+    % text of the next page is executed before the afterpage text is
+    % put onto the page).
+    \xdef\@@entry{\@entry}%
+  }%
+  %
+  % Copy original end of the theindex environment
+  \let\orig@endtheindex\endtheindex
+  % Redefine end of the theindex environment
+  \renewcommand{\endtheindex}{%
+    % switch off repeation
+    \hhafterpage{}%
+    % call original command
+    \orig@endtheindex
+  }%
+%
+}
+
+\endinput

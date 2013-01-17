@@ -1,0 +1,407 @@
+% This file is part of the Lecturer package.
+% Paul Isambert -- July 2010.
+% 
+% ATTRIBUTES
+% 
+\restrictparameter job: background fullscreen normal title pdftitle author pdfauthor date mode menutext autofullscreen font\par
+\ltr@boolean_attr{job:fullscreen} \ltr@boolean_attr{job:autofullscreen}
+\ltr@restrictattribute job:normal; none outlines thumbs layers\par
+\ltr@restrictattribute job:mode; presentation handout\par
+\defactiveparameter job {%
+  \ltr@ifvalue #1:mode; = presentation
+    {\def\handoutonly{\gobbleoneand\ignorespaces}%
+     \let\presentationonly\unbrace
+     \let\presentationorhandout\firstoftwo}
+    {\let\handoutonly\unbrace
+     \def\presentationonly{\gobbleoneand\ignorespaces}%
+     \let\presentationorhandout\secondoftwo}
+  \ltr@storevalueor\Title #1:title;{\let\Title\emptycs}%
+  \ltr@storevalueor\Author #1:author;{\let\Author\emptycs}%
+  \ltr@storevalueor\Date #1:date;{\def\Date{\the\month/\the\day/\the\year}}%
+  \pdfinfo{%
+    \ltr@ifattribute #1:pdfauthor;%
+      {/Author (\ltr@usevalue #1:pdfauthor;)}
+      {\ltr@ifattribute #1:author;{/Author (\ltr@usevalue #1:author;)}{}}
+    \ltr@ifattribute #1:pdftitle;%
+      {/Title (\ltr@usevalue #1:pdftitle;)}
+      {\ltr@ifattribute #1:title;{/Title (\ltr@usevalue #1:title;)}{}}
+    /Creator (TeX, with a little help from Lecturer) % Yes, pure self-advertising
+    }%
+  \pdfcatalog{%
+    /PageMode\ltr@ifvalue #1:fullscreen; = true
+      {/FullScreen}
+      {\ltr@ifcasevalue#1:normal;
+         \val none     /UseNone
+         \val outlines /UseOutlines
+         \val thumbs   /UseThumbs
+         \val layers   /UseOC
+         \elseval      /UseNone
+       \endval}
+    /ViewerPreferences << /NonFullScreenPageMode
+      \ltr@ifcasevalue#1:normal;
+        \val none     /UseNone
+        \val outlines /UseOutlines
+        \val thumbs   /UseThumbs
+        \val layers   /UseOC
+        \elseval      /UseNone
+      \endval >>
+    }%
+  \ltr@ifattribute #1:background;
+    % It makes sense for the job parameter to appear at the beginning
+    % of the document, before color definition. If this were added,
+    % immediately, the color wouldn't be right. That's why
+    % this will be added at the job's end to the document's catalog.
+    {\def\ltr@job_background{/OpenAction << /S/JavaScript /JS(app.fs.backgroundColor=\ltr@jscolor_use{#1}{background}{0})>>}}{}
+  }
+\setparameter job:
+  mode       = presentation
+  normal     = outlines
+  title      = \jobname
+  menutext   = ***
+  fullscreen = false
+  autofullscreen = false
+\par
+
+%
+%
+%
+% OUTPUT ROUTINE
+% It is called by \endslide.
+%
+\def\ltr@output_penalty{-15000\relax}
+%
+% One day perhaps I'll make slides that can break
+% when the content is too large. Which means:
+% output before every step, check the accumulated
+% material, etc. Which is not too complicated. The
+% hardest part comes with \position (they must be
+% treated as insertions) and OCGs (they must be recorded
+% to the page only if the step isn't moved to the next
+% one, whereas for the moment OCGs are created with the
+% step itself). And there'll be trouble anyway with content
+% related to elements that occur on two different pages
+% because of a split (e.g. optional content controlled
+% by the first and last steps). Which, for the moment,
+% is too much work with little benefit (slides aren't
+% supposed to be too large!).
+%
+\output{%
+  \ifnum\outputpenalty=\ltr@output_penalty
+    \ltr@slide_output
+  \else
+    {\setbox\ltr@temp_box=\box255}%
+  \fi}
+\newbox\ltr@output_box
+\def\ltr@slide_output{%    
+    % This chains the steps.
+    \reverse\iffemptycommand\ltr@page_steplist{\passexpanded{\ltr@output_loop{}{}{}}\ltr@page_steplist}
+    % For LaTeX, otherwise you get errors in \write statements.
+    \ifnum\formatnumber>3
+      \let\protect\noexpand
+    \fi
+    \setbox\ltr@output_box=\vbox{\unvbox255}
+    \ltr@ifattribute ltr@inner_slide:vsize;
+      {}
+      {\ltr@setattribute ltr@inner_slide:vsize; = {\dimexpr(\pdfpageheight-2\pdfvorigin)\relax} }% We badly need this value.
+    % If the page is too high, it is scaled if scale=true.
+    \ifdim\dimexpr\ht\ltr@output_box-\pageshrink>\ltr@usevalue ltr@inner_slide:vsize;\relax
+      \ltr@ifvalue ltr@inner_slide:scale; = true
+        {\setbox\ltr@output_box=\vbox{
+           \pdfsave
+           \pdfsetmatrix{\ltr@point_convert{\ltr@usevalue ltr@inner_slide:vsize;/\ltr@integer{\ht\ltr@output_box-\pageshrink}} 0 0
+             \ltr@point_convert{\ltr@usevalue ltr@inner_slide:vsize;/\ltr@integer{\ht\ltr@output_box-\pageshrink}}}
+           \unvcopy\ltr@output_box
+           \kern-\dimexpr\ht\ltr@output_box-\pageshrink\relax \kern-\dp\ltr@output_box
+           \pdfrestore
+           \kern\dimexpr\ht\ltr@output_box-\pageshrink\relax \kern\dp\ltr@output_box
+           }}{}
+    \fi
+    \shipout\vbox{% At last...
+      \pdfliteral direct {q}
+      % Paints the slide background.
+      \pdfliteral {%
+        q
+         \ltr@passvalueand\ltr@paint_area ltr@inner_slide:background;{{0pt}{0pt}\pdfpagewidth\pdfpageheight}{}%
+        Q}
+      % Puts the background image, if any.
+      \ltr@passvalueand{\ltr@image_use}ltr@inner_slide:image;{{0pt}{0pt}}{}
+      % Puts the areas.
+      \expandafter\ltr@output_arealoop\expandafter{\ltr@area_list}%
+      % Set the slide's foreground color and release that good ol' box.
+      \pdfcolorstack0 push {\ltr@passvalueor\ltr@color_use ltr@inner_slide:foreground;{\ltr@color_use{black}}}
+      \vbox to \ltr@usevalue ltr@inner_slide:vsize;{%
+        \ltr@ifcasevalue ltr@inner_slide:vpos;
+          \val top    \unvbox\ltr@output_box \vfil
+          \val center \vfil\unvbox\ltr@output_box \vfil
+          \val bottom \vfil\unvbox\ltr@output_box
+          \elseval    \unvbox\ltr@output_box \vfil
+        \endval
+        }%
+      \pdfcolorstack0 pop
+      \pdfliteral page {%
+        Q
+        q
+          1 0 0 -1 0 \ltr@point_convert\pdfpageheight cm
+          \passexpanded\ltr@grid_loop\ltr@grids
+        Q}
+       }
+    \ifnum\formatnumber>2 
+      \let\protect\relax
+    \fi
+    \advanceslideno
+  }
+\def\ltr@remove_ltr ltr@#1@inner_area{#1}
+\newfor\ltr@output_arealoop#1,{%
+  \passexpanded\ltr@area_check{\ltr@remove_ltr#1}%
+  \iffltr@area_do{%
+    \ifvoid\usecs{#1:box}
+      % Draw the area's background unless the box is empty
+      % and not visible.
+      \ltr@ifvalue #1:visible; = true {\ltr@area_draw{#1}}{}
+    \else
+      \ltr@ifvalue #1:visible; = step
+        {\pdfliteral {/OC/#1_\the\slideno:background BDC}
+         \ltr@area_draw{#1}
+         \pdfliteral {EMC}}
+        {\ltr@area_draw{#1}}
+      % Position the box.
+      \kern\dimexpr(\dimexpr(\ltr@area_vshift{#1}+\ltr@area_top{#1})\relax-\pdfvorigin)\relax
+      % Use its foreground color.
+      \pdfcolorstack0 push {\ltr@passvalueor\ltr@color_use #1:foreground;{\ltr@color_use{black}}}
+      \moveright\dimexpr(\dimexpr(\ltr@area_hshift{#1}+\ltr@area_left{#1})\relax-\pdfhorigin)\relax
+        \vbox to \ltr@area_vsize{#1}\relax{%
+          \ltr@ifcasevalue #1:vpos;
+            \val top    \unvbox\usecs{#1:box} \vfil
+            \val center \ltr@temp_dimen=\dp\usecs{#1:box}\vfil\unvbox\usecs{#1:box} \kern-\ltr@temp_dimen\vfil
+            \val bottom \vfil\unvbox\usecs{#1:box}
+            \elseval    \unvbox\usecs{#1:box} \vfil
+          \endval
+          }%
+      \pdfcolorstack0 pop
+      \kern-\dimexpr(%
+        \dimexpr(\ltr@area_vshift{#1}+\ltr@area_top{#1})\relax
+        +\ltr@area_vsize{#1}+\prevdepth-\pdfvorigin)\relax
+      \global\letcs{#1:done}\ltr@undefined
+    \fi}
+  \prevdepth-1000pt
+  }
+\def\ltr@area_draw#1{%
+  \pdfliteral {%
+    % Paint the area's background if it has a color.
+    \ltr@ifattribute #1:background;{
+    q
+      \ifdim\ltr@usevalueor #1:frame_width;{0pt}<0pt
+        \ltr@passvalue\ltr@paint_area #1:background;
+          {\dimexpr(\ltr@area_hshift{#1}-\ltr@usevalue #1:frame_width;)}
+          {\dimexpr(\ltr@area_vshift{#1}-\ltr@usevalue #1:frame_width;)}
+          {\dimexpr(\ltr@area_width{#1})+2\ltr@usevalue #1:frame_width;}
+          {\dimexpr(\ltr@area_height{#1}+2\ltr@usevalue #1:frame_width;)}%
+      \else
+        \ltr@passvalue\ltr@paint_area #1:background;
+          {\dimexpr(\ltr@area_hshift{#1})}
+          {\dimexpr(\ltr@area_vshift{#1})}
+          {\dimexpr(\ltr@area_width{#1})}
+          {\dimexpr(\ltr@area_height{#1})}%
+      \fi
+    Q}{}
+    % Paint the frame iff not 0.
+    \ifpdfabsdim\ltr@usevalueor #1:frame_width;{0pt}>0pt
+      \ltr@ifattribute #1:frame_color;
+        {q
+         \ltr@paint_path{#1}
+           {\dimexpr(\ltr@area_hshift{#1})}
+           {\dimexpr(\ltr@area_vshift{#1})}
+           {\dimexpr(\ltr@area_width{#1})}
+           {\dimexpr(\ltr@area_height{#1})}%
+        Q}{}
+    \fi}
+    % Uses the image if any.
+    \ltr@passvalueand{\ltr@image_use}#1:image;
+      {{\ltr@area_hshift{#1}}{\ltr@area_vshift{#1}}}{}
+  }%
+%
+%
+%
+% Draws the grid at the end of the shipout.
+%
+\newfor\ltr@grid_loop#1#2#3#4#5{%
+  \ltr@color_use{#4}
+  \ltr@point_convert{#5} w
+  \ltr@grid_vertical{#1}{#3}{#2}
+  \ltr@grid_horizontal{#2}{#3}{#1}
+  }
+\newwhile\ltr@grid_vertical3{#1+#2}{#2}{#3}{%
+  \ifdim\dimexpr(#1)>\pdfpagewidth
+    \afterfi{\breakwhile{}}
+  \else
+    \ltr@point_convert{#1} \ltr@point_convert{#3} m
+    \ltr@point_convert{#1} \ltr@point_convert\pdfpageheight l S
+  \fi}
+\newwhile\ltr@grid_horizontal3{#1+#2}{#2}{#3}{%
+  \ifdim\dimexpr#1>\pdfpageheight
+    \afterfi{\breakwhile{}}
+  \else
+    \ltr@point_convert{#3} \ltr@point_convert{#1} m
+    \ltr@point_convert\pdfpagewidth \ltr@point_convert{#1} l S
+  \fi}  
+\def\ltr@grids{}
+\def\showgrid{%
+  \ifnextnospace[{\ltr@showgrid}{\ltr@showgrid[0pt,0pt]}%
+  }
+\def\ltr@showgrid[#1,#2]#3{%
+  \ifnext[{\ltr@showgrid_getarg{#1}{#2}{#3}}{\ltr@showgrid_getarg{#1}{#2}{#3}[grey .5]}%
+  }
+\def\ltr@showgrid_getarg#1#2#3[#4]{%
+  \ifnext[{\ltr@showgrid_do{#1}{#2}{#3}{#4}}{\ltr@showgrid_do{#1}{#2}{#3}{#4}[.2pt]}%
+  }
+\def\ltr@showgrid_do#1#2#3#4[#5]{%
+  \global\eaddright\ltr@grids{%
+    {\ifemptystring{#1}{0pt}{#1}}
+    {\ifemptystring{#2}{0pt}{#2}}
+    {#3}{#4}
+    {\ifemptystring{#5}{.2pt}{#5}}}%
+  }
+\def\hidegrids{\def\ltr@grids{}}
+%
+%
+%
+%
+% A loop to connect object.
+% #4 is the ordered list of objects on the page (those that
+% appear by themselves, although they can also be tied to
+% other ones).
+% #1 is the previously reserved action number,
+% #2 is the sequence to go back to the previous object,
+% #3 is the current object.
+%
+% Suppose (I'm talking to myself, I know), that
+% #4 extracts from "A,B,C,".
+% On first iteration, #1, #2 and #3 are empty.
+% We reserve an action number, and define the first
+% object on the page as this number. Then we pass
+% {<number>}{}{A} and the next iteration has B as #4.
+% Now, second iteration, we create the object with
+% <number> (and reserve another one before hand). #2 is empty,
+% meaning there's no previous object, thus /P(revious)A(ction)
+% for A is "go to the previous page".
+% #3 is not empty, it's A, and we build its /N(ext)A(ction),
+% i.e. what happens when we hit it with a move forward, as
+% its own appearance and the appearance and disappearance
+% of the objects that are tied to it via "on" and "off".
+% Now we pass {<new number>}{</PA of A>}{B} and #4 is C
+% (yes, we never use #4, we just pass it as #3).
+% Things are clearer now (!). We build the object
+% B with <new number>, create its /NA as before and
+% use #2 as /PA, since, A is just before B.
+% 
+\newfornoempty\ltr@output_loop{3}#4,{%
+  \pdfobj reserveobjnum
+  \ltr@temp_count=\pdflastobj
+  \ifemptystring{#1}
+    {\edef\ltr@page_firstobject{\the\ltr@temp_count\spacecs 0 R}%
+     \expandafter\passarguments\expandafter{\the\ltr@temp_count}{}{#4}}%
+    {\ltr@output_addtopagePA{#3}%
+     \immediate\pdfobj useobjnum #1 {%
+       << \ifemptystring{#2}{/PA << /S/Named /N/PrevPage >> }{#2}
+          \ltr@output_NA{#3}%
+          /Next \the\ltr@temp_count\spacecs 0 R >>}
+     \expandafter\passarguments\expandafter{\the\ltr@temp_count}{/Prev #1 0 R \ltr@output_PA{#3}}{#4}}}
+  [\ltr@output_addtopagePA{#3}%
+   \immediate\pdfobj useobjnum #1 {%
+     << \ifemptystring{#2}{/PA << /S/Named /N/PrevPage >> }{#2}% If there is only one object on the page, #2 is empty.
+        \ltr@output_NA{#3}%
+        /Next << 
+          /Prev #1 0 R 
+          \ltr@output_PA{#3}%
+          /NA << /S/Named /N/NextPage >> >>
+     >>}%
+   \addtopageobject{%
+    /PresSteps <<
+      /Prev <<
+        /Prev #1 0 R /NA << /S/Named /N/NextPage >>
+        \ltr@output_PA{#3}
+        >>
+      /PA << /S/SetOCGState /State [] /Next [ \ltr@page_PA ] >>
+      /Next \ltr@page_firstobject
+      /NA << /S/SetOCGState /State [/OFF \ltr@page_invisibleOCGs /ON \ltr@page_visibleOCGs] >>
+      >>}]
+\def\ltr@output_NA#1{%
+  /NA <<
+    /S/SetOCGState /State [/ON #1 0 R \ltr@OCGs_onoff{#1}{OFF}]
+    \iffcs{ltr@step_#1:transition}{/Next << /S/Trans /Trans \usecs{ltr@step_#1:transition} >> }%
+    >>
+  }%
+\def\ltr@output_PA#1{%
+  /PA << /S/SetOCGState /State [/OFF #1 0 R \ltr@OCGs_onoff{#1}{ON}] >>
+  }%
+\def\ltr@output_addtopagePA#1{%
+  \eaddright\ltr@page_PA{<< /S/SetOCGState /State [/ON #1 0 R \ltr@OCGs_onoff{#1}{OFF}] >> }%
+  }%
+\def\ltr@OCGs_onoff#1#2{%
+  \iffcs{ltr@step_#1:name}{%
+    \iffcs{ltr@step_\usecs{ltr@step_#1:name}:on}{\usecs{ltr@step_\usecs{ltr@step_#1:name}:on}}%
+    \iffcs{ltr@step_\usecs{ltr@step_#1:name}:off}{/#2 \usecs{ltr@step_\usecs{ltr@step_#1:name}:off}}}%
+  }
+\newfor\ltr@page_doPA#1{#1 }
+
+%
+% Now, things look like this (PresSteps is the root
+% object on the page):
+%
+% PresSteps: Prev = (Prev = C, PA = Hide C, NA = NextPage)
+%              PA = Shows the page as it is when it has been read
+%            Next = A
+%              NA = Shows the page as in its original appearance
+%         A:   NA = Show A + A-transition
+%            Next = B
+%              PA = PrevPage
+%         B:   NA = Show B + B-transition
+%            Next = C
+%              PA = Hide A
+%            Prev = A
+%         C:   NA = Show C + C-transition
+%            Next = (Prev = B, PA = Hide C, NA = NextPage)
+%              PA = Hide B
+%            Prev = B
+%
+% PDF works as follows: when you're on a step
+% and you move forward, you execute the NA
+% of the current step and then move to the one
+% specified by Next (and similarly for a move
+% backward). So, suppose you're on B and move
+% forward, then you show B and go to C. And
+% if you move forward again, you show C and
+% go to the unnamed node between parentheses.
+% Which is like any other node. If you go backward,
+% you hide C and go to C, etc.
+% Now, PresSteps is special, it's a slippery place.
+% Note that you can't reach it by a step: A has no
+% Prev entry. You go to PresSteps only when you
+% arrive on a page, and if you arrive by moving
+% forward Next becomes the new node immediately
+% (no need to move forward to reach A, otherwise
+% you'd need two clicks to make it appear). On the
+% other hand, if you come by moving backward, then
+% Prev becomes the current node immediately, and 
+% you can see what it does: if you move forward, it
+% goes to the next page, and if you move backward,
+% you hide C and make it the current node.
+% PresSteps also contains a PA and NA, which are
+% executed under the same circumstances; the NA
+% contains the list of steps of the page and their
+% original visibility; hence when one arrives on a
+% page, this visibility is restored. PA contains
+% the succession of actions made thoughout the page;
+% hence, when one arrives on it backward, this succession
+% of action is executed and one sees the completed page.
+% Thus, one avoids discrepancy between navigation and
+% step visibility.
+%
+% To say it otherwise, PresSteps is the gate to the
+% page, and you have to go through the gate to reach
+% the steps (they aren't linked together from one
+% page to the other.
+%
+% And I'm not really lecturing on PDF here. I'm just
+% trying to write things down while I understand them.
+\endinput

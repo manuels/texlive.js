@@ -1,0 +1,205 @@
+% METATeX.TeX (RMCG19940730)
+
+%    METATeX.TeX communicates TeX and METAFONT
+%    Copyright (C) 2003, 2004  Ram\'on Casares
+%
+%    This program is free software; you can redistribute it and/or modify
+%    it under the terms of the GNU General Public License as published by
+%    the Free Software Foundation; either version 2 of the License, or
+%    (at your option) any later version.
+%
+%    This program is distributed in the hope that it will be useful,
+%    but WITHOUT ANY WARRANTY; without even the implied warranty of
+%    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%    GNU General Public License for more details.
+%
+%    You should have received a copy of the GNU General Public License
+%    along with this program; if not, write to the
+%       Free Software Foundation, Inc.,
+%       59 Temple Place, Suite 330,
+%       Boston, MA  02111-1307  USA
+
+%\message{V1.0 by RMCG 20031002}
+\message{V1.1 by RMCG 20040812} % mptopdf -> mtmp2pdf
+
+\chardef\MToldatcatcode=\catcode`\@\catcode`\@=11
+
+\newif\ifMTf@le % true if auxiliar.mf is found (second pass)
+\newif\ifMTmf % true if second pass and MF (not MPost) has drawn the figures
+\newwrite\MToutf@le
+\newread\MTinf@le
+\newbox\MTbox
+\newbox\MTb@x
+\newcount\MTn@
+\newdimen\MTxpos@
+\newdimen\MTypos@
+
+\openin\MTinf@le=auxiliar.mf % First see if the mf file exists
+\ifeof\MTinf@le \MTf@lefalse \else \MTf@letrue \fi
+\closein\MTinf@le
+
+\def\MTendmark{}
+{\obeylines\gdef\MTign@re#1
+ {\def\next{#1}\ifx\next\MTendmark \let\next\endgroup \else %
+  \let\next\MTign@re\fi \next}}
+{\obeylines\gdef\MTc@py#1
+ {\def\next{#1}\ifx\next\MTendmark \let\next\endgroup \else %
+  \immediate\write\MToutf@le{\next}\let\next\MTc@py\fi \next}}
+
+{\obeylines\gdef\MTign@reline#1
+ {\endgroup}}
+{\obeylines\gdef\MTc@pyline#1
+ {\immediate\write\MToutf@le{#1}\endgroup}}
+
+\def\MTsetupc@py{\def\do##1{\catcode`##1=12 }\dospecials
+ \catcode`\\=0 \let\\=\MTbackslash \obeyspaces\obeylines}
+
+\def\MTmf@mp{\ifeof\MTinf@le
+ \errhelp={It seems to me that file auxiliar.mf has not been processed,
+           or that file auxiliar.log was deleted.}%
+ \errmessage{File auxiliar.log not found}%
+ \else
+  \read\MTinf@le to \next % reads METAXXXX banner
+  \def\MT@mf{METAFONT}%
+  \def\MT@##1 ##2 ##3,##4\MT@@{##3}% #1 = This, #2 = is, #3 = METAFONT ?
+  \edef\MTmeta{\expandafter\MT@\next\MT@@}%
+  \message{(Drawings made by \MTmeta)}%
+  \ifx\MTmeta\MT@mf \MTmftrue \else \MTmffalse \fi
+ \fi}
+
+\def\MTl@gl@b{\MTloglabel }
+\def\MTgetl@g{\ifeof\MTinf@le \let\next\relax
+  \errhelp={I was expecting to read a label location.}%
+  \errmessage{Unexpected end of auxiliar.log}%
+ \else \read\MTinf@le to \next
+ \ifx\next\MTl@gl@b \let\next\relax
+ {\catcode`\>=9
+  \global\read\MTinf@le to \MTxpos@text
+  \global\read\MTinf@le to \MTypos@text }%
+ \else \let\next\MTgetl@g \fi\fi \next}
+
+\escapechar=-1 \edef\MTbackslash{\string\\}\escapechar=`\\
+\def\MTslashing{\begingroup \escapechar=-1 \edef\\{\string\\}%
+ \edef\{{\string\{}\edef\}{\string\}}\edef\#{\string\#}%
+ \edef\${\string\$}\edef\^{\string\^}\edef\_{\string\_}%
+ \edef\&{\string\&}\edef\~{\string\~}\edef\%{\string\%}%
+ \escapechar=`\\}
+\let\MTendslashing=\endgroup
+
+\def\MTf@rst#1#2#3/{#1}\def\MTsec@nd#1#2#3/{#2}
+
+\ifMTf@le \message{Second TeX pass} %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ \openin\MTinf@le=auxiliar.log
+ \MTmf@mp
+ \ifMTmf % METAFONT has written auxiliar.log
+  \font\MTfont=auxiliar \def\MTchar{\MTfont\char\MTn@}%
+ \else   % MetaPost has written auxiliar.log
+  \ifx\pdfliteral\undefined
+   \def\MTchar{\special{psfile=auxiliar.\number\MTn@}}%
+  \else
+   \input mtmp2pdf
+   \def\MTchar{\MPtoPDF{auxiliar.\number\MTn@}}%
+   %\input supp-pdf.tex % Context
+   %\let\oldfinMPgrap=\finishMPgraphic % to avoid centering
+   %\def\finishMPgraphic{\xdef\MPxoffset{0}\xdef\MPyoffset{0}\oldfinMPgrap}%
+   %\def\MTchar{\convertMPtoPDF{auxiliar.\number\MTn@}{1}{1}}%
+  \fi
+ \fi
+ \def\MTcode{\begingroup\MTsetupc@py\MTign@re{ }}
+ \def\MT:{\begingroup\MTsetupc@py\MTign@reline}
+ \def\MTline#1{}
+ \def\MTbeginchar(#1,#2,#3);{\setbox\MTb@x=\hbox{\MTchar}%
+  \wd\MTb@x=#1\ht\MTb@x=#2\dp\MTb@x=#3\setbox\MTbox=\vtop{\box\MTb@x}}
+ \def\MTlabel#1(#2)#3"#4";{\setbox\MTb@x\hbox{#4}\MTgetl@g
+  \MTxpos@=\MTxpos@text pt \MTypos@=\MTypos@text pt \dimen@=\dp\MTbox
+  \setbox\MTbox=\vtop{\unvbox\MTbox\nointerlineskip
+   \def\1{\MTf@rst#3cc/}\def\2{\MTsec@nd#3cc/}%
+   \vbox to 0pt{\advance\dimen@\MTypos@ \kern-\dimen@
+    \if b\1\kern-\ht\MTb@x \else \if c\1\kern-0.5\ht\MTb@x \fi\fi
+    \hbox to 0pt{\kern\MTxpos@
+     \if r\2\kern-\wd\MTb@x \else \if c\2\kern-0.5\wd\MTb@x \fi\fi
+     \box\MTb@x\hss}\vss}}}
+ \def\MTendchar;{\global\advance\MTn@1 }
+\else \message{First TeX pass} %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ \let\MTfont=\nullfont
+ \let\MTchar=\relax
+ \tracinglostchars=0
+ \immediate\openout\MToutf@le=auxiliar.mf
+ \def\MTcode{\begingroup\MTsetupc@py\MTc@py{ }}
+ \def\MT:{\begingroup\MTsetupc@py\MTc@pyline}
+ \def\MTline#1{\MTslashing\immediate\write\MToutf@le{#1}\MTendslashing}
+ \def\MTbeginchar(#1,#2,#3);{%
+  \MTline{beginchar(\number\MTn@,#1\#,#2\#,#3\#); \% line \the\inputlineno}%
+  \global\setbox\MTbox=\vtop{}\wd\MTbox=#1\ht\MTbox=#2\dp\MTbox=#3}
+ \def\MTlabel#1(#2)#3"#4";{{\setbox0=\hbox{#4}%
+  \def\1{\MTf@rst#3cc/}\def\2{\MTsec@nd#3cc/}%
+  \MTline{ MTlabel(#2)("\1","\2","#1",\the\wd0,\the\ht0,\the\dp0);}}}
+ \def\MTendchar;{\MTline{endchar;}\MTline{}\global\advance\MTn@1 }
+\fi
+
+\MT:% Generated by METATeX
+\MT:
+\MT: mag:=\number\mag/1000;
+\MT:
+\MT: truept = pt/mag; truept# = pt#/mag;
+\MT: truepc = pc/mag; truepc# = pc#/mag;
+\MT: truein = in/mag; truein# = in#/mag;
+\MT: truebp = bp/mag; truebp# = bp#/mag;
+\MT: truecm = cm/mag; truecm# = cm#/mag;
+\MT: truemm = mm/mag; truemm# = mm#/mag;
+\MT: truedd = dd/mag; truedd# = dd#/mag;
+\MT: truecc = cc/mag; truecc# = cc#/mag;
+\MT:
+\MT:if known prologues: % if mpost:
+\MT:
+\MT: mm#=2.84528;      pt#=1;        dd#=1.07001;      bp#=1.00375;
+\MT: cm#=28.45276;     pc#=12;       cc#=12.84010;     in#=72.27;
+\MT:
+\MT: string extra_setup, extra_beginchar, extra_endchar;
+\MT: extra_setup = extra_beginchar = extra_endchar = "";
+\MT:
+\MT: def mode_setup =
+\MT:  proofing:=0;                   % no, we're not making proofs
+\MT:  fontmaking:=0;                 % no, we're not making a font
+\MT:  tracingtitles:=0;              % no, don't show titles at all
+\MT:  scantokens extra_setup;
+\MT: enddef;
+\MT:
+\MT: def beginchar(expr c,w_sharp,h_sharp,d_sharp) =
+\MT:  begingroup
+\MT:   charcode:=c;
+\MT:   w:=w_sharp*pt; h:=h_sharp*pt; d:=d_sharp*pt;
+\MT:   clearxy; clearit; clearpen;
+\MT:   pickup defaultpen;
+\MT:   drawoptions();
+\MT:   scantokens extra_beginchar;
+\MT: enddef;
+\MT:
+\MT: def endchar =
+\MT:   scantokens extra_endchar;
+\MT:   shipit;
+\MT:  endgroup
+\MT: enddef;
+\MT:
+\MT:else: % mf
+\MT: mode:=localfont;
+\MT:fi
+\MT:
+\MT:mode_setup;
+\MT:
+\MT:def MTlabel(suffix i)(expr v,h,add,wd,ht,dp) =
+\MT: x.i.l = x.i if h="c": - wd/2 elseif h="r": - wd fi;
+\MT: y.i.t = y.i if v="c": + ht/2 elseif v="b": + ht fi;
+\MT: x.i.r = x.i.l + wd; y.i.b = y.i.t - ht - dp;
+\MT: if not (add=""): erase fill (x.i.l,y.i.t) --
+\MT:  (x.i.l,y.i.b) -- (x.i.r,y.i.b) -- (x.i.r,y.i.t) -- cycle; fi
+\MT: message"\\MTloglabel"; show x\\i/pt; show y\\i/pt; message"";
+\MT:enddef;
+\MT:
+
+\let\texbye=\bye
+\outer\def\bye{\ifMTf@le \closein\MTinf@le \else
+ \MTline{end.}\immediate\closeout\MToutf@le \fi
+ \par\vfill\supereject\end}
+
+\catcode`\@=\MToldatcatcode

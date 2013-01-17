@@ -1,0 +1,653 @@
+% ---------------------------------------------------------------------------
+% TeX macros implementing a standard set of PostScript transformations
+% made in BOP (1993--2001), Gda\'nsk, Poland -- public domain software
+% authors: Bogus\l{}aw Jackowski, Piotr Pianowski, Piotr Strzelczyk
+% e-mail contact: bop@bop.com.pl
+% ---------------------------------------------------------------------------
+%                           S Y N O P S I S
+%
+% In the sequel, `box' means \hbox, \vbox, \box, or \copy, `dimen' means
+% a sequence of dimens to be summed up; all macros mentioned below expand
+% to \hbox{...}, they can therefore be used wherever \hbox can be.
+%
+% 1)
+%    x_scale and y_scale are given in percents (>0)
+%    \zscale changes uniformly x_size and y_size (x_scale=y_scale=scale)
+%    \xscale changes only x_size (y_scale=100)
+%    \yscale changes only y_size (x_scale=100)
+%
+%      \zscale{scale} followed by a box
+%      \xyscale{x_scale}{y_scale} followed by a box
+%      \yxscale{y_scale}{x_scale} followed by a box
+%      \xscale{x_scale} followed by a box
+%      \yscale{y_scale} followed by a box
+%
+% 2)
+%    \xyscaleto resizes a box uniformly such that the resulting wd=dimen
+%    \yxscaleto resizes a box uniformly such that the resulting ht=dimen
+%    \xscaleto resizes a box horizontally such that the resulting wd=dimen
+%    \yscaleto resizes a box verically such that the resulting ht=dimen
+%
+%      \xyscaleto{dimen} followed by a box
+%      \yxscaleto{dimen} followed by a box
+%      \xscaleto{dimen} followed by a box
+%      \yscaleto{dimen} followed by a box
+%
+% 3)
+%    \revolve rotates anticlockwise the box (either \hbox or \vbox
+%    following the command) by 90 degree; for the resulting box
+%    width=height+depth of the original box, height=width
+%    of the original box, and the reference point is the left top corner
+%    of the original box; this means that revolving a box four times
+%    yields the original box if and only if its depth is zero;
+%    \revolvedir- is equivalent to \revolve, \revolvedir+ rotates
+%    the box clockwise
+%
+%      \revolve followed by a box
+%      \revolvedir+ followed by a box
+%      \revolvedir- followed by a box
+%      \revolveleft followed by a box (equivalent to \revolvedir-)
+%      \revolveright followed by a box (equivalent to \revolvedir+)
+%      \revolvepi followed by a box (equivalent to \xflip\yflip
+%          but not to \revolve\revolve)
+%      \rotatepi followed by a box (equivalent to \revolvepi;
+%          cf. also plain METAFONT rotatedaround and rotatedabout macros)
+% 4)
+%    \rotate rotates a box by an arbitrary angle, clockwise for angle>0,
+%    width=height=depth=0pt for the resulting box
+%
+%      \rotate{angle} followed by a box
+%
+%    \rotatebb rotates a box by an arbitrary angle, clockwise for angle>0;
+%    the result is placed in a box having the dimensions of the resulting
+%    bounding box, protrusion to the left is compensated by appropriate
+%    shifting (see the macro \put_into_bb)
+%
+%      \rotatebb{angle} followed by a box
+%
+% 5)
+%    \xflip and \yflip flip the box horizontally and vertically,
+%    respectively, i.e., with respect to the vertical and horizontal
+%    axis of the box, without changing the dimensions of the \box
+%
+%      \xflip followed by a box
+%      \yflip followed by a box
+%
+% 6)
+%    \slant slopes a box by an angle alpha such that tan(alpha)=slant,
+%    without changing dimensions of the \box;
+%
+%      \slant{slant} followed a box
+%
+%    (negative argument value means slanting to the left)
+%
+%    \slantbb slopes a box by an angle alpha such that tan(alpha)=slant,
+%    the result is placed in a box having the dimensions of the resulting
+%    bounding box, protrusion to the left is compensated by appropriate
+%    shifting (see the macro \put_into_bb)
+%
+%      \slantbb{slant} followed a box
+%
+% 7)
+%    \clipbox clips the contents of a box that follows the command;
+%    the macro expects three dimen parameters: the width, the height
+%    and the depth of the resulting box
+%
+%      \clipbox{width}{height}{depth} followed a box
+%
+%    Any parameter can be empty; in such a case, the respective dimension
+%    of the original box is used
+% ---------------------------------------------------------------------------
+% HISTORY:
+% 18 VIII 1993 ver. 0.1
+%    * first release
+% 30--31 VIII 1993 ver. 0.2
+%    * third parameter eliminated from \scale (via \afterassignment
+%      and \aftergroup hackery)
+%    * added \zscale, \xyscale, \yxscale, \xscale, and \yscale
+%      with scaling given in percents
+%    * added \scaleto, \xyscaleto, \yxscaleto, \xscaleto, and \yscaleto
+% 3 IX 1993 ver. 0.21
+%    * \the_scale renamed to \lastscale and made global, thus it became
+%      available to a user
+% 8 IX 1993 ver. 0.22
+%    * all transformations return \hbox, because of currentpoint
+%      positioning
+%    * the old version of \scale is become undefined
+%    * \slant and \rotate fit the new convention of parameter's
+%      hackery -- they are assumed to be followed by an \hbox
+%      or a \vbox
+% 6 XII 1993 ver. 0.23
+%    * \revolve added
+%    * \rotate with \vbox patched
+% 10 II 1994 ver. 0.24
+%    * \revolvedir+, \revolvedir-, \xflip, and \yflip added
+% 20 III 2000 ver. 0.5 (pre-release)
+%    * total reconstruction:
+%      -- all macros expand to \hbox, so that it is possible to
+%         superpose them, e.g., \xscale{200}\yscale{50}\hbox{...};
+%         one must remeber, however, that \rotate yields a box having
+%         null dimensions, so an attempt to scale the result
+%         to a given dimen will produce erroneous PostScript code
+%      -- the possibility of changing \ht and \dp of a \vbox abolished;
+%         such an operation yields hardly intuitive results; try, e.g.:
+%           \hrule width\hsize
+%           \hbox{\setbox0\hbox{\vrule height1cmwidth1cm}\ht0 0mm \box0}
+%           \kern20mm
+%           \hrule width\hsize
+%           \hbox{\setbox0\vbox{\hrule height1cmwidth1cm}\ht0 0mm \box0}
+%      -- the box expected by all macros can be a TeX box expression:
+%         \hbox, \vbox, \box, and \copy
+%      -- scaling height or width to a given dimension yields exact value
+%         of the height or width, respectively (or both); this change is
+%         backward incompatible (but reasonable, one should think)
+%      -- all transformations store information about the position of the
+%         lower left corner and the upper right corner of the resulting
+%         bounding box (with respect to the base point of the transformed
+%         box) in four globally defined macros:
+%              \transllx, \translly, \transurx, \transury
+%         (a piece of funny code for vector rotation was added)
+%      -- \rotatebb and \slantbb added
+% 25 III 2000 ver. 0.51
+%    * fraction multiplication improved (speedup in trigonometric
+%      calculations ca 30%)
+%    * trigonometry calculations are performed in a group (otherwise using
+%      them within another \loop ... \repeat would be inconvenient);
+%      the result is a pair of globally defined macros (instead of dimen
+%      registers); they expand to a series of digits (i.e., they contain
+%      a count representation of the resulting dimen)
+%    * \unhbox (introduced in order to reduce the level of box nesting)
+%      should be used only in \rotatebb
+%    * internal macro naming changed
+% 27 III 2000 ver. 0.52
+%    * a dimen parameter can be a sequence of dimens to be summed up
+%    * \clipbox added
+% 7--10 X 2000 ver. 0.53
+%    * a bug in \slant[bb] fixed: \ht and \dp were interchanged due to
+%      a fallacious interpretation of a slant sign (recall that in dvips
+%      PostScript, unlike in METAFONT, `-' denotes slanting to the right,
+%      `+' -- to the left, because the y-axis is directed downwards);
+%      actually, the problem is much more complex: relying (unconsciously)
+%      on dvips coordinates means, in this case, that for non-square pixels
+%      both rotate and slant will not work -- need to be fixed!
+% 13 XI 2000 ver. 0.54
+%    * @ is a letter during reading trans macros (AMSTeX uses active @)
+%    * local macro \undtranscode renamed to \transundcode
+%  9 VI 2001 ver 0.55
+%    * ``mnemonic'' macros added: \revolveleft, \revolveright, \revolvepi
+%      and \rotatepi 
+% ---------------------------------------------------------------------------
+\def\transspecial#1{\special{ps:#1}}% driver-oriented; default is dvips
+% ---
+\edef\transundcode{\the\catcode`\_}\catcode`\_11
+\edef\transatcode{\the\catcode`\@}\catcode`\@11
+% \z@ (0pt) and \p@ (1pt) are borrowed from plain
+% ---
+% a pretty general macro
+\def\sumto#1{\def\sum_to_what{#1}\sum_to_what=\z@\relax \sumto_}
+\def\sumto_{\futurelet\sum_tok\sumto__}
+\def\sumto__{\ifx\sum_tok\relax\else\expandafter\sumto___\fi}
+\def\sumto___{\afterassignment\sumto_\advance\sum_to_what}
+% ---
+\newbox\tmp_box % temporary box register
+\newdimen\tmp_dim % temporary dimen registers
+\newdimen\tmp_dim_a
+\newdimen\tmp_dim_b
+\newdimen\tmp_dim_c
+\newdimen\tmp_dim_d
+\newcount\tmp_count_a % temporary count registers
+\newcount\tmp_count_b
+\newcount\tmp_count_c
+\newif\ifput_into_bb
+% ---
+\def\jump_setbox{\ifvoid\tmp_box % every box is initially void
+  \aftergroup\after_setbox \else \after_setbox \fi}% a general trick
+% ---
+\def\set_std_bb{%
+  \xdef\transllx{\the\z@}%
+  \xdef\translly{\ifdim\dp\tmp_box>\z@ -\fi\the\dp\tmp_box}%
+  \xdef\transurx{\the\wd\tmp_box}%
+  \xdef\transury{\the\ht\tmp_box}%
+}
+\def\put_into_bb#1{% #1 = operation: \unhbox for rotation, \box for slanting
+  \setbox\tmp_box\hbox{\kern-\transllx\rlap{#1\tmp_box}\kern\transurx}%
+  \ht\tmp_box\transury \dp\tmp_box-\translly \relax
+}
+% ---
+\def\perc_scale#1#2{% #1 -- xscale, #2 -- yscale, in percents,
+                    % to be followed by an \hbox or a \vbox
+  \def\after_setbox{%
+    \setbox\tmp_box\hbox{%
+      \transspecial{gsave
+        currentpoint #2 100 div div exch #1 100 div div exch
+        currentpoint neg #2 100 div mul exch neg #1 100 div mul exch
+        translate #1 100 div #2 100 div scale translate}%
+      \box\tmp_box \transspecial{grestore}}%
+    \ifdim#1\p@=100\p@ \else % special treatment of special case (100%)
+      \tmp_dim\wd\tmp_box
+      \advance\tmp_dim50sp \divide\tmp_dim100 % rounding rather than floor
+      \wd\tmp_box#1\tmp_dim
+    \fi
+    \ifdim#2\p@=100\p@ \else % ditto
+      \tmp_dim\ht\tmp_box
+      \advance\tmp_dim50sp \divide\tmp_dim100 % ditto
+      \ht\tmp_box#2\tmp_dim
+      \tmp_dim\dp\tmp_box
+      \advance\tmp_dim50sp \divide\tmp_dim100 % ditto
+      \dp\tmp_box#2\tmp_dim
+    \fi
+    \set_std_bb
+    \box\tmp_box\egroup}%
+    \afterassignment\jump_setbox\setbox\tmp_box =
+}%
+% ---
+\def\xyscale#1#2{\hbox\bgroup\perc_scale{#1}{#2}}
+\def\zscale#1{\xyscale{#1}{#1}}
+\def\yxscale#1#2{\xyscale{#2}{#1}}
+\def\xscale#1{\xyscale{#1}{100}}
+\def\yscale#1{\xyscale{100}{#1}}
+% ---
+{\catcode`\p12 \catcode`\t12 \gdef\PT_{pt}}
+\def\hull_num{\expandafter\hull_num_}
+\expandafter\def\expandafter\hull_num_\expandafter#\expandafter1\PT_{#1}
+% ---
+\def\find_scale#1#2{% #1 -- size after rescaling, #2 -- \wd or \ht
+% Finds a scale (\lastscale macro) such that the box following the macro
+% call would have the respective dimen (i.e., #2) equal to #1 after rescaling
+% NOTE: it is assumed that prior to calling \find_scale a macro
+%       \extra_complete is defined
+  \def\after_setbox{%
+    \resize\tmp_dim{100\p@}{#1}{#2\tmp_box}%
+    \xdef\lastscale{\hull_num\the\tmp_dim}\extra_complete}%
+  \afterassignment\jump_setbox\setbox\tmp_box =
+}
+% ---
+\def\scaleto#1#2#3#4{% #1 -- size of dimen #2 (\wd or \ht) after scaling
+                     % #3 -- actual x-size, #4 -- actual y-size
+  \hbox\bgroup % `initial' hbox
+  \sumto\tmp_dim#1\relax % freeze the argument; must not be empty
+  \setbox\tmp_box\hbox\bgroup % one more setbox in order to control
+                              % the specified dimen
+  \def\extra_complete{%
+    \perc_scale{#3}{#4}\box\tmp_box % finish setbox above
+    #2\tmp_box=\tmp_dim % force the exactness of the specified dimension
+    \set_std_bb
+    \box\tmp_box
+    \egroup % close `initial' hbox
+  }%
+  \find_scale{\tmp_dim}#2}
+%
+\def\xyscaleto#1{\scaleto{#1}\wd\lastscale\lastscale}
+\def\yxscaleto#1{\scaleto{#1}\ht\lastscale\lastscale}
+\def\xscaleto#1{\scaleto{#1}\wd\lastscale{100}}
+\def\yscaleto#1{\scaleto{#1}\ht{100}\lastscale}
+% ---
+\def\slant{\hbox\bgroup \put_into_bbfalse  \slant_}
+\def\slantbb{\hbox\bgroup \put_into_bbtrue \slant_}
+\def\slant_#1{% #1 (slant) = tan(alpha), where alpha is the slant angle,
+              % to be followed by a box
+  \def\after_setbox{%
+    \transspecial{gsave 0 currentpoint neg exch pop 0 currentpoint exch pop
+      translate [1 0 #1 1 0 0] concat translate}%
+    % set bounding box
+    \dim_x\wd\tmp_box
+    \ifdim#1\p@>\z@ \dim_t-#1\ht\tmp_box \advance\dim_x#1\dp\tmp_box
+    \else \dim_t#1\dp\tmp_box \advance\dim_x-#1\ht\tmp_box
+    \fi
+    \xdef\transllx{\the\dim_t}%
+    \xdef\translly{\ifdim\dp\tmp_box>\z@ -\fi\the\dp\tmp_box}%
+    \xdef\transurx{\the\dim_x}%
+    \xdef\transury{\the\ht\tmp_box}%
+    \ifput_into_bb \put_into_bb\box \fi
+    \box\tmp_box \transspecial{grestore}\egroup}%
+  \afterassignment\jump_setbox\setbox\tmp_box =
+}%
+% ---
+\def\update_bb#1#2#3{% used in \rotate
+  \trigcompute{-#1}{#2}{#3}% clockwise vs anti-clockwise
+  \ifdim\transllx>\trigxresult sp\xdef\transllx{\trigxresult sp}\fi
+  \ifdim\translly>\trigyresult sp\xdef\translly{\trigyresult sp}\fi
+  \ifdim\transurx<\trigxresult sp\xdef\transurx{\trigxresult sp}\fi
+  \ifdim\transury<\trigyresult sp\xdef\transury{\trigyresult sp}\fi
+}
+\def\rotate{\hbox\bgroup \put_into_bbfalse  \rotate_}
+\def\rotatebb{\hbox\bgroup \put_into_bbtrue \rotate_}
+\def\rotate_#1{% #1 -- angle,
+               % to be followed by a box
+  \def\after_setbox{%
+    \setbox\tmp_box\hbox{% otherwise does not work with \vbox
+    \transspecial{gsave currentpoint currentpoint translate
+      #1 rotate neg exch neg exch translate}%
+    \box\tmp_box \transspecial{grestore}}%
+    % set bounding box
+    \xdef\transllx{\the\z@}\xdef\translly{\the\z@}%
+    \xdef\transurx{\the\z@}\xdef\transury{\the\z@}%
+    \update_bb{#1}{\z@}{\ht\tmp_box}%
+    \update_bb{#1}{\z@}{-\dp\tmp_box}%
+    \update_bb{#1}{\wd\tmp_box}{\ht\tmp_box}%
+    \update_bb{#1}{\wd\tmp_box}{-\dp\tmp_box}%
+    %
+    \wd\tmp_box\z@ \ht\tmp_box\z@ \dp\tmp_box\z@
+    \ifput_into_bb \put_into_bb\unhbox \fi
+    \box\tmp_box\egroup}%
+  \afterassignment\jump_setbox\setbox\tmp_box =
+}%
+% ---
+\def\plus_{+}
+\def\minus_{-}
+\def\revolvedir#1{% to be followed by a box
+  \hbox\bgroup
+% check parameter:
+   \def\param_{#1}%
+   \ifx\param_\plus_ \else \ifx\param_\minus_
+   \else
+     \errhelp{I would rather suggest to stop immediately.}%
+     \errmessage{Argument to \noexpand\revolvedir should be either + or -}%
+   \fi\fi
+  \def\after_setbox{%
+    \tmp_dim_a\wd\tmp_box
+% prepare to revolving:
+    \setbox\tmp_box\hbox{%
+     \ifx\param_\plus_\kern-\tmp_dim_a\fi
+     \box\tmp_box
+     \ifx\param_\plus_\kern\tmp_dim_a\fi}%
+% compute dimensions of the box to be revolved:
+    \tmp_dim_a\ht\tmp_box \advance\tmp_dim_a\dp\tmp_box
+    \tmp_dim_b\ht\tmp_box \tmp_dim_c\dp\tmp_box
+    \dp\tmp_box\z@ \ht\tmp_box\wd\tmp_box \wd\tmp_box\tmp_dim_a
+% revolve:
+    \kern \ifx\param_\plus_ \tmp_dim_c \else \tmp_dim_b \fi
+    \transspecial{gsave currentpoint currentpoint translate
+             #190 rotate neg exch neg exch translate}%
+    \set_std_bb
+    \box\tmp_box
+    \transspecial{grestore}%
+    \kern -\ifx\param_\plus_ \tmp_dim_c \else \tmp_dim_b \fi
+    \egroup}%
+  \afterassignment\jump_setbox\setbox\tmp_box =
+}%
+\def\revolveleft{\revolvedir-}
+\def\revolveright{\revolvedir+}
+\def\revolvepi{\xflip\yflip}
+\let\revolve\revolveleft
+\let\rotatepi\revolvepi
+% ---
+\def\xflip{% to be followed by a box
+  \hbox\bgroup
+  \def\after_setbox{%
+    \tmp_dim_a.5\wd\tmp_box
+% prepare to flipping:
+   \setbox\tmp_box
+     \hbox{\kern-\tmp_dim_a \box\tmp_box \kern\tmp_dim_a}%
+% flip:
+   \kern\tmp_dim_a
+    \transspecial{gsave currentpoint currentpoint translate
+      [-1 0 0 1 0 0] concat neg exch neg exch translate}%
+    \set_std_bb
+    \box\tmp_box
+    \transspecial{grestore}%
+    \kern-\tmp_dim_a
+    \egroup}%
+  \afterassignment\jump_setbox\setbox\tmp_box =
+}%
+% ---
+\def\yflip{% to be followed by a box
+  \hbox\bgroup
+  \def\after_setbox{%
+    \tmp_dim_a\ht\tmp_box \tmp_dim_b\dp\tmp_box
+    \tmp_dim_c\tmp_dim_a \advance\tmp_dim_c\tmp_dim_b
+    \tmp_dim_c.5\tmp_dim_c
+% prepare to flipping:
+   \setbox\tmp_box\vbox{%
+     \kern\tmp_dim_c\box\tmp_box\kern-\tmp_dim_c}%
+% flip:
+   \advance\tmp_dim_c-\tmp_dim_b
+   \setbox\tmp_box\hbox{%
+     \transspecial{gsave currentpoint currentpoint translate
+       [1 0 0 -1 0 0] concat neg exch neg exch translate}%
+     \lower\tmp_dim_c\box\tmp_box
+     \transspecial{grestore}}%
+% restore dimensions of the flipped box:
+    \ht\tmp_box\tmp_dim_a \dp\tmp_box\tmp_dim_b
+    \set_std_bb
+    \box\tmp_box
+    \egroup}%
+  \afterassignment\jump_setbox\setbox\tmp_box =
+}%
+% ---
+% save TeX registers:
+\let\clip_wd\tmp_dim_a
+\let\clip_ht\tmp_dim_b
+\let\clip_dp\tmp_dim_c
+% ---
+\def\tracingclipcmyk{1 0 0 0}
+\def\clip_fix_pos#1{\transspecial{%
+  currentpoint /clip_#1_y exch def /clip_#1_x exch def%
+}}
+\def\clip_use_pos#1{clip_#1_x clip_#1_y}
+\def\clip_delta#1#2{#1 #2 3 -1 roll exch sub 3 1 roll sub exch}
+%
+\def\do_clip{\transspecial{%
+  newpath
+  \clip_use_pos{LL} moveto
+  \clip_delta{\clip_use_pos{UR}}{\clip_use_pos{UL}} rlineto
+  \clip_delta{\clip_use_pos{UR}}{\clip_use_pos{LR}} rlineto
+  \clip_delta{\clip_use_pos{LL}}{\clip_use_pos{LR}} rlineto
+  closepath
+  \ifx\tracingclip\unknown \else
+    gsave \tracingclipcmyk\space setcmykcolor fill grestore
+  \fi
+  clip newpath%
+}}
+%
+\def\clip_use_dim#1{% #1 = wd, ht, or dp
+  \ifdim\csname clip_#1\endcsname=\maxdimen \csname#1\endcsname\tmp_box
+  \else \csname clip_#1\endcsname\fi
+}
+%
+\def\clip_fix_dim#1#2{%
+  \edef\clip_use_dim_param{#2}%
+  \ifx\clip_use_dim_param\empty #1\maxdimen\else
+  \ifx\clip_use_dim_param\space #1\maxdimen\else \sumto#1#2\relax \fi\fi
+}
+%
+\def\clipbox#1#2#3{% desired height, width and depth to be followed by a box
+  \hbox\bgroup
+    \clip_fix_dim\clip_wd{#1}%
+    \clip_fix_dim\clip_ht{#2}%
+    \clip_fix_dim\clip_dp{#3}%
+    \clipbox_
+}
+\def\clipbox_{%
+  \def\after_setbox{%
+    \setbox\tmp_box\hbox{\box\tmp_box}%
+    \clip_wd\clip_use_dim{wd}% freeze dimen
+    \clip_ht\clip_use_dim{ht}% ditto
+    \clip_dp\clip_use_dim{dp}% ditto
+    \transspecial{gsave}%
+    \rlap{%
+       \lower \clip_dp \vbox{%
+         \hbox to\clip_wd{\clip_fix_pos{UL}\hss\clip_fix_pos{UR}}
+         \kern\clip_ht \kern\clip_dp \nointerlineskip
+         \hbox to\clip_wd{\clip_fix_pos{LL}\hss\clip_fix_pos{LR}}
+         \do_clip
+       }%
+    }%
+    \wd\tmp_box=\clip_wd \ht\tmp_box=\clip_ht \dp\tmp_box=\clip_dp
+    \set_std_bb \box\tmp_box \transspecial{grestore}\egroup}%
+  \afterassignment\jump_setbox\setbox\tmp_box =
+}
+% ---------------------------------------------------------------------------
+% ``floating point arithmetic'' (excerpted from T. Rokicki):
+% r  y
+%
+% ^
+% |
+% |
+% |
+% |
+% |
+% 0--------------> t   x
+%
+% save TeX registers:
+\let\dim_x\tmp_dim_a    % horizontal size after scaling
+\let\dim_y\tmp_dim_b    % vertical size after scaling
+\let\dim_t\tmp_dim_c    % horizontal size before scaling
+\let\dim_r\tmp_dim_d   % vertical size before scaling
+%\tmp_dim % register for arithmetic manipulation (already declared)
+% ---
+\def\resize
+  % dimen registers:
+  #1% y   make y such that y/r=x/t
+  #2% r
+  #3% x
+  #4% t
+% We have a sticky problem here:  TeX doesn't do floating point arithmetic!
+% Our goal is to compute y = rx/t. The following loop does this reasonably
+% fast, with an error of at most about 16 sp (about 1/4000 pt).
+  {%
+   % save parameters to the internal variables:
+  \dim_r#2\relax \dim_x#3\relax \dim_t#4\relax
+  \tmp_dim=\dim_r \divide\tmp_dim\dim_t
+  \dim_y=\dim_x \multiply\dim_y\tmp_dim
+  \multiply\tmp_dim\dim_t \advance\dim_r-\tmp_dim
+  \tmp_dim=\dim_x
+  \loop \advance\dim_r\dim_r \divide\tmp_dim 2
+  \ifnum\tmp_dim>0
+    \ifnum\dim_r<\dim_t\else
+      \advance\dim_r-\dim_t \advance\dim_y\tmp_dim \fi
+  \repeat
+  % assign result:
+  #1\dim_y\relax
+}
+% ---------------------------------------------------------------------------
+% ``fixed point arithmetic'' -- fractions and trigometry, inspired by mf.web:
+%
+% save TeX registers:
+\let\fracint\tmp_dim
+\let\fracfrac\tmp_count_a
+\let\fracprod\tmp_count_b
+\def\fracpowlimit{30}%
+\def\fracone{1073741824}% = 2^\fracpowlimit
+% ---
+\def\fracproduct#1#2{% #1 = fraction * 2^\fracpowlimit, #2 = integer
+% result: macro \fracresult = floor(#1 * #2 / 2^\fracpowlimit + 1/2)
+%         expanding to the count equivalent of the respective dimen
+\begingroup
+  \fracfrac#1\relax   % \fracfrac <= 2^30
+  \fracint#2\relax    % \fracint <= \maxdimen
+  \ifdim\fracint<0pt \fracint-\fracint\def\fracsign{-}\else\def\fracsign{}\fi
+  \ifnum\fracone=\fracfrac \fracprod\fracint \else
+    \advance\fracfrac\fracone % \fracfrac < 2^31
+    \fracprod\fracone % if \fracprod were dimen, this would yield error
+    \divide\fracprod2 % \fracprod = 2^29 (representation of 1/2)
+    \loop
+      \ifodd\fracfrac \advance \fracprod\fracint \fi
+      \divide\fracprod2 \divide\fracfrac2
+    \ifnum \fracfrac>1 \repeat
+  \fi
+  \xdef\fracresult{\fracsign\number\fracprod}%
+\endgroup
+}
+% ---
+\newdimen\onedegree
+\onedegree16pt % this must be consistent with the table below
+% save TeX registers:
+\let\trigangle\tmp_dim_a
+\let\trigxpart\tmp_dim_b
+\let\trigypart\tmp_dim_c
+\let\trigxtmp\tmp_dim
+\let\trigiter\tmp_count_a
+\def\triglimit{28}%
+% ---
+\def\trigvalarg#1{\csname argscaled:\number#1\endcsname}
+\def\trigvalcos#1{\csname cosscaled:\number#1\endcsname}
+\def\trigvalsin#1{\csname sinscaled:\number#1\endcsname}
+\def\defspectrig#1#2#3#4{%
+% #1 -- ordering number (index)
+% #2 -- angle in degrees * \onedegree expressed in sp; alpha=#1*2^(-20)
+% #3 -- floor(cosd(alpha)*2^30+1/2) (30=\fracpowlimit)
+% #4 -- floor(sind(alpha)*2^30+1/2)
+  \expandafter\def\csname argscaled:#1\endcsname{#2}%
+  \expandafter\def\csname cosscaled:#1\endcsname{#3}%
+  \expandafter\def\csname sinscaled:#1\endcsname{#4}%
+}
+\defspectrig{1}{62914560}{536870912}{929887697}  % alpha=60
+\defspectrig{2}{47185920}{759250125}{759250125}  %       45
+\defspectrig{3}{31457280}{929887697}{536870912}  %       30
+\defspectrig{4}{16777216}{1032146887}{295963357} %       2^4
+\defspectrig{5}{8388608}{1063292242}{149435979}  %       2^3
+\defspectrig{6}{4194304}{1071126243}{74900443}   %       2^2
+\defspectrig{7}{2097152}{1073087729}{37473049}   %       2^1
+\defspectrig{8}{1048576}{1073578288}{18739379}   %       2^0
+\defspectrig{9}{524288}{1073700939}{9370046}     %       2^-1
+\defspectrig{10}{262144}{1073731603}{4685068}    %       2^-2
+\defspectrig{11}{131072}{1073739269}{2342539}    %       2^-3
+\defspectrig{12}{65536}{1073741185}{1171270}     %       2^-4
+\defspectrig{13}{32768}{1073741664}{585635}      %       2^-5
+\defspectrig{14}{16384}{1073741784}{292818}      %       2^-6
+\defspectrig{15}{8192}{1073741814}{146409}       %       2^-7
+\defspectrig{16}{4096}{1073741822}{73204}        %       2^-8
+\defspectrig{17}{2048}{1073741823}{36602}        %       2^-9
+\defspectrig{18}{1024}{1073741824}{18301}        %       2^-10
+\defspectrig{19}{512}{1073741824}{9151}          %       2^-11
+\defspectrig{20}{256}{1073741824}{4575}          %       2^-12
+\defspectrig{21}{128}{1073741824}{2288}          %       2^-13
+\defspectrig{22}{64}{1073741824}{1144}           %       2^-14
+\defspectrig{23}{32}{1073741824}{572}            %       2^-15
+\defspectrig{24}{16}{1073741824}{286}            %       2^-16
+\defspectrig{25}{8}{1073741824}{143}             %       2^-17
+\defspectrig{26}{4}{1073741824}{71}              %       2^-18
+\defspectrig{27}{2}{1073741824}{36}              %       2^-19
+\defspectrig{28}{1}{1073741824}{18}              %       2^-20
+% ---
+\def\trigcompute#1#2#3{%
+% #1 angle in degrees (a)
+% #2 initial xpart (x)
+% #3 initial ypart (y)
+% result: (x',y')=(x,y) rotated a; the pair of macros
+%         \trigxresult and \trigyresult contain x' and y', respectively;
+%         both expand to the count equivalent of the respective dimen
+\begingroup
+  \trigangle#1\onedegree \trigxpart#2\relax \trigypart#3\relax
+  \loop \ifdim\trigangle<0sp \advance\trigangle360\onedegree \repeat
+  \loop \ifdim\trigangle>360\onedegree \advance\trigangle-360\onedegree \repeat
+  \ifdim\trigangle=360\onedegree \trigangle0sp \fi
+  \ifdim\trigangle<180\onedegree \else % >=
+    \trigxpart-\trigxpart \trigypart-\trigypart
+    \advance\trigangle-180\onedegree
+  \fi
+  \ifdim\trigangle<90\onedegree \else % >=
+    \trigxtmp\trigxpart \trigxpart-\trigypart \trigypart\trigxtmp
+    \advance\trigangle-90\onedegree
+  \fi
+  \trigiter1\relax
+  \loop
+    \ifnum\trigvalarg\trigiter>\trigangle \else % <=
+      \advance\trigangle-\trigvalarg\trigiter sp
+      \trigxtmp\trigxpart
+      % x=x*cos[i]-y*sin[i] :
+      \fracproduct{\trigvalcos\trigiter}\trigxpart
+      \trigxpart\fracresult sp
+      \fracproduct{\trigvalsin\trigiter}\trigypart
+      \advance\trigxpart-\fracresult sp
+      % y=y*cos[i]+x*sin[i] :
+      \fracproduct{\trigvalcos\trigiter}\trigypart
+      \trigypart\fracresult sp
+      \fracproduct{\trigvalsin\trigiter}\trigxtmp
+      \advance\trigypart\fracresult sp
+    \fi
+    \advance\trigiter1
+  \ifnum\trigangle>0 \repeat
+% result in dimen registers: \trigxpart and \trigypart
+  \xdef\trigxresult{\number\trigxpart}%
+  \xdef\trigyresult{\number\trigypart}%
+\endgroup
+}
+% ---------------------------------------------------------------------------
+% restore original catcodes:
+\catcode`\@\transatcode
+\catcode`\_\transundcode
+% ---------------------------------------------------------------------------
+\endinput
+

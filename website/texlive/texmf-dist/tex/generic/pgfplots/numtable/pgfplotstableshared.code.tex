@@ -1,0 +1,1913 @@
+%--------------------------------------------
+%
+% Package pgfplotstable
+%
+% Provides support to read and work with abstact numeric tables of the
+% form
+%
+% COLUMN1	COLUMN2 COLUMN3
+% 1 		2		3
+% 4			4		552
+% 1e124		0.00001	1.2345e-12
+% ...
+%
+% Copyright 2007-2010 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%--------------------------------------------
+
+% This file provides a high-level table manipulation and typesetting
+% package.
+%
+%
+% ---------------------------------------------
+%  Implementation notes for programmers:
+% ---------------------------------------------
+%
+%  The table data structure consists of
+%  1. A name which must be a valid TeX macro like '\table'
+%  2. A column list in the \pgfplotslist format.
+%   In fact, the column list is stored in the table's name:
+%   	\pgfplotslistnewempty\table
+%  3. A "file name" stored in
+%     \csname\string<\namemacro>@@table@name\endcsname
+%  4. A "scan line length" number stored in
+%  		\csname\string<\namemacro>@@table@scanline\endcsname
+%  		It contains the value of \pgfplotsscanlinelength which has
+%  		been identified right after \pgfplotstableread.
+%  5. foreach column, there is a list of row-values (a row-vector) in
+%  the \pgfplotslist format named
+%  		\csname\string<\namemacro>@<column name>\endcsname
+%   
+
+\newif\ifpgfplotstable@search@header
+\newif\ifpgfplotstable@firstline@is@header
+\newcount\c@pgfplotstable@counta
+\newtoks\t@pgfplotstable@a
+\newif\ifpgfplots@addplotimpl@readcompletely
+% should always be false; use only in grouped internal macros
+\newif\ifpgfplots@table@options@areset
+\newif\ifpgfplots@tableread@to@listener
+\newif\ifpgfplots@tableread@use@begingroup
+\newif\ifpgfplotstable@trimcells
+
+\pgfkeys{%
+	/pgfplots/table/every table/.style={},
+	/pgfplots/table/.unknown/.code={%
+		\pgfplotstable@error@pkg{Sorry, I do not know the key `\pgfkeyscurrentkeyRAW' and I am going to ignore it. Perhaps you need \string\usepackage{pgfplotstable}? (The table typesetting parts are a separate package)}%
+	},%
+	/pgfplots/table/header/.is choice,
+	/pgfplots/table/header/true/.code={\pgfplotstable@firstline@is@headerfalse\pgfplotstable@search@headertrue},
+	/pgfplots/table/header/false/.code={\pgfplotstable@firstline@is@headerfalse\pgfplotstable@search@headerfalse},
+	/pgfplots/table/header/has colnames/.code={\pgfplotstable@firstline@is@headertrue\pgfplotstable@search@headerfalse},
+	/pgfplots/table/header=true,
+	/pgfplots/table/x index/.initial=0,
+	/pgfplots/table/x/.initial=,
+	/pgfplots/table/x expr/.initial=,
+	/pgfplots/table/y index/.initial=1,
+	/pgfplots/table/y/.initial=,
+	/pgfplots/table/y expr/.initial=,
+	/pgfplots/table/z index/.initial=2,
+	/pgfplots/table/z/.initial=,
+	/pgfplots/table/z expr/.initial=,
+	/pgfplots/table/meta index/.initial=,
+	/pgfplots/table/meta/.initial=,
+	/pgfplots/table/meta expr/.initial=,
+	/pgfplots/table/x error index/.initial=,
+	/pgfplots/table/y error index/.initial=,
+	/pgfplots/table/z error index/.initial=,
+	/pgfplots/table/x error/.initial=,
+	/pgfplots/table/y error/.initial=,
+	/pgfplots/table/z error/.initial=,
+	/pgfplots/table/x error expr/.initial=,
+	/pgfplots/table/y error expr/.initial=,
+	/pgfplots/table/z error expr/.initial=,
+	/pgfplots/table/ignore chars/.initial=,
+	/pgfplots/table/white space chars/.initial=,
+	/pgfplots/table/comment chars/.initial=,
+	/pgfplots/table/skip first n/.initial=0,
+	/pgfplots/table/trim cells/.is if=pgfplotstable@trimcells,
+	/pgfplots/table/trim cells/.default=true,
+	/pgfplots/table/read completely/.is choice,
+	/pgfplots/table/read completely/true/.code=	\pgfplots@addplotimpl@readcompletelytrue\def\pgfplots@addplotimpl@readcompletely@auto{0},
+	/pgfplots/table/read completely/false/.code=\pgfplots@addplotimpl@readcompletelyfalse\def\pgfplots@addplotimpl@readcompletely@auto{0},
+	/pgfplots/table/read completely/auto/.code=\pgfplots@addplotimpl@readcompletelyfalse\def\pgfplots@addplotimpl@readcompletely@auto{1},
+	/pgfplots/table/read completely/.default=true,
+	/pgfplots/table/read completely=auto,
+	/pgfplots/table/col sep/.is choice,
+	/pgfplots/table/col sep/space/.code		= {\def\pgfplotstableread@COLSEP@CASE{0}},
+	/pgfplots/table/col sep/comma/.code		= {\def\pgfplotstableread@COLSEP@CASE{1}},
+	/pgfplots/table/col sep/semicolon/.code	= {\def\pgfplotstableread@COLSEP@CASE{2}},
+	/pgfplots/table/col sep/colon/.code		= {\def\pgfplotstableread@COLSEP@CASE{3}},
+	/pgfplots/table/col sep/braces/.code	= {\def\pgfplotstableread@COLSEP@CASE{4}},
+	/pgfplots/table/col sep/tab/.code		= {\def\pgfplotstableread@COLSEP@CASE{5}},
+	/pgfplots/table/col sep/&/.code			= {\def\pgfplotstableread@COLSEP@CASE{6}\pgfplotstable@trimcellstrue},
+	/pgfplots/table/col sep/ampersand/.code	= {\def\pgfplotstableread@COLSEP@CASE{6}\pgfplotstable@trimcellstrue},
+	/pgfplots/table/col sep=space,
+	/pgfplots/table/format/.is choice,
+	/pgfplots/table/format/auto/.code		= {\def\pgfplotstableread@FORMAT@CASE{0}},
+	/pgfplots/table/format/inline/.code		= {\def\pgfplotstableread@FORMAT@CASE{1}},
+	/pgfplots/table/format/file/.code		= {\def\pgfplotstableread@FORMAT@CASE{2}},
+	/pgfplots/table/format=auto,
+	/pgfplots/table/row sep/.code={%
+		\pgfplotsutilifstringequal{#1}{\\}{%
+			\def\pgfplotstableread@ROWSEP@CASE{1}%
+		}{%
+			\pgfplotsutilifstringequal{#1}{crcr}{%
+				\def\pgfplotstableread@ROWSEP@CASE{1}%
+			}{%
+				\pgfplotsutilifstringequal{#1}{newline}{%
+					\def\pgfplotstableread@ROWSEP@CASE{0}%
+				}{%
+					{%
+					\t@pgfplots@tokc={#1}%
+					\pgfplotsthrow{invalid argument}{\pgfplots@loc@TMPa}{Sorry, the choice `row sep=\the\t@pgfplots@tokc' is not known. Maybe you misspelled it? Try `\string\\' or `newline'.}\pgfeov%
+					}%
+				}%
+			}%
+		}%
+	},%
+	/pgfplots/table/row sep=newline,
+}
+
+\pgfkeys{
+	% #1: the argument which should have been assigned.
+	% #2: an error message. 
+	/pgfplots/exception/non unique colname/.code 2 args={%
+		\ifx\pgfplotsexceptionmsg\relax
+			\pgfplots@error{#2}%
+		\else
+			\pgfplots@error{\pgfplotsexceptionmsg}%
+		\fi
+		\let#1=\pgfutil@empty
+	},%
+}
+
+% \pgfplotstableread[OPTIONS] {FILE} to \name
+%
+% This method reads a table from FILE to macro \name.
+%
+% FILE is something like
+% G	Basis	dof	L2	A	Lmax	cgiter	maxlevel	eps
+% 5	5	5	8.31160034e-02	0.00000000e+00	1.80007647e-01	2	2	-1
+% 17	17	17	2.54685628e-02	0.00000000e+00	3.75580565e-02	5	3	-1
+% ...
+%
+% A number format line is also understood:
+% G	Basis	dof	L2	A	Lmax	cgiter	maxlevel	eps
+% $flags int	int	int	sci:8	sci:8	sci:8	int	int	std:8
+% 5	5	5	8.31160034e-02	0.00000000e+00	1.80007647e-01	2	2	-1
+%
+% or a three-column-gnuplot file with 2 comment headers like
+% #Curve 0, 20 points
+% #x y type
+% 0.00000 0.00000 i
+% 0.52632 0.50235 i
+%
+% The table data is stored columnwise in lists and can be accessed
+% with the other methods of this package.
+%
+% \pgfplotstableread[<options>]{<file>}{<\macro>}
+% \pgfplotstableread[<options>]{<file>} to listener{<\macro>}
+% \pgfplotstableread* ...
+%
+% The '*' does not protect its local variables with TeX groups,
+% everything is added to the current scope (useful to the 'to
+% listener' thing.
+%
+% The 'to listener' variant does NOT assemble a table data structure.
+% Instead, it processes the input table row-wise and invokes <\macro>
+% after each complete row. During the evaluation of <\macro>, the
+% following methods can be used to query values:
+%   \pgfplotstablereadgetcolindex{<index>}{<\macro>}
+%   \pgfplotstablereadgetcolname{<name>}{<\macro>}
+%   \pgfplotstablereadvalueofcolname{<name>}
+%   \pgfplotstablereadvalueofcolindex{<index>}
+%   \thisrow{<name>} (equivalent to \pgfplotstablereadvalueofcolname)
+%   \getthisrow{<name>}{<\macro>} (equivalent to \pgfplotstablereadgetcolname)
+%   \thisrowno{<index>} (equivalent to \pgfplotstablereadvalueofcolindex)
+%   \getthisrowno{<index>}{<\macro>}
+%   \pgfplotstableforeachcolumn\as{<\iteratemacro>}{<loop body>}
+%   	(the '\as' is required directly after
+%   	\pgfplotstableforeachcolumn in this context)
+% Attention: 'to listener' is scoped by TeX groups, so any assignments
+% need to be done globally (or with aftergroup magic).
+%
+% More remarks about scoping:
+% \pgfplotstableread to listener works as follows:
+%     \begingroup
+%     // load table
+%     while file has more lines:
+%     	load line, read every column;
+%     	invoke listener;
+%     repeat
+%     \endgroup
+%
+%  In short: all invocations of listener have the same level of
+%  scoping: they are inside of one TeX group. But single listener
+%  invocations as such are not scoped. Make sure you don't
+%  accidentally overwrite one of the internals in listener. And: make
+%  sure you don't change temporary registers without scoping them!
+%
+% Note: this command also updates \pgfplotsscanlinelength.
+\def\pgfplotstableread{%
+	\pgfutil@ifnextchar*{%
+		\pgfplots@tableread@use@begingroupfalse
+		\pgfplotstableread@impl@star
+	}{%
+		\pgfplots@tableread@use@begingrouptrue
+		\pgfplotstableread@impl@star*%
+	}%
+}%
+\def\pgfplotstableread@impl@star*{%
+	\pgfutil@ifnextchar[{%
+		\pgfplotstableread@impl
+	}{%
+		\pgfplotstableread@impl[]%
+	}%
+}
+
+% BACKWARDS COMPATIBILITY
+\let\pgfnumtableread=\pgfplotstableread
+
+% Invokes #2 if '#1' is an already loaded table and #3 if not.
+\long\def\pgfplotstable@isloadedtable#1#2#3{%
+	\pgfplotsutil@ifdefinedui@withsuffix{#1}{@@table@name}{#2}{#3}%
+}%
+
+% If the colum name `#1' is a `create on use' speicifcation, #2 is
+% invoked, #3 otherwise.
+\long\def\pgfplotstableifiscreateonuse#1#2#3{%
+	\pgfkeysifdefined{/pgfplots/table/create on use/#1/.@cmd}{#2}{%
+		\pgfutil@in@{create col/}{#1}%
+		\ifpgfutil@in@
+			#2%
+		\else
+			#3%
+		\fi
+	}%
+}%
+
+% Defines \pgfplotsretval to be a column name which does not already
+% occur in the column names of table #1.
+\def\pgfplotstablegenerateuniquecolnamefor#1{%
+	\begingroup
+	\c@pgf@countd=0
+	\pgfplotstableforeachcolumn{#1}\as\pgfplots@loc@TMPa{%
+		\def\pgfplots@loc@TMPa{\pgfplots@loc@TMPa}%
+		\edef\pgfplots@loc@TMPb{autocol\the\c@pgf@countd}%
+		\ifx\pgfplots@loc@TMPa\pgfplots@loc@TMPb
+			\advance\c@pgf@countd by1
+		\fi
+	}%
+	\edef\pgfplotsretval{autocol\the\c@pgf@countd}%
+	\pgfmath@smuggleone\pgfplotsretval
+	\endgroup
+}
+
+% Returns a column vector in form of \pgfplotslist
+% into #3.
+%
+% #1: the column name (not a macro)
+% #2: the table structure
+% #3: the output macro name.
+%
+% @throw `no such element' on error
+\def\pgfplotstablegetcolumnbyname#1\of#2\to#3{%
+	\let#3=\pgfutil@empty% just for sanity checking.
+	\pgfplotstable@getcol{#1}\of{#2}\to{#3}\getcolmethod{STD}%
+}
+
+% Declares a new getcolmethod class #1.
+% The argument '#1' can then be used as argument for 
+% \pgfplotstable@getcol...\getcolmethod{#1}.
+%
+% #2: a set of keys which redefine the behavior.
+% See below for available choices.
+\def\pgfplotstable@definegetcolmethod#1#2{%
+	\edef\pgfplotstable@definegetcolmethod@{#1}%
+	\pgfqkeys{/pgfplots/table/@getcol}{%
+		% Checks if column '#1' exists in table `#2' and invokes `#3' if that
+		% is the case and `#4' if not.
+		%
+		% Note that the check is only for physically existent colums, no alias
+		% or create on use is checked here.
+		% #1: colname
+		% #2: table struct
+		% #3: true code
+		% #4: false code
+		ifexists	=\pgfutil@ifundefined{\string##2@##1}{##4}{##3},
+		%
+		% Low level method to return (the actual content) of column #1 of
+		% table #2 to macro #3.
+		% #1: colname
+		% #2: table struct
+		% #3: result macro
+		getexisting	=\expandafter\let\expandafter##3\csname\string##2@##1\endcsname,
+		%
+		% no arguments, the value is a boolean (0 or 1)
+		createonuse	=1,
+		%
+		% error handling.
+		% #1: colname
+		% #2: table struct
+		% #3: result macro
+		lazyforbidden=\pgfplotstablegetcolumnbyname@impl@createonuseforbidden{##1}\of{##2}\to{##3},
+		noalias		=\pgfplotstablegetcolumnbyname@impl@nosuchalias{##1}\of{##2}\to{##3},
+		nocol		=\pgfplotstablegetcolumnbyname@impl@nocolumn{##1}\of{##2}\to{##3},
+		#2%
+	}%
+}%
+\pgfqkeys{/pgfplots/table/@getcol}{%
+	ifexists/.code		={\expandafter\def\csname pgfplotstable@getcol@ifexists@\pgfplotstable@definegetcolmethod@\endcsname##1\of##2##3##4{#1}},%
+	getexisting/.code	={\expandafter\def\csname pgfplotstable@getcol@getexisting@\pgfplotstable@definegetcolmethod@\endcsname##1\of##2\to##3{#1}},%
+	createonuse/.code	={\expandafter\def\csname pgfplotstable@getcol@createonuse@\pgfplotstable@definegetcolmethod@\endcsname{#1}},%
+	lazyforbidden/.code	={\expandafter\def\csname pgfplotstable@getcol@lazyforbidden@\pgfplotstable@definegetcolmethod@\endcsname##1\of##2\to##3{#1}},%
+	noalias/.code		={\expandafter\def\csname pgfplotstable@getcol@noalias@\pgfplotstable@definegetcolmethod@\endcsname##1\of##2\to##3{#1}},%
+	nocol/.code			={\expandafter\def\csname pgfplotstable@getcol@nocol@\pgfplotstable@definegetcolmethod@\endcsname##1\of##2\to##3{#1}},%
+}%
+
+\pgfplotstable@definegetcolmethod{STD}{}%
+\pgfplotstable@definegetcolmethod{getptr}{%
+	ifexists	=\pgfutil@ifundefined{pgfplotstblread@colindex@for@name#1}{#4}{#3},%
+	getexisting	=\edef#3{\csname pgfplotstblread@colindex@for@name#1\endcsname},%
+}
+\pgfplotstable@definegetcolmethod{resolvename}{%
+	getexisting	=\edef#3{#1},%
+}
+
+% The low level implementation of \pgfplotstablegetcolumnbyname.
+%
+% #4: is a getcolmethod declared with \pgfplotstable@definegetcolmethod
+%
+% ATTENTION: this macro should be expandable! It is also used inside
+% of \thisrow{}.
+\def\pgfplotstable@getcol#1\of#2\to#3\getcolmethod#4{%
+	\csname pgfplotstable@getcol@ifexists@#4\endcsname{#1}\of{#2}{%
+		\csname pgfplotstable@getcol@getexisting@#4\endcsname{#1}\of{#2}\to#3%
+	}{%
+		% Oh, there is no column '#1' in table '#2'!
+		%
+		% Ok, then check for special features.
+		%
+		% 1. 'create col/...' 
+		% 2. 'create on use'
+		% 3. 'alias'
+		%
+		% WARNING : this code has been REPLICATED in
+		% *** \pgfplotstablereadvalueofcolname ***
+		\if1\csname pgfplotstable@getcol@createonuse@#4\endcsname%
+			\pgfutil@in@{create col/}{#1}%
+			\ifpgfutil@in@
+				\pgfplotstablegenerateuniquecolnamefor{#2}%
+				\def\pgfplotstable@loc@TMPa##1{%
+					\pgfkeysdef{/pgfplots/table/create on use/##1}{\pgfkeysalso{#1}}%
+					\pgfplotstablecreatecol[/pgfplots/table/create on use/##1]{##1}{#2}%
+					% and return the newly generated col:
+					\csname pgfplotstable@getcol@getexisting@#4\endcsname{##1}\of{#2}\to#3%
+				}%
+				\expandafter\pgfplotstable@loc@TMPa\expandafter{\pgfplotsretval}%
+			\else
+				\pgfplotstable@getcol@next{#1}\of{#2}\to{#3}\getcolmethod{#4}%
+			\fi
+		\else
+			\pgfplotstable@getcol@next{#1}\of{#2}\to{#3}\getcolmethod{#4}%
+		\fi
+	}%
+}%
+\def\pgfplotstable@getcol@next#1\of#2\to#3\getcolmethod#4{%
+	\pgfkeysifdefined{/pgfplots/table/create on use/#1/.@cmd}{%
+		% aah - a 'create on use' style exists. Apply it!
+		\if1\csname pgfplotstable@getcol@createonuse@#4\endcsname%
+			\pgfplotstablecreatecol[/pgfplots/table/create on use/#1]{#1}{#2}%
+			% and return the newly generated col:
+			\csname pgfplotstable@getcol@getexisting@#4\endcsname{#1}\of{#2}\to#3%
+		\else
+			\csname pgfplotstable@getcol@lazyforbidden@#4\endcsname{#1}\of{#2}\to#3%
+		\fi
+	}{%
+		% ok, then it is either an alias or it simply doesn't exist
+		\pgfkeysifdefined{/pgfplots/table/alias/#1}{%
+			\csname pgfplotstable@getcol@ifexists@#4\endcsname{\pgfkeysvalueof{/pgfplots/table/alias/#1}}\of{#2}{%
+				\csname pgfplotstable@getcol@getexisting@#4\endcsname{\pgfkeysvalueof{/pgfplots/table/alias/#1}}\of{#2}\to#3%
+			}{%
+				\csname pgfplotstable@getcol@noalias@#4\endcsname{#1}\of{#2}\to{#3}%
+			}%
+		}{%
+			\csname pgfplotstable@getcol@nocol@#4\endcsname{#1}\of{#2}\to{#3}%
+		}%
+	}%
+}
+\def\pgfplotstablegetcolumnbyname@impl@createonuseforbidden#1\of#2\to#3{%
+	\pgfplotstablegetcolumnbyname@impl@nocolumn@{#1}\of{#2}\to{#3}\pgfplotstablegetcolumnbyname@impl@createonuseforbiddentext@
+}
+
+\def\pgfplotstablegetcolumnbyname@impl@createonuseforbiddentext@#1{%
+	\space Note that I found a 'create on use/#1' style, but unfortunately, I can't evaluate it in this context. Please use the 'read completely' key such that it is processed earlier (see the manual for details)%
+}%
+\def\pgfplotstablegetcolumnbyname@impl@createonuseforbiddentext@disable#1{}%
+
+\def\pgfplotstablegetcolumnbyname@impl@nosuchalias#1\of#2\to#3{
+	\pgfplotstablegetcolumnbyname@impl@nosuchalias@{#1}\of{#2}\to{#3}\pgfplotstablegetcolumnbyname@impl@createonuseforbiddentext@disable
+}%
+	
+\def\pgfplotstablegetcolumnbyname@impl@nosuchalias@#1\of#2\to#3#4{%
+	\pgfplotsthrow{no such element}{#3}{Sorry, could not retrieve aliased column '\pgfkeysvalueof{/pgfplots/table/alias/#1}' from table '\pgfplotstablenameof{#2}'. The original request was for '#1', which does not exist either.#4{#1}}\pgfeov%
+}%
+
+\def\pgfplotstablegetcolumnbyname@impl@nocolumn#1\of#2\to#3{%
+	\pgfplotstablegetcolumnbyname@impl@nocolumn@{#1}\of{#2}\to{#3}\pgfplotstablegetcolumnbyname@impl@createonuseforbiddentext@disable
+}%
+\def\pgfplotstablegetcolumnbyname@impl@nocolumn@#1\of#2\to#3#4{%
+	\pgfplotsthrow{no such element}{#3}{Sorry, could not retrieve column '#1' from table '\pgfplotstablenameof{#2}'. Please check spelling (or introduce name aliases).#4{#1}}\pgfeov%
+}%
+
+
+% Retrieves the column *NAME* '#1' of table #2 and writes it into
+% '#3'.
+%
+% If there is no such column, column aliases will be checked. Finally
+% if there are no aliases, the command fails with an error.
+%
+% The 'create on use' statements can't be used in this context.
+% @see \pgfplotstablegetcolumnbyname
+%
+% #1: a column name (not a macro)
+% #2: the table structure
+% #3: a macro name which will be filled with the (probably modified)
+% column name into #2.
+\def\pgfplotstableresolvecolname#1\of#2\to#3{%
+	\let#3=\pgfutil@empty% just for sanity checking.
+	\pgfplotstable@getcol{#1}\of{#2}\to{#3}\getcolmethod{resolvename}%
+}
+
+% Invokes either \pgfplotstablegetcolumnbyindex or
+% \pgfplotstablegetcolumnbyname.
+%
+% #1: either a column name, alias or create on use specification, or
+% [index]<integer> denoting a column index.
+% #2: either a loaded table or a table macro.
+% #3: a macro name which will be filled with the column, in the format
+% accepted of \pgfplotslist...
+\long\def\pgfplotstablegetcolumn#1\of#2\to#3{%
+	\begingroup
+	\pgfplotstable@isloadedtable{#2}{%
+		\pgfplotstablegetcolumnfromstruct{#1}\of{#2}\to{#3}%
+	}{%
+		\pgfplotstableread{#2}\pgfplotstable@tmptbl
+		\pgfplotstablegetcolumnfromstruct{#1}\of\pgfplotstable@tmptbl\to{#3}%
+	}%
+	\pgfmath@smuggleone#3%
+	\endgroup
+}%
+\def\pgfplotstablegetcolumnfromstruct#1\of#2\to#3{%
+	\def\pgfplotstable@loc@TMPc{#1}%
+	\pgfplotstable@is@colname{\pgfplotstable@loc@TMPc}%%
+	\ifpgfplotstableread@foundcolnames
+	\else
+		\expandafter\pgfplotstablegetcolumnnamebyindex\pgfplotstable@loc@TMPc\of{#2}\to\pgfplotstable@loc@TMPc
+	\fi
+	\expandafter\pgfplotstablegetcolumnbyname\pgfplotstable@loc@TMPc\of#2\to{#3}%
+}%
+
+% Defines #3 to be the column name of the column with index '#1'.
+%
+% #1: a column index (starting with 0)
+% #2: a loaded table structure
+% #3: an output macro name.
+\def\pgfplotstablegetcolumnnamebyindex#1\of#2\to#3{%
+	\pgfplotslistselect#1\of#2\to#3\relax
+}%
+
+% Defines #3 to be the column index of the column with name '#1'.
+%
+% #1: a column name
+% #2: a loaded table structure
+% #3: an output macro name which will be filled with the index (or -1
+% if there is no such index)
+\def\pgfplotstablegetcolumnindexforname#1\of#2\to#3{%
+	\def#3{-1}%
+	\edef\pgfplotstablegetcolumnindexforname@@{#1}%
+	\pgfplotstableforeachcolumn{#2}\as\pgfplotstablegetcolumnindexforname@{%
+	\relax
+		\ifx\pgfplotstablegetcolumnindexforname@\pgfplotstablegetcolumnindexforname@@
+			\edef#3{\pgfplotstablecol}%
+		\fi
+	}%
+}%
+\def\pgfplotstablegetcolumnbyindex#1\of#2\to#3{%
+	\pgfplotslistselect#1\of#2\to#3\relax
+	\expandafter\pgfplotstablegetcolumnbyname#3\of#2\to{#3}%
+}
+
+\def\pgfplotstablecopy#1\to#2{%
+	\let#2=#1%
+	\pgfplotstablegetname#1\pgfplotstable@loc@TMPa
+	\expandafter\let\csname\string#2@@table@name\endcsname=\pgfplotstable@loc@TMPa
+	\expandafter\edef\csname\string#2@@table@scanline\endcsname{\pgfplotstablescanlinelengthof{#1}}%
+	\pgfplotslistforeachungrouped#1\as\pgfplotstable@loc@TMPa{%
+		\def\pgfplotstable@loc@TMPb{%
+			\expandafter\let\csname\string#2@\pgfplotstable@loc@TMPa\endcsname}%
+		\expandafter\pgfplotstable@loc@TMPb\csname\string#1@\pgfplotstable@loc@TMPa\endcsname
+	}%
+}
+
+% Returns the file name of table '#1' into macro #2.
+\def\pgfplotstablegetname#1#2{%
+	\expandafter\let\expandafter#2\csname\string#1@@table@name\endcsname
+}
+	
+% expands to the table file name of table '#1'
+\def\pgfplotstablenameof#1{%
+	\csname\string#1@@table@name\endcsname
+}
+
+% Returns the value of \pgfplotsscanlinelength for table '#1' into
+% macro #2.
+\def\pgfplotstablegetscanlinelength#1#2{%
+	\expandafter\let\expandafter#2\csname\string#1@@table@scanline\endcsname
+}%
+
+% Expands to the scan line length of table '#1'.
+\def\pgfplotstablescanlinelengthof#1{\csname\string#1@@table@scanline\endcsname}%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% IMPLEMENTATION
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newif\ifpgfplotstableread@curline@contains@colnames
+\newif\ifpgfplotstableread@foundcolnames
+\newif\ifpgfplotstableread@skipline
+
+% A method which is necessary to work with inline table data.
+%
+% It does nothing if format=file.
+%
+% It needs to be invoked BEFORE the inline table data has been
+% seen the first time. "Seen" means collected as argument!
+%
+% The macro changes \catcodes in order to implement the 'row sep=newline',
+% some special 'col sep' choices and the 'ignore chars' features.
+%
+% ATTENTION: this changes the processing of ALL following newline
+% characters.
+% @see \pgfplotstablecollectoneargwithpreparecatcodes
+\def\pgfplotstablereadpreparecatcodes{%
+	\ifx\pgfplotstablereadrestorecatcodes\relax
+		\edef\pgfplotstablereadrestorecatcodes{%
+			\noexpand\pgfplotstableuninstallignorechars
+			\noexpand\catcode`\noexpand\^^M=\the\catcode`\^^M\noexpand\space
+			\noexpand\catcode`\noexpand\ =\the\catcode`\ \noexpand\space
+			\noexpand\catcode`\noexpand\;=\the\catcode`\;\noexpand\space
+			\noexpand\catcode`\noexpand\:=\the\catcode`\:\noexpand\space
+			\noexpand\catcode`\noexpand\^^I=\the\catcode`\^^I\noexpand\space
+			\noexpand\let\noexpand\pgfplotstablereadrestorecatcodes=\noexpand\relax
+		}%
+		\ifcase\pgfplotstableread@FORMAT@CASE\relax
+			% format=auto
+			\pgfplotstablereadpreparecatcodes@
+		\or
+			% format=inline
+			\pgfplotstablereadpreparecatcodes@
+		\fi
+	\fi
+}
+\let\pgfplotstablereadrestorecatcodes=\relax
+\def\pgfplotstablereadpreparecatcodes@{%
+	\if0\pgfplotstableread@ROWSEP@CASE\relax
+		% row sep = newline
+		\catcode`\^^M=12
+	\fi
+	\ifcase\pgfplotstableread@COLSEP@CASE\relax
+		% col sep=space:
+		\catcode`\ =10
+	\or
+		% col sep=comma:
+	\or
+		% col sep=semicolon:
+		\catcode`\;=12
+	\or
+		% col sep=colon:
+		\catcode`\:=12
+	\or
+		% col sep=brace:
+	\or
+		% col sep=tab:
+		\catcode`\^^I=12
+	\fi
+	\pgfplotstableinstallignorechars
+}%
+
+% Logically, this routine does
+% \pgfplotstablereadpreparecatcodes
+% #1
+% and that's all. However, It makes sure that any white space
+% characters (especially newlines) between '#1' and the following
+% argument are gobbled!
+%
+% To show the problem, consider
+% \pgfplotstabletypeset[<options>]
+% 	\loadedtable
+% 
+% and we want to set the catcodes *before* \loadedtable is seen.
+% Well, there is a newline character after ']'! If we change the
+% catcodes, this newline will be considered as character and will make
+% up the first argument, the \loadedtable will be ignored.
+%
+% \pgfplotstablecollectoneargwithpreparecatcodes avoids this problem
+% by gobbling all space (newline) characters *before* collecting the
+% directly following argument token. Furthermore, it restores the
+% catcodes directly after the argument has been collected.
+%
+% @see \pgfplotstablecollectoneargwithpreparecatcodesnorestore
+\long\def\pgfplotstablecollectoneargwithpreparecatcodes#1{%
+	\begingroup
+	\t@pgfplotstable@a{{#1}}% this allows '#' characters in '#1'
+	\def\pgfplotstablecollectoneargwithpreparecatcodes@@{%
+		\pgfplotstablereadpreparecatcodes
+		\expandafter\pgfplotstablecollectoneargwithpreparecatcodes@end\the\t@pgfplotstable@a%
+	}%
+	% equivalent to
+	%\let\pgfplotstable@loc@TMPa=<next token>\pgfplotstablecollectoneargwithpreparecatcodes@@<next token>
+	\futurelet\pgfplotstable@loc@TMPa\pgfplotstablecollectoneargwithpreparecatcodes@@
+	% this employs a side effect: \futurelet gobbles any spaces
+	% (including newlines).
+}%
+\def\pgfplotstablecollectoneargwithpreparecatcodes@end#1#2{%
+	\endgroup
+	#1{#2}%
+}%
+
+% An overloaded method of
+% \pgfplotstablecollectoneargwithpreparecatcodes which does not
+% restore the catcodes after collecting one arg.
+\long\def\pgfplotstablecollectoneargwithpreparecatcodesnorestore#1{%
+	\t@pgfplotstable@a{{#1}}%
+	\def\pgfplotstablecollectoneargwithpreparecatcodes@@{%
+		\expandafter\pgfplotstablereadpreparecatcodes\t@pgfplotstable@a
+	}%
+	% equivalent to
+	%\let\pgfplotstable@loc@TMPa=<next token>\pgfplotstablecollectoneargwithpreparecatcodes@@<next token>
+	\futurelet\pgfplotstable@loc@TMPa\pgfplotstablecollectoneargwithpreparecatcodes@@
+}%
+
+% Accept one of
+% \pgfplotstableread[#1]{<file>}{<\macro>}
+% \pgfplotstableread[#1]{<file>} to listener{<\macro>}
+% or
+% \pgfplotstableread[#1]{<file>} to {<\macro>} (DEPRECATED)
+\long\def\pgfplotstableread@impl[#1]{%
+	\ifpgfplots@tableread@use@begingroup
+		\begingroup
+		\def\endgroup@@pgfplotstableread{\endgroup}%
+	\else
+		\let\endgroup@@pgfplotstableread=\relax%
+	\fi
+	% set options here, although we can't evaluate 'every table' yet
+	% (the file name is not yet known).
+	% But #1 may contain input format specifiers which are important
+	% for \catcodes, BEFORE we have read the second argument:
+	\pgfplotstableset{#1}%
+	%
+	\pgfplotstablecollectoneargwithpreparecatcodes{%
+		\pgfplotstableread@impl@collectfirstarg{#1}%
+	}%
+}%
+\long\def\pgfplotstableread@impl@collectfirstarg#1#2{%
+	\pgfplotsutil@ifnextchar t{%
+		\pgfplotstableread@impl@@{#1}{#2}%
+	}{%
+		\pgfplotstableread@impl@{#1}{#2}%
+	}%
+}%
+
+
+% I don't know why; but I started with 
+% >> \pgfplotstableread[]{file} to \macro
+% That ' to ' is really ugly. This here is for backwards
+% compatibility:
+\long\def\pgfplotstableread@impl@@#1#2to {%
+	\pgfutil@ifnextchar l{%
+		\pgfplotstableread@impl@@listener{#1}{#2}%
+	}{%
+		\pgfplotstableread@impl@{#1}{#2}%
+	}%
+}%
+\long\def\pgfplotstableread@impl@@listener#1#2listener#3{%
+	\pgfplots@tableread@to@listenertrue
+	\pgfplotstableread@impl@{#1}{#2}{#3}%
+	\pgfplots@tableread@to@listenerfalse
+}%
+
+\newif\ifpgfplotstableread@inline
+\long\def\pgfplotstableread@checkinlineformat@CRCR#1\\#2\pgfplotstable@EOI{%
+	\def\pgfplotstable@loc@TMPa{#2}%
+	\ifx\pgfplotstable@loc@TMPa\pgfutil@empty
+		\pgfplotstableread@inlinefalse
+	\else
+		\pgfplotstableread@inlinetrue
+		\let\pgfplotstableread@loop@next=\pgfplotstableread@loop@next@CRCR
+	\fi
+}%
+\long\def\pgfplotstableread@loop@next@CRCR#1\\{%
+	\long\def\pgfplotstable@LINE{#1}%
+	\pgfplotstableread@loop@processnextline
+	\pgfplotstableread@loop@over@lines
+}%
+\begingroup
+\catcode`\^^M=12\relax%
+\long\gdef\pgfplotstableread@checkinlineformat@NL@#1^^M#2\pgfplotstable@EOI{%
+	\def\pgfplotstable@loc@TMPa{#2}%
+	\ifx\pgfplotstable@loc@TMPa\pgfutil@empty%
+		\pgfplotstableread@inlinefalse%
+	\else%
+		\pgfplotstableread@inlinetrue%
+		\let\pgfplotstableread@loop@next=\pgfplotstableread@loop@next@NL%
+	\fi%
+}%
+\long\gdef\pgfplotstableread@checkinlineformat@NL#1{%
+	\pgfplotstableread@checkinlineformat@NL@ #1^^M\pgfplotstable@EOI%
+}%
+\long\gdef\pgfplotstableread@loop@next@NL#1^^M{%
+	\long\def\pgfplotstable@LINE{#1}%
+	\pgfplotstableread@loop@processnextline%
+	\pgfplotstableread@loop@over@lines%
+}%
+\endgroup
+
+% #1: options.
+% #2: the table content (file name or inline data)
+% #3: the result macro.
+\long\def\pgfplotstableread@impl@#1#2#3{%
+	\ifcase\pgfplotstableread@FORMAT@CASE\relax
+		% format=auto
+		\ifcase\pgfplotstableread@ROWSEP@CASE\relax
+			% row sep=newline
+			\pgfplotstableread@checkinlineformat@NL{#2}%
+		\or
+			% row sep=crcr
+			\pgfplotstableread@checkinlineformat@CRCR #2\\\pgfplotstable@EOI
+		\fi
+	\or
+		% format=inline
+		\pgfplotstableread@inlinetrue
+		\ifcase\pgfplotstableread@ROWSEP@CASE\relax
+			% row sep=newline
+			\let\pgfplotstableread@loop@next=\pgfplotstableread@loop@next@NL
+		\or
+			% row sep=crcr
+			\let\pgfplotstableread@loop@next=\pgfplotstableread@loop@next@CRCR
+		\fi
+	\or
+		\pgfplotstableread@inlinefalse
+	\fi
+	%
+	% optimizations:
+	\pgfkeysgetvalue{/pgfplots/table/comment chars}\pgfplots@loc@TMPd
+	\ifx\pgfplots@loc@TMPd\pgfutil@empty
+		\let\pgfplotstableread@checkspecial@line@default=\relax
+	\fi
+	\pgfkeysgetvalue{/pgfplots/table/skip first n}\pgfplots@loc@TMPd
+	\ifx\pgfplots@loc@TMPd\pgfutil@empty \let\pgfplotstableread@check@skipfirstn=\relax \fi
+	\ifnum\pgfplots@loc@TMPd=0           \let\pgfplotstableread@check@skipfirstn=\relax \fi
+	%
+	\ifpgfplotstableread@inline
+		\def\pgfplotstableread@impl@fCLOSE{}%
+		\let\pgfplotstableread@loop@over@lines=\pgfplotstableread@loop@over@lines@frominline%
+		\long\def\pgfplotstableread@start@loop{%
+			\pgfplotstableread@loop@over@lines #2\pgfplotstable@EOI
+		}%
+		\def\pgfplotstableread@ready{1}%
+		\def\pgfplotstableread@filename{<inline_table>}%
+	\else
+		\def\pgfplotstableread@ready{1}%
+		\def\pgfplotstableread@filename{#2}%
+		\pgfplotstableread@openfile
+		\def\pgfplotstableread@impl@fCLOSE{%
+			\closein\r@pgfplots@reada
+		}%
+		\let\pgfplotstableread@loop@over@lines=\pgfplotstableread@loop@over@lines@fromfile%
+		\def\pgfplotstableread@start@loop{\pgfplotstableread@loop@over@lines}%
+		\pgfplotstableinstallignorechars
+	\fi
+	\edef\pgfplotstableread@oldendlinechar{\the\endlinechar}%
+	\endlinechar=-1 % do not append a white space after each line for file input
+%\pgfplots@message{ATTEMPTING TO READ \pgfplotstableread@filename}%
+	%
+	\def\pgfplots@loc@TMPa{\pgfplotstableread@impl@prepare{#1}}%
+	\expandafter\pgfplots@loc@TMPa\expandafter{\pgfplotstableread@filename}{#3}%
+	%
+	\if1\pgfplotstableread@ready
+		\pgfplotstableread@start@loop
+		%
+		\pgfplotstableread@impl@fCLOSE%
+		%
+		\pgfplotstableread@finish
+		%
+	\fi
+	\endlinechar=\pgfplotstableread@oldendlinechar
+	\pgfplotsscanlinelengthcleanup
+	\expandafter\pgfplotstable@copy@to@globalbuffers@simple\expandafter{\pgfplotstableread@filename}%
+	\endgroup@@pgfplotstableread
+	\ifpgfplots@tableread@to@listener
+		% there are no data structures in this case.
+		\let\pgfplotsscanlinelength=\pgfplotstable@glob@buf@scanline
+	\else
+		% Now, we can access the global variables!
+		% copy them to #3.
+		\pgfplotstable@copy@globalbuffers@to#3%
+	\fi
+}
+
+{\catcode`\"=12 \gdef\pgfplots@dquote{"}}
+
+% Opens \pgfplotstableread@filename.
+\def\pgfplotstableread@openfile{%
+	\def\pgfplotstable@loc@TMPa{\pgfutil@in@{ }}%
+	\expandafter\pgfplotstable@loc@TMPa\expandafter{\pgfplotstableread@filename}%
+	\ifpgfutil@in@
+		\t@pgfplots@toka=\expandafter{\pgfplotstableread@filename}%
+		\edef\pgfplotstableread@filename{\pgfplots@dquote\the\t@pgfplots@toka\pgfplots@dquote}%
+	\fi
+	\let\pgfplotstableread@old@crcr=\\%
+	\def\\{\string\\}% just to make sure we don't try to open inline table data...
+	\openin\r@pgfplots@reada=\pgfplotstableread@filename.tex
+	\ifeof\r@pgfplots@reada
+		\openin\r@pgfplots@reada=\pgfplotstableread@filename\relax
+	\else
+		\pgfplots@warning{%
+			You requested to open table '\pgfplotstableread@filename', but there is also a '\pgfplotstableread@filename.tex'. 
+			TeX will automatically append the suffix '.tex', so I will now open '\pgfplotstableread@filename.tex'.
+			Please make sure you don't accidentally load TeX files - this may produce unrecoverable errors.}%
+		\closein\r@pgfplots@reada
+		\openin\r@pgfplots@reada=\pgfplotstableread@filename\relax
+	\fi
+	%
+	\ifeof\r@pgfplots@reada
+		\pgfplotsthrow{no such table file}{\pgfplots@loc@TMPa}{\pgfplotstableread@filename}{Could not read table file '\pgfplotstableread@filename'. In case you intended to provide inline data: maybe TeX screwed up your end-of-lines? Try `row sep=crcr' and terminate your lines with `\string\\' (refer to the pgfplotstable manual for details)}\pgfeov%
+		\global\let\pgfplotstable@colnames@glob=\pgfplots@loc@TMPa
+		\def\pgfplotstableread@ready{0}%
+	\fi
+	\pgfplots@logfileopen{\pgfplotstableread@filename}%
+	\let\\=\pgfplotstableread@old@crcr
+}
+
+\def\pgfplotstableinstallignorechars{%
+	\ifx\pgfplotstableuninstallignorechars\pgfutil@empty
+		\pgfkeysgetvalue{/pgfplots/table/ignore chars}\pgfplotstable@loc@TMPa
+		\ifx\pgfplotstable@loc@TMPa\pgfutil@empty
+		\else
+			\pgfplotstableinstallignorechars@\pgfplotstable@loc@TMPa{9}%
+		\fi
+		\pgfkeysgetvalue{/pgfplots/table/white space chars}\pgfplotstable@loc@TMPa
+		\ifx\pgfplotstable@loc@TMPa\pgfutil@empty
+		\else
+			\pgfplotstableinstallignorechars@\pgfplotstable@loc@TMPa{10}%
+		\fi
+		\ifx\pgfplotstableuninstallignorechars\pgfutil@empty
+		\else
+			\expandafter\def\expandafter\pgfplotstableuninstallignorechars\expandafter{%
+				\pgfplotstableuninstallignorechars
+				\let\pgfplotstableuninstallignorechars=\pgfutil@empty
+			}%
+		\fi
+	\fi
+}%		
+\let\pgfplotstableuninstallignorechars\pgfutil@empty%
+% #1 macro containing the characters as comma-separated list
+% #2 the catcode to assign
+\def\pgfplotstableinstallignorechars@#1#2{%
+	\expandafter\pgfplotsutilforeachcommasep\expandafter{#1}\as\pgfplotstable@loc@TMPa{%
+		\t@pgfplots@toka=\expandafter{\pgfplotstableuninstallignorechars}%
+		\edef\pgfplotstableuninstallignorechars{%
+			\the\t@pgfplots@toka
+			\noexpand\catcode`\expandafter\noexpand\pgfplotstable@loc@TMPa=\expandafter\the\expandafter\catcode\expandafter`\pgfplotstable@loc@TMPa\noexpand\space
+		}%
+		\expandafter\catcode\expandafter`\pgfplotstable@loc@TMPa=#2\relax
+	}%
+}%
+
+% #1: any options to set (respect \ifpgfplots@table@options@areset )
+% #2: the file name (if any)
+% #3: the output macro (or listener)
+\def\pgfplotstableread@impl@prepare#1#2#3{%
+	\ifpgfplots@table@options@areset
+	\else
+		\pgfplotstableset@every@table{#2}{#1}%
+	\fi
+	%
+	\def\pgfplotstablename{\pgfplotstable@colnames@glob}% provide the name of the actual table struct (during \pgfplotstableread, only partial functionality is available!)
+	%
+	% local counter definitions:
+	\ifpgfplots@tableread@use@begingroup
+		\let\pgfplotstableread@lineno=\c@pgf@counta
+		\let\pgfplotstableread@numcols=\c@pgf@countb
+		\let\pgfplotstableread@curcol=\c@pgf@countc
+		\let\pgfplotstableread@usablelineno=\c@pgf@countd
+		\def\thepgfplotstableread@lineno{\the\pgfplotstableread@lineno}%
+		\def\thepgfplotstableread@usablelineno{\the\pgfplotstableread@usablelineno}%
+		\def\thepgfplotstableread@curcol{\the\pgfplotstableread@curcol}%
+		\def\thepgfplotstableread@numcols{\the\pgfplotstableread@numcols}%
+		\def\pgfplotstableread@countreset##1{##1=0 }%
+		\def\pgfplotstableread@countset##1##2{##1=##2\relax}%
+		\def\pgfplotstableread@countadvance##1{\advance##1 by1 }%
+	\else
+		% don't re-use integers! We have no protecting scopes!
+		\def\thepgfplotstableread@lineno{\pgfplotstableread@lineno}%
+		\def\thepgfplotstableread@usablelineno{\pgfplotstableread@usablelineno}%
+		\def\thepgfplotstableread@curcol{\pgfplotstableread@curcol}%
+		\def\thepgfplotstableread@numcols{\pgfplotstableread@numcols}%
+		\def\pgfplotstableread@countreset##1{\def##1{0}}%
+		\def\pgfplotstableread@countset##1##2{\def##1{##2}}%
+		\def\pgfplotstableread@countadvance##1{\pgfplotsutil@advancestringcounter{##1}}%
+	\fi
+	\pgfplotstableread@countreset\pgfplotstableread@lineno
+	\pgfplotstableread@countreset\pgfplotstableread@usablelineno
+	\pgfplotstableread@countreset\pgfplotstableread@numcols
+	\pgfplotstableread@countreset\pgfplotstableread@curcol
+	%
+	\pgfplotstableread@impl@prepare@DO
+	\def\pgfplotstableread@isgnuplotformat{0}%
+	\global\pgfplotslistnewempty\pgfplotstable@colnames@glob
+	\pgfplotsscanlinelengthinitzero
+	\ifpgfplots@tableread@to@listener
+		\def\pgfplotstablerow{\thepgfplotstableread@usablelineno}%
+		\def\pgfplotstablelineno{\thepgfplotstableread@lineno}%
+		\let\pgfplotstable@listener=#3%
+		\let\pgfplotstableread@impl@nextrow@NEXT=\pgfplotstableread@impl@nextrow@NEXT@listener
+		\let\pgfplotstablereadgetcolindex=\pgfplotstablereadgetcolindex@
+		\let\pgfplotstablereadgetcolname=\pgfplotstablereadgetcolname@
+		\let\pgfplotstablereadgetptrtocolname=\pgfplotstablereadgetptrtocolname@
+		\let\pgfplotstablereadgetptrtocolindex=\pgfplotstablereadgetptrtocolindex@
+		\let\pgfplotstablereadevalptr=\pgfplotstablereadevalptr@
+		\let\pgfplotstablereadvalueofptr=\pgfplotstablereadvalueofptr@
+		\let\pgfplotstableforeachcolumn=\pgfplotstableforeachcolumn@listener
+		\let\pgfplotstablereadvalueofcolname=\pgfplotstablereadvalueofcolname@
+		\let\pgfplotstablereadvalueofcolindex=\pgfplotstablereadvalueofcolindex@
+		\let\getthisrow=\pgfplotstablereadgetcolname
+		\let\thisrow=\pgfplotstablereadvalueofcolname
+		\let\thisrowno=\pgfplotstablereadvalueofcolindex
+		\let\getthisrowno=\pgfplotstablereadgetcolindex
+	\fi
+}%
+
+% Copies the table column list and the column vectors of #1 to global buffers. 
+% @see \pgfplotstable@copy@globalbuffers@to
+%
+% Use these two methods to avoid scoping problems.
+%
+% #1: the <\macro> name of the table which is to be copied to global buffers.
+% #2: the table file name.
+\def\pgfplotstable@copy@to@globalbuffers#1#2{%
+	\global\let\pgfplotstable@colnames@glob=#1\relax
+	\c@pgfplotstable@counta=0\relax%
+	\pgfplotslistforeachungrouped\pgfplotstable@colnames@glob\as\pgfplotstable@loc@TMPa{%
+		\def\pgfplotstable@loc@TMPb{%
+			\expandafter\global\expandafter\let\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@counta\endcsname%
+		}%
+		\expandafter\pgfplotstable@loc@TMPb\csname\string#1@\pgfplotstable@loc@TMPa\endcsname
+		\advance\c@pgfplotstable@counta by1\relax
+	}%
+	\pgfplotstable@copy@to@globalbuffers@simple{#2}%
+}%
+% A variant of \pgfplotstable@copy@to@globalbuffers which copies only
+% the member variables of a loaded table (the name and scanline length) to
+% global buffers.
+%
+% #1: the table's file name.
+%
+% @PRECONDITION: any other variables and cell data of the table are already stored
+% in global buffers.
+\def\pgfplotstable@copy@to@globalbuffers@simple#1{%
+	\gdef\pgfplotstable@glob@buf@name{#1}%
+	\global\let\pgfplotstable@glob@buf@scanline=\pgfplotsscanlinelength
+}%
+
+% copies the global column list and the global column vectors to #1
+% (NOT the table file name).
+% @see \pgfplotstable@copy@to@globalbuffers
+%
+% @PRECONDITION the global buffers contain all members of a table.
+% 
+% @POSTCONDITION The table '#1' is be initialised to these members.
+% 		Furthermore, \pgfplotsscanlinelength is set.
+\def\pgfplotstable@copy@globalbuffers@to#1{%
+	\let#1=\pgfplotstable@colnames@glob
+	\c@pgfplotstable@counta=0\relax%
+	\pgfplotslistforeachungrouped\pgfplotstable@colnames@glob\as\pgfplotstable@loc@TMPa{%
+		\def\pgfplotstable@loc@TMPb{%
+			\expandafter\let\csname\string#1@\pgfplotstable@loc@TMPa\endcsname}%
+		\expandafter\pgfplotstable@loc@TMPb\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@counta\endcsname
+%\message{Column '\pgfplotstable@loc@TMPa' has entries: \expandafter\meaning\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@counta\endcsname}%
+		\expandafter\global\expandafter\let\csname pgfp@numtable@glob@col@\the\c@pgfplotstable@counta\endcsname=\pgfutil@empty
+		\advance\c@pgfplotstable@counta by1\relax
+	}%
+	\global\let\pgfplotstable@colnames@glob=\pgfutil@empty
+	\expandafter\let\csname\string#1@@table@scanline\endcsname=\pgfplotstable@glob@buf@scanline
+	\expandafter\let\csname\string#1@@table@name\endcsname=\pgfplotstable@glob@buf@name
+	\let\pgfplotsscanlinelength=\pgfplotstable@glob@buf@scanline
+}%
+
+\def\pgfplotstableread@finish{%
+	\pgfplotsscanlinecomplete
+	\ifpgfplots@tableread@to@listener
+	\else
+		\ifpgfplotstableread@foundcolnames
+		\else
+			\pgfplotstableread@create@column@names@with@numbers
+		\fi
+		\pgfplotstableread@countreset\pgfplotstableread@curcol%
+		\pgfutil@loop
+		\ifnum\pgfplotstableread@curcol<\pgfplotstableread@numcols\relax
+			\expandafter\pgfplotsapplistXflushbuffers\csname pgfp@numtable@glob@col@\thepgfplotstableread@curcol\endcsname
+			\pgfplotstableread@countadvance\pgfplotstableread@curcol
+		\pgfutil@repeat
+	\fi
+}
+
+\def\pgfplotstableread@loop@over@lines@fromfile{%
+	\ifeof\r@pgfplots@reada
+%\pgfplots@message{EOF}%
+	\else
+		\read\r@pgfplots@reada to\pgfplotstable@LINE
+		\ifeof\r@pgfplots@reada
+		\else
+			\pgfplotstableread@loop@processnextline
+		\fi
+		\expandafter\pgfplotstableread@loop@over@lines
+	\fi
+}%
+\def\pgfplotstableread@loop@over@lines@frominline{%
+	\pgfutil@ifnextchar\pgfplotstable@EOI{%
+		\pgfutil@gobble
+	}{%	
+		\pgfplotstableread@loop@next
+	}%
+}%
+
+\def\pgfplotstableread@check@skipfirstn{%
+	\ifnum\pgfplotstableread@lineno<\pgfkeysvalueof{/pgfplots/table/skip first n} %
+		\pgfplotstableread@skiplinetrue
+	\fi
+}%
+
+% PRECONDITION: 
+% 	\pgfplotstable@LINE contains the current input line.
+\def\pgfplotstableread@loop@processnextline{%
+	\expandafter\pgfplotstableread@checkspecial@line\pgfplotstable@LINE\pgfplotstable@EOI
+	\pgfplotstableread@check@skipfirstn
+	\ifpgfplotstableread@skipline
+		\def\pgfplotstableread@gnuplotcheck{####x y type}%
+		\ifx\pgfplotstableread@gnuplotcheck\pgfplotstable@LINE
+			\def\pgfplotstableread@isgnuplotformat{1}%
+		\fi
+		\def\pgfplotstableread@gnuplotcheck{####x y z type}%
+		\ifx\pgfplotstableread@gnuplotcheck\pgfplotstable@LINE
+			\def\pgfplotstableread@isgnuplotformat{1}%
+		\fi
+	\else
+		%--------------------------------------------------
+		% \ifnum\pgfplotstableread@lineno=0
+		% 	\let\pgfplotstable@firstline=\pgfplotstable@LINE
+		% \fi
+		%-------------------------------------------------- 
+%\pgfplots@message{READING LINE \thepgfplotstableread@lineno: '\meaning\pgfplotstable@LINE'.}%
+		\pgfplotstableread@curline@contains@colnamesfalse
+		\ifnum\pgfplotstableread@numcols=0\relax
+			% STEP 0: initialise
+			% 	- count columns
+			% 	- find header data
+			\pgfplotstableread@countreset\pgfplotstableread@curcol
+			\ifpgfplotstable@firstline@is@header
+				\pgfplotstableread@curline@contains@colnamestrue
+			\fi
+			\pgfplotstableread@impl@DO\pgfplotstableread@impl@countcols@and@identifynames@NEXT\pgfplotstable@LINE
+			\pgfplotstableread@countset\pgfplotstableread@numcols{\pgfplotstableread@curcol}%
+			\edef\pgfplotstablecols{\thepgfplotstableread@numcols}%
+			\pgfplotstableread@countreset\pgfplotstableread@curcol
+			% Create empty column lists:
+			\pgfplotstableread@create@column@lists
+			%
+			\ifnum\pgfplotstableread@usablelineno=0\relax
+			\if1\pgfplotstableread@isgnuplotformat%
+				% The file started with
+				% #...
+				% #x y type
+				% X Y i
+				% -> thats a gnuplot file!
+				\pgfplotstableread@curline@contains@colnamesfalse
+			\fi
+			\fi
+			% Now, read the first line.
+			% It contains either
+			% - column names,
+			% - numerical data,
+			% - nothing (comments).
+			\ifpgfplotstableread@curline@contains@colnames
+				\pgfplotstableread@foundcolnamestrue
+				\pgfplotstableread@countreset\pgfplotstableread@curcol
+				\pgfplotstableread@impl@DO\pgfplotstableread@impl@collectcolnames@NEXT\pgfplotstable@LINE
+			\else
+				\pgfplotsscanlinelengthincrease
+				\pgfplotstableread@foundcolnamesfalse
+				\pgfplotstableread@countreset\pgfplotstableread@curcol
+				% Leave column name lists empty...
+				\pgfplotstableread@impl@DO\pgfplotstableread@impl@nextrow@NEXT\pgfplotstable@LINE
+			\fi
+%\pgfplots@message{After reading first row: found '\thepgfplotstableread@numcols' columns; column name list='\meaning\pgfplotstable@colnames@glob'}%
+		\else
+			\pgfplotsscanlinelengthincrease
+			\pgfplotstableread@countreset\pgfplotstableread@curcol
+			\pgfplotstableread@impl@DO\pgfplotstableread@impl@nextrow@NEXT\pgfplotstable@LINE
+		\fi
+		\ifnum\pgfplotstableread@curcol=\pgfplotstableread@numcols\relax
+		\else
+			\pgfplotstable@error{input table '\pgfplotstableread@filename' has an unbalanced number  of columns in row '\thepgfplotstableread@lineno' (expected '\thepgfplotstableread@numcols' cols; got '\thepgfplotstableread@curcol'). Maybe the input table is corrupted? If you need unbalanced data, consider using 'nan' in empty cells (perhaps combined with 'unbounded coords=jump')}%
+		\fi
+		\ifpgfplots@tableread@to@listener
+			\ifpgfplotstableread@curline@contains@colnames
+			\else
+				% report row!
+				\pgfplotstable@listener
+			\fi
+		\fi
+		\pgfplotstableread@countadvance\pgfplotstableread@usablelineno
+	\fi
+	\pgfplotstableread@countadvance\pgfplotstableread@lineno
+}%
+
+% WARNING: this routine is also used in pgfplots.code.tex ...
+\def\pgfplotstableread@checkspecial@line{%
+	\futurelet\pgfplotstableread@tmp\pgfplotstableread@checkspecial@line@
+}%
+\def\pgfplotstableread@checkspecial@line@{%
+	\pgfplotstableread@skiplinefalse
+	\let\pgfplotstableread@checkspecial@line@@\pgfplotstableread@impl@gobble%
+	%
+	\let\pgfplotstableread@tmpb=##%
+	\ifx\pgfplotstableread@tmp\pgfplotstableread@tmpb
+		\pgfplotstableread@skiplinetrue
+	\else
+		\let\pgfplotstableread@tmpb=$%
+		\ifx\pgfplotstableread@tmp\pgfplotstableread@tmpb
+			\let\pgfplotstableread@checkspecial@line@@=\pgfplotstableread@process@flags@line
+		\else
+			\let\pgfplotstableread@tmpb=\pgfplotstable@EOI%
+			\ifx\pgfplotstableread@tmp\pgfplotstableread@tmpb
+				\pgfplotstableread@skiplinetrue
+				\pgfplotsscanlinecomplete% the line is empty; same as \par!
+			\else
+				\let\pgfplotstableread@tmpb=\par%
+				\ifx\pgfplotstableread@tmp\pgfplotstableread@tmpb
+					\pgfplotstableread@skiplinetrue
+					\pgfplotsscanlinecomplete% the line is empty;
+				\else
+					\pgfplotstableread@checkspecial@line@default%
+				\fi
+			\fi
+		\fi
+	\fi
+	\pgfplotstableread@checkspecial@line@@
+}%
+\def\pgfplotstableread@checkspecial@line@default{%
+	% this routine can be optimized away
+	\pgfkeysgetvalue{/pgfplots/table/comment chars}\pgfplots@loc@TMPd
+	\ifx\pgfplots@loc@TMPd\pgfutil@empty
+	\else
+		\expandafter\pgfplotsutilforeachcommasep\expandafter{\pgfplots@loc@TMPd}\as\pgfplots@loc@TMPd{%
+			\expandafter\let\expandafter\pgfplotstableread@tmpb\pgfplots@loc@TMPd
+			\ifx\pgfplotstableread@tmp\pgfplotstableread@tmpb
+				\pgfplotstableread@skiplinetrue
+			\fi
+		}%
+	\fi
+}%
+
+%--------------------------------------------------
+% \def\pgfplotstableread@checkspecial@line{%
+% 	\pgfutil@ifnextchar##{%
+% 		\pgfplotstableread@skiplinetrue
+% 		\pgfplotstableread@impl@gobble
+% 	}{%
+% 		\pgfutil@ifnextchar${%
+% 			\pgfplotstableread@process@flags@line
+% 		}{%
+% 			\pgfutil@ifnextchar\pgfplotstable@EOI{%
+% 				\pgfplotstableread@skiplinetrue
+% 				\pgfplotsscanlinecomplete% the line is empty; same as \par!
+% 				\pgfplotstableread@impl@gobble
+% 			}{%
+% 				\pgfutil@ifnextchar\par{%
+% 					\pgfplotstableread@skiplinetrue
+% 					\pgfplotsscanlinecomplete
+% 					\pgfplotstableread@impl@gobble
+% 				}{%
+% 					\pgfplotstableread@skiplinefalse
+% 					\pgfplotstableread@impl@gobble
+% 				}%
+% 			}%
+% 		}%
+% 	}%
+% }
+%-------------------------------------------------- 
+
+\long\def\pgfplotstableread@process@flags@line$flags {%
+%\pgfplots@message{Ignoring flags line ...}%
+	\pgfplotstableread@skiplinetrue
+	\pgfplotstableread@impl@gobble
+}
+
+\def\pgfplotstableread@create@column@lists{%
+	\pgfutil@loop
+	\ifnum\pgfplotstableread@curcol<\pgfplotstableread@numcols\relax
+		\def\pgfplots@loc@TMPa{\pgfplotsapplistXnewempty[to global]}%
+		\expandafter\pgfplots@loc@TMPa\csname pgfp@numtable@glob@col@\thepgfplotstableread@curcol\endcsname
+		\pgfplotstableread@countadvance\pgfplotstableread@curcol
+	\pgfutil@repeat
+}
+
+\def\pgfplotstableread@create@column@names@with@numbers{%
+	\pgfplotstableread@countreset\pgfplotstableread@curcol
+	\pgfutil@loop
+	\ifnum\pgfplotstableread@curcol<\pgfplotstableread@numcols\relax
+		\edef\pgfplotstable@loc@TMPb{\thepgfplotstableread@curcol}%
+		\expandafter\pgfplotslistpushbackglobal\pgfplotstable@loc@TMPb\to\pgfplotstable@colnames@glob
+		\pgfplotstableread@countadvance\pgfplotstableread@curcol
+	\pgfutil@repeat
+}
+
+\long\def\pgfplotstableread@impl@gobble#1\pgfplotstable@EOI{}%
+
+\def\pgfplotstable@EOI{\pgfplotstable@EOI}%
+
+% A loop command which processes every single entry in a raw data row #2 
+% and invokes the macro #1{<arg>}  for each found column entry.
+%
+% Columns are separated by the /pgfplots/table/col sep character.
+%
+% #1: a command which takes precisely one argument. It will be called
+% for each found column entry
+%
+% #2: a macro containing a raw data line with <col sep> separated
+% entries.
+\long\def\pgfplotstableread@impl@DO#1#2{%
+	\ifpgfplotstable@trimcells
+		\def\pgfplotstableread@impl@ITERATE@NEXT@##1{%
+			\pgfkeys@spdef\pgfplotstableread@impl@ITERATE@NEXT@@@{##1}%
+			\expandafter#1\expandafter{\pgfplotstableread@impl@ITERATE@NEXT@@@}%
+		}%
+	\else
+		\let\pgfplotstableread@impl@ITERATE@NEXT@=#1\relax
+	\fi
+	\expandafter\pgfplotstableread@impl@DO@\expandafter{#2}%
+}
+{%
+	\catcode`\ =10
+	\catcode`\;=12
+	\catcode`\:=12
+	\gdef\pgfplotstableread@impl@prepare@DO{%
+		\ifcase\pgfplotstableread@COLSEP@CASE\relax
+			% col sep=space:
+			\catcode`\ =10
+			\long\def\pgfplotstableread@impl@DO@##1{\pgfplotstableread@impl@ITERATE##1 \pgfplotstable@EOI}%
+		\or
+			% col sep=comma:
+			\let\pgfplotstableread@impl@ITERATE@NEXT=\pgfplotstableread@impl@ITERATE@NEXT@COMMA
+			\long\def\pgfplotstableread@impl@DO@##1{\pgfplotstableread@impl@ITERATE##1,\pgfplotstable@EOI}%
+		\or
+			% col sep=semicolon:
+			\catcode`\;=12
+			\let\pgfplotstableread@impl@ITERATE@NEXT=\pgfplotstableread@impl@ITERATE@NEXT@SEMICOLON
+			\long\def\pgfplotstableread@impl@DO@##1{\pgfplotstableread@impl@ITERATE##1;\pgfplotstable@EOI}%
+		\or
+			% col sep=colon:
+			\catcode`\:=12
+			\let\pgfplotstableread@impl@ITERATE@NEXT=\pgfplotstableread@impl@ITERATE@NEXT@COLON
+			\long\def\pgfplotstableread@impl@DO@##1{\pgfplotstableread@impl@ITERATE##1:\pgfplotstable@EOI}%
+		\or
+			% col sep=brace:
+			% allow multi line cells:
+			\endlinechar=\pgfplotstableread@oldendlinechar\relax
+			\let\pgfplotstableread@impl@ITERATE@NEXT=\pgfplotstableread@impl@ITERATE@NEXT@BRACE
+			\long\def\pgfplotstableread@impl@DO@##1{\pgfplotstableread@impl@ITERATE##1\pgfplotstable@EOI}%
+		\or
+			% col sep=tab:
+			\catcode`\^^I=12
+			\let\pgfplotstableread@impl@ITERATE@NEXT=\pgfplotstableread@impl@ITERATE@NEXT@TAB
+			\long\edef\pgfplotstableread@impl@DO@##1{\noexpand\pgfplotstableread@impl@ITERATE##1\pgfplotstableread@tab\noexpand\pgfplotstable@EOI}%
+		\or
+			% col sep=&:
+			\let\pgfplotstableread@impl@ITERATE@NEXT=\pgfplotstableread@impl@ITERATE@NEXT@AMPERSAND
+			\long\def\pgfplotstableread@impl@DO@##1{\pgfplotstableread@impl@ITERATE##1&\pgfplotstable@EOI}%
+		\fi
+	}%
+}%
+\long\def\pgfplotstableread@impl@ITERATE{%
+	\pgfutil@ifnextchar\pgfplotstable@EOI{%
+		\pgfplotstableread@impl@gobble
+	}{%
+		\pgfplotstableread@impl@ITERATE@NEXT
+	}%
+}%
+\long\def\pgfplotstableread@impl@ITERATE@NEXT#1 {%
+	\pgfplotstableread@impl@ITERATE@NEXT@{#1}%
+	\pgfplotstableread@impl@ITERATE
+}%
+\long\def\pgfplotstableread@impl@ITERATE@NEXT@COMMA#1,{%
+	\pgfplotstableread@impl@ITERATE@NEXT@{#1}%
+	\pgfplotstableread@impl@ITERATE
+}%
+\long\def\pgfplotstableread@impl@ITERATE@NEXT@SEMICOLON#1;{%
+	\pgfplotstableread@impl@ITERATE@NEXT@{#1}%
+	\pgfplotstableread@impl@ITERATE
+}%
+\long\def\pgfplotstableread@impl@ITERATE@NEXT@COLON#1:{%
+	\pgfplotstableread@impl@ITERATE@NEXT@{#1}%
+	\pgfplotstableread@impl@ITERATE
+}%
+\long\def\pgfplotstableread@impl@ITERATE@NEXT@BRACE#1{%
+	\pgfplotstableread@impl@ITERATE@NEXT@{#1}%
+	\pgfplotstableread@impl@ITERATE
+}%
+\long\def\pgfplotstableread@impl@ITERATE@NEXT@AMPERSAND#1&{%
+	\pgfplotstableread@impl@ITERATE@NEXT@{#1}%
+	\pgfplotstableread@impl@ITERATE
+}%
+\begingroup
+\catcode`\^^I=12
+\gdef\pgfplotstableread@tab{^^I}%
+\long\gdef\pgfplotstableread@impl@ITERATE@NEXT@TAB#1^^I{% the following white spaces are SPACES, not tabs:
+    \pgfplotstableread@impl@ITERATE@NEXT@{#1}%
+    \pgfplotstableread@impl@ITERATE
+}%
+\endgroup
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% these values are only usable for a read-listener, that means:
+% when using
+%
+% \pgfplotstableread{<file>} to listener<\macro>
+%
+% -> <\macro> can than use the methods
+%
+% \pgfplotstablereadgetcolindex{<index>}{<\content>}
+% performs \let\content=<content of column no <index> >
+\def\pgfplotstablereadgetcolindex@#1#2{%
+	\pgfutil@ifundefined{pgfplotstblread@colcontent@no#1}{%
+		\pgfplotsthrow{no such element}{#2}{Sorry, the requested column number '#1' in table '\pgfplotstableread@filename' does not exist!? Please verify you used the correct index 0 <= i < N.}\pgfeov%
+	}{%
+		\expandafter\let\expandafter#2\csname pgfplotstblread@colcontent@no#1\endcsname
+	}%
+}%
+
+\pgfkeysdef{/pgfplots/table/@undefined column text}{#1__column_not_found.}%
+\def\pgfplotstable@undefinedtext#1{\pgfkeysvalueof{/pgfplots/table/@undefined column text/.@cmd}#1\pgfeov}%
+
+% As \pgfplotstablereadgetcolindex, but
+% \pgfplotstablereadvalueofcolindex{<index>}
+% directly expands to the value stored in the desired column.
+%
+% Example:
+% \pgfplotstablereadvalueofcolindex{3}  -> expands to '42' if '42' is
+% written in column no 3.
+%
+% Column indexing starts at 0.
+%
+% @ATTENTION: since such a command may occur within an \edef or an
+% \csname, it can't perform sanity checking. Proving an invalid index
+% expands to \pgfkeysvalueof{/pgfplots/table/@undefined column text}.
+\def\pgfplotstablereadvalueofcolindex@#1{%
+	\pgfutil@ifundefined{pgfplotstblread@colcontent@no#1}{%
+		\pgfplotstable@undefinedtext{colindex#1}%
+	}{%
+		\csname pgfplotstblread@colcontent@no#1\endcsname
+	}%
+}
+
+% \pgfplotstablereadgetcolname{<name>}{<\content>}
+% performs \let\content=<content of column named <name> >
+\def\pgfplotstablereadgetcolname@#1#2{%
+	\pgfplotstablereadgetptrtocolname{#1}{\pgfplots@loc@TMPa}%
+	\pgfplotstablereadevalptr\pgfplots@loc@TMPa{#2}%
+}%
+
+% This here is the implementation of \pgfplotstablereadvalueofcolname
+% (and \thisrow{<colname>}) for use inside of the 'read to listener'
+% framework.
+%
+% Like \pgfplotstablereadgetcolname, but this one expands directly to
+% the value of the desired column.
+%
+% #1: a column name or a column alias.
+%
+% @ATTENTION: since such a command may occur within an \edef or an
+% \csname, it can't perform sanity checking. Proving an invalid index
+% expands to \pgfkeysvalueof{/pgfplots/table/@undefined column text}.
+\def\pgfplotstablereadvalueofcolname@#1{%
+	\pgfplotstable@thisrow@impl{#1}{pgfplotstblread@colindex@for@name}{\pgfplotstable@thisrow@impl@read}%
+}%
+\def\pgfplotstable@thisrow@impl@read#1{\csname pgfplotstblread@colcontent@no#1\endcsname}%
+
+% This implements \thisrow in different contexts.
+%
+% Usage:
+% \def\thisrow#1{\pgfplotstable@thisrow@impl{#1}{macroprefix@}{\pgfplotstable@thisrow@impl@}}
+%
+% Then, \thisrow{existingcol}
+% will expand to 
+% -> \pgfplotstable@thisrow@impl@{\csname macroprefix@existingcol\endcsname}
+% -> \csname macroprefix@existingcol\endcsname
+%
+% Furthermore, if '#1' is no existing col and there exists /pgfplots/table/alias/#1,
+% \thisrow{aliased}
+% will expand to
+% -> \pgfplotstable@thisrow@impl@{\csname macroprefix@\pgfkeysvalueof{/pgfplots/table/alias/aliased}\endcsname}
+% -> \csname macroprefix@\pgfkeysvalueof{/pgfplots/table/alias/aliased}\endcsname
+%
+% #1: the argument for \thisrow{#1}
+% #2: a macro prefix such that \csname #2<colname>\endcsname contains
+% the value of the current row for (physical) column <colname>
+% #3: the name of a one-argument-macro which will get \csname #2<colname>\endcsname
+% as argument. This is the last step of \thisrow. It allows indirect
+% access by translating colnames to col indices in '\pgfplotstableread to listener'
+\def\pgfplotstable@thisrow@impl#1#2#3{%
+	\pgfutil@ifundefined{#2#1}%
+	{%
+		% WARNING : this code has been REPLICATED in
+		% *** \pgfplotstablereadgetptrtocolname ***
+		% *** \pgfplotstablegetcolumnbyname ***
+		% *** \pgfplotstableresolvecolname ***
+		% *** \pgfplotstablereadvalueofcolname ***
+		\pgfkeysifdefined{/pgfplots/table/alias/#1}{%
+			\pgfutil@ifundefined{#2\pgfkeysvalueof{/pgfplots/table/alias/#1}}{%
+				\pgfplotstable@undefinedtext{\pgfkeysvalueof{/pgfplots/table/alias/#1}}%
+			}{%
+				#3{\csname #2\pgfkeysvalueof{/pgfplots/table/alias/#1}\endcsname}%
+			}%
+		}{%
+			\pgfplotstable@undefinedtext{#1}%
+		}%
+	}%
+	{%
+		#3{\csname #2#1\endcsname}%
+	}%
+}%
+\def\pgfplotstable@thisrow@impl@#1{#1}%
+
+% \pgfplotstablereadgetptrtocolname{<name>}{\ptr}
+% Creates some sort of "pointer" to the column named <name>. This
+% pointer can than be used every time a new line has been reported to
+% the listener. It works like this:
+%
+% \let\ptr=\pgfutil@empty
+% \def\macro{%
+% 	\ifx\ptr\empty
+% 		\pgfplotstablereadgetptrtocolname{<my col>}{\ptr}%
+% 	\fi
+% 	\pgfplotstablereadevalptr{\ptr}{\content}%
+% 	-> do something with \content!
+% }
+% 	
+% \pgfplotstableread{<file>} to listener<\macro>
+%
+% -> will evaluate \macro foreach row.
+%
+% The advantage of such a prepared pointer over \thisrow{#1} or
+% \getthisrow{#1} is simply efficiency and sanity checking: the checks
+% are done at the time of pointer creation, dereferencing the pointer
+% is fast.
+\def\pgfplotstablereadgetptrtocolname@#1#2{%
+	\def#2{0}%
+	\pgfplotstable@getcol{#1}\of{\pgfplotstableread@filename}\to{#2}\getcolmethod{getptr}%
+}%
+
+% As \pgfplotstablereadgetptrtocolname, but this here access columns
+% by index.
+\def\pgfplotstablereadgetptrtocolindex@#1#2{\def#2{#1}}%
+
+% \pgfplotstablereadevalptr{<\ptr>}{<\content}
+% writes the current value of <\ptr> to <\content>. The pointer <\ptr>
+% must be initialised with \pgfplotstablereadgetptrtocolname
+\let\pgfplotstablereadevalptr@=\pgfplotstablereadgetcolindex@
+
+% \pgfplotstablereadvalueofptr{<\ptr>} -> expands to the pointers value.
+%
+% The pointer \ptr must be initialised with
+% \pgfplotstablereadgetptrtocolname.
+\let\pgfplotstablereadvalueofptr@=\pgfplotstablereadvalueofcolindex@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\long\def\pgfplotstableread@impl@nextrow@NEXT@listener#1{%
+	\expandafter\def\csname pgfplotstblread@colcontent@no\thepgfplotstableread@curcol\endcsname{#1}%
+	\pgfplotstableread@countadvance\pgfplotstableread@curcol
+}
+
+\long\def\pgfplotstableread@impl@nextrow@NEXT#1{%
+%\pgfplots@message{Inserting '#1' at (\thepgfplotstableread@lineno, \thepgfplotstableread@curcol).}%
+	\ifnum\pgfplotstableread@curcol<\pgfplotstableread@numcols\relax
+		\pgfplotslist@assembleentry{#1}\into\t@pgfplots@tokc
+		\def\pgfplotstableread@TMP{\expandafter\pgfplotsapplistXpushback\expandafter{\the\t@pgfplots@tokc}\to}%
+		\expandafter\pgfplotstableread@TMP\csname pgfp@numtable@glob@col@\thepgfplotstableread@curcol\endcsname
+		\pgfplotstableread@countadvance\pgfplotstableread@curcol
+	\else
+		\begingroup
+		\t@pgfplots@tokc={#1}%
+		\pgfplotstable@error{Table '\pgfplotstableread@filename' appears to have too many columns in line \thepgfplotstableread@lineno: Ignoring '\the\t@pgfplots@tokc'. PGFPlots found that the number of columns is larger than the previously determined number of columns. Please verify that every cell entry is separated correctly (use braces {<cell entry>} if necessary. Also verify that column names are plain ASCII.). This error is not critical}%
+		\endgroup
+	\fi
+}
+
+
+
+\long\def\pgfplotstableread@impl@collectcolnames@NEXT#1{%
+%\pgfplots@message{Got column name no \thepgfplotstableread@curcol\ as '#1'}%
+	\pgfutil@ifundefined{pgfplotstableread@impl@COLNAME@#1}{%
+		\def\pgfplotstable@loc@TMPa{#1}%
+	}{% generate unique column names warning:
+		\pgfplots@warning{Table '\pgfplotstableread@filename' has non-unique column name '#1'. Only the first occurence can be accessed via column names.}%
+		\edef\pgfplotstable@loc@TMPa{#1--index\thepgfplotstableread@curcol}%
+	}%
+	\expandafter\def\csname pgfplotstableread@impl@COLNAME@#1\endcsname{foo}% remember this name.
+	\expandafter\pgfplotslistpushbackglobal\expandafter{\pgfplotstable@loc@TMPa}\to\pgfplotstable@colnames@glob
+	\ifpgfplots@tableread@to@listener
+		% create an associative container colindex -> colname
+		% for use in a listener.
+		\expandafter\edef\csname pgfplotstblread@colindex@for@name#1\endcsname{\thepgfplotstableread@curcol}%
+	\fi
+	\pgfplotstableread@countadvance\pgfplotstableread@curcol
+}
+
+
+
+
+\long\def\pgfplotstableread@impl@countcols@and@identifynames@NEXT#1{%
+	\pgfplotstableread@countadvance\pgfplotstableread@curcol
+	\ifpgfplotstable@search@header
+		\ifpgfplotstableread@curline@contains@colnames
+		\else
+			\pgfplotstableread@isnumber@ITERATE#1\pgfplotstable@EOI
+%\ifpgfplotstableread@curline@contains@colnames\pgfplots@message{'#1' is a column name!}\else\pgfplots@message{'#1' is NO column name!}\fi
+		\fi
+	\fi
+}
+\def\pgfplotstableread@isnumber@plus{+}
+\def\pgfplotstableread@isnumber@minus{-}
+\def\pgfplotstableread@isnumber@zero{0}
+\def\pgfplotstableread@isnumber@one{1}
+\def\pgfplotstableread@isnumber@two{2}
+\def\pgfplotstableread@isnumber@three{3}
+\def\pgfplotstableread@isnumber@four{4}
+\def\pgfplotstableread@isnumber@five{5}
+\def\pgfplotstableread@isnumber@six{6}
+\def\pgfplotstableread@isnumber@seven{7}
+\def\pgfplotstableread@isnumber@eight{8}
+\def\pgfplotstableread@isnumber@nine{9}
+\def\pgfplotstableread@isnumber@e{e}
+\def\pgfplotstableread@isnumber@E{E}
+\def\pgfplotstableread@isnumber@period{.}
+
+\def\pgfplotstableread@isnumber@ITERATE#1{%
+	\def\pgfplotstableread@CURTOK{#1}%
+	\ifx\pgfplotstableread@CURTOK\pgfplotstable@EOI
+		\def\pgfplotstableread@NEXT{}%
+	\else
+		\def\pgfplotstableread@NEXT{\pgfplotstableread@isnumber@ITERATE}%
+		\ifx\pgfplotstableread@CURTOK\pgfplotstableread@isnumber@plus
+		\else
+		\ifx\pgfplotstableread@CURTOK\pgfplotstableread@isnumber@minus
+		\else
+		\ifx\pgfplotstableread@CURTOK\pgfplotstableread@isnumber@zero
+		\else
+		\ifx\pgfplotstableread@CURTOK\pgfplotstableread@isnumber@one
+		\else
+		\ifx\pgfplotstableread@CURTOK\pgfplotstableread@isnumber@two
+		\else
+		\ifx\pgfplotstableread@CURTOK\pgfplotstableread@isnumber@three
+		\else
+		\ifx\pgfplotstableread@CURTOK\pgfplotstableread@isnumber@four
+		\else
+		\ifx\pgfplotstableread@CURTOK\pgfplotstableread@isnumber@five
+		\else
+		\ifx\pgfplotstableread@CURTOK\pgfplotstableread@isnumber@six
+		\else
+		\ifx\pgfplotstableread@CURTOK\pgfplotstableread@isnumber@seven
+		\else
+		\ifx\pgfplotstableread@CURTOK\pgfplotstableread@isnumber@eight
+		\else
+		\ifx\pgfplotstableread@CURTOK\pgfplotstableread@isnumber@nine
+		\else
+		\ifx\pgfplotstableread@CURTOK\pgfplotstableread@isnumber@e
+		\else
+		\ifx\pgfplotstableread@CURTOK\pgfplotstableread@isnumber@E
+		\else
+		\ifx\pgfplotstableread@CURTOK\pgfplotstableread@isnumber@period
+		\else
+%\message{NO ITS NOT!  Token: '\meaning\pgfplotstableread@CURTOK'}%
+			% it's no number, so it is a column name.
+			\pgfplotstableread@curline@contains@colnamestrue
+			\def\pgfplotstableread@NEXT{\pgfplotstableread@impl@gobble}%
+		\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi\fi
+	\fi
+	\pgfplotstableread@NEXT
+}
+
+\def\pgfplotstable@error#1{\pgfplotsthrow{unsupported operation}{#1}\pgfeov}%
+
+
+\def\pgfplotstableset{%
+	\pgfqkeys{/pgfplots/table}%
+}%
+
+% Accepts a macro #1 which contains an argument denoting a column
+% name.
+%
+% It checks whether #1 starts with '[index]', indicating that it is actually
+% a column INDEX. If that is the case,
+% \ifpgfplotstableread@foundcolnames is set to false and the index is
+% returned into #1.
+%
+% Otherwise, \ifpgfplotstableread@foundcolnames is set to true.
+\def\pgfplotstable@is@colname#1{%
+	\expandafter\pgfplotstabletypeset@is@colname@#1\pgfplotstable@EOI
+	\ifpgfplotstableread@foundcolnames
+	\else
+		\let#1=\pgfplotstable@loc@TMPa
+	\fi
+}%
+\def\pgfplotstabletypeset@is@colname@{%
+	\pgfutil@ifnextchar[{%
+		\pgfplotstabletypeset@is@colname@index
+	}{%
+		\pgfplotstableread@foundcolnamestrue
+		\pgfplotstabletypeset@is@colname@name
+	}%
+}
+\def\pgfplotstabletypeset@is@colname@index@@{index}%
+\def\pgfplotstabletypeset@is@colname@index[#1]#2\pgfplotstable@EOI{%
+	\def\pgfplotstable@loc@TMPa{#1}%
+	\ifx\pgfplotstable@loc@TMPa\pgfplotstabletypeset@is@colname@index@@
+		\pgfplotstableread@foundcolnamesfalse
+		\edef\pgfplotstable@loc@TMPa{#2}%
+	\else
+		\pgfplotstableread@foundcolnamestrue
+	\fi
+}%
+\def\pgfplotstabletypeset@is@colname@name#1\pgfplotstable@EOI{}%
+
+% calls \pgfplotstableset{every table={#1}} where '#1' is the table
+% file name.
+%
+% Note that 'every table' is usually set *AFTER* any other option. In
+% other words: settings in 'every table' have higher precedence than
+% those provided, for example, at
+% \pgfplotstabletypeset[<options>]{...}.
+%
+% Why? Well, the <options> need to be set *before* the file name
+% argument is read. After all, it might contain an inline table for
+% which \catcodes need to be adjusted -- and <options> might explain
+% how.
+%
+% REMARK: An early attempt to change the precendence for 'every table'
+% was to set <options> again after 'every table'. But that is
+% incompatible with, for example '/.add={}{}' key handlers.
+%
+% This macro does nothing if 'every table' is empty.
+%
+% #1: the table name (argument to 'every table')
+% #2: The <options> which have already been set.
+\long\def\pgfplotstableset@every@table#1#2{%
+	\pgfkeysgetvalue{/pgfplots/table/every table/.@cmd}\pgfplotstable@loc@TMPa
+	\ifx\pgfplotstable@loc@TMPa\pgfplots@empty@style@key
+	\else
+		\pgfplotstableset{/pgfplots/table/every table={#1}}%,#2}%
+	\fi
+}%
+
+\def\pgfplotstabletypeset{%
+	\pgfutil@ifnextchar[{%	
+		\pgfplotstabletypeset@opt
+	}{%
+		\pgfplotstabletypeset@opt[]%
+	}%
+}
+\long\def\pgfplotstabletypeset@opt[#1]#2{%
+	\pgfplotstable@error@pkg{Please load \string\usepackage{pgfplotstable} before using \string\pgfplotstabletypeset}%
+}
+\let\pgfplotstabletypesetfile=\pgfplotstabletypeset
+
+\def\pgfplotstablecreatecol{%
+	\pgfutil@ifnextchar[{%
+		\pgfplotstablecreatecol@opt
+	}{%
+		\pgfplotstablecreatecol@opt[]%
+	}%
+}%
+\def\pgfplotstablecreatecol@opt[#1]#2#3{%
+	\pgfplotstable@error@pkg{Please load \string\usepackage{pgfplotstable} before using \string\pgfplotstablecreatecol}%
+}%
+
+% Iterates through every column of table '#1' and invokes the code
+% '#3' for each column. The current column name will be available as
+% '#2' and the current column index as |\pgfplotstablecol| (starting
+% with 0).
+%
+% Example:
+% \pgfplotstableforeachcolumn{\table}\as\colname{%
+% 	The column name is `\colname'; its index \pgfplotstablecol.\par
+% }%
+%
+% REMARK: this routine does NOT introduce TeX groups.
+\long\def\pgfplotstableforeachcolumn#1\as#2#3{%
+	\def\pgfplotstablecol{0}%
+	\pgfplotslistforeachungrouped#1\as#2{%
+		#3\relax%
+		\pgfplotsutil@advancestringcounter\pgfplotstablecol
+	}%
+	\let\pgfplotstablecol=\relax
+}%
+\let\pgfplotstableforeachcolumn@orig=\pgfplotstableforeachcolumn
+
+% A variant of \pgfplotstableforeachcolumn which is used inside of
+% \pgfplotstableread to listener.
+%
+% It is used as \pgfplotstableforeachcolumn\as\cur{<do something with \cur>}
+\long\def\pgfplotstableforeachcolumn@listener#1\as#2#3{%
+	\pgfplotstableforeachcolumn@orig\pgfplotstable@colnames@glob\as{#2}{#3}%
+}%
+
+% Reports every element t_{ij} for a fixed column j (in read-only
+% mode).
+%
+% For every cell, the code '#4' will be executed where '#3' will
+% contain the cell's value. During code '#4', the macro
+% \pgfplotstablerow will contain the current row index.
+%
+% #1: either a column name or the string '[index]' followed by a
+% number denoting a column index Access by column name is much faster..
+% #2: the table (macro or file name)
+% #3: the macro in which the cell values shall be written
+% #4: the code to execute.
+%
+% Example:
+% \pgfplotstableforeachcolumnelement{colname}\of\table\as\cellelem{%
+% 	I have now cell element `\cellelem' at row index
+% 	`\pgfplotstablerow'.
+% 	\par
+% }
+%
+% REMARK: this routine does NOT introduce TeX groups.
+\long\def\pgfplotstableforeachcolumnelement#1\of#2\as#3#4{%
+	\def\pgfplotstablerow{0}%
+	\pgfplotstablegetcolumn{#1}\of{#2}\to\pgfplotstableforeachcolumnelement@list
+	\pgfplotslistforeachungrouped\pgfplotstableforeachcolumnelement@list\as#3{%
+		% allow nesting by copying the old value of \pgfplotstablerow:
+		\expandafter\pgfplotstableforeachcolumnelement@\expandafter{\pgfplotstablerow}{#4}%
+	}%
+	\let\pgfplotstablerow=\relax
+}%
+% helper method to allow nesting. It copies \pgfplotstablerow.
+% #1: the expanded value of \pgfplotstablerow. 
+\long\def\pgfplotstableforeachcolumnelement@#1#2{%
+	#2\relax
+	\def\pgfplotstablerow{#1}% restore to old value.
+	% advance.
+	\pgfplotsutil@advancestringcounter\pgfplotstablerow
+}%
+
+% A routine which is similar to \pgfplotstableforeachcolumnelement,
+% but this here checks for changes in \pgfplotsretval and writes them
+% back into the respected cell.
+%
+% The runtime is quadratic in the number of rows.
+\long\def\pgfplotstablemodifyeachcolumnelement#1\of#2\as#3#4{%
+	\def\pgfplotstablerow{0}%
+	%
+	% Step 0: get the REAL column name for '#1'.
+	% This needs modifications if '#1' is [index]<integer>.
+	% -> store the colname to \pgfplotstable@loc@TMPc:
+	\def\pgfplotstable@loc@TMPc{#1}%
+	\pgfplotstable@is@colname{\pgfplotstable@loc@TMPc}%%
+	\ifpgfplotstableread@foundcolnames
+	\else
+		\expandafter\pgfplotstablegetcolumnnamebyindex\pgfplotstable@loc@TMPc\of{#2}\to\pgfplotstable@loc@TMPc
+	\fi
+	% Step 0.1: prepare a command which re-assembles column '#1'
+	% (using the real column name).
+	% The re-assemblation command will be invoked at the end of each
+	% iteration. This complicated macro preparation allows nested
+	% calls to \pgfplotstablemodifyeachcolumnelement.
+	\t@pgfplots@toka={\expandafter\pgfplotslistpushback\expandafter{#3}\to}%
+	\edef\pgfplotstable@loc@TMPd{%
+		\the\t@pgfplots@toka{\expandafter\noexpand\csname\string#2@\pgfplotstable@loc@TMPc\endcsname}}%
+	% Step 1: copy the column data to \pgfplotstable@loc@TMPb
+	\expandafter\pgfplotstablegetcolumnbyname\pgfplotstable@loc@TMPc\of#2\to\pgfplotstable@loc@TMPb%
+	%
+	% clear the original column:
+	\expandafter\pgfplotslistnewempty\csname\string#2@\pgfplotstable@loc@TMPc\endcsname
+	%
+	% Call loop. The prepared re-assemble macro will be provided as macro argument
+	% to allow nested calls:
+	\expandafter\pgfplotstablemodifyeachcolumnelement@\expandafter{\pgfplotstable@loc@TMPd}
+		{\pgfplotstable@loc@TMPb}{#3}{#4}%
+	\let\pgfplotstablerow=\relax
+}%
+% #1: post-iteration code
+% #2: the row list
+% #3: the loop macro to assign
+% #4: the loop body
+\long\def\pgfplotstablemodifyeachcolumnelement@#1#2#3#4{%
+	\pgfplotslistforeachungrouped{#2}\as#3{%
+		% allow nesting by copying the old value of \pgfplotstablerow:
+		\expandafter\pgfplotstableforeachcolumnelement@\expandafter{\pgfplotstablerow}{#4}%
+		#1%
+	}%
+}
+
+% Selects a single table element at row #1 and column #2 from table
+% #3.
+%
+% #1: a row index.
+% #2: a column name or the string '[index]' followed by a number
+% denoting a column index. Access by column name is much faster.
+% #3: the table (macro or file name).
+%
+% The cell value will be written into the macro \pgfplotsretval.
+%
+% REMARK:
+% this routine is supposed to be very slow: it needs time O(N) where N
+% is the number of rows. This may change in future versions.
+%
+% Example:
+% \pgfplotstablegetelem{0}{[index]2}\of\table
+% The elem is `\pgfplotsretval'.
+\def\pgfplotstablegetelem#1#2\of#3{%
+	\begingroup
+	\pgfplotstablegetcolumn{#2}\of{#3}\to\pgfplotstable@loc@TMPa
+	\def\pgfplotsexceptionmsg{Sorry, row `#1' does not exist in table \pgfplotstablenameof{#3}}%
+	\pgfplotslistselect#1\of\pgfplotstable@loc@TMPa\to\pgfplotsretval
+	\pgfmath@smuggleone\pgfplotsretval
+	\endgroup
+}%
+
+\def\pgfplotstablegetcolumnlist#1\to#2{\let#2=#1}
+
+% Defines \pgfmathresult (and now also \pgfplotsretval) to be the number of rows in table #1.
+%
+% #1 may be either a loaded table structure (a macro name) or a table
+% file name. In the latter case, the file will be loaded temporarily.
+\long\def\pgfplotstablegetrowsof#1{%
+	\pgfplotstable@isloadedtable{#1}{%
+		% ah - it is an already loaded table!
+		\begingroup
+		\pgfplotslistfront#1\to\pgfplotstablegetrows@@
+		\expandafter\pgfplotslistsize\csname\string#1@\pgfplotstablegetrows@@\endcsname\to\c@pgfplotstable@counta
+		\edef\pgfmathresult{\the\c@pgfplotstable@counta}%
+		\pgfmath@smuggleone\pgfmathresult
+		\endgroup
+	}{%
+		% ah - it is a file name.
+		\begingroup
+			\pgfplotstableread{#1}\pgfplotstablegetrows@
+			\pgfplotstablegetrowsof{\pgfplotstablegetrows@}%
+			\pgfmath@smuggleone\pgfmathresult
+		\endgroup
+	}%
+	\let\pgfplotsretval=\pgfmathresult
+}%
+
+% Defines \pgfplotsretval to contain the number of columns in table
+% #1.
+%
+% #1 may be either a loaded table structure (a macro name) or a table
+% file name. In the latter case, the file will be loaded temporarily.
+\long\def\pgfplotstablegetcolsof#1{%
+	\pgfplotstable@isloadedtable{#1}{%
+		% ah - it is an already loaded table!
+		\begingroup
+		\pgfplotslistsize#1\to\c@pgfplotstable@counta
+		\edef\pgfplotsretval{\the\c@pgfplotstable@counta}%
+		\pgfmath@smuggleone\pgfplotsretval
+		\endgroup
+	}{%
+		% ah - it is a file name.
+		\begingroup
+			\pgfplotstableread{#1}\pgfplots@table
+			\pgfplotstablegetcolsof{\pgfplots@table}%
+			\pgfmath@smuggleone\pgfplotsretval
+		\endgroup
+	}%
+	\let\pgfmathresult=\pgfplotsretval
+}

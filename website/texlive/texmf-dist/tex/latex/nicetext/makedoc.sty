@@ -1,0 +1,645 @@
+%% Macro package `makedoc.sty' for LaTeX2e, 
+%% copyright (C) 2009-2012 Uwe L\"uck, 
+%%   http://www.contact-ednotes.sty.de.vu 
+%% -- author-maintained in the sense of LPPL below -- 
+%% for preparing documentations from packages.
+
+\def\fileversion{0.51}  \def\filedate{2012/04/03} 
+
+%% This file can be redistributed and/or modified under 
+%% the terms of the LaTeX Project Public License; either 
+%% version 1.3a of the License, or any later version.
+%% The latest version of this license is in
+%%     http://www.latex-project.org/lppl.txt
+%% We did our best to help you, but there is NO WARRANTY. 
+%%
+%% Please report bugs, problems, and suggestions via 
+%% 
+%%   http://www.contact-ednotes.sty.de.vu 
+%% 
+\NeedsTeXFormat{LaTeX2e}[1994/12/01] 
+% 1994/12/01: \newcommand* etc. 
+\ProvidesPackage{makedoc}[\filedate\space v\fileversion\space
+                          TeX input from *.sty (UL)] 
+%%
+%% |\PackageCodeTrue| and |\PackageCodeFalse| set `\ifPackageCode'
+%% globally, so redefinition of `~' (playing a key role in 'fifinddo') 
+%% may be kept local. Note the capital `T' and `F'!
+\newcommand*{\PackageCodeTrue} {\global\let\ifPackageCode\iftrue}
+\newcommand*{\PackageCodeFalse}{\global\let\ifPackageCode\iffalse}
+%% |\ifPackageCode| is used to determine whether a listing environment 
+%% must be `\beg'un or `\end'ed. You may also want to suppress empty 
+%% code lines, while empty lines should issue a `\par' break in 
+%% ``comment" mode.
+%%
+%% Since `\newif' is not used, `\ifPackageCode' must be declared 
+%% explicitly. Declaration of new `\if's must be early in case 
+%% they occur in code that is skipped by another `\if'\dots
+%% [TODO!? cf. others 2010/03/15]
+\PackageCodeFalse
+%%
+%% 'makedoc' is an extension of 'fifinddo' on which it depends.
+\RequirePackage{fifinddo}[2009/04/13]
+%% Both 'fifinddo' and 'makedoc' use the ``underscore" `_' 
+%% as ``private letter" and restore its standard ``subscript" 
+%% function ({\it \TeX book Chap.\,7}) at their end. 
+%% Push\slash pop functionality as with `@' and `\RequirePackage' 
+%% is missing here. So after loading 'fifinddo',
+%% we need to declare our private letter (again). 
+\catcode`\_=11 %% underscore used in control words
+%%
+%% \subsection{&\MakeDocCorrectHook\ (\dqtd{`txt2TeX'})}
+%% \label{sec:mdoccorr}                                     %% 2012/03/17
+%% |\MakeDocCorrectHook| is predefined to leave its argument without 
+%% the enclosing braces, otherwise unchanged:
+\let\MakeDocCorrectHook\@firstofone
+%% Less efficiently, the same could have been set up as 
+% \newcommand*{\MakeDocCorrectHook}[1]{\ProcessStringWith{#1}{LEAVE}}
+%% according to 'fifinddo'. 
+%%
+%% It may be \emph{redefined} in a \emph{configuration} file like 
+%% 'mdoccorr.cfg'   %% was makedoc.cfg 2011/08/22
+%% or the 'makedoc' script file applying to a single 
+%% package file in order to, e.g., converting plain text to \TeX\ input 
+%% conforming to typographical conventions, making `$\dots$' from 
+%% \qtd{&.&.&.}, %% dots should not be replaced!
+%% e.g. 
+%% Replace `LEAVE' in the previous suggestion by an identifier 
+%% whose job you have defined before, and use `\renewcommand' 
+%% in place of `\newcommand'. 
+%% See an example in 'mdoccorr.cfg'. %% fixed 2011/08/22
+%%
+%% You can \emph{test} your own `\MakeDocCorrectHook' by 
+%% \[`\typeout{\MakeDocCorrectHook{<test-string>}}'\]
+%% ... provided (sometimes) `\MakeOther\ ' ...
+%% You can even change it using `\IfInputLine' from 'fifinddo' in the 
+%% midst of preprocessing a package documentation. 
+%%
+%% \subsection{Distinguishing package code from comments}%% <- wiki style breaks in self-doc. 
+%% \label{sec:distinguish}
+%% Use of comment marks is a matter of personal style. Only lines 
+%% starting with the sequence |%% | %% box 2010/03/16
+%% are typeset in \TeX\ quality 
+%% under the present release. Lines just containing |%%|
+%% (without the space) are used to suppress empty code lines 
+%% preceding section titles (while keeping some visual space 
+%% in the package file). There is a preferable way to do this, 
+%% however not in the present release ...
+%%
+%% The parsing macros must be set up reading `%' and ` ' as ``other" 
+%% characters. Using the optional arguments for this creates 
+%% difficulties that can be somewhat avoided by redefining 
+%% |\PatternCodes|.
+\SetPatternCodes{\MakeOther\%\MakeOther\ }%% 2010/03/30
+%%
+%% The next line sets the ``sandbox" for the detecting macro, as it 
+%% is coined in the documentation of 'fifinddo', with ``identifier" 
+%% |PPScomment|.
+\MakeSetupSubstringCondition{PPScomment}{%% }{{#1}} 
+%% The last argument stores the expanded input line for reference by 
+%% macros called. The next line is a test whether the setup works. 
+%  \expandafter \show \csname \setup_substr_cond PPScomment\endcsname 
+%% Here comes the definition of the corresponding testing macro. 
+%% #3 is the expanded input line from above. The `\If'\dots commands, 
+%% `\fdInputLine', `\fdInputLine', and `\RemoveDummyPatternArg' 
+%% are from 'fifinddo'. 
+\MakeSubstringConditional{PPScomment}{%% }#3{%% #3 entire test string 
+    \DecideCommentCode{#1}{#2}{#3}\PPstring} 
+%% |\DecideCommentCode{#1}{#2}{#3}{#4}| is shared with the parser 
+%% for the \lq`% '\rq\ commenting style. %% new 2010/03/28
+\newcommand*{\DecideCommentCode}[4]{%
+  \IfFDinputEmpty{\OnEmptyInputLine}{%
+%% The empty line test comes early to offer control with 
+%% `\OnEmptyInputLine' both in code and comment mode. 
+%% Maybe it should always? %% TODO 2009/04/13
+    \IfFDempty{#1}%
+              {\TreatAsComment{%
+                 \RemoveDummyPatternArg\MakeDocCorrectHook{#2}}}%
+              {\ifx\fdInputLine#4%
+                 \ifPackageCode\else \WriteResult{}\fi%
+%% ... allows paragraphs in comments.
+               \else \TreatAsCode{#3}\fi}}}
+%% Job |PScomment| deals with the |% | commenting style:
+\MakeSetupSubstringCondition{PScomment}{% }{{#1}} 
+\MakeSubstringConditional{PScomment}{% }#3{%
+    \DecideCommentCode{#1}{#2}{#3}\PercentChar} 
+%% `\PercentChar' is from 'fifinddo'.---Return to `\fdPatternCodes': 
+\ResetPatternCodes    %% 2010/03/30
+%% 
+%% |\PPstring| stores the line suppressing empty code lines with 
+%% the \lq`%% '\rq\ style: 
+\newcommand*{\PPstring}{} \xdef\PPstring{\PercentChar\PercentChar}
+%%
+%% |comment| will be a ``generic" identifier to call a comment line 
+%% detector. It might be predefined to issue an ``undefined" error; 
+%% however this release predefines it to behave like `PPScomment':
+\CopyFDconditionFromTo{PPScomment}{comment}
+%% This means that the \lq`%% '\rq\ commenting style is assumed by 
+%% default. \[`\CopyFDconditionFromTo{PScomment}{comment}'\]
+%% switches to the \lq`% '\rq\ style (with the {\it Wikipedia} 
+%% sectioning parser).
+%% Or just choose \[`\ProcessInputWith{PScomment}'\] as <main-parser>
+%% (without the {\it Wikipedia} feature).
+%%
+%% Alternative still to be considered: 
+% \@namedef{\setup_substr_cond comment}{%
+%   \PackageError{makedoc}{Job `comment' not defined}%
+%   {Use \string\CopyFDconditionFromTo{comment}}}
+%%
+%% \subsection{Choice of package code environment}
+%% With v0.3, we adopt the solution for typesetting package code
+%% that was implemented in the former 'makedoc.cfg'. So we rely 
+%% on the `listing' and `listingcont' environments of the 
+%% 'moreverb' package. 
+%% 
+%% The earlier idea was that 'makedoc.sty' uses an undefined \LaTeX\ 
+%% environment `packagecode' that will be defined in 'makedoc.cfg'. 
+%% An accompanying idea was that 'makedoc' works before the 
+%% `\documentclass' line inside a group, while 'makedoc.cfg' 
+%% is read \emph{after} the `\documentclass' line. 
+%%
+%% We now want to simplify things. We replace 
+%% \[`packagecode' \mbox{\quad by\quad } `mdPackageCode'\] 
+%% and define the new environment globally here. 'moreverb'
+%% and our choice for `\listinglabel' are
+%% called at `\begin{document}'---outside the possible group. 
+\gdef\mdPackageCode{%
+%   \small 
+%% 2011/01/19, v0.41: `\small' has affected the `\baselineskip'
+%% above the code. So a `\par' must be executed before `\small'. 
+%% But we don't want to have the extra `\partopsep'---forced ...
+  \mdStartPackageCode                       %% 2011/01/19 v0.41
+%% From the next occurrence of the environment onwards, 
+%% `listing' must be replaced by `listingcont'. 
+  \gdef\mdPackageCode{\mdStartPackageCode   %% 2011/01/19 v0.41
+                      \listingcont}%
+  \listing{1}}
+\gdef\mdStartPackageCode{%                  %% 2011/01/19 v0.41
+%% Smart `\small'---we might once allow `\partopsep'
+%% in `vmode'---not this time:
+  \par \small \partopsep\z@skip
+%% Get rid of 'niceverb' stuff:
+  % \MakeOther\`\MakeOther\'%% probably OK with moreverb
+  \MakeOther\<\MakeOther\|%
+}
+\gdef\endmdPackageCode{%
+  \endlisting
+  \global\let\endmdPackageCode\endlistingcont}
+\AtBeginDocument{%
+  \RequirePackage{moreverb}%
+  \renewcommand*{\listinglabel}[1]{%
+    \llap{\scriptsize\rmfamily\the#1}\hskip\listingoffset\relax}%
+}
+%% |\ResetCodeLineNumbers| may be needed to \emph{reset} 
+%% 'moreverb''s (global!) code line number settings 
+%% (\emph{first} line number + {\it modulo} for displaying)
+%% when combining documentations of \emph{more} than one package
+%% with the present solution for implementing `mdPackageCode'. 
+%% %% 2010/12/20, rm. 2010/12/21:
+%% % (With v0.41, the definition is global, so it can be used 
+%% % outside a group in a `.tex' preamble that does the preprocessing.) 
+\@ifdefinable\ResetCodeLineNumbers{%%   global as above, v0.41 
+    \gdef\ResetCodeLineNumbers{%
+        \global\listing@line\@ne \gdef\listing@step{\@ne}}}
+%%
+%% \subsection{Dealing with comments}
+%% |\TreatAsComment{<text>}| writes <text> to the documentation 
+%% file. If we had ``package code" (were in ``code mode") so far, 
+%% the listing environment is ended first. 
+\newcommand*{\TreatAsComment}[1]{%
+  \ifPackageCode
+    \WriteResult{\string\end{mdPackageCode\@empty}}%
+%% The `\@empty' here is a lazy trick to save self-documentation 
+%% fighting 'verbatim''s ``highlight" of finding ends of listings 
+%% (to be improved). %% TODO 2010/03/09
+%%
+%% We always use `\string' to prevent macro expansion in `\write'ing 
+%% in place of \LaTeX's `\protect', 
+%% as long as 'fifinddo' simply uses the primitive `\write' in place 
+%% of \LaTeX's `\proteced@write' ... %% todo 2009/04/08
+    \PackageCodeFalse 
+    \EveryComment
+%     \_empty_code_lines_false
+  \fi
+  \WriteResult{#1}}
+%% Here, |\EveryComment| is a macro hook for inserting material that should 
+%% not appear in a listing environment, I had tried this %% 2010/03/18 
+%% successfully: 
+%% \begin{verbatim}
+%%   \gdef\EveryComment{% 
+%%        \global\let\EveryComment\relax
+%%        \WriteResult{\string\AutoCmdVerbSyntax}}
+%% \end{verbatim}
+%% Initialized:
+\global\let\EveryComment\relax %% should be changed globally.
+%%
+%% \subsection{Sectioning}
+%% \label{sec:secparsers}
+%% We provide a facility from 'wiki.sty' that imitates the sectioning 
+%% syntax used in editing \emph{Wikipedia} pages, in a different 
+%% implementation (better compatibility) and in a more general way. 
+%% On Wikipedia, `== Definition ==' works similar as 
+%% `\section{Definition}' does with \LaTeX. With the present 
+%% implementation, you can type, e.g.,
+%% % \[`%%%%%%%%%%%%%%%%%%%%%% == Definition == %%%%%%%%%%%%%%%%%%%%%%'\] 
+%% $$`%%%%%%%%%%%%%%%%%%%%%% == Definition == %%%%%%%%%%%%%%%%%%%%%%'$$
+%% to get a similar result. The number of `%' characters doesn't 
+%% matter, and there can be other stuff, however: additional `=' 
+%% symbols may harm. Three sectioning levels are supported, through 
+%% `==<text>==', `===<text>===', and `====<text>====' (deepest). 
+%%
+%% There are three detector macros made for programmers. 
+%% The most general one is 
+%% In the following definitions, there is a single tilde to prevent 
+%% `=' symbols being gobbled by the test (realized by accident). 
+%% %% 2009/04/13
+%% \par\noindent %% 2010/03/11
+%% |\SectionLevelThreeParseInput|:
+\newcommand*{\SectionLevelThreeParseInput}{%
+  \expandafter \test_sec_level_iii \fdInputLine ~========&}
+%% |\SectionLevelTwoParseInput| 
+\newcommand*{\SectionLevelTwoParseInput}{%
+  \expandafter \test_sec_level_ii \fdInputLine    ~======&}
+%% and |\SectionLevelOneParseInput| 
+\newcommand*{\SectionLevelOneParseInput}{%
+  \expandafter \test_sec_level_i \fdInputLine       ~====&}
+%% allow skipping deeper levels for efficiency. 
+%% % TODO in fifinddo: setup for 2 strings in 1 line 2009/04/13
+%%
+%% In the terminology of the 'fifinddo' documentation, the previous 
+%% three commands are ``sandbox builders." The following three 
+%% commands are the corresponding ``substring conditionals."
+%% However, 'fifinddo' so far %% todo 2009/04/08
+%% only deals with \emph{single} substrings, while here we are 
+%% dealing with \emph{pairs} of substrings. We are not using 
+%% general setup macros, but define the parsing macros ``manually,"
+%% as it is typical in many other macros in 'latex.ltx' and other 
+%% \LaTeX\ packages. You can fool our macros easily, there is 
+%% no syntax check. %% todo 2009/04/08
+\def\test_sec_level_iii#1====#2====#3&{%
+  \IfFDempty{#2}%
+            {\test_sec_level_ii #1======&}%
+            {\WriteSection\mdSectionLevelThree{#2}}}
+\def\test_sec_level_ii#1===#2===#3&{%
+  \IfFDempty{#2}%
+            {\test_sec_level_i    #1====&}%
+            {\WriteSection\mdSectionLevelTwo{#2}}} 
+\def\test_sec_level_i#1==#2==#3&{%
+  \IfFDempty{#2}%
+            {\RemoveTildeArg \ProcessStringWith{#1}{comment}}%
+            {\WriteSection\mdSectionLevelOne{#2}}} 
+%% `\ProcessStringWith' here passes the expanded `\fdInputLine' 
+%% to the general comment detector.
+%%
+%% |\WriteSection{<command>}{<text>}| replaces an input line 
+%% with a line \[`<command>{<text>}'\]
+%% in the documentation file and switches into ``comment mode."
+%% One possible space between `=' and the beginning of <text> 
+%% and one possible space between the end of <text> and `=' 
+%% are removed.
+%% The method of dealing with surrounding blank 
+%% spaces is new with v0.3, moreover we now rely on a new method in 
+%% 'niceverb.sty' v0.3 to support its single right quote feature in 
+%% section titles.\footnote{&\ignorespaces\ and &\unskip\ used 
+%% previously do not work in PDF bookmarks.}
+\newcommand*{\WriteSection}[2]{%
+  \TreatAsComment{^^J#1{\trim_correct{#2}}^^J}}
+%% Trimming ``other" spaces is a little more clumsy than 
+%% what the 'trimspaces' package does whose code is by 
+%% Morten H\o gholm. It still has inspired the following.
+\begingroup \MakeOther\ %% CARE! we must not indent ...
+\long\gdef\trim_correct#1{\trim_fosp$#1$ $}
+\long\gdef\trim_fosp#1$ {%
+\IfFDempty{#1}{\trim_losp$}{\trim_losp#1$ }}
+%% So we have a string \lq`\trim_losp$<text>$ $'\rq.
+\long\gdef\trim_losp$#1 ${\tidy_sp_trim#1$}
+%% So we have a string \lq`\tidy_sp_trim<text>$ $'\rq 
+%% or \lq`\tidy_sp_trim<text>$$'\rq.
+\long\gdef\tidy_sp_trim#1$#2${\MakeDocCorrectHook{#1}}
+\endgroup
+%% We insert `\section' using |\mdSectionLevelOne| etc.\
+%% which the programmer can redefine, e.g., when the 
+%% documentation is part of a `\section' (or even deeper) 
+%% according to the ``documentation driver" file. 
+\newcommand*\mdSectionLevelOne  {\string\section}
+\newcommand*\mdSectionLevelTwo  {\string\subsection}
+\newcommand*\mdSectionLevelThree{\string\subsubsection}
+%%
+%% This sectioning feature is not used in (the documentation) of 
+%% 'makedoc.sty'---\emph{definitions} of the parsing macros fool 
+%% the same macros ...
+%%
+%% \subsection{Commented code}
+%% |\TreatAsCode{<text>}| is the opposite to `\TreatAsComment{<text>}':
+\newcommand*{\TreatAsCode}[1]{%
+  \ifPackageCode
+%     \_empty_code_lines_true
+  \else
+    \WriteResult{\string\begin{mdPackageCode}}%
+    \PackageCodeTrue
+  \fi
+  \WriteResult{#1}%
+%   \WriteResult{\maybe_result_empty_line #1}%
+%   \let\maybe_result_empty_line\empty
+}
+%%
+%% \subsection{Dealing with empty input lines}  %% TODO use!? 2010/03/09 
+%% \label{sec:emptylines} 
+%% |\OnEmptyInputLine| is a default setting (or hook) for what to do 
+%% with empty lines in the input file. The default is to insert an 
+%% empty line in the output file: 
+\newcommand*{\OnEmptyInputLine}{\WriteResult{}}
+%% |\NoEmptyCodeLines| changes the setting to suppressing empty code 
+%% lines, while in ``comment mode" an empty input line \emph{does} 
+%% insert an empty line, for starting a new paragraph: 
+\newcommand*{\NoEmptyCodeLines}{%% suppress empty code lines
+  \renewcommand*{\OnEmptyInputLine}{%
+    \ifPackageCode \else \WriteResult{}\fi}}
+%% There is a better policy---didn't work so far ...
+%%
+%% \subsection{Bundling typical things: script commands}
+%% \label{sec:script}
+%% Practical experience suggested the following shorthands, 
+%% combining commands from 'makedoc' and 'fifinddo'.
+%%
+%% \subsubsection{Output file and &\filelist\ entry}
+%% |\LaTeXresultFile{<output>}| chooses <output> as name 
+%% for the output file and saves you the extra line for inserting 
+%% the `\ProvidesFile' line as with 'fifinddo''s 
+%% `\WriteProvides'---however, it differs, actually it is 'makedoc'
+%% that wants to be mentioned with `\ProvidesFile' ... 
+%% %% (otherwise copied from 'fifinddo') ...
+\newcommand*{\LaTeXresultFile}[1]{% 
+  \ResultFile{#1}%%% \WriteProvides}
+  \WriteResult{%
+    \string\ProvidesFile{\result_file_name}% 
+      [\the\year/\two@digits\month/\two@digits\day\space 
+       automatically generated with makedoc.sty]}}%
+%% \subsubsection{Choose input file and run!}
+%% |\MakeDoc{<input>}| preprocesses <input> to render input for 
+%% \LaTeX, considering what is typical for a \LaTeX\ package as the 
+%% <input> one here. It reads 'mdoccorr.cfg' (Sec.~\ref{sec:mdoccorr}) 
+%% automatically.
+%% % [`input{mdoccorr.cfg}'] added for what `makedoc.tex' says about it.
+%% % See `\make_job_doc' for TODOs about it. 
+%% % Now also wondering: \ (i)~there are other ways to get the 
+%% % correcting hook, so why forcing this here? \ 
+%% % (ii)~different correcting hooks for different input files?---%
+%% % In case of a ``header" (see below) we change into ``code mode":
+%% |\MakeDoc*{<input>}| \emph{avoids} inputting 'mdoccorr.cfg'
+%% (e.g., for allowing replacements specific for the single package). 
+%% All similar commands (including those invoking `\MakeDoc') 
+%% get this ``my way" feature as of v0.5: 
+\newif\if_makedoc_autocorr_
+\_makedoc_autocorr_true                                 %% 2012/04/03
+\newcommand*{\makedoc_maybe_autocorr}{%
+    \if_makedoc_autocorr_ \input{mdoccorr.cfg}%
+        \else \_makedoc_autocorr_true \fi}
+%% <- TODO warning if one from `TEXMF/' used inadvertently!?
+%%         avoid reading twice!?                %% 2010/03/11
+%%         % or read it from 'makedoc' already?   %% 2010/03/13
+%%
+%% |\makedoc_star<next-cmd>| abbreviates star version definitions:
+\newcommand*{\makedoc_star}[1]{%
+    \@ifstar{\_makedoc_autocorr_false#1}#1}
+\newcommand*{\MakeDoc}{\makedoc_star\make_doc_arg}
+\newcommand*{\make_doc_arg}[1]{%
+  \makedoc_maybe_autocorr
+  \ifnum\header_lines>\z@
+        \WriteResult{\string\begin{mdPackageCode}}%
+        \PackageCodeTrue    %% TODO both lines makedoc command!? 
+                            %%      2009/04/08
+  \else \PackageCodeFalse \fi
+%% The loop follows. There is a placeholder `\makedoc_line_body' 
+%% that is predefined below and can be changed while processing the 
+%% <input> file. 
+  \ProcessFileWith{#1}{%
+    \CountInputLines %% stepping line counter is standard
+    \makedoc_line_body
+    \process_line_message}%
+%% Currently the ``VERSION HISTORY" or, more generally, 
+%% a final part of the <input> file is typeset verbatim 
+%% (for ``tabbing" in the version history), 
+%% so we must leave ``code mode" finally:
+  \ifPackageCode
+    \WriteResult{\string\end{mdPackageCode\@empty}}%% self-doc-trick
+    \PackageCodeFalse %% TODO both lines makedoc command!? 2009/04/08 
+  \fi
+%% When the <input> file has been processed, certain default settings 
+%% might be restored---in case another <input> file is processed for the 
+%% same documentation document: 
+%   \HeaderLines{0}% 
+%   \MainDocParser{\SectionLevelThreeParseInput}%% TODO!? 2009/04/08
+}
+%% |\MakeCloseDoc{<input>}|                 %% 2010/03/11
+%% is a kind of shorthand for 
+%% \[`\MakeDoc{<input>}\CloseResultFile'\]  %% was MakeClose 2011/10/12
+%% where `\CloseResultFile' is from 'fifinddo'.
+%% The star version \[|\MakeCloseDoc*{<input>}|\]       %% 2012/03/18
+%% \emph{avoids} reading 'mdoccorr.cfg':
+\newcommand*{\MakeCloseDoc}     {\makedoc_star\make_close_doc}
+\newcommand*{\make_close_doc}[1]{\MakeDoc{#1}\CloseResultFile}
+%% Reimplementation using 'fifinddo' v0.5 failed 2011/11/19:
+% \newcommand*{\MakeCloseDoc}{\FinalInputFiletrue\MakeDoc}
+%% `\MakeDoc' and `\MakeCloseDoc' actually \emph{process} 
+%% the <input> file, 
+%% depending on certain \emph{parameters} some of which are set 
+%% by the commands described next.
+%% 
+%% \subsubsection{Combining input and output}
+%% \[|\MakeSingleDoc[<out-ext>]{<in-output>.<in-ext>}|\] %% 2011/11/05
+%% generates `<in-output>.<out-ext>' from `<in-output>.<in-ext>', 
+%% using settings like `\MakeDoc'. The default for <out-ext> is `doc'.
+%% `\MakeSingleDoc' combines `\LaTeXresultFile'
+%% and `\MakeCloseDoc' with appropriate arguments. 
+%% The star version                                     %% 2012/03/18
+%% \[|\MakeSingleDoc*[<out-ext>]{<in-output>.<in-ext>}|\] 
+%% \emph{avoids} reading 'mdoccorr.cfg'.
+%% (TODO: not so sure about dot vs.\ optional <in-ext>.)
+\newcommand*{\MakeSingleDoc}{\makedoc_star\make_single_doc_args}
+\newcommand*{\make_single_doc_args}[2][doc]{%
+    \make_single_doc[#1]#2\@nil}
+\def\make_single_doc[#1]#2.#3\@nil{%
+    \LaTeXresultFile{#2.#1}\MakeCloseDoc{#2.#3}}
+%%
+%% \subsubsection{Preamble vs.\ main part of input file}
+%% A \LaTeX\ package typically has a ``header" or ``preamble" 
+%% (automatically inserted by 'docstrip') with very scarce information 
+%% on which file it is and what it provides, and with much more Legalese. 
+%% Typesetting it in \TeX\ quality may be more misleading than 
+%% typesetting it \emph{verbatim}. So we typeset it \emph{verbatim}. 
+%% Now: where does the ``header" end? 
+%% `\NeedsTeXFormat' might be considered the border.---Yet it seems 
+%% to be more simple and reliable just to act in terms of the 
+%% \emph{number of lines} 
+%% that the header should be long. This length <how-many-lines> is declared by 
+%% |\HeaderLines{<how-many-lines>}|: 
+\newcommand*{\HeaderLines}{\def\header_lines}
+\HeaderLines{0}
+%% So the default is that there aren't any header lines, unless 
+%% another `\HeaderLines' is issued before some `\MakeDoc'.
+%% The way input is parsed \emph{after} the ``header" is set by 
+%% |\MainDocParser{<parsing-command>}|. 
+\newcommand*{\MainDocParser}{\def\main_doc_parser}
+%% `\SectionLevelThreeParseInput' from section~\ref{sec:secparsers}
+%% is the default, two alternatives are defined there, another one is 
+%% `\ProcessInputWith{comment}' from 'fifinddo' and 
+%% %% clarified 2010/03/09 `\ref' 2010/03/10
+%% section~\ref{sec:distinguish} 
+%% (general dividing into code and comments). 
+\MainDocParser{\SectionLevelThreeParseInput}
+%% Here is how `\HeaderLines' and `\MainDocParser' act: 
+\newcommand*{\makedoc_line_body}{%
+  \IfInputLine{>\header_lines}%
+              {\let\makedoc_line_body\main_doc_parser
+                   \makedoc_line_body}%    %% switch to deciding
+              {\TreatAsCode{\fdInputLine}}} %% header verbatim
+%% \subsubsection{Screen messages}
+%% |\ProcessLineMessage{<command>}| is designed to choose a screen 
+%% (or log) message <command>. 
+%% % A simple setting may be \[`\ProcessLineMessage{\message{.}}'\] with 
+%% `\ProcessLineMessage{\message{.}}' has a result like with 'docstrip'. 
+%% You just get one dot on screen per input line 
+%% as a simple confirmation that 
+%% the program is not hung up. %% TODO phrase!? 2009/04/08
+%% However, the message may slow down a run considerably 
+%% (if so, choose `\ProcessLineMessage{}' in the script). 
+%% % , you really have to 
+%% % wait about a second while you hardly notice the 'makedoc' run 
+%% % without screen messages. Therefore, the default is \emph{not} 
+%% % to issue any screen message.%% TODO more complex procedures!? 2009/04/08 
+%% %---No! 
+%% But it is better for beginner users of the package, 
+%% so made default. %% 2009/04/09 
+\newcommand*{\ProcessLineMessage}{\def\process_line_message}
+% % \ProcessLineMessage{} %% no, still more efficient: 
+% \let\process_line_message\relax
+\ProcessLineMessage{\message{.}}
+%%
+%% \subsubsection{Bundling-bundling Standalones}
+%% |\MakeInputJobDoc{<header-lines>}{<main-parser>}|
+%% by default produces a file 
+%% \[`\jobname.doc' \mbox{\quad from\quad } `\jobname.sty'\] 
+%% with some standard settings. %%% \footnote{This command is new with v0.3.}
+%% 'mdoccorr.cfg' (for `.txt'$\to$\LaTeX\ functionality) is read, 
+%% `\HeaderLines{<header-lines>}'
+%% and `\MainDocParser{<main-parser>}' and finally 
+%% `\MakeCloseDoc{\jobname.sty}{\jobname.doc}' 
+%% % (with the arguments named before) 
+%% are executed. 
+%% Here `\jobname' expands to the file name base of the 
+%% `.tex' file you are running. It is assumed that you are preparing 
+%% documentation for `\jobname.tex' for your `\jobname.sty'. 
+%% In order to produce `<my-job>.doc' from `<my-job>.sty' instead, 
+%% \[`\renewcommand{\mdJobName}{<my-job>}'\]
+%% If your input file has a different file name extension 
+%% <in-ext> than \qtd{`sty'}, use an optional argument 
+%% of `\MakeInputJobDoc':
+%% \[|\MakeInputJobDoc[<in-ext>]{<header>}{<parser>}|\]
+%% If the output file 
+%% should have a different extension <out-ext> than \qtd{`doc'}, 
+%% you must use \emph{two} optional arguments as follows: 
+%% \[|\MakeInputJobDoc[<in-ext>][<out-ext>]{<header>}{<parser>}|\]
+%% `\MakeInputJobDoc' does \emph{not} execute `\ProcessLineMessage', 
+%% you can use the latter before so `\MakeInputJobDoc' respects it.
+%%
+%% |\MakeJobDoc| does the same as `\MakeInputJobDoc' apart from 
+%% typesetting the <created> file, so the latter needs an additional 
+%% `\input{<created>}'. 
+%% The star forms |\MakeInputJobDoc*| and               %% 2012/03/18
+%% |\MakeJobDoc*| \emph{avoid} reading 'mdoccorr.cfg'.
+%% 
+%% My original idea was that all preprocessing of package files 
+%% to be documented should <happen> \emph{before} 
+%% `\documentclass'---loading
+%% 'makedoc.sty' included---inside a group (\lq`{<happen>}'\rq---in 
+%% order to avoid compatibility issues).
+%% However, it now appears to me that loading 'makedoc' the usual way 
+%% in the document \emph{preamble} 
+%% and processing the package file (that is to be documented) 
+%% within the `document' environment works well enough and 
+%% will be easier to comprehend.
+%%
+%% This is the code for both `\MakeJobDoc' and `\MakeInputJobDoc':
+\@ifdefinable{\mdJobName}{\let\mdJobName\jobname}
+\newif\if_makedoc_input_
+\newcommand*{\MakeInputJobDoc}{%
+    \_makedoc_input_true  \makedoc_star\make_job_doc_arg}
+\newcommand*{\MakeJobDoc}     {%
+    \_makedoc_input_false \makedoc_star\make_job_doc_arg}
+\newcommand*{\make_job_doc_arg}[1][sty]
+            {\@testopt{\make_job_doc[#1]}{doc}}
+%% Reading files as follows would fail with active 'niceverb' settings, 
+%% so we issue `\noNiceVerb' if it is defined. We do it inside a group 
+%% in case 'niceverb' settings are to be restored afterwards.
+\def\make_job_doc[#1][#2]#3#4{%
+  \begingroup
+    \@ifundefined{noNiceVerb}{}%
+                 {\let\MakeNormal\MakeNormalHere \noNiceVerb}%
+    \makedoc_maybe_autocorr                             %% 2012/03/17
+%% <- TODO stack danger in group!? 2010/03/13 
+    \LaTeXresultFile{\mdJobName.#2}%
+    \HeaderLines{#3}%
+    \MainDocParser{#4}%
+    \MakeCloseDoc{\mdJobName.#1}%
+%% For typesetting the file just created, some 'nicetext' features 
+%% may be needed ... so restore the previous ones ...
+  \endgroup
+  \if_makedoc_input_\input{\mdJobName.#2}\fi
+}
+%% This feature may \emph{change}.
+%%
+%% \subsection{Leaving the package}             %% mod. 2012/03/18
+\catcode`\_=8   %% restores underscore use for subscripts
+\endinput 
+%%
+%% \subsection{VERSION HISTORY}
+
+v0.1   2009/04/03   very first version, tested on morgan.sty
+v0.2   2009/04/05   \OnEmptyInputLine, \NoEmptyCodeLines
+                    comment -> PPScomment, \IfFDinputEmpty, 
+                    \EveryComment, \PPstring may be par break 
+       2009/04/08   \InputString -> \fdInputLine, 
+                    \section -> \subsection; documentation!
+       2009/04/08f. \MakeDoc
+       2009/04/12   ``line too long'' w/o redefining \PatternCodes;
+                    \MakeDocCorrectHook
+       2009/04/13   tilde with sectioning 
+v0.3   2010/03/08   \WriteSection 'trimspaces'-like
+       2010/03/09   "fool" ("wiki" sectioning) nicer worded, 
+                    more use of `...' in place of `\dots';
+                    different treatment of package code environment
+                    (new separate subsection); clarification on 
+                    \ProcessInputWith{comment}
+       2010/03/10   supplied `\ref'
+       2010/03/11   \MakeCloseDoc; corrected "undifined";
+                    \par\noindent in ``Sectioning"; \MakeJobDoc
+       2010/03/12   &.&.&.; updated copyright
+       2010/03/13   corr.: `_' not ``other"; tried to explain my 
+                    earlier reasoning about `\ifPackageCode'; 
+                    \MakeInputJobDoc
+       2010/03/14   \make_doc_job without \niceverb_aux_cat
+       2010/03/15   another remark to \ifPackageCode
+       2010/03/16   use box with comment line markers; 
+                    mdcorr -> mdoccorr
+       2010/03/18   report on using \EveryComment
+       2010/03/19   '' -> "
+v0.4   2010/03/23   "Distinguishing"
+       2010/03/24   "both in"
+       2010/03/27   switch back to \fdPatternCodes
+       2010/03/28   include `% ' commenting style 
+       2010/03/29   \ResetCodeLineNumbers
+       2010/03/30   use \SetPatternCodes, \ResetPatternCodes
+v0.41  2010/12/20   \ResetCodeLineNumbers defined globally
+       2010/12/21   ... rather presented as a bug-fix
+       2011/01/19   \mdStartPackageCode
+       2011/01/25   updated (C)
+v0.41a 2011/08/22   doc.: makedoc.cfg -> mdoccorr.cfg
+v0.41b 2011/10/12   doc.: MakeClose -> MakeDoc
+v0.42  2011/11/05   \MakeDoc reads mdoccorr.cfg, \MakeSingleDoc
+       2011/11/19   failing reimplementation of \MakeCloseDoc
+v0.5   2012/03/17   removing 1 \make_job_doc TODO; star versions; 
+                    a few make_doc -> makedoc
+       2012/03/18   star variants completed, copyright updated, 
+                    doc. "Leaving"
+v0.51  2012/04/03   \_makedoc_autocorr_true

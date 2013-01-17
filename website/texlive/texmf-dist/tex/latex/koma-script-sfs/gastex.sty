@@ -1,0 +1,1959 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{gastex}[2006/11/28 v2.8]
+\newif\ifgastexslide\gastexslidefalse
+\DeclareOption{slide}{\global\gastexslidetrue}
+\DeclareOption{paper}{\global\gastexslidefalse}
+\ProcessOptions
+\RequirePackage{calc,trig}
+\special{header=gastex.pro}
+% \input gastex.ps
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%% GasTeX : Graphs and Automata Simplified in TeX
+%%
+%% Macros for drawing easily graphs and automata under the picture 
+%% environment of LaTeX2e.
+%% See the README file
+%%
+%% Paul Gastin
+%% LSV
+%% ENS de Cachan
+%% 61, avenue du PrŽsident Wilson
+%% F-94235 CACHAN Cedex
+%% FRANCE
+%% http://www.lsv.ens-cachan.fr/~gastin/
+%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% A lot of changes has been made since gastex 1.0 and as a result, 
+% these new macros are no longer compatible with the previous ones.
+% To be able to use old pictures, a compatible mode is provided
+% (see \compatiblegastexun at the end of the file). The compatibility
+% is almost 100% and should be sufficient in most cases.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% History since version 2.0
+%
+% 2.8:
+% - packaged for CTAN
+% 
+% 2.7:
+% - gastex is now compatible with the xcolor package which allows very
+% useful color expressions such as red!50!blue!60!white.
+% 
+% 2.6:
+% - improved precision of some computations
+% 
+% 2.5:
+% The horizontal shifts that one gets sometimes (e.g. with overlays in 
+% presentations) should no more occur provided \nullfont is used inside the 
+% picture environment:
+% \begin{picture}(100,35)(-50,0)\nullfont
+% ...
+% \end{picture}
+% \selectfont is automatically used by gastex for node or edge labels.
+% I found this solution looking in the package pgf (portable graphics 
+% format) by Till Tantau. I also recommend his excellent beamer package 
+% for laptop presentations.
+% 
+% 2.4:
+% - added the macro \rpnode to allow nodes whose shape is a regular polygon
+%   defined by its radius, its number of sides and an angle for the first point.
+% - added the possibility to have arrows at the tail of edges and lines.
+%   For this, the following new parameters are provided:
+%   ATnb, ATdist, ATangle, ATlength, ATLength
+% - added the macro \drawpolygon to draw a polygon defined by a list of points. 
+% - added the macro \drawrpolygon to draw a regular polygon defined by 
+%   its radius, its number of sides and an angle for the first point. 
+% - added the macro \drawline to draw a broken line defined by n points. 
+% - added the parameter "arcradius" in order to have arcs instead of sharp angles
+%   for polygons and broken lines. The default is arcradius=0 for sharp angles.
+% - added the macro \drawcurve to draw a continuous curve going through n points. 
+% - added the macro \drawccurve to draw a continuous closed curve going through n points. 
+% All these macros use gasset parameters and in particular: 
+% Nframe, Nfill, linecolor, fillcolor, dash, ...
+% 
+% Uncompatibility: The macro \drawline was introduced in version 2.1 to 
+% draw a line between two points. The new version allows to draw a line 
+% defined by an arbitrary number of points but the syntax is different.
+% It was \drawline(x1,y1,x2,y2) and it is now \drawline(x1,y1)(x2,y2).
+% 
+% 2.3:
+% - added the parameter ELdistC (y or n) allowing to specify whether 
+% the distance (ELdist) is between the center (y) of the label and the edge
+% or between the side (n) of the label and the edge. 
+% The behaviour of previous gastex versions corresponds to the setting
+% (n) which is therefore the default.
+% - added the macro \drawqbpedge allowing to specify the auxiliary 
+% point of a quadratic Bezier curve with two angles instead of the 
+% absolute coordinates required by \drawqbedge.
+% - added parameters sxo, syo, exo, eyo (offsets in \unitlength).
+% They define offsets for the virtual starting and ending points of an
+% edge with respect to the centers of the starting and ending nodes.
+% - improved drawing for arrowheads (in gastex.pro). 
+% First, the direction of the arrowhead is better for curved edges.
+% Second, when several arrowheads are drawn they follow the curve. 
+% Previously, they followed the tangent at the ending point of the 
+% edge which was bad for curved edges.
+% 
+% 2.2: 
+% - added the options slide and paper to the package.
+% In order to get the default settings for slides, use
+%   \usepackage[slide]{gastex}
+% The default settings for papers is obtained with
+%   \usepackage[paper]{gastex}
+% or
+%   \usepackage{gastex}
+% - added new option loopCW to define whether loops are in
+% clockwise direction or not.
+% - Fix a TeX error (Arithmetic overflow) that occurred when using
+% \drawedge(A,B){} with two nodes A and B having the same coordinates.
+% Now, in this case, an error message is issued in the log 
+% and the macro \drawedge(A,B){} is ignored. 
+% 
+% 2.1: 
+% - New macros to draw directly circles, rectanges, ovals,
+% lines and bezier curves. 
+%   \drawcircle, \drawrect, \drawoval, 
+%   \drawline, \drawqbezier, \drawcbezier
+% All these macros use gasset options and in particular: 
+% Nframe, Nfill, linecolor, fillcolor, dash, AHnb, etc...
+% - Compatibility mode for pspictpg up to v0.6
+% - Fix the bug which occured sometimes when using Nw=0,Nh=0.
+%  
+% 2.01: 
+% - Fix an error that occured in v2.0 when using Nfill=y without 
+% defining previously fillgray or fillcolor.  
+% The following default setting has been added.
+% \gasset{fillgray=0,Nfill=n} % Not filled but black if filled
+% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Known problems and (hopefully) solutions.
+% 
+% 21/10/99: Frank Goertzen (frank.goertzen@unibw-muenchen.de) has 
+% reported that when using gastex together with german an error may 
+% occur when running dvips if the german package is loaded first.  The 
+% solution is to load gastex before german:
+% \usepackage{gastex} 
+% \usepackage{german} 
+% I have no idea concerning the cause of this error.
+% 
+% 07/03/00: A postscript error may occur when using Nw=0,Nh=0.
+% Solution: Use a small value instead of 0, e.g. Nw=0.1,Nh=0.1
+% Fixed in version 2.1.
+% 
+% 27/10/00: Using gasset inside a tabular or an array produces an error.
+% The reason is that I'm using the "&" symbol as a marker in order to 
+% process gasset options.
+% Solution: Include the whole picture inside an mbox.
+% \begin{tabular}{c}
+%   \mbox{\begin{picture}(10,20)(-5,-5)
+%   \gasset{ELdist=0}
+%   \node(A)(0,0){1}\drawloop(A){$a$}
+%   \end{picture}}
+% \end{tabular}
+% 
+% pdflatex: gastex does not work with pdflatex since it produces 
+% postscript code and pdflatex does not know what to do with it.
+% Solution: Use latex and then ps2pdf.
+% I don't know whether it is possible to translate my postscript code 
+% into pdf code. The problem is that I'm using postscript to make some 
+% computations and not only to draw the picture. 
+% I would appreciate the help of a pdf guru on this.
+% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Internal variables and macros
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\newcounter{cnt@a}\newcounter{cnt@b}\newcounter{cnt@c}
+\newdimen\dim@x \newdimen\dim@y
+\newbox\temp@box
+\newdimen\d@my@unit \d@my@unit=0.01mm
+% \d@my@unit is the unit used for all drawings with gastex.
+% All values given in \unitlength are converted in \d@my@unit.
+% The aim is to improve the precision of the drawings.
+
+{\catcode`t=12\catcode`p=12\gdef\no@PT#1pt{#1}}
+\def\strip@PT#1{\expandafter\no@PT\the#1\space}
+
+\def\gas@initps{!BP
+  \gas@dash
+  \line@width setlinewidth\space}
+
+\def\gas@AHparam{\AH@nb\AH@d\AH@angle\AH@L\AH@l}
+\def\gas@ATparam{\AT@nb\AT@d\AT@angle\AT@L\AT@l}
+\def\gas@ATnul{0 \AT@d\AT@angle\AT@L\AT@l}
+\def\gas@gobble#1{}%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Settings
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%-----------------------------------------------------------------------
+% Set values for gastex parameters.
+% 
+%   \gasset{parameter=value,parameter=value,...}
+%   optional spaces are only allowed after commas
+% 
+% Nw=number
+%   widht in \unitlength of oval nodes
+% Nh=number
+%   height in \unitlength of oval nodes
+% Nmr=number
+%   maximal radius in \unitlength of oval nodes
+%   The actual radius will be min(Nw/2,Nh/2,Nmr)
+%   Nmr=0 yields a rectangle node
+%   
+% Nadjust=any combination of the letters w,h,n
+%   w : the node width is adjusted to the node label width + Nadjustdist
+%   h : the node height is adjusted to the node label height + Nadjustdist
+%   n : no adjustment
+% Nadjustdist=number
+%   distance in \unitlength between the label box and the node frame 
+%   when using Nadjust
+% 
+% Nframe=y or n
+%   boolean flag defining whether nodes are framed or not.
+% Nfill=y or n
+%   boolean flag defining whether nodes are filled or not.
+%   Automatically set to true by the parameters fillgray and fillcolor
+% 
+% ExtNL=y or n
+%   boolean flag defining whether node labels are external or not.
+% NLangle=number
+%   direction in degree of node labels
+% NLdist=number
+%   The meaning depends on the ExtNL flag.
+%   If the flag is set to "n" then NLdist defines the distance
+%   in \unitlength between the node center and the label center.
+%   If the flag is set to "y" then NLdist defines the distance
+%   in \unitlength between the node frame and the label box.
+%   
+% Nmarks=any combination of the letters i,f,r,n
+%   i : initial mark on nodes
+%   f : final mark on nodes
+%   r : repeated mark on nodes
+%   n : no mark on nodes
+% ilength=number
+%   length in \unitlength of arrows marking initial nodes
+% iangle=number
+%   direction in degree of arrows marking initial nodes
+% flength=number
+%   length in \unitlength of arrows marking final nodes
+% fangle=number
+%   direction in degree of arrows marking final nodes
+% rdist=number
+%   distance in \unitlength between the lines of repeated nodes
+%   a positive value draw the second line inside the normal one
+%   a negative value draw the second line outside the normal one 
+%   but the edges are still connected to the normal line.
+%   
+%   An edge virtually starts from the center of the starting node and
+%   ends at the center of the ending node (indeed they are only drawn 
+%   outside of the nodes). It is possible to change the virtual starting 
+%   and ending points of an edge using offsets with respect to the center
+%   of the starting and ending node. This is the purpose of the following
+%   parameters.
+% sxo=number (starting x offset)
+%   horizontal offset in \unitlength of the starting point of an edge 
+%   with respect to the center of the starting node.
+% syo=number (starting y offset)
+%   vertical offset in \unitlength of the starting point of an edge 
+%   with respect to the center of the starting node.
+% exo=number (ending x offset)
+%   horizontal offset in \unitlength of the ending point of an edge 
+%   with respect to the center of the ending node.
+% eyo=number (ending y offset)
+%   vertical offset in \unitlength of the ending point of an edge 
+%   with respect to the center of the ending node.
+%   
+% curvedepth=number
+%   depth in \unitlength of curved edges between two nodes
+%   The absolute value of curvedepth defines the distance between the
+%   middle of the curved edge and the center of the line joining the two nodes 
+%   With a positive/negative value the curved edge is on the left/right
+%   of the line joining the two nodes.
+%   
+% loopdiam=number
+%   diameters in \unitlength of loops
+% loopangle=number
+%   direction in degree of loops
+% loopCW=y or n
+%   boolean flag defining whether loops are in clockwise direction or not.
+%
+% AHnb=number
+%   number of arrow(s) at the head of edges.
+%   0 for no arrowhead.
+% AHdist=number
+%   distance in \unitlength between two arrowheads
+% AHangle=angle
+%   angle in degree between the edge and the arrowhead side
+% AHLength=number
+%   Length in \unitlegth of the arrowhead side
+% AHlength=number
+%   length in \unitlegth defining the shape of the arrowhead
+%     0 for an arrowhead formed with just two lines
+%     Length*cos(angle) for a triangular arrowhead
+%     See examples.
+%
+% ATnb=number
+%   number of arrow(s) at the tail of edges.
+%   0 for no arrowhead.
+% ATdist=number
+%   distance in \unitlength between two arrowtails
+% ATangle=angle
+%   angle in degree between the edge and the arrowtail side
+% ATLength=number
+%   Length in \unitlegth of the arrowtail side
+% ATlength=number
+%   length in \unitlegth defining the shape of the arrowtail
+%     0 for an arrowtail formed with just two lines
+%     Length*cos(angle) for a triangular arrowtail
+%     See examples.
+% 
+% ELside=l or r
+%   label on the (l)eft or (r)ight side of the edge
+% ELpos=0..100
+%   position of the label along the edge.
+%     0 : starting node
+%    50 : middle of the edge
+%   100 : ending node
+% ELdist=number
+%   distance in \unitlength between the label and the edge
+% ELdistC=y or n
+%   y : The distance is between the center of the label and the edge.
+%       With ELdist=0 the center of the label is on the edge.
+%   n : The distance is between the side of the label and the edge.
+%       This is the default.
+%       The distance is actually between the side of the label and
+%       the tangent of the edge which is usually a good approximation. 
+%       It may not work very well if the label is large and the edge is
+%       strongly curved because then the tangent is far from the edge at the
+%       point that achieve the distance between the tangent and the label.
+%   
+% linegray=decimal number between 0 and 1
+%   gray level used to draw lines. 0=black, 1=white.
+% fillgray=decimal number between 0 and 1
+%   gray level used to fill nodes. 0=black, 1=white.
+% linecolor=ColorName
+%   color used to draw lines.
+%   The color name should be defined in dvipsnam.def and one should 
+%   include \usepackage[usenames]{color}.
+%   This is to avoid the trouble of defining our own colors.
+%   The drawback is that it is not possible to define and use other colors.
+%   It should not be very restrictive since plenty of colours are 
+%   defined in dvipsnam.def.
+%   It should not be difficult to add the possibility of using new 
+%   colors if needed. 
+% fillcolor=ColorName
+%   color used to fill nodes. See remarks above.
+% linewidth=number
+%   width in \unitlegth of lines
+% dash={list of numbers}{offset}
+%   Set the dash pattern used for drawing postscript paths.
+%   The numbers in the list indicate alternatively lengths
+%   in \unitlength of dashes and lengths in \unitlength of spaces. 
+%   The list of lenghts is used circularly.
+%   offset allows to start the pattern at some distance from its beginning.
+%   Here are some examples:
+%      dash={}{0} % continuous path
+%      dash={1.5}0 % dashs of length 1.5 and empty spaces of length 1.5
+%      dash={0.2 0.5}0 % looks like a sequence of dots
+%      dash={4 1 1 1}0 % alternation of long and short dashs
+%      dash={1.5}{1.5} % we start with the empty space and not the dash
+%      dash={4}{2} % we start in the middle of the first dash
+% 
+% arcradius=number
+%   radius in \unitlength of the arcs used at the vertices 
+%   of polygons and broken lines. 0 for sharp angles.
+% polyangle=angle
+%   angle in degrees with respect to the x axis of the first vertex 
+%   of the regular polygon.
+% 
+\def\gasset#1{\gas@set#1,&}%
+\def\gas@set#1=#2,{\ignorespaces%
+  \@ifundefined{gasset@#1}
+    {\PackageWarning{gastex}{Parameter #1 undefined}{}}
+    {\csname gasset@#1\endcsname{#2}}%
+  \@ifnextchar&{\gas@gobble}{\gas@set}}
+
+\def\gasset@Nw#1{%
+  \setcounter{cnt@a}{1*\ratio{#1\unitlength}{\d@my@unit}}
+  \edef\N@w{\thecnt@a}}%
+\def\gasset@Nh#1{%
+  \setcounter{cnt@a}{1*\ratio{#1\unitlength}{\d@my@unit}}
+  \edef\N@h{\thecnt@a}}%
+\def\gasset@Nmr#1{%
+  \setcounter{cnt@a}{1*\ratio{#1\unitlength}{\d@my@unit}}
+  \edef\N@mr{\thecnt@a}}%
+
+\newif\if@wadjust \newif\if@hadjust \newif\if@nadjust
+\def\gasset@Nadjust#1{%
+  \@wadjustfalse \@hadjustfalse \gasset@@Nadjust #1&}
+\def\gasset@@Nadjust#1{%
+  \@ifundefined{if@#1adjust}
+    {\PackageWarning{gastex}{Node adjust #1 undefined}{}}
+    {\csname @#1adjusttrue\endcsname}%
+  \@ifnextchar&{\gas@gobble}{\gasset@@Nadjust}}
+\def\gasset@Nadjustdist#1{%
+  \setcounter{cnt@a}{2*\ratio{#1\unitlength}{\d@my@unit}}
+  \edef\N@adjustdist{\thecnt@a}}%
+
+\newif\if@frame \newif\if@fill \newif\if@ExtNL
+\def\flag@y{\relax}\def\flag@n{\relax}
+\def\gasset@Nframe#1{%
+  \@ifundefined{flag@#1}
+  {\PackageWarning{gastex}{Nframe value should be y or n}{}}
+  {\if#1y \@frametrue \else \@framefalse \fi}}
+\def\gasset@Nfill#1{%
+  \@ifundefined{flag@#1}
+  {\PackageWarning{gastex}{Nfill value should be y or n}{}}
+  {\if#1y \@filltrue \else \@fillfalse \fi}}
+\def\gasset@ExtNL#1{%
+  \@ifundefined{flag@#1}
+  {\PackageWarning{gastex}{ExtNL value should be y or n}{}}
+  {\if#1y \@ExtNLtrue \else \@ExtNLfalse \fi}}
+
+\def\gasset@NLangle#1{\edef\NL@angle{#1}}%
+\def\gasset@NLdist#1{%
+  \setcounter{cnt@a}{1*\ratio{#1\unitlength}{\d@my@unit}}
+  \edef\NL@dist{\thecnt@a}}%
+
+\newif\if@imark \newif\if@fmark \newif\if@rmark \newif\if@nmark
+\def\gasset@Nmarks#1{%
+  \@imarkfalse \@fmarkfalse \@rmarkfalse \gasset@@Nmarks #1&}
+\def\gasset@@Nmarks#1{%
+  \@ifundefined{if@#1mark}
+    {\PackageWarning{gastex}{Node mark #1 undefined}{}}
+    {\csname @#1marktrue\endcsname}%
+  \@ifnextchar&{\gas@gobble}{\gasset@@Nmarks}}
+
+\def\gasset@ilength#1{%
+  \setcounter{cnt@a}{1*\ratio{#1\unitlength}{\d@my@unit}}
+  \edef\i@length{\thecnt@a}}%
+\def\gasset@iangle#1{\edef\i@angle{#1}}%
+\def\gasset@flength#1{%
+  \setcounter{cnt@a}{1*\ratio{#1\unitlength}{\d@my@unit}}
+  \edef\f@length{\thecnt@a}}%
+\def\gasset@fangle#1{\edef\f@angle{#1}}%
+\def\gasset@rdist#1{%
+  \setcounter{cnt@a}{1*\ratio{#1\unitlength}{\d@my@unit}}
+  \edef\rep@dist{\thecnt@a}}%
+
+\def\gasset@sxo#1{%
+  \setcounter{cnt@a}{1*\ratio{#1\unitlength}{\d@my@unit}}
+  \edef\E@sxo{\thecnt@a}}%
+\def\gasset@syo#1{%
+  \setcounter{cnt@a}{1*\ratio{#1\unitlength}{\d@my@unit}}
+  \edef\E@syo{\thecnt@a}}%
+\def\gasset@exo#1{%
+  \setcounter{cnt@a}{1*\ratio{#1\unitlength}{\d@my@unit}}
+  \edef\E@exo{\thecnt@a}}%
+\def\gasset@eyo#1{%
+  \setcounter{cnt@a}{1*\ratio{#1\unitlength}{\d@my@unit}}
+  \edef\E@eyo{\thecnt@a}}%
+
+\def\gasset@curvedepth#1{%
+  \setcounter{cnt@a}{1*\ratio{#1\unitlength}{\d@my@unit}}
+  \edef\curve@depth{\thecnt@a}}%
+
+\def\gasset@loopdiam#1{%
+  \setcounter{cnt@a}{1*\ratio{#1\unitlength}{\d@my@unit}}
+  \edef\loop@diam{\thecnt@a}}%
+\def\gasset@loopangle#1{\edef\loop@angle{#1}}%
+\newif\if@loopCW
+\def\gasset@loopCW#1{%
+  \@ifundefined{flag@#1}
+  {\PackageWarning{gastex}{loopCW value should be y or n}{}}
+  {\if#1y \@loopCWtrue \else \@loopCWfalse \fi}}
+
+\def\gasset@AHnb#1{\edef\AH@nb{#1\space}}%
+\def\gasset@AHdist#1{%
+  \dim@x=#1\unitlength \edef\AH@d{\strip@PT\dim@x}}%
+\def\gasset@AHangle#1{\edef\AH@angle{#1\space}}%
+\def\gasset@AHLength#1{%
+  \dim@x=#1\unitlength \edef\AH@L{\strip@PT\dim@x}}%
+\def\gasset@AHlength#1{%
+  \dim@x=#1\unitlength \edef\AH@l{\strip@PT\dim@x}}%
+
+\def\gasset@ATnb#1{\edef\AT@nb{#1\space}}%
+\def\gasset@ATdist#1{%
+  \dim@x=#1\unitlength \edef\AT@d{\strip@PT\dim@x}}%
+\def\gasset@ATangle#1{\edef\AT@angle{#1\space}}%
+\def\gasset@ATLength#1{%
+  \dim@x=#1\unitlength \edef\AT@L{\strip@PT\dim@x}}%
+\def\gasset@ATlength#1{%
+  \dim@x=#1\unitlength \edef\AT@l{\strip@PT\dim@x}}%
+
+\def\ELside@l{\relax}\def\ELside@r{\relax}
+\def\gasset@ELside#1{%
+  \@ifundefined{ELside@#1}
+  {\PackageWarning{gastex}{ELside value should be l or r}{}}
+  {\edef\EL@s{#1}}}%
+\def\gasset@ELpos#1{
+  \ifnum#1>100
+    \PackageWarning{gastex}{ELpos value should be between 0 and 100}{}
+  \else\ifnum#1<0
+    \PackageWarning{gastex}{ELpos value should be between 0 and 100}{}
+  \else\edef\EL@p{#1}\fi\fi}%
+\def\gasset@ELdist#1{%
+  \setcounter{cnt@a}{1*\ratio{#1\unitlength}{\d@my@unit}}
+  \edef\EL@dist{\thecnt@a}}%
+\newif\if@ELdistC
+\def\gasset@ELdistC#1{%
+  \@ifundefined{flag@#1}
+  {\PackageWarning{gastex}{ELdistC value should be y or n}{}}
+  {\if#1y \@ELdistCtrue \else \@ELdistCfalse \fi}}
+
+\def\gas@rgb@model{setrgbcolor}%
+\def\gas@cmyk@model{setcmykcolor}%
+\def\gas@gray@model{setgray}%
+\def\gas@color#1#2{\@ifundefined{gas@#1@model}%
+  {\PackageWarning{gastex}{Color model '#1'  not supported}{}}
+  {\def\gas@tmp@col{}\gas@recode #2,&}%
+   \edef\gas@tmp@col{\gas@tmp@col\csname gas@#1@model\endcsname}}%
+\def\gas@recode#1,{\edef\gas@tmp@col{\gas@tmp@col #1 }%
+  \@ifnextchar&{\gas@gobble}{\gas@recode}}
+
+\def\gasset@linegray#1{\edef\line@color{#1 setgray\space}}%
+\def\gasset@linecolor#1{\@ifundefined{extractcolorspec}%
+  {\@ifundefined{\string\color @#1}
+    {\PackageWarning{gastex}{Color #1 undefined}{}}
+    {\edef\line@color{#1\space}}}%
+  {\extractcolorspec{#1}{\gas@tmp@color}%
+   \expandafter\gas@color\gas@tmp@color%
+   \edef\line@color{\gas@tmp@col\space}}}%
+
+\def\gasset@fillgray#1{\@filltrue\edef\fill@color{#1 setgray\space}}%
+\def\gasset@fillcolor#1{\@ifundefined{extractcolorspec}%
+  {\@ifundefined{\string\color @#1}
+    {\PackageWarning{gastex}{Color #1 undefined}{}}
+    {\@filltrue\edef\fill@color{#1\space}}}%
+  {\extractcolorspec{#1}{\gas@tmp@color}%
+   \expandafter\gas@color\gas@tmp@color%
+   \@filltrue\edef\fill@color{\gas@tmp@col\space}}}%
+
+\def\gasset@linewidth#1{%
+  \dim@x=#1\unitlength \edef\line@width{\strip@PT\dim@x}}%
+\def\gasset@dash#1{\gasset@@dash #1}%
+\def\gasset@@dash#1#2{%
+  \def\gas@dash{[}%
+  \gas@convert 0 #1 &
+  \dim@x=#2\unitlength
+  \edef\gas@dash{\gas@dash] \strip@PT\dim@x setdash\space}}%
+\def\gas@convert#1 {%
+  \dim@x=#1\unitlength
+  \ifdim\dim@x=0pt\else\edef\gas@dash{\gas@dash\strip@PT\dim@x}\fi%
+  \@ifnextchar&{\gas@gobble}{\gas@convert}}
+
+\def\gasset@arcradius#1{%
+  \dim@x=#1\unitlength \edef\arc@radius{\strip@PT\dim@x}}%
+\def\gasset@polyangle#1{\edef\poly@angle{#1}}%
+
+%-----------------------------------------------------------------------
+% Default settings
+\unitlength=1mm
+\gasset{Nw=8,Nh=8,Nmr=4} % circle
+\gasset{Nframe=y}
+\gasset{fillgray=0,Nfill=n} % Not filled but black if filled
+\gasset{ExtNL=n,NLangle=90,NLdist=0}
+\gasset{iangle=180,ilength=5}
+\gasset{fangle=0,flength=5}
+\gasset{rdist=0.7}
+\gasset{Nmarks=n} % no mark
+\gasset{Nadjustdist=1,Nadjust=n} % no adjust
+\gasset{sxo=0,syo=0,exo=0,eyo=0}
+\gasset{curvedepth=0}
+\gasset{loopdiam=8,loopangle=90,loopCW=y}
+% One triangular small arrowhead
+\gasset{AHnb=1,AHdist=1.41,AHangle=20,AHLength=1.5,AHlength=1.41} 
+\gasset{ATnb=0,ATdist=1.41,ATangle=20,ATLength=1.5,ATlength=1.41} 
+\gasset{ELside=l,ELpos=50,ELdist=1}
+\gasset{linegray=0} % black lines
+\gasset{linewidth=0.14,dash={}0} % continuous path
+\gasset{arcradius=0,polyangle=0} % sharp angles
+
+% Settings for slides
+\ifgastexslide
+  \gasset{Nw=12,Nh=12,Nmr=6,ilength=8,flength=8,rdist=1,loopdiam=12}
+  \gasset{linewidth=0.21,AHdist=2.1,AHLength=2.25,AHlength=2.1} 
+  \gasset{ATdist=2.1,ATLength=2.25,ATlength=2.1} 
+\fi
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Nodes
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%-----------------------------------------------------------------------
+% Define and draw a node whose shape is a regular polygon.
+% 
+%   \rpnode(NodeName)(x,y)(n,r){NodeLabel}
+%   \rpnode[parameter=value,...](NodeName)(x,y)(n,r){NodeLabel}
+%  
+% Required arguments: 
+%   NodeName : name of the node
+%     x,y : coordinates in \unitlengh of the node (center of the polygon).
+%       n : number of sides of the polygon.
+%       r : radius in \unitlengh of the circle containing the polygon.
+%   NodeLabel : label of the node. Empty if no label.
+% Optional argument: (in particular, polyangle and arcradius)
+%   [parameter=value,...]
+% One may just define a node without drawing it using an empty label 
+% and the parameters Nframe=n,Nfill=n
+\def\rpnode#1(#2)(#3)(#4)#5{{%
+  \@ifnextchar[{\process@rpnodeopt}{\rp@node}#1(#2)(#3)(#4){#5}}}
+\def\process@rpnodeopt[#1]{\gas@set#1,&\rp@node}%
+\def\rp@node(#1)(#2,#3)(#4,#5)#6{{%
+% The value -1 assigned to node@#1@w characterizes polygonal nodes
+  \global\expandafter\edef\csname node@#1@w\endcsname{-1}%
+  \setcounter{cnt@a}{1*\ratio{#2\unitlength}{\d@my@unit}}
+  \global\expandafter\edef\csname node@#1@x\endcsname{\thecnt@a}%
+  \setcounter{cnt@a}{1*\ratio{#3\unitlength}{\d@my@unit}}
+  \global\expandafter\edef\csname node@#1@y\endcsname{\thecnt@a}%
+  \global\expandafter\edef\csname node@#1@n\endcsname{#4}%
+  \setcounter{cnt@a}{1*\ratio{#5\unitlength}{\d@my@unit}}
+  \global\expandafter\edef\csname node@#1@rad\endcsname{\thecnt@a}%
+  \global\expandafter\edef\csname node@#1@a\endcsname{\poly@angle}%
+% Definition of the polygonal path for the node
+  \dim@x=\csname node@#1@x\endcsname\d@my@unit 
+  \dim@y=\csname node@#1@y\endcsname\d@my@unit 
+  \edef\ps@path{\strip@PT\dim@x\strip@PT\dim@y\csname node@#1@n\endcsname\space}%
+  \dim@x=\csname node@#1@rad\endcsname\d@my@unit 
+  \edef\ps@path{\ps@path \strip@PT\dim@x \csname node@#1@a\endcsname\space}%
+  \edef\ps@path{\ps@path \arc@radius 0 !psrpolygonpath\space}%
+  \global\expandafter\edef\csname node@#1@path\endcsname{\ps@path}%
+  \put(0,0){\special{" \gas@initps 
+    \if@fill 
+	  \fill@color \csname node@#1@path\endcsname fill
+	\fi
+    \if@frame 
+      \line@color \csname node@#1@path\endcsname stroke
+	\fi
+  }}
+  \if@imark \imark(#1) \fi
+  \if@fmark \fmark(#1) \fi
+  \if@rmark \rmark(#1) \fi
+%   \@ExtNLfalse 
+  \nodelabel(#1){#6}
+}}
+
+%-----------------------------------------------------------------------
+% Define and draw a node.
+% 
+%   \node(NodeName)(x,y){NodeLabel}
+%   \node[parameter=value,...](NodeName)(x,y){NodeLabel}
+%  
+% Required arguments: 
+%   NodeName : name of the node
+%   (x,y) : coordinates of the node in \unitlengh.
+%   NodeLabel : label of the node. Empty if no label.
+% Optional argument:
+%   [parameter=value,...]
+% One may just define a node without drawing it using an empty label 
+% and the parameters Nframe=n,Nfill=n
+\def\node#1(#2)(#3,#4)#5{{%
+  \@ifnextchar[{\process@nodeopt}{\i@node}#1(#2)(#3,#4){#5}}}
+\def\process@nodeopt[#1]{\gas@set#1,&\i@node}%
+\def\i@node(#1)(#2,#3)#4{%
+  \let@node(#1)(#2,#3){#4}\draw@node(#1){#4}}
+
+%-----------------------------------------------------------------------
+% Define a node without drawing it. 
+% Internal macro also used in \compatiblegastexun.
+% 
+%   \let@node(NodeName)(x,y){NodeLabel}
+%  
+% Required arguments: 
+%   NodeName : name of the node
+%   x,y : coordinates of the node in \unitlengh.
+%   NodeLabel : label of the node. Empty if no label.
+\def\let@node(#1)(#2,#3)#4{{%
+% width and height of the box containing #4  
+  \setbox\temp@box\hbox{\selectfont #4}
+  \if@wadjust
+    \setcounter{cnt@a}{\N@adjustdist + \wd\temp@box / \d@my@unit}
+    \edef\N@w{\thecnt@a}%
+  \fi
+  \if@hadjust
+    \setcounter{cnt@a}{\N@adjustdist + (\ht\temp@box+\dp\temp@box) / \d@my@unit}
+    \edef\N@h{\thecnt@a}%
+  \fi
+  \global\expandafter\edef\csname node@#1@w\endcsname{\N@w}%
+  \global\expandafter\edef\csname node@#1@h\endcsname{\N@h}%
+  \ifnum\N@h<\N@w
+	\setcounter{cnt@a}{\N@h/2}
+  \else
+	\setcounter{cnt@a}{\N@w/2}
+  \fi
+  \ifnum\N@mr<\thecnt@a\setcounter{cnt@a}{\N@mr}\fi
+  \global\expandafter\edef\csname node@#1@r\endcsname{\thecnt@a}%
+  \setcounter{cnt@a}{1*\ratio{#2\unitlength}{\d@my@unit}}
+  \global\expandafter\edef\csname node@#1@x\endcsname{\thecnt@a}%
+  \setcounter{cnt@a}{1*\ratio{#3\unitlength}{\d@my@unit}}
+  \global\expandafter\edef\csname node@#1@y\endcsname{\thecnt@a}%
+% Definition of the oval path for the node
+  \dim@x=#2\unitlength \edef\ps@path{\strip@PT\dim@x}%
+  \dim@x=#3\unitlength \edef\ps@path{\ps@path \strip@PT\dim@x}%
+  \dim@x=\N@w\d@my@unit \edef\ps@path{\ps@path \strip@PT\dim@x}%
+  \dim@x=\N@h\d@my@unit \edef\ps@path{\ps@path \strip@PT\dim@x}%
+  \dim@x=\N@mr\d@my@unit \edef\ps@path{\ps@path \strip@PT\dim@x}%
+  \edef\ps@path{\ps@path !psovalpath\space}%
+  \global\expandafter\edef\csname node@#1@path\endcsname{\ps@path}%
+}}
+
+%-----------------------------------------------------------------------
+% Draw a node which is already defined. Internal macro.
+% 
+%   \draw@node(NodeName){NodeLabel}
+%  
+% Required arguments: 
+%   NodeName : name of the node
+%   NodeLabel : label of the node. Empty if no label.
+\def\draw@node(#1)#2{{%
+  \put(0,0){\special{" \gas@initps 
+    \if@fill 
+	  \fill@color \csname node@#1@path\endcsname fill
+	\fi
+    \if@frame 
+      \line@color \csname node@#1@path\endcsname stroke
+	\fi
+  }}
+  \if@imark \imark(#1) \fi
+  \if@fmark \fmark(#1) \fi
+  \if@rmark \rmark(#1) \fi
+  \nodelabel(#1){#2}
+}}
+
+%-----------------------------------------------------------------------
+% Add an ingoing arrow to mark an initial node.
+% This arrow is usually drawn by \node using Nmarks=i.
+% This separate macro can be used to draw several arrows
+% or arrows with different colors, thickness, dash, ...
+% 
+%   \imark(NodeName)
+%   \imark[parameter=value,...](NodeName)
+%  
+% Required arguments: 
+%   NodeName : name of the node
+% Optional argument:
+%   [parameter=value,...]
+\def\imark#1(#2){{%
+  \@ifnextchar[{\process@imarkopt}{\i@mark}#1(#2)}}
+\def\process@imarkopt[#1]{\gas@set#1,&\i@mark}%
+\def\i@mark(#1){{%
+  \dim@x=\csname node@#1@x\endcsname\d@my@unit \edef\ps@par{\strip@PT\dim@x}%
+  \dim@x=\csname node@#1@y\endcsname\d@my@unit \edef\ps@par{\ps@par \strip@PT\dim@x}%
+  \dim@x=\i@length\d@my@unit \edef\ps@par{\ps@par \strip@PT\dim@x \i@angle\space}%
+  \put(0,0){\special{" \gas@initps \line@color
+% Path around the node
+    \csname node@#1@path\endcsname /path!a false upath cvlit def
+    \gas@ATnul \gas@AHparam \ps@par !node_mark}}
+}}
+
+%-----------------------------------------------------------------------
+% Add an outgoing arrow to mark a final node.
+% This arrow is usually drawn by \node using Nmarks=f.
+% This separate macro can be used to draw several arrows
+% or arrows with different colors, thickness, dash, ...
+% 
+%   \fmark(NodeName)
+%   \fmark[parameter=value,...](NodeName)
+%  
+% Required arguments: 
+%   NodeName : name of the node
+% Optional argument:
+%   [parameter=value,...]
+\def\fmark#1(#2){{%
+  \@ifnextchar[{\process@fmarkopt}{\f@mark}#1(#2)}}
+\def\process@fmarkopt[#1]{\gas@set#1,&\f@mark}%
+\def\f@mark(#1){{%
+  \dim@x=\csname node@#1@x\endcsname\d@my@unit \edef\ps@par{\strip@PT\dim@x}%
+  \dim@x=\csname node@#1@y\endcsname\d@my@unit \edef\ps@par{\ps@par \strip@PT\dim@x}%
+  \dim@x=\f@length\d@my@unit \edef\ps@par{\ps@par \strip@PT\dim@x \f@angle\space}%
+  \put(0,0){\special{" \gas@initps \line@color
+% Path around the node
+    \csname node@#1@path\endcsname /path!a false upath cvlit def
+    \gas@AHparam \gas@ATnul \ps@par !node_mark}}
+}}
+
+%-----------------------------------------------------------------------
+% Add a second line to mark a repeated node.
+% This line is usually drawn by \node using Nmarks=r.
+% This separate macro can be used to draw several lines around the 
+% node or lines with different colors, thickness, dash, ...
+% 
+%   \rmark(NodeName)
+%   \rmark[parameter=value,...](NodeName)
+%  
+% Required arguments: 
+%   NodeName : name of the node
+% Optional argument:
+%   [parameter=value,...]
+\def\rmark#1(#2){{%
+  \@ifnextchar[{\process@rmarkopt}{\r@mark}#1(#2)}}
+\def\process@rmarkopt[#1]{\gas@set#1,&\r@mark}%
+\def\r@mark(#1){{%
+  \ifnum\csname node@#1@w\endcsname=-1 % then it's a polygonal node
+    \dim@x=\csname node@#1@x\endcsname\d@my@unit 
+    \edef\ps@path{\strip@PT\dim@x}%
+    \dim@x=\csname node@#1@y\endcsname\d@my@unit 
+    \edef\ps@path{\ps@path \strip@PT\dim@x}%
+    \edef\ps@path{\ps@path \csname node@#1@n\endcsname\space}%
+    \dim@x=\csname node@#1@rad\endcsname\d@my@unit 
+    \edef\ps@path{\ps@path \strip@PT\dim@x}%
+    \edef\ps@path{\ps@path \csname node@#1@a\endcsname\space}%
+    \dim@y=\rep@dist\d@my@unit
+    \edef\ps@path{\ps@path \arc@radius \strip@PT\dim@y !psrpolygonpath\space}%
+    \put(0,0){\special{" \gas@initps \line@color \ps@path stroke}}
+  \else % it's an oval node
+    \dim@x=\csname node@#1@x\endcsname\d@my@unit 
+    \edef\ps@path{\strip@PT\dim@x}%
+    \dim@x=\csname node@#1@y\endcsname\d@my@unit 
+    \edef\ps@path{\ps@path \strip@PT\dim@x}%
+    \dim@y=-\rep@dist\d@my@unit
+    \dim@x=\csname node@#1@w\endcsname\d@my@unit
+    \advance\dim@x\dim@y\advance\dim@x\dim@y
+    \edef\ps@path{\ps@path \strip@PT\dim@x}%
+    \dim@x=\csname node@#1@h\endcsname\d@my@unit
+    \advance\dim@x\dim@y\advance\dim@x\dim@y
+    \edef\ps@path{\ps@path \strip@PT\dim@x}%
+    \dim@x=\csname node@#1@r\endcsname\d@my@unit
+    \advance\dim@x\dim@y
+    \edef\ps@path{\ps@path \strip@PT\dim@x}%
+    \put(0,0){\special{" \gas@initps \line@color \ps@path !psovalpath stroke}}
+  \fi
+}}
+
+%-----------------------------------------------------------------------
+% Add a label to the node.
+% The position of the label is determined by the ExtNL flag
+% and the parameters NLangle and NLdist.
+% The label is usually drawn by \node.
+% This separate macro can be used to add several labels
+% 
+%   \nodelabel(NodeName){NodeLabel}
+%   \nodelabel[parameter=value,...](NodeName){NodeLabel}
+%  
+% Required arguments: 
+%   NodeName : name of the node
+%   NodeLabel : label of the node.
+% Optional argument:
+%   [parameter=value,...]
+\newif\if@cosneg \newif\if@sinneg
+\def\nodelabel#1(#2)#3{{%
+  \@ifnextchar[{\process@nodelabelopt}{\node@label}#1(#2){#3}}}
+\def\process@nodelabelopt[#1]{\gas@set#1,&\node@label}%
+\def\node@label(#1)#2{{%
+  \unitlength=\d@my@unit
+  \edef\cs@x{\csname node@#1@x\endcsname}%
+  \edef\cs@y{\csname node@#1@y\endcsname}%
+  \if@ExtNL
+    \node@diam(#1,\NL@angle)
+    \setcounter{cnt@a}{\cs@nd/2}\edef\cs@nr{\thecnt@a}%
+% width and height of the box containing #2  
+    \setbox\temp@box\hbox{\selectfont #2}
+    \setcounter{cnt@a}{\wd\temp@box / \d@my@unit}
+    \edef\cs@bw{\thecnt@a}%
+    \setcounter{cnt@a}{(\ht\temp@box+\dp\temp@box) / \d@my@unit}
+    \edef\cs@bh{\thecnt@a}%
+%   
+    \@cosnegfalse \@sinnegfalse
+    \dim@x=\cs@cos pt \ifnum \dim@x<0 \@cosnegtrue \dim@x=-\dim@x \fi
+    \edef\cs@abscos{\strip@PT\dim@x}%
+    \dim@x=\cs@sin pt \ifnum \dim@x<0 \@sinnegtrue \dim@x=-\dim@x \fi
+    \edef\cs@abssin{\strip@PT\dim@x}%
+%   
+    \ifnum\csname node@#1@w\endcsname=-1 % then it's a polygonal node
+      \setcounter{cnt@c}{\cs@nr+\NL@dist+%
+                        (\cs@bw*\real{\cs@abscos}+\cs@bh*\real{\cs@abssin})/2}
+      \setcounter{cnt@a}{\cs@x+\thecnt@c*\real{\cs@cos}}
+      \setcounter{cnt@b}{\cs@y+\thecnt@c*\real{\cs@sin}}
+      \put(\thecnt@a,\thecnt@b){\makebox(0,0){\selectfont #2}}
+    \else % it's an oval node
+      \setcounter{cnt@a}{((\cs@h+\cs@bh)/2+\NL@dist)*\real{\cs@abscos}}
+      \setcounter{cnt@b}{((\cs@w+\cs@bw)/2-\cs@r)*\real{\cs@abssin}}
+      \ifnum\thecnt@a<\thecnt@b
+        \setcounter{cnt@c}{(\cs@h+\cs@bh)/2+\NL@dist}
+        \if@sinneg \setcounter{cnt@c}{-\thecnt@c} \fi
+        \setcounter{cnt@a}{\cs@x+\thecnt@c*\real{\cs@cos}/\real{\cs@sin}}
+        \setcounter{cnt@b}{\cs@y+\thecnt@c}
+        \put(\thecnt@a,\thecnt@b){\makebox(0,0){\selectfont #2}}
+      \else
+        \setcounter{cnt@a}{((\cs@w+\cs@bw)/2+\NL@dist)*\real{\cs@abssin}}
+        \setcounter{cnt@b}{((\cs@h+\cs@bh)/2-\cs@r)*\real{\cs@abscos}}
+        \ifnum\thecnt@a<\thecnt@b
+          \setcounter{cnt@c}{(\cs@w+\cs@bw)/2+\NL@dist}
+          \if@cosneg \setcounter{cnt@c}{-\thecnt@c} \fi
+          \setcounter{cnt@a}{\cs@x+\thecnt@c}
+          \setcounter{cnt@b}{\cs@y+\thecnt@c*\real{\cs@sin}/\real{\cs@cos}}
+          \put(\thecnt@a,\thecnt@b){\makebox(0,0){\selectfont #2}}
+        \else
+  % auxiliary parameters
+          \setcounter{cnt@a}{\cs@r-(\cs@w+\cs@bw)/2}
+          \edef\cs@xx{\thecnt@a}%
+          \setcounter{cnt@a}{\cs@r-(\cs@h+\cs@bh)/2}
+          \edef\cs@yy{\thecnt@a}%
+          \setcounter{cnt@a}{(\cs@r+\NL@dist)*(\cs@r+\NL@dist)}
+          \edef\cs@lim{\thecnt@a}%
+          \def\cs@tmin{0}%
+          \setcounter{cnt@a}{\NL@dist+(\cs@bw+\cs@bh)/2}
+          \edef\cs@tmax{\thecnt@a}%
+  % computation of the center of the label
+          \setcounter{cnt@c}{10}
+          \@whilenum\thecnt@c>0\do{
+            \setcounter{cnt@a}{(\cs@tmin+\cs@tmax)/2}
+            \edef\cs@t{\thecnt@a}%
+            \setcounter{cnt@a}{(\cs@nr+\cs@t)*\real{\cs@abscos}+\cs@xx}
+            \setcounter{cnt@b}{(\cs@nr+\cs@t)*\real{\cs@abssin}+\cs@yy}
+            \setcounter{cnt@a}{\thecnt@a*\thecnt@a + \thecnt@b*\thecnt@b}
+            \ifnum\thecnt@a<\cs@lim 
+              \edef\cs@tmin{\cs@t}%
+            \else 
+              \edef\cs@tmax{\cs@t}%
+            \fi
+            \addtocounter{cnt@c}{-1}}
+          \setcounter{cnt@a}{\cs@x+(\cs@nr+\cs@t)*\real{\cs@cos}}
+          \setcounter{cnt@b}{\cs@y+(\cs@nr+\cs@t)*\real{\cs@sin}}
+          \put(\thecnt@a,\thecnt@b){\makebox(0,0){\selectfont #2}}
+        \fi
+      \fi
+    \fi
+  \else % regular node label
+    \CalculateCos{\NL@angle} \edef\cs@cos{\UseCos{\NL@angle}}%
+    \CalculateSin{\NL@angle} \edef\cs@sin{\UseSin{\NL@angle}}%
+    \setcounter{cnt@a}{\cs@x+\NL@dist*\real{\cs@cos}}
+    \setcounter{cnt@b}{\cs@y+\NL@dist*\real{\cs@sin}}
+    \put(\thecnt@a,\thecnt@b){\makebox(0,0){\selectfont #2}}
+  \fi
+}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Edges
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%-----------------------------------------------------------------------
+% Edge between two nodes.
+% 
+%   \drawedge(startingNode,endingNode){label}
+%   \drawedge[parameter=value,...](startingNode,endingNode){label}
+%  
+% Required arguments: 
+%   startingNode : name of the starting node,
+%   endingNode : name of the ending node,
+%   label : label of the edge. {} for no label.
+% Optional argument:
+%   [parameter=value,...]
+\def\drawedge#1(#2)#3{{%
+  \@ifnextchar[{\process@edgeopt}{\draw@edge}#1(#2){#3}}}
+\def\process@edgeopt[#1]{\gas@set#1,&\draw@edge}%
+\def\draw@edge(#1,#2)#3{%
+% Control points of the cubic Bezier curve
+  \setcounter{cnt@a}{\csname node@#1@x\endcsname + \E@sxo}%
+  \edef\cs@xa{\thecnt@a}%
+  \setcounter{cnt@a}{\csname node@#1@y\endcsname + \E@syo}%
+  \edef\cs@ya{\thecnt@a}%
+  \setcounter{cnt@a}{\csname node@#2@x\endcsname + \E@exo}%
+  \edef\cs@xd{\thecnt@a}%
+  \setcounter{cnt@a}{\csname node@#2@y\endcsname + \E@eyo}%
+  \edef\cs@yd{\thecnt@a}%
+  \setcounter{cnt@a}{\cs@xd-\cs@xa}
+  \setcounter{cnt@b}{\cs@yd-\cs@ya}
+  \setcounter{cnt@c}{\thecnt@a*\thecnt@a+\thecnt@b*\thecnt@b}
+  \ifnum\thecnt@c=0
+    \PackageError{gastex}{drawedge(#1,#2)}{}
+    \typeout{The starting and ending nodes should not have the same coordinates.}
+  \else
+    \gas@sqrt{\thecnt@c}
+    \setcounter{cnt@b}{\cs@xa+\cs@xd-4*\curve@depth*(\cs@yd-\cs@ya)/\the@sqrt}
+    \setcounter{cnt@a}{(\thecnt@b+\cs@xa)/3}\edef\cs@xb{\thecnt@a}%
+    \setcounter{cnt@a}{(\thecnt@b+\cs@xd)/3}\edef\cs@xc{\thecnt@a}%
+    \setcounter{cnt@b}{\cs@ya+\cs@yd+4*\curve@depth*(\cs@xd-\cs@xa)/\the@sqrt}
+    \setcounter{cnt@a}{(\thecnt@b+\cs@ya)/3}\edef\cs@yb{\thecnt@a}%
+    \setcounter{cnt@a}{(\thecnt@b+\cs@yd)/3}\edef\cs@yc{\thecnt@a}%
+    \unitlength=\d@my@unit
+    \draw@b@edge(#1,#2){#3}
+  \fi
+}
+
+%-----------------------------------------------------------------------
+% Edge between two nodes following a quadratic Bezier curve.
+% The first and last control points are the centers of the starting 
+% and ending nodes resp, modified with the starting and ending offsets.
+% The middle control point is given by its absolute cartesian coordinates
+% 
+%   \drawqbedge(startingNode,x,y,endingNode){label}
+%   \drawqbedge[parameter=value,...](startingNode,x,y,endingNode){label}
+%  
+% Required arguments: 
+%   startingNode : name of the starting node,
+%   x,y : coordinates in \unitlength of the intermediary control point
+%   endingNode : name of the ending node,
+%   label : label of the edge. {} for no label.
+% Optional argument:
+%   [parameter=value,...]
+\def\drawqbedge#1(#2)#3{{%
+  \@ifnextchar[{\process@qbedgeopt}{\draw@qbedge}#1(#2){#3}}}
+\def\process@qbedgeopt[#1]{\gas@set#1,&\draw@qbedge}%
+\def\draw@qbedge(#1,#2,#3,#4)#5{%
+% Control points of the cubic Bezier curve
+  \setcounter{cnt@a}{\csname node@#1@x\endcsname + \E@sxo}%
+  \edef\cs@xa{\thecnt@a}%
+  \setcounter{cnt@a}{\csname node@#1@y\endcsname + \E@syo}%
+  \edef\cs@ya{\thecnt@a}%
+  \setcounter{cnt@a}{\csname node@#4@x\endcsname + \E@exo}%
+  \edef\cs@xd{\thecnt@a}%
+  \setcounter{cnt@a}{\csname node@#4@y\endcsname + \E@eyo}%
+  \edef\cs@yd{\thecnt@a}%
+  \setcounter{cnt@b}{2*\ratio{#2\unitlength}{\d@my@unit}}
+  \setcounter{cnt@a}{(\cs@xa+\thecnt@b)/3}\edef\cs@xb{\thecnt@a}%
+  \setcounter{cnt@a}{(\cs@xd+\thecnt@b)/3}\edef\cs@xc{\thecnt@a}%
+  \setcounter{cnt@b}{2*\ratio{#3\unitlength}{\d@my@unit}}
+  \setcounter{cnt@a}{(\cs@ya+\thecnt@b)/3}\edef\cs@yb{\thecnt@a}%
+  \setcounter{cnt@a}{(\cs@yd+\thecnt@b)/3}\edef\cs@yc{\thecnt@a}%
+  \unitlength=\d@my@unit
+  \draw@b@edge(#1,#4){#5}
+}
+
+%-----------------------------------------------------------------------
+% Edge between two nodes following a quadratic Bezier curve.
+% The first and last control points are the centers of the starting 
+% and ending nodes resp, modified with the starting and ending offsets.
+% The middle control point is defined by two angles.
+% 
+%   \drawqbpedge(startingNode,sa,endingNode,ea){label}
+%   \drawqbpedge[parameter=value,...](startingNode,sa,endingNode,ea){label}
+%  
+% Required arguments: 
+%   startingNode : name of the starting node,
+%   endingNode : name of the ending node,
+%   sa,ea : angles in degree at the starting and ending nodes,
+%           these angles define intermediary control point
+%   label : label of the edge. {} for no label.
+% Optional argument:
+%   [parameter=value,...]
+\def\drawqbpedge#1(#2)#3{{%
+  \@ifnextchar[{\process@qbpedgeopt}{\draw@qbpedge}#1(#2){#3}}}
+\def\process@qbpedgeopt[#1]{\gas@set#1,&\draw@qbpedge}%
+\def\draw@qbpedge(#1,#2,#3,#4)#5{%
+% Control points of the cubic Bezier curve
+  \setcounter{cnt@a}{\csname node@#1@x\endcsname + \E@sxo}%
+  \edef\cs@xa{\thecnt@a}%
+  \setcounter{cnt@a}{\csname node@#1@y\endcsname + \E@syo}%
+  \edef\cs@ya{\thecnt@a}%
+  \setcounter{cnt@a}{\csname node@#3@x\endcsname + \E@exo}%
+  \edef\cs@xd{\thecnt@a}%
+  \setcounter{cnt@a}{\csname node@#3@y\endcsname + \E@eyo}%
+  \edef\cs@yd{\thecnt@a}%
+  \edef\cs@sangle{#2}%
+  \CalculateCos\cs@sangle \CalculateSin\cs@sangle
+  \edef\cs@eangle{#4}%
+  \CalculateCos\cs@eangle \CalculateSin\cs@eangle
+  \setcounter{cnt@a}{1000*\real{\UseCos\cs@sangle}*\real{\UseSin\cs@eangle}
+                    -1000*\real{\UseSin\cs@sangle}*\real{\UseCos\cs@eangle}}
+  \ifnum\thecnt@a=0
+    \PackageError{gastex}{drawqbpedge(#1,#2,#3,#4)}{}
+    \typeout{The angles do not allow to compute the intersection point.}
+  \else
+    \setcounter{cnt@c}{((\cs@xd-\cs@xa)*1000*\real{\UseSin\cs@eangle}
+                       -(\cs@yd-\cs@ya)*1000*\real{\UseCos\cs@eangle})
+                       /\thecnt@a}
+    \setcounter{cnt@b}{2*(\cs@xa+\thecnt@c*\real{\UseCos\cs@sangle})}
+    \setcounter{cnt@a}{(\cs@xa+\thecnt@b)/3}\edef\cs@xb{\thecnt@a}%
+    \setcounter{cnt@a}{(\cs@xd+\thecnt@b)/3}\edef\cs@xc{\thecnt@a}%
+    \setcounter{cnt@b}{2*(\cs@ya+\thecnt@c*\real{\UseSin\cs@sangle})}
+    \setcounter{cnt@a}{(\cs@ya+\thecnt@b)/3}\edef\cs@yb{\thecnt@a}%
+    \setcounter{cnt@a}{(\cs@yd+\thecnt@b)/3}\edef\cs@yc{\thecnt@a}%
+    \unitlength=\d@my@unit
+    \draw@b@edge(#1,#3){#5}
+  \fi
+}
+
+%-----------------------------------------------------------------------
+% Edge between two nodes following a cubic Bezier curve.
+% The first and last control points are the centers of the starting 
+% and ending nodes resp, modified with the starting and ending offsets.
+% The second and third control points are given by their polar coordinates
+% relative to the first and last control points resp.
+% 
+%   \drawbpedge(startingNode,sa,sr,endingNode,ea,er){label}
+%   \drawbpedge[parameter=value,...](startingNode,sa,sr,endingNode,ea,er){label}
+%  
+% Required arguments: 
+%   startingNode : name of the starting node,
+%   sa,sr : polar coordinates of the second control point relative to the
+%           first control point (angle in degree and radius in \unitlength)
+%   endingNode : name of the ending node,
+%   ea,er : polar coordinates of the third control point relative to the
+%           last control point (angle in degree and radius in \unitlength)
+%   label : label of the edge. {} for no label.
+% Optional argument:
+%   [parameter=value,...]
+\def\drawbpedge#1(#2)#3{{%
+  \@ifnextchar[{\process@bpedgeopt}{\draw@bpedge}#1(#2){#3}}}
+\def\process@bpedgeopt[#1]{\gas@set#1,&\draw@bpedge}%
+\def\draw@bpedge(#1,#2,#3,#4,#5,#6)#7{%
+% Control points of the cubic Bezier curve
+  \setcounter{cnt@a}{\csname node@#1@x\endcsname + \E@sxo}%
+  \edef\cs@xa{\thecnt@a}%
+  \setcounter{cnt@a}{\csname node@#1@y\endcsname + \E@syo}%
+  \edef\cs@ya{\thecnt@a}%
+  \setcounter{cnt@a}{\csname node@#4@x\endcsname + \E@exo}%
+  \edef\cs@xd{\thecnt@a}%
+  \setcounter{cnt@a}{\csname node@#4@y\endcsname + \E@eyo}%
+  \edef\cs@yd{\thecnt@a}%
+  \setcounter{cnt@b}{1*\ratio{#3\unitlength}{\d@my@unit}}
+  \edef\cs@angle{#2}%
+  \CalculateCos\cs@angle \CalculateSin\cs@angle
+  \setcounter{cnt@a}{\cs@xa+\thecnt@b*\real{\UseCos\cs@angle}}
+  \edef\cs@xb{\thecnt@a}%
+  \setcounter{cnt@a}{\cs@ya+\thecnt@b*\real{\UseSin\cs@angle}}
+  \edef\cs@yb{\thecnt@a}%
+  \setcounter{cnt@b}{1*\ratio{#6\unitlength}{\d@my@unit}}
+  \edef\cs@angle{#5}%
+  \CalculateCos\cs@angle \CalculateSin\cs@angle
+  \setcounter{cnt@a}{\cs@xd+\thecnt@b*\real{\UseCos\cs@angle}}
+  \edef\cs@xc{\thecnt@a}%
+  \setcounter{cnt@a}{\cs@yd+\thecnt@b*\real{\UseSin\cs@angle}}
+  \edef\cs@yc{\thecnt@a}%
+  \unitlength=\d@my@unit
+  \draw@b@edge(#1,#4){#7}
+}
+
+%-----------------------------------------------------------------------
+% Edge between two nodes following a cubic Bezier curve.
+% The first and last control points are the centers of the starting 
+% and ending nodes resp, modified with the starting and ending offsets.
+% The second and third control points are given by their absolute 
+% cartesian coordinates.
+% 
+%   \drawbcedge(startingNode,xs,ys,endingNode,xe,ye){label}
+%   \drawbcedge[parameter=value,...](startingNode,xs,ys,endingNode,xe,ye){label}
+%  
+% Required arguments: 
+%   startingNode : name of the starting node,
+%   xs,ys : coordinates in \unitlength of the control point defining 
+%           the tangent at the starting node
+%   endingNode : name of the ending node,
+%   xe,ye : coordinates in \unitlength of the control point defining
+%           the tangent at the ending node
+%   label : label of the edge. {} for no label.
+% Optional argument:
+%   [parameter=value,...]
+\def\drawbcedge#1(#2)#3{{%
+  \@ifnextchar[{\process@bcedgeopt}{\draw@bcedge}#1(#2){#3}}}
+\def\process@bcedgeopt[#1]{\gas@set#1,&\draw@bcedge}%
+\def\draw@bcedge(#1,#2,#3,#4,#5,#6)#7{%
+% Control points of the cubic Bezier curve
+  \setcounter{cnt@a}{\csname node@#1@x\endcsname + \E@sxo}%
+  \edef\cs@xa{\thecnt@a}%
+  \setcounter{cnt@a}{\csname node@#1@y\endcsname + \E@syo}%
+  \edef\cs@ya{\thecnt@a}%
+  \setcounter{cnt@a}{\csname node@#4@x\endcsname + \E@exo}%
+  \edef\cs@xd{\thecnt@a}%
+  \setcounter{cnt@a}{\csname node@#4@y\endcsname + \E@eyo}%
+  \edef\cs@yd{\thecnt@a}%
+  \setcounter{cnt@a}{1*\ratio{#2\unitlength}{\d@my@unit}}
+  \edef\cs@xb{\thecnt@a}%
+  \setcounter{cnt@a}{1*\ratio{#3\unitlength}{\d@my@unit}}
+  \edef\cs@yb{\thecnt@a}%
+  \setcounter{cnt@a}{1*\ratio{#5\unitlength}{\d@my@unit}}
+  \edef\cs@xc{\thecnt@a}%
+  \setcounter{cnt@a}{1*\ratio{#6\unitlength}{\d@my@unit}}
+  \edef\cs@yc{\thecnt@a}%
+  \unitlength=\d@my@unit
+  \draw@b@edge(#1,#4){#7}
+}
+
+%-----------------------------------------------------------------------
+% Loop on a node following a cubic Bezier curve.
+% Only the starting offsets sxo and syo are used.
+% 
+%   \drawloop(Node){label}
+%   \drawloop[parameter=value,...](Node){label}
+%  
+% Required arguments: 
+%   Node : name of the node,
+%   label : label of the edge. {} for no label.
+% Optional argument:
+%   [parameter=value,...]
+\def\drawloop#1(#2)#3{{%
+  \@ifnextchar[{\process@loopopt}{\draw@loop}#1(#2){#3}}}
+\def\process@loopopt[#1]{\gas@set#1,&\draw@loop}%
+\def\draw@loop(#1)#2{%
+% Control points of the cubic Bezier curve
+  \unitlength=\d@my@unit
+  \setcounter{cnt@a}{\csname node@#1@x\endcsname + \E@sxo}%
+  \edef\cs@xa{\thecnt@a}%
+  \setcounter{cnt@a}{\csname node@#1@y\endcsname + \E@syo}%
+  \edef\cs@ya{\thecnt@a}%
+  \edef\cs@xd{\cs@xa}%
+  \edef\cs@yd{\cs@ya}%
+  \node@diam(#1,\loop@angle)
+  \setcounter{cnt@a}{2*(\cs@nd+2*\loop@diam)/3}
+  \setcounter{cnt@b}{\loop@diam*1732/1000} % approx of sqrt(3)
+% Rotation
+  \setcounter{cnt@c}
+    {\cs@xa+\thecnt@a*\real{\cs@cos}-\thecnt@b*\real{\cs@sin}}
+  \if@loopCW
+    \edef\cs@xb{\thecnt@c}%
+  \else
+    \edef\cs@xc{\thecnt@c}%
+  \fi
+  \setcounter{cnt@c}
+    {\cs@xa+\thecnt@a*\real{\cs@cos}+\thecnt@b*\real{\cs@sin}}
+  \if@loopCW
+    \edef\cs@xc{\thecnt@c}%
+  \else
+    \edef\cs@xb{\thecnt@c}%
+  \fi
+  \setcounter{cnt@c}
+    {\cs@ya+\thecnt@a*\real{\cs@sin}+\thecnt@b*\real{\cs@cos}}
+  \if@loopCW
+    \edef\cs@yb{\thecnt@c}%
+  \else
+    \edef\cs@yc{\thecnt@c}%
+  \fi
+  \setcounter{cnt@c}
+    {\cs@ya+\thecnt@a*\real{\cs@sin}-\thecnt@b*\real{\cs@cos}}
+  \if@loopCW
+    \edef\cs@yc{\thecnt@c}%
+  \else
+    \edef\cs@yb{\thecnt@c}%
+  \fi
+  \draw@b@edge(#1,#1){#2}
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Other macros
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%-----------------------------------------------------------------------
+% Draw a broken line defined by n points (n>1).
+% The line may have arrowhead(s), arrowtail(s), color, ... 
+% depending of the current settings
+% 
+%   \drawline(x1,y1)...(xn,yn)
+%   \drawline[parameter=value,...](x1,y1)...(xn,yn)
+%  
+% Required arguments in \unitlengh: 
+%   (x1,y1)...(xn,yn) : coordinates of the points.
+% Optional argument:
+%   [parameter=value,...]
+\def\drawline#1(#2){\begingroup%
+  \setcounter{cnt@a}{0} \edef\ps@param{}%
+  \@ifnextchar[{\process@drawlineopt}{\draw@line}#1(#2)}
+\def\process@drawlineopt[#1]{\gas@set#1,&\draw@line}%
+\def\draw@line(#1,#2){%
+  \setcounter{cnt@a}{\thecnt@a+1}
+  \dim@x=#1\unitlength \edef\ps@param{\ps@param \strip@PT\dim@x}%
+  \dim@x=#2\unitlength \edef\ps@param{\ps@param \strip@PT\dim@x}%
+  \@ifnextchar({\draw@line}{
+    \put(0,0){\special{" \gas@initps \line@color
+      \gas@ATparam \gas@AHparam \ps@param \thecnt@a\space \arc@radius !pslines}}
+    \endgroup
+  }}
+
+%-----------------------------------------------------------------------
+% Draw a circle.
+% 
+%   \drawcircle(x,y,r)
+%   \drawcircle[parameter=value,...](x,y,d)
+%  
+% Required arguments in \unitlengh: 
+%   x,y : coordinates of the circle center.
+%   d : diameter of the circle.
+% Optional argument:
+%   [parameter=value,...]
+\def\drawcircle#1(#2){{%
+  \@ifnextchar[{\process@circleopt}{\draw@circle}#1(#2)}}
+\def\process@circleopt[#1]{\gas@set#1,&\draw@circle}%
+\def\draw@circle(#1,#2,#3){{%
+  \dim@x=#1\unitlength \edef\ps@x{\strip@PT\dim@x}%
+  \dim@x=#2\unitlength \edef\ps@y{\strip@PT\dim@x}%
+  \dim@x=#3\unitlength \edef\ps@d{\strip@PT\dim@x}%
+  \put(0,0){\special{" \gas@initps 
+    \if@fill 
+	  \fill@color
+      \ps@x \ps@y \ps@d 2 div !pscirclepath fill 
+	\fi
+    \if@frame 
+      \line@color
+      \ps@x \ps@y \ps@d 2 div !pscirclepath stroke
+	\fi
+  }}
+}}
+
+%-----------------------------------------------------------------------
+% Draw a rectangle.
+% 
+%   \drawrect(x0,y0,x1,y1)
+%   \drawrect[parameter=value,...](x0,y0,x1,y1)
+%  
+% Required arguments in \unitlengh: 
+%   x0,y0 : coordinates of the lower left corner of the rectangle.
+%   x1,y1 : coordinates of the upper right corner of the rectangle.
+% Optional argument:
+%   [parameter=value,...]
+\def\drawrect#1(#2){{%
+  \@ifnextchar[{\process@rectopt}{\draw@rect}#1(#2)}}
+\def\process@rectopt[#1]{\gas@set#1,&\draw@rect}%
+\def\draw@rect(#1,#2,#3,#4){{%
+  \dim@x=#1\unitlength \edef\ps@x{\strip@PT\dim@x}%
+  \dim@x=#2\unitlength \edef\ps@y{\strip@PT\dim@x}%
+  \dim@x=#3\unitlength \edef\ps@a{\strip@PT\dim@x}%
+  \dim@x=#4\unitlength \edef\ps@b{\strip@PT\dim@x}%
+  \put(0,0){\special{" \gas@initps 
+    \if@fill 
+	  \fill@color
+      \ps@x \ps@y \ps@a \ps@b !psrectpath fill 
+	\fi
+    \if@frame 
+      \line@color
+      \ps@x \ps@y \ps@a \ps@b !psrectpath stroke
+	\fi
+  }}
+}}
+
+%-----------------------------------------------------------------------
+% Draw an oval.
+% 
+%   \drawoval(x,y,w,h,mr)
+%   \drawoval[parameter=value,...](x,y,w,h,mr)
+%  
+% Required arguments in \unitlengh: 
+%   x,y : coordinates of the oval center.
+%   w,h : width and height of the oval.
+%   rm : defines the maximal radius for the corners.
+% Optional argument:
+%   [parameter=value,...]
+\def\drawoval#1(#2){{%
+  \@ifnextchar[{\process@ovalopt}{\draw@oval}#1(#2)}}
+\def\process@ovalopt[#1]{\gas@set#1,&\draw@oval}%
+\def\draw@oval(#1,#2,#3,#4,#5){{%
+  \dim@x=#1\unitlength \edef\ps@path{\strip@PT\dim@x}%
+  \dim@x=#2\unitlength \edef\ps@path{\ps@path \strip@PT\dim@x}%
+  \dim@x=#3\unitlength \edef\ps@path{\ps@path \strip@PT\dim@x}%
+  \dim@x=#4\unitlength \edef\ps@path{\ps@path \strip@PT\dim@x}%
+  \dim@x=#5\unitlength \edef\ps@path{\ps@path \strip@PT\dim@x}%
+  \edef\ps@path{\ps@path !psovalpath\space}%
+  \put(0,0){\special{" \gas@initps 
+    \if@fill 
+	  \fill@color \ps@path fill 
+	\fi
+    \if@frame 
+      \line@color \ps@path stroke
+	\fi
+  }}
+}}
+
+%-----------------------------------------------------------------------
+% Draw a polygon defined by n points (n>1).
+% The polygon may be framed and/or filled depending on the current parameters.
+% 
+%   \drawpolygon(x1,y1)...(xn,yn)
+%   \drawpolygon[parameter=value,...](x1,y1)...(xn,yn)
+%  
+% Required arguments in \unitlengh: 
+%   (x1,y1)...(xn,yn) : coordinates of the points.
+% Optional argument:
+%   [parameter=value,...]
+\def\drawpolygon#1(#2){\begingroup%
+  \setcounter{cnt@a}{0} \edef\ps@param{}%
+  \@ifnextchar[{\process@polygonopt}{\draw@polygon}#1(#2)}
+\def\process@polygonopt[#1]{\gas@set#1,&\draw@polygon}%
+\def\draw@polygon(#1,#2){%
+  \setcounter{cnt@a}{\thecnt@a+1}
+  \dim@x=#1\unitlength \edef\ps@param{\ps@param \strip@PT\dim@x}%
+  \dim@x=#2\unitlength \edef\ps@param{\ps@param \strip@PT\dim@x}%
+  \@ifnextchar({\draw@polygon}{
+    \put(0,0){\special{" \gas@initps 
+      \if@fill 
+        \fill@color
+        \ps@param \thecnt@a\space \arc@radius !pspolygonpath fill 
+      \fi
+      \if@frame 
+        \line@color
+        \ps@param \thecnt@a\space \arc@radius !pspolygonpath stroke
+      \fi
+    }}
+    \endgroup
+  }}
+
+%-----------------------------------------------------------------------
+% Draw a regular polygon
+% The polygon may be framed and/or filled depending on the current parameters.
+% 
+%   \drawrpolygon(x,y)(n,r)
+%   \drawrpolygon[parameter=value,...](x,y)(n,r)
+%  
+% Required arguments: 
+%   x,y : coordinates in \unitlengh of the center of the polygon.
+%     n : number of sides of the polygon.
+%     r : radius in \unitlengh of the polygon.
+% Optional argument: (in particular, polyangle and arcradius)
+%   [parameter=value,...]
+\def\drawrpolygon#1(#2)(#3){\begingroup%
+  \@ifnextchar[{\process@rpolygonopt}{\draw@rpolygon}#1(#2)(#3)}
+\def\process@rpolygonopt[#1]{\gas@set#1,&\draw@rpolygon}%
+\def\draw@rpolygon(#1,#2)(#3,#4){%
+  \dim@x=#1\unitlength \dim@y=#2\unitlength
+  \edef\ps@path{\strip@PT\dim@x \strip@PT\dim@y #3\space}%
+  \dim@x=#4\unitlength \edef\ps@path{\ps@path \strip@PT\dim@x}%
+  \edef\ps@path{\ps@path \poly@angle\space \arc@radius 0 !psrpolygonpath\space}%
+  \put(0,0){\special{" \gas@initps 
+    \if@fill 
+      \fill@color \ps@path fill 
+    \fi
+    \if@frame 
+      \line@color \ps@path stroke
+    \fi
+  }}
+  \endgroup}
+
+%-----------------------------------------------------------------------
+% Draw closed curve defined by n points (n>1).
+% Between each pair of consecutive points, we use a cubic Bezier curve.
+% The control points of the cubic Bezier curves are determined so that
+% the whole curve is C^1 and the tangent at each point is orthogonal to
+% the bisector at this point.
+% The closed curve may be framed and/or filled depending on 
+% the current parameters.
+% 
+%   \drawccurve(x1,y1)...(xn,yn)
+%   \drawccurve[parameter=value,...](x1,y1)...(xn,yn)
+%  
+% Required arguments in \unitlengh: 
+%   (x1,y1)...(xn,yn) : coordinates of the points.
+% Optional argument:
+%   [parameter=value,...]
+\def\drawccurve#1(#2){\begingroup%
+  \setcounter{cnt@a}{0} \edef\ps@param{}%
+  \@ifnextchar[{\process@drawccurveopt}{\draw@c@curve}#1(#2)}
+\def\process@drawccurveopt[#1]{\gas@set#1,&\draw@c@curve}%
+\def\draw@c@curve(#1,#2){%
+  \setcounter{cnt@a}{\thecnt@a+1}
+  \dim@x=#1\unitlength \edef\ps@param{\ps@param \strip@PT\dim@x}%
+  \dim@x=#2\unitlength \edef\ps@param{\ps@param \strip@PT\dim@x}%
+  \@ifnextchar({\draw@c@curve}{
+  \put(0,0){\special{" \gas@initps 
+    \if@fill 
+	  \fill@color
+      \ps@param \thecnt@a\space !psccurvepath fill 
+	\fi
+    \if@frame 
+      \line@color
+      \ps@param \thecnt@a\space !psccurvepath stroke
+	\fi
+  }}
+  \endgroup
+}}
+
+%-----------------------------------------------------------------------
+% Draw curve defined by n points (n>1).
+% Between each pair of consecutive points, we use a cubic Bezier curve.
+% The control points of the cubic Bezier curves are determined so that
+% the whole curve is C^1 and the tangent at each point is orthogonal to
+% the bisector at this point.
+% 
+%   \drawcurve(x1,y1)...(xn,yn)
+%   \drawcurve[parameter=value,...](x1,y1)...(xn,yn)
+%  
+% Required arguments in \unitlengh: 
+%   (x1,y1)...(xn,yn) : coordinates of the points.
+% Optional argument:
+%   [parameter=value,...]
+\def\drawcurve#1(#2){\begingroup%
+  \setcounter{cnt@a}{0} \edef\ps@param{}%
+  \@ifnextchar[{\process@drawcurveopt}{\draw@curve}#1(#2)}
+\def\process@drawcurveopt[#1]{\gas@set#1,&\draw@curve}%
+\def\draw@curve(#1,#2){%
+  \setcounter{cnt@a}{\thecnt@a+1}
+  \dim@x=#1\unitlength \edef\ps@param{\ps@param \strip@PT\dim@x}%
+  \dim@x=#2\unitlength \edef\ps@param{\ps@param \strip@PT\dim@x}%
+  \@ifnextchar({\draw@curve}{
+  \put(0,0){\special{" \gas@initps \line@color 
+    \gas@ATparam \gas@AHparam 
+    \ps@param \thecnt@a\space !pscurve}}
+  \endgroup
+}}
+
+%-----------------------------------------------------------------------
+% Draw a quadratic Bezier curve.
+% The line may have arrowhead(s), ... depending of the current settings
+% 
+%   \drawqbezier(x0,y0,x1,y1,x2,y2)
+%   \drawqbezier[parameter=value,...](x0,y0,x1,y1,x2,y2)
+%  
+% \drawqbezier arguments: 
+%   x0,y0,x1,y1,x2,y2 : coordinates in \unitlength of the control points
+% Optional argument:
+%   [parameter=value,...]
+\def\drawqbezier#1(#2){{%
+  \@ifnextchar[{\process@drawqbezieropt}{\draw@q@bezier}#1(#2)}}
+\def\process@drawqbezieropt[#1]{\gas@set#1,&\draw@q@bezier}%
+\def\draw@q@bezier(#1,#2,#3,#4,#5,#6){{%
+  \dim@x=#1\unitlength \edef\ps@xa{\strip@PT\dim@x}%
+  \dim@x=#2\unitlength \edef\ps@ya{\strip@PT\dim@x}%
+  \dim@x=#3\unitlength \edef\ps@xb{\strip@PT\dim@x}%
+  \dim@x=#4\unitlength \edef\ps@yb{\strip@PT\dim@x}%
+  \dim@x=#5\unitlength \edef\ps@xc{\strip@PT\dim@x}%
+  \dim@x=#6\unitlength \edef\ps@yc{\strip@PT\dim@x}%
+  \put(0,0){\special{" \gas@initps \line@color
+    \gas@ATparam \gas@AHparam 
+	\ps@xa \ps@ya \ps@xb \ps@yb \ps@xc \ps@yc !ps_qbezier}}
+}}
+
+%-----------------------------------------------------------------------
+% Draw a cubic Bezier curve.
+% The line may have arrowhead(s), ... depending of the current settings
+% 
+%   \drawcbezier(x0,y0,x1,y1,x2,y2,x3,y3)
+%   \drawcbezier[parameter=value,...](x0,y0,x1,y1,x2,y2,x3,y3)
+%  
+% \drawcbezier arguments: 
+%   x0,y0,x1,y1,x2,y2,x3,y3 : coordinates in \unitlength of the control points
+% Optional argument:
+%   [parameter=value,...]
+\def\drawcbezier#1(#2){{%
+  \@ifnextchar[{\process@drawcbezieropt}{\draw@c@bezier}#1(#2)}}
+\def\process@drawcbezieropt[#1]{\gas@set#1,&\draw@c@bezier}%
+\def\draw@c@bezier(#1,#2,#3,#4,#5,#6,#7,#8){{%
+  \dim@x=#1\unitlength \edef\ps@xa{\strip@PT\dim@x}%
+  \dim@x=#2\unitlength \edef\ps@ya{\strip@PT\dim@x}%
+  \dim@x=#3\unitlength \edef\ps@xb{\strip@PT\dim@x}%
+  \dim@x=#4\unitlength \edef\ps@yb{\strip@PT\dim@x}%
+  \dim@x=#5\unitlength \edef\ps@xc{\strip@PT\dim@x}%
+  \dim@x=#6\unitlength \edef\ps@yc{\strip@PT\dim@x}%
+  \dim@x=#7\unitlength \edef\ps@xd{\strip@PT\dim@x}%
+  \dim@x=#8\unitlength \edef\ps@yd{\strip@PT\dim@x}%
+  \put(0,0){\special{" \gas@initps \line@color
+    \gas@ATparam \gas@AHparam 
+	\ps@xa \ps@ya \ps@xb \ps@yb \ps@xc \ps@yc \ps@xd \ps@yd !ps_cbezier}}
+}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Internal macros
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%-----------------------------------------------------------------------
+% Compute the diameter of a node in some direction
+% 
+%   \node@diam(Node,angle)
+%   
+% Result in \cs@nd.
+% Byproduct: \cs@cos=cos(angle), \cs@sin=sin(angle) are also defined.
+% 
+% There are 3 cases depending on whether the direction intersects the node
+% on a vertical line, an horizontal line or a rounded corner.
+\def\node@diam(#1,#2){%
+  \CalculateCos{#2} \edef\cs@cos{\UseCos{#2}}%
+  \CalculateSin{#2} \edef\cs@sin{\UseSin{#2}}%
+  \ifnum\csname node@#1@w\endcsname=-1 % then it's a polygonal node
+    \edef\cs@rad{\csname node@#1@rad\endcsname}%
+    \edef\cs@n{\csname node@#1@n\endcsname}%
+    \edef\cs@a{\csname node@#1@a\endcsname}%
+    \setcounter{cnt@b}{360/\cs@n}\edef\cs@b{\thecnt@b}%
+    \setcounter{cnt@a}{#2-\cs@a}
+    \@whilenum\thecnt@a>\thecnt@b\do{\setcounter{cnt@a}{\thecnt@a-\thecnt@b}}
+    \@whilenum\thecnt@a<0\do{\setcounter{cnt@a}{\thecnt@a+\thecnt@b}}
+    \setcounter{cnt@b}{\thecnt@b/2}
+    \setcounter{cnt@a}{\thecnt@a-\thecnt@b}
+    \ifnum\thecnt@a<0 \setcounter{cnt@a}{-\thecnt@a} \fi
+    \CalculateCos{\thecnt@a} \CalculateCos{\thecnt@b}%
+    \setcounter{cnt@c}{2*\cs@rad*\real{\UseCos{\thecnt@b}}/\real{\UseCos{\thecnt@a}}}
+    \edef\cs@nd{\thecnt@c}%
+  \else % it's an oval node
+    \edef\cs@w{\csname node@#1@w\endcsname}%
+    \edef\cs@h{\csname node@#1@h\endcsname}%
+    \edef\cs@r{\csname node@#1@r\endcsname}%
+    \setcounter{cnt@a}{\cs@r+\cs@r}\edef\cs@rr{\thecnt@a}%
+    \setcounter{cnt@a}{(\cs@h-\cs@rr)*\real{\cs@cos}}
+    \ifnum\thecnt@a<0\edef\cs@A{-\thecnt@a}\else\edef\cs@A{\thecnt@a}\fi%
+    \setcounter{cnt@a}{(\cs@w-\cs@rr)*\real{\cs@sin}}
+    \ifnum\thecnt@a<0\edef\cs@B{-\thecnt@a}\else\edef\cs@B{\thecnt@a}\fi%
+    \setcounter{cnt@a}{\cs@w*\real{\cs@sin}}
+    \ifnum\thecnt@a<0\setcounter{cnt@a}{-\thecnt@a}\fi
+    \ifnum\thecnt@a<\cs@A
+      \setcounter{cnt@c}{\cs@w/\real{\cs@cos}}
+      \ifnum\thecnt@c<0\edef\cs@nd{-\thecnt@c}\else\edef\cs@nd{\thecnt@c}\fi%
+    \else
+      \setcounter{cnt@a}{\cs@h*\real{\cs@cos}}
+      \ifnum\thecnt@a<0\setcounter{cnt@a}{-\thecnt@a}\fi
+      \ifnum\thecnt@a<\cs@B
+        \setcounter{cnt@c}{\cs@h/\real{\cs@sin}}
+        \ifnum\thecnt@c<0\edef\cs@nd{-\thecnt@c}\else\edef\cs@nd{\thecnt@c}\fi%
+      \else
+        \setcounter{cnt@a}{\cs@rr*\cs@rr-(\cs@B-\cs@A)*(\cs@B-\cs@A)}
+        \gas@sqrt{\thecnt@a}
+        \setcounter{cnt@a}{(\cs@w-\cs@rr)*\real{\cs@cos}}
+        \ifnum\thecnt@a<0\edef\cs@E{-\thecnt@a}\else\edef\cs@E{\thecnt@a}\fi%
+        \setcounter{cnt@a}{(\cs@h-\cs@rr)*\real{\cs@sin}}
+        \ifnum\thecnt@a<0\edef\cs@F{-\thecnt@a}\else\edef\cs@F{\thecnt@a}\fi%
+        \setcounter{cnt@a}{\the@sqrt+\cs@E+\cs@F}\edef\cs@nd{\thecnt@a}%
+      \fi
+    \fi
+  \fi
+%   \typeout{w=\cs@w,h=\cs@h,r=\cs@r,angle=#2,\cs@nd}
+}  
+
+%-----------------------------------------------------------------------
+% Draw the cubic Bezier curve.
+% The control points
+% (\cs@xa,\cs@ya)(\cs@xb,\cs@yb)(\cs@xc,\cs@yc)(\cs@xd,\cs@yd)
+% should already be defined.
+% 
+% #1 : name of the starting node
+% #2 : name of the ending node
+% #3 : label of the edge
+\def\draw@b@edge(#1,#2)#3{{%
+% Parameters for the Bezier curve.
+  \dim@x=\cs@xa\unitlength \edef\ps@xa{\strip@PT\dim@x}%
+  \dim@x=\cs@ya\unitlength \edef\ps@ya{\strip@PT\dim@x}%
+  \dim@x=\cs@xb\unitlength \edef\ps@xb{\strip@PT\dim@x}%
+  \dim@x=\cs@yb\unitlength \edef\ps@yb{\strip@PT\dim@x}%
+  \dim@x=\cs@xc\unitlength \edef\ps@xc{\strip@PT\dim@x}%
+  \dim@x=\cs@yc\unitlength \edef\ps@yc{\strip@PT\dim@x}%
+  \dim@x=\cs@xd\unitlength \edef\ps@xd{\strip@PT\dim@x}%
+  \dim@x=\cs@yd\unitlength \edef\ps@yd{\strip@PT\dim@x}%
+  \put(0,0){\special{" \gas@initps \line@color
+% Path around starting node
+    \csname node@#1@path\endcsname /path!a false upath cvlit def
+% Path around ending node
+    \csname node@#2@path\endcsname /path!b false upath cvlit def
+% The curve
+	\gas@ATparam \gas@AHparam
+	\ps@xa \ps@ya \ps@xb \ps@yb \ps@xc \ps@yc \ps@xd \ps@yd !ps_r_cbezier
+  }}
+% Coordinates (\cs@x,\cs@y) and slope (\cs@deltax,\cs@deltay) at the 
+% point of the curve defined by the parameter label@pos.
+  \def\@N{100}%
+% coefficients of the polynomial x(t)
+  \setcounter{cnt@a}{\cs@xd-\cs@xa+3*(\cs@xb-\cs@xc)}\edef\@A{\thecnt@a}%
+  \setcounter{cnt@a}{3*(\cs@xa+\cs@xc-2*\cs@xb)}\edef\@B{\thecnt@a}%
+  \setcounter{cnt@a}{3*(\cs@xb-\cs@xa)}\edef\@C{\thecnt@a}%
+% computation of \cs@x and \cs@deltax
+  \setcounter{cnt@a}{((\@A*\EL@p/\@N+\@B)*\EL@p/\@N+\@C)*\EL@p/\@N+\cs@xa}
+  \edef\cs@x{\thecnt@a}%
+  \setcounter{cnt@a}{(3*\@A*\EL@p/\@N+2*\@B)*\EL@p/\@N+\@C}
+  \edef\cs@deltax{\thecnt@a}%
+% coefficients of the polynomial y(t)
+  \setcounter{cnt@a}{\cs@yd-\cs@ya+3*(\cs@yb-\cs@yc)}\edef\@A{\thecnt@a}%
+  \setcounter{cnt@a}{3*(\cs@ya+\cs@yc-2*\cs@yb)}\edef\@B{\thecnt@a}%
+  \setcounter{cnt@a}{3*(\cs@yb-\cs@ya)}\edef\@C{\thecnt@a}%
+% computation of \cs@y and \cs@deltay
+  \setcounter{cnt@a}{((\@A*\EL@p/\@N+\@B)*\EL@p/\@N+\@C)*\EL@p/\@N+\cs@ya}
+  \edef\cs@y{\thecnt@a}%
+  \setcounter{cnt@a}{(3*\@A*\EL@p/\@N+2*\@B)*\EL@p/\@N+\@C}
+  \edef\cs@deltay{\thecnt@a}%
+% Computation of sqrt(\cs@deltax^2+\cs@deltay^2).
+  \setcounter{cnt@c}{\cs@deltax*\cs@deltax+\cs@deltay*\cs@deltay}
+  \gas@sqrt{\thecnt@c}
+  \ifnum\the@sqrt=0\def\the@sqrt{1}\fi
+% Label of the edge.
+% Computation of the shift from C to the center of the label.
+  \if@ELdistC
+    \setcounter{cnt@c}{\EL@dist}
+  \else
+    \setbox\temp@box\hbox{\selectfont #3}
+    \setcounter{cnt@a}{\wd\temp@box / \d@my@unit * \cs@deltay}
+    \ifnum\thecnt@a<0 \setcounter{cnt@a}{-\thecnt@a} \fi
+    \setcounter{cnt@c}{(\ht\temp@box+\dp\temp@box) / \d@my@unit * \cs@deltax}
+    \ifnum\thecnt@c<0 \setcounter{cnt@c}{-\thecnt@c} \fi
+    \setcounter{cnt@c}{(\thecnt@c+\thecnt@a) / \the@sqrt / 2 + \EL@dist}
+  \fi
+  \if r\EL@s 
+    \setcounter{cnt@a}{\cs@x + \cs@deltay * \thecnt@c / \the@sqrt}
+    \setcounter{cnt@b}{\cs@y - \cs@deltax * \thecnt@c / \the@sqrt}
+  \else
+    \setcounter{cnt@a}{\cs@x - \cs@deltay * \thecnt@c / \the@sqrt}
+    \setcounter{cnt@b}{\cs@y + \cs@deltax * \thecnt@c / \the@sqrt}
+  \fi
+% Shifting point C and drawing the label.
+  \put(\thecnt@a,\thecnt@b){\makebox(0,0){\selectfont #3}}
+}}
+
+%-----------------------------------------------------------------------
+% Compute the lower interger part of the square root of 
+% (the absolute value of) its argument.
+% The result is obtained with \the@sqrt.
+% We use Heron's method which converges quickly.
+\newcounter{cnt@@a}\newcounter{cnt@@b}\newcounter{cnt@@c}
+\def\gas@sqrt#1{%
+  \ifnum#1<0\setcounter{cnt@@a}{-#1}\else\setcounter{cnt@@a}{#1}\fi
+  \ifnum\thecnt@@a>1
+    \setcounter{cnt@@b}{\thecnt@@a}
+    \setcounter{cnt@@c}{(\thecnt@@a+1)/2}
+	\@whilenum\thecnt@@b>\thecnt@@c\do{
+      \setcounter{cnt@@b}{\thecnt@@c}
+      \setcounter{cnt@@c}{(\thecnt@@b+\thecnt@@a/\thecnt@@b)/2}}
+	\edef\the@sqrt{\thecnt@@b}
+  \else
+	\edef\the@sqrt{\thecnt@@a}
+  \fi
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Compatibility with gastex v1.0
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Should be called inside the scope of a group
+% 
+%   {\compatiblegastexun ... }
+% 
+% The macros \drawloop and \drawedge are redefined to match the old 
+% ones (v1.0) hence the new ones (v2.0) cannot be used inside the scope 
+% of \compatiblegastexun.
+%
+% The compatibility is almost 100%: 
+% - the following are ignored
+%   \setmaxbezier
+%   The optional argument of letstate defining the repeated state diameter
+% - \settransdecal, \setedgedecal give curved edges
+% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\compatiblegastexun{
+%-----------------------------------------------------------------------
+% Definitions
+%-----------------------------------------------------------------------
+  \unitlength=4pt
+  \d@my@unit= 2048sp % =1/32 pt ~= 0.011 mm
+  \gasset{AHnb=1,AHangle=20}
+  \def\AH@L{\strip@PT\@wholewidth 9 mul }
+  \def\AH@l{\strip@PT\@wholewidth 9 mul 20 cos mul }
+  \def\line@width{\strip@PT\@wholewidth}
+%   
+  \def\setstatediam##1{\gasset@Nw{##1}\gasset@Nh{##1}\gasset@Nmr{##1}}
+  \def\setvertexdiam{\setstatediam}
+  \setstatediam{6}
+%   
+  \def\setrepeatedstatediam##1{%
+    \setcounter{cnt@a}{1*\ratio{##1\unitlength}{\d@my@unit}}
+    \edef\repeated@diam{\thecnt@a}}%
+  \setrepeatedstatediam{5}
+%   
+  \def\setloopdiam{\gasset@loopdiam}%
+  \setloopdiam{6}
+%   
+  \def\settranslabelskip{\gasset@ELdist}%
+  \def\setedgelabelskip{\gasset@ELdist}
+  \settranslabelskip{1}
+%   
+  \def\setprofcurve##1{%
+    \setcounter{cnt@a}{1*\ratio{##1\unitlength}{\d@my@unit}}
+    \edef\prof@curve{\thecnt@a}}%
+  \setprofcurve{3}
+%   
+  \def\settransdecal##1{%
+    \setcounter{cnt@a}{1*\ratio{##1\unitlength}{\d@my@unit}}
+    \edef\trans@decal{\thecnt@a}}%
+  \settransdecal{0}
+  \def\setedgedecal{\settransdecal}
+%   
+  \def\setmaxbezier##1{}
+  \def\setnbptbezier##1{} % compatibilite version 0.3
+  \def\setprecision##1{} % compatibilite version 0.3
+%   
+  \def\setpsdash{\@ifnextchar[{\i@setpsdash}{\i@setpsdash[0]}}
+  \def\i@setpsdash[##1](##2){%
+	\dim@y=\unitlength \unitlength=1pt 
+    \gasset@@dash{0 ##2}{##1}
+	\unitlength=\dim@y
+	\def\ps@dash{[##2] ##1\space}}%
+  \setpsdash() % continuous path
+%   
+  \def\pcolor{}
+  \def\pictcolor##1##2{}
+%   
+  \def\setpsgray##1{\gasset@linegray{##1}\gasset@fillgray{##1}}%
+  \setpsgray{0} % black
+%-----------------------------------------------------------------------
+% States
+%-----------------------------------------------------------------------
+  \def\letstate{\@ifnextchar[{\i@letstate}{\ii@letstate}}%
+  \def\i@letstate[##1,##2] ##3=(##4,##5){{%
+    \gasset{Nw=##1,Nh=##1,Nmr=##1}
+    \let@node(##3)(##4,##5){}}}
+  \def\ii@letstate ##1=(##2,##3){%
+    \let@node(##1)(##2,##3){}}
+  \def\letvertex{\@ifnextchar[{\i@letvertex}{\ii@letstate}}%
+  \def\i@letvertex[##1] ##2=(##3,##4){{%
+    \gasset{Nw=##1,Nh=##1,Nmr=##1}
+    \let@node(##2)(##3,##4){}}}
+%   
+  \def\drawstate(##1)##2{{\gasset{Nfill=n}\draw@node(##1){##2}}}%
+  \def\drawvertex(##1)##2{{\gasset{Nfill=n,Nframe=n}\draw@node(##1){##2}}}%
+  \def\drawcircledvertex{\drawstate}%
+%   
+  \def\drawinitialstate{%
+    \@ifnextchar[{\@idrawinitialstate}{\@idrawinitialstate[l]}}
+  \def\@idrawinitialstate[##1](##2)##3{{%
+    \gasset{Nfill=n}\draw@node(##2){##3}
+    \setcounter{cnt@a}{\N@w*\ratio{\d@my@unit}{\unitlength}/2}
+    \if##1l \imark[iangle=180,ilength=\thecnt@a](##2) \fi
+    \if##1r \imark[iangle=  0,ilength=\thecnt@a](##2) \fi
+    \if##1t \imark[iangle= 90,ilength=\thecnt@a](##2) \fi
+    \if##1b \imark[iangle=-90,ilength=\thecnt@a](##2) \fi}}
+%   
+  \def\drawfinalstate{%
+    \@ifnextchar[{\@idrawfinalstate}{\@idrawfinalstate[r]}}
+  \def\@idrawfinalstate[##1](##2)##3{{%
+    \gasset{Nfill=n}\draw@node(##2){##3}
+    \setcounter{cnt@a}{\N@w*\ratio{\d@my@unit}{\unitlength}/2}
+    \if##1l \fmark[fangle=180,flength=\thecnt@a](##2) \fi
+    \if##1r \fmark[fangle=  0,flength=\thecnt@a](##2) \fi
+    \if##1t \fmark[fangle= 90,flength=\thecnt@a](##2) \fi
+    \if##1b \fmark[fangle=-90,flength=\thecnt@a](##2) \fi}}
+%   
+  \def\drawrepeatedstate(##1)##2{{%
+    \gasset{Nfill=n}\draw@node(##1){##2}
+    \setcounter{cnt@a}{(\N@w-\repeated@diam)/2}
+    \edef\rep@dist{\thecnt@a}%
+    \rmark(##1)}}
+%-----------------------------------------------------------------------
+% Transitions
+%-----------------------------------------------------------------------
+  \let\gas@edge=\drawedge
+  \def\drawtrans{\@ifnextchar[{\@idrawtrans}{\@idrawtrans[l]}}
+  \def\@idrawtrans[##1](##2,##3)##4{%
+    \setcounter{cnt@a}{\trans@decal*\ratio{\d@my@unit}{\unitlength}}
+    \if##1r \gas@edge[ELside=r,curvedepth=\thecnt@a](##2,##3){##4} 
+    \else \if##1b \gas@edge[ELside=r,curvedepth=\thecnt@a](##2,##3){##4} 
+    \else \gas@edge[ELside=l,curvedepth=\thecnt@a](##2,##3){##4} \fi\fi}
+  \def\drawedge{\drawtrans}
+  \def\drawundirectededge##1(##2,##3)##4{%
+    {\def\AH@nb{0 }\drawtrans##1(##2,##3){##4}}}
+%   
+  \def\drawcurvedtrans{%
+    \@ifnextchar[{\@idrawcurvedtrans}{\@idrawcurvedtrans[l]}}
+  \def\@idrawcurvedtrans[##1](##2,##3)##4{%
+    \setcounter{cnt@a}{\prof@curve*\ratio{\d@my@unit}{\unitlength}}
+    \if##1r \gas@edge[ELside=r,curvedepth=\thecnt@a](##2,##3){##4} 
+    \else \if##1b \gas@edge[ELside=r,curvedepth=\thecnt@a](##2,##3){##4} 
+    \else \gas@edge[ELside=l,curvedepth=\thecnt@a](##2,##3){##4} \fi\fi}
+  \def\drawcurvededge{\drawcurvedtrans}
+  \def\drawundirectedcurvededge##1(##2,##3)##4{%
+    {\def\AH@nb{0 }\drawcurvedtrans##1(##2,##3){##4}}}
+%   
+  \def\drawqbeziertrans{%
+    \@ifnextchar[{\@idrawqbeziertrans}{\@idrawqbeziertrans[l]}}
+  \def\@idrawqbeziertrans[##1](##2)(##3,##4)(##5)##6{%
+    \if##1r \drawqbedge[ELside=r](##2,##3,##4,##5){##6} 
+    \else \if##1b \drawqbedge[ELside=r](##2,##3,##4,##5){##6}
+    \else \drawqbedge[ELside=l](##2,##3,##4,##5){##6} \fi\fi}
+  \def\drawqbezieredge{\drawqbeziertrans}
+  \def\drawundirectedqbezieredge##1(##2)(##3,##4)(##5)##6{%
+    {\def\AH@nb{0 }\drawqbeziertrans##1(##2)(##3,##4)(##5){##6}}}
+%   
+  \def\drawcbeziertrans{%
+    \@ifnextchar[{\@idrawcbeziertrans}{\@idrawcbeziertrans[l]}}
+  \def\@idrawcbeziertrans[##1](##2)(##3,##4)(##5,##6)(##7)##8{{%
+    \if##1r \edef\EL@s{r} 
+    \else \if##1b \edef\EL@s{r}
+    \else \edef\EL@s{l} \fi\fi
+	\draw@bcedge(##2,##3,##4,##7,##5,##6){##8}
+  }}
+  \def\drawcbezieredge{\drawcbeziertrans}
+  \def\drawundirectedcbezieredge##1(##2)(##3,##4)(##5,##6)(##7)##8{%
+    {\def\AH@nb{0 }\drawcbeziertrans##1(##2)(##3,##4)(##5,##6)(##7){##8}}}
+%   
+  \let\gas@loop=\drawloop
+  \def\drawloop{\@ifnextchar[{\@idrawloop}{\@idrawloop[t]}}%
+  \def\@idrawloop[##1](##2)##3{%
+    \if##1l \gas@loop[loopangle=180](##2){##3} \fi
+    \if##1r \gas@loop[loopangle=  0](##2){##3} \fi
+    \if##1t \gas@loop[loopangle= 90](##2){##3} \fi
+    \if##1b \gas@loop[loopangle=-90](##2){##3} \fi}
+  \def\drawundirectedloop##1(##2)##3{%
+    {\def\AH@nb{0 }\drawloop##1(##2){##3}}}
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Compatibility with pspictpg v0.6
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Should be called inside the scope of a group
+% 
+%   {\compatiblepspictpg ... }
+%   
+% The macros \drawline and \drawcircle are redefined to match those of
+% pspictpg hence thoses of GasTeX cannot be used inside the scope 
+% of \compatiblepspictpg.
+% 
+% The following macros are ignored. Use linecolor and fillcolor instead.
+% \pcolor, \pictcolor
+% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\compatiblepspictpg{
+%   
+  \def\setpsdash{\@ifnextchar[{\i@setpsdash}{\i@setpsdash[0]}}
+  \def\i@setpsdash[##1](##2){%
+	\dim@y=\unitlength \unitlength=1pt 
+    \gasset@@dash{0 ##2}{##1}
+	\unitlength=\dim@y
+	\def\ps@dash{[##2] ##1\space}}%
+  \setpsdash() % continuous path
+%   
+  \def\pcolor{}
+  \def\pictcolor##1##2{}
+%   
+  \def\setpsgray##1{\gasset@linegray{##1}\gasset@fillgray{##1}}%
+  \setpsgray{0} % black
+% 
+  % Redefinition of latex \line(a,b){L}.
+  % Can be used with any values for a and b.
+  \def\line(##1,##2)##3{{%
+    \@xarg ##1\relax \@yarg ##2\relax
+    \dim@x=##3\unitlength
+    \special{" \gas@initps \line@color
+      \the\@xarg\space \the\@yarg\space \strip@PT\dim@x !pslatexline}
+  }}
+% 
+  % Redefinition of latex \vector(a,b){L}.
+  % Can be used with any values for a and b.
+  \def\vector(##1,##2)##3{{%
+    \@xarg ##1\relax \@yarg ##2\relax
+    \dim@x=##3\unitlength
+    \special{" \gas@initps \line@color \gas@ATnul \gas@AHparam
+      \the\@xarg\space \the\@yarg\space \strip@PT\dim@x !pslatexvector}
+  }}
+% 
+  % redefinition of \circle of LaTeX 
+  % can be used with any diameter
+  \def\circle{\@ifnextchar*{\@idisk}{\@icircle}}
+  \def\@icircle##1{{%
+    \dim@x=##1\unitlength
+    \special{" \gas@initps \line@color 
+      \strip@PT\dim@x !pscircle}
+  }}
+  \def\@idisk*##1{{%
+    \dim@x=##1\unitlength
+    \special{" \gas@initps \fill@color 
+      \strip@PT\dim@x !psdisk}
+  }}
+% 
+  \def\drawline(##1,##2)(##3,##4){\begingroup%
+    \setcounter{cnt@a}{0} \edef\ps@param{}%
+    \process@drawlineopt[ATnb=0,AHnb=0](##1,##2)(##3,##4)}
+  \def\drawvector(##1,##2)(##3,##4){\begingroup%
+    \setcounter{cnt@a}{0} \edef\ps@param{}%
+    \process@drawlineopt[ATnb=0,AHnb=1](##1,##2)(##3,##4)}
+  \def\drawcircle(##1,##2)(##3){{%
+    \gasset{Nframe=y,Nfill=n}\draw@circle(##1,##2,##3)}}
+  \def\drawdisk(##1,##2)(##3){{%
+    \gasset{Nframe=n,Nfill=y}\draw@circle(##1,##2,##3)}}
+  \def\cbezier(##1,##2)(##3,##4)(##5,##6)(##7,##8){%
+    \drawcbezier[ATnb=0,AHnb=0](##1,##2,##3,##4,##5,##6,##7,##8)}
+  \def\cbeziervector(##1,##2)(##3,##4)(##5,##6)(##7,##8){%
+    \drawcbezier[ATnb=0,AHnb=1](##1,##2,##3,##4,##5,##6,##7,##8)}
+  \def\qbezier(##1,##2)(##3,##4)(##5,##6){%
+    \drawqbezier[ATnb=0,AHnb=0](##1,##2,##3,##4,##5,##6)}
+  \def\qbeziervector(##1,##2)(##3,##4)(##5,##6){%
+    \drawqbezier[ATnb=0,AHnb=1](##1,##2,##3,##4,##5,##6)}
+}
+
+\endinput

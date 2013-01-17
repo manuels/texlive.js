@@ -1,0 +1,2135 @@
+%  ____________________________________________________________________________
+% |                                                                           |
+% |                                                                           |
+% |                              spreadtab v0.4b                              |
+% |                                                                           |
+% |                                13 may 2012                                |
+% |                                                                           |
+% |___________________________________________________________________________|
+%
+% This is spreadtab.sty, the code of the spreadtab package.
+%
+% Copyright Christian Tellechea 2009-2011
+% email : unbonpetit@gmail.com
+%
+% The "spreadtab" package consists of the 6 following files:
+%   spreadtab.sty (this file)
+%   README
+%   spreadtab_doc_fr.tex, spreadtab_doc_fr.pdf (manual in french)
+%   spreadtab_doc_en.tex, spreadtab_doc_en.pdf (manual in english)
+%
+% -------------------------------------------------------------------
+% This work may be distributed and/or modified under the conditions of the
+% LaTeX Project Public License, either version 1.3 of this license or (at your
+% option) any later version.
+% The latest version of this license is in
+%
+%     http://www.latex-project.org/lppl.txt
+%
+% and version 1.3 or later is part of all distributions of LaTeX version
+% 2005/12/01 or later.
+% -------------------------------------------------------------------
+% This work has the LPPL maintenance status `maintained'.
+%
+% The Current Maintainer of this work is Christian Tellechea
+% -------------------------------------------------------------------
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%% D\'efinitions pr\'ealables %%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand\ST@ver     {0.4b}
+\newcommand\ST@date    {2012/05/13}
+\newcommand\ST@fr@date {13 mai 2012}
+\newcommand\ST@eng@date{13 may 2012}
+
+\ProvidesPackage{spreadtab}[\ST@date\space v\ST@ver\space Spreadsheet features for table environments]
+\NeedsTeXFormat{LaTeX2e}
+\RequirePackage{fp}% pour les calculs scientifiques
+\RequirePackage{xstring}[2010/03/28]% version n\'ecessaire
+
+\newcount\ST@count
+\newcount\ST@colcount
+\newcount\ST@colcount@i
+\newcount\ST@rowcount
+\newcount\ST@rowcount@i
+\newcount\ST@intpart
+
+\newif\ifST@hiddencol
+\newif\ifST@debugmode
+\newif\ifST@colortblloaded
+\AtBeginDocument{\@ifpackageloaded{colortbl}\ST@colortblloadedtrue\ST@colortblloadedfalse}
+
+% D\'efinit le marqueur qui signale le commencement du champ num\'erique
+\newcommand*\STnumericfieldmarker{:=}
+
+% D\'efinit la macro qui va afficher les valeurs num\'eriques dans le tableau
+\newcommand\STprintnum[1]{#1}
+
+% D\'efinit les caract\`eres entre lesquels doivent entre envelopp\'ees les r\'ef\'erences des cellules
+% que l'on veut afficher dans les champs textuels
+\newcommand*\STsetdisplaymarks[2]{%
+	\def\ST@startdisplay{#1}\def\ST@enddisplay{#2}%
+}
+\STsetdisplaymarks{<<}{>>}% d\'elimiteurs par d\'efaut
+
+% d\'efinit le marqueur qui signale une cellule de texte
+\makeatother\newcommand*\STtextcell{@}\makeatletter
+
+% Commande qui permet \'a l'utilisateur de d\'efinir le caract\`ere qui conserve une r\'ef\'erence lors de la copie d'une formule
+\AtBeginDocument{\newcommand*\STtransposecar{!}}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Messages d'erreur %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newif\ifST@message
+
+\def\ST@package@name{spreadtab}
+
+\newcommand*\STmessage[1]{% #1 = true ou false pour autoriser ou pas les messages
+	\csname ST@message#1\endcsname
+}
+
+\newcommand*\ST@emit@message[1]{\ifST@message\message{#1}\fi}
+
+\newcommand*\ST@seedoc@i{Please, read the manual.}
+
+\newcommand*\ST@circular@reference{%
+	\ST@coord@toref\ST@coord
+	\let\ST@deptree\@empty
+	\ST@show@dependance@tree
+	\PackageError\ST@package@name{circular reference found in cell \ST@coord!^^J
+	Here is its dependant cells: \ST@deptree}\ST@seedoc@i\stop
+}
+
+\newcommand*\ST@undefined@cell{%
+	\ST@coord@toref\ST@temp@callcell
+	\ST@coord@toref\ST@coord
+	\PackageError\ST@package@name{Undefined reference!^^J
+	Cell \ST@temp@callcell\space contains a reference to an undefined cell: \ST@coord}\ST@seedoc@i\stop
+}
+
+\newcommand*\ST@zerocodecell@cell{%
+	\ST@coord@toref\ST@temp@callcell
+	\ST@coord@toref\ST@coord
+	\PackageError\ST@package@name{A reference to a non-numeric or empty cell is not allowed!^^J
+	Cell \ST@temp@callcell\space contains a reference to an empty or text cell: \ST@coord}\ST@seedoc@i\stop
+}
+
+\newcommand*\ST@multicol@cell{%
+	\ST@coord@toref\ST@temp@callcell
+	\ST@coord@toref\ST@coord
+	\PackageError\ST@package@name{Cell \ST@temp@callcell\space contains a reference to a merged \string\multicolumn\space cell: \ST@coord}\ST@seedoc@i
+}
+
+\newcommand*\ST@illegal@relativeref{%
+	\edef\ST@temp@callcell{\ST@current@colnumber,\ST@current@rownumber}%
+	\ST@coord@toref\ST@temp@callcell
+	\PackageError\ST@package@name{Illegal relative reference found in cell \ST@temp@callcell!}\ST@seedoc@i\stop
+}
+
+\newcommand*\ST@illegal@ref{%
+	\PackageError\ST@package@name{Illegal reference in \string\STsavecell!}\ST@seedoc@i
+}
+
+\newcommand*\ST@unmatch@matrixdim{%
+	\edef\ST@temp@callcell{\ST@current@colnumber,\ST@current@rownumber}%
+	\ST@coord@toref\ST@temp@callcell
+	\PackageError\ST@package@name{Somprod dimension of matrix do not match in cell \ST@temp@callcell!}\ST@seedoc@i
+}
+
+\newcommand*\ST@fact@outofrange{%
+	\PackageError\ST@package@name{Argument of fact is not integer or is out of range!}\ST@seedoc@i
+}
+
+\newcommand\ST@invalid@date{%
+	\edef\ST@temp@callcell{\ST@current@colnumber,\ST@current@rownumber}%
+	\ST@coord@toref\ST@temp@callcell
+	\PackageError\ST@package@name{Invalid date in cell \ST@temp@callcell.}\ST@seedoc@i
+}
+
+\newcommand*\ST@invalid@range{%
+	\edef\ST@temp@callcell{\ST@current@colnumber,\ST@current@rownumber}%
+	\ST@coord@toref\ST@temp@callcell
+	\PackageError\ST@package@name{Invalid range in cell \ST@temp@callcell.}\ST@seedoc@i\stop
+}
+
+\newcommand*\ST@invalidSTcopy{%
+	\edef\ST@temp@callcell{\ST@current@colnumber,\ST@current@rownumber}%
+	\ST@coord@toref\ST@temp@callcell
+	\PackageError\ST@package@name{Numeric field marker found, \string\STcopy\space forbidden in cell \ST@temp@callcell.}\ST@seedoc@i\stop
+}
+
+\newcommand*\ST@unknown@tag{%
+	\edef\ST@temp@callcell{\ST@current@colnumber,\ST@current@rownumber}%
+	\ST@coord@toref\ST@temp@callcell
+	\PackageError\ST@package@name{Undefined tag in cell \ST@temp@callcell.}\ST@seedoc@i
+}
+
+% transforme la chaine de cellules "(1,3)(4,5)(3,2)(1,3)" rencontr\'e en r\'ef\'erence circulaire en "A3-D5-C2-A3"
+\newcommand*\ST@show@dependance@tree{%
+	\ST@between\ST@dependance@tree()\ST@currentref
+	\ST@right\ST@dependance@tree)\ST@dependance@tree
+	\ST@coord@toref\ST@currentref
+	\ST@expadd@tomacro\ST@deptree\ST@currentref
+	\unless\ifx\@empty\ST@dependance@tree
+		\ST@add@tomacro\ST@deptree-%
+		\expandafter\ST@show@dependance@tree
+	\fi
+}
+
+% transforme la s\'equence de contr\^ole #1 qui contient par exemple «4,5» en «D5»
+\newcommand*\ST@coord@toref[1]{%
+	\ST@split#1,\ST@temp@a#1%
+	\edef#1{\ifcase\ST@temp@a\or A\or B\or C\or D\or E\or F\or G\or H\or I\or J\or K\or L\or M\or
+		N\or O\or P\or Q\or R\or S\or T\or U\or V\or W\or X\or Y\or Z\fi#1}%
+}
+
+\newcommand*\ST@illegal@copy{%
+	\PackageError\ST@package@name{Illegal reference in copied formula!}\ST@seedoc@i
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%% Macros d'affectation et d'expansion %%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand*\ST@letname[1]{\expandafter\let\csname#1\endcsname}
+
+\newcommand\ST@exp@two@args[3]{%
+	\def\ST@tmp@{#1}%
+	\ST@expadd@tomacro\ST@tmp@{\expandafter{#2}}%
+	\ST@expadd@tomacro\ST@tmp@{\expandafter{#3}}%
+	\ST@tmp@
+}
+
+\newcommand\ST@add@tomacro[2]{\expandafter\def\expandafter#1\expandafter{#1#2}}
+
+\newcommand\ST@expadd@tomacro[2]{\expandafter\ST@add@tomacro\expandafter#1\expandafter{#2}}
+
+\newcommand\ST@edefadd@tomacro[2]{%
+	\edef#1{\unexpanded\expandafter{#1}#2}%
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%% Macros de manipulation de chaines %%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\ST@gobble@remain{%
+	\afterassignment\ST@gobble@remain@i
+	\let\ST@toks=
+}
+
+\def\ST@gobble@remain@i{%
+	\unless\ifx\ST@toks\ST@nil\expandafter\ST@gobble@remain\fi
+}
+
+\newcommand\ST@splitatfirstcar[3]{%
+	\def\ST@splitatfirstcar@i##1##2\@nil{\def#2{##1}\def#3{##2}}%
+	\expandafter\ST@splitatfirstcar@i#1\@nil
+}
+
+% dans la sc #1, remplace le . par le s\'eparateur d\'ecimal
+\newcommand\ST@substdecsep[1]{%
+	\ST@Ifinstr#1.{\expandafter\ST@substdecsep@i\expandafter#1\expandafter{\ST@decsep}}\relax
+}
+\newcommand\ST@substdecsep@i[2]{%
+	\def\ST@substdecsep@ii##1.##2\@nil{\def#1{##1#2##2}}%
+	\expandafter\ST@substdecsep@ii#1\@nil
+}
+
+% enl\`eve tous les espaces de la sc #1 et assigne le r\'esultat \'a #1
+\newcommand\ST@remove@first@spaces[1]{%
+	\IfBeginWith#1\space
+		{\StrGobbleLeft#11[#1]\def\ST@nextspace{\ST@remove@first@spaces{#1}}}%
+		{\let\ST@nextspace\relax}%
+	\ST@nextspace
+}
+
+\newcommand\ST@keep@firstcar[1]{% on ne garde dans la sc #1 que le 1er caract\`ere de la sc #1 ou on enl\`eve les accolades
+	\expandafter\expandafter\expandafter\def\expandafter\expandafter\expandafter#1\expandafter\expandafter\expandafter{\expandafter\@car#1\@nil}%
+}
+
+\newcommand\ST@firstarg@after[3]{% assigne \'a la sc #3 l'argument qui suit #2 dans le d\'eveloppement de la sc #1
+	\def\ST@firstarg@after@i##1#2##2##3\@nil{\def#3{##2}}%
+	\expandafter\ST@firstarg@after@i#1\@nil
+}
+
+\newcommand\ST@thirdarg@after[3]{% assigne \'a la sc #3 le 3\`e argument qui suit #2 dans le d\'eveloppement de la sc #1
+	\def\ST@thirdarg@after@i##1#2##2##3##4##5\@nil{\def#3{##4}}%
+	\expandafter\ST@thirdarg@after@i#1\@nil
+}
+
+% est ce que la sc #1 contient la sc #2 ?
+\newcommand\ST@Ifinstr[2]{\ST@exp@two@args\ST@Ifinstr@i{#1}{#2}}
+\newcommand\ST@Ifinstr@i[2]{%
+	\def\ST@Ifinstr@ii##1#2##2\@nil{\ifx\@empty##2\@empty\expandafter\@secondoftwo\else\expandafter\@firstoftwo\fi}%
+	\ST@Ifinstr@ii#1\@@nil#2\@nil
+}
+
+% Est ce que la sc #1 commence par les caract\`eres #2 ?
+\newcommand\ST@Iffirstis[2]{%
+	\expandafter\ST@Ifinstr@i\expandafter{#1}{#2}%
+		{\def\ST@Iffirstis@i##1#2##2\@nil{%
+			\ifx\@empty##1\@empty\expandafter\@firstoftwo\else\expandafter\@secondoftwo\fi
+			}%
+		}%
+		{\def\ST@Iffirstis@i##1\@nil{\@secondoftwo}}%
+	\expandafter\ST@Iffirstis@i#1\@@nil#2\@nil
+}
+
+% Coupe la sc #1 au caract\`ere #2
+% ce qui est avant est assign\'e \'a #3 et ce qui est apr\`es \'a #4
+\newcommand\ST@split[4]{%
+	\def\ST@split@i##1#2##2\@nil{\def#3{##1}\def#4{##2}}%
+	\expandafter\ST@split@i#1\@nil
+}
+
+% Dans la sc #1, assigne ce qui est avant le d\'eveloppement de la sc #2 \'a la sc #3
+\newcommand\ST@left[3]{\ST@exp@two@args\ST@left@i{#1}{#2}#3}
+\newcommand\ST@left@i[3]{%
+	\def\ST@left@ii##1#2##2\@nil{\def#3{##1}}%
+	\ST@left@ii#1\@nil
+}
+
+% Dans la sc #1, assigne ce qui est apr\`es le d\'eveloppement de la sc #2 \'a la sc #3
+\newcommand\ST@right[3]{\ST@exp@two@args\ST@right@i{#1}{#2}#3}
+\newcommand\ST@right@i[3]{%
+	\def\ST@right@ii##1#2##2\@nil{\def#3{##2}}%
+	\ST@right@ii#1\@nil
+}
+
+% Dans la sc #1, assigne \'a la sc #4 ce qui est entre les caract\`eres #2 et #3
+\newcommand\ST@between[4]{%
+	\def\ST@between@i##1#2##2#3##3\@nil{\def#4{##2}}%
+	\expandafter\ST@between@i#1\@nil
+}
+
+% Dans la sc #1, substitue la premi\`ere occurrence du pattern #2 par le pattern #3
+\newcommand\ST@subst@once[3]{%
+	\def\ST@subst@once@i##1#2##2\@nil{\def#1{##1#3##2}}%
+	\ST@Ifinstr#1{\@empty#2}{\expandafter\ST@subst@once@i#1\@nil}\relax
+}
+
+% Dans la sc #1, substitue le pattern #2 par le pattern #3
+\newcommand\ST@subst[3]{%
+	\def\ST@subst@i##1#2##2\@nnil{%
+		\ifx\@empty##2\@empty
+			\def#1{##1}\expandafter\remove@to@nnil
+		\else
+			\expandafter\ST@subst@i
+		\fi
+		##1#3##2\@nnil
+	}%
+	\expandafter\ST@subst@i#1#2\@nnil
+}
+
+\newcommand\ST@expsubst[3]{\ST@exp@two@args{\ST@subst#1}{#2}{#3}}
+
+\newcommand\ST@removespaces[1]{\ST@subst#1{ }{}}
+
+\newcommand\ST@ifvalid@csname[1]{%
+	\ifcsname#1\endcsname
+		\expandafter\ifx\csname#1\endcsname\ST@undef@content
+			\expandafter\expandafter\expandafter\@secondoftwo
+		\else
+			\expandafter\expandafter\expandafter\@firstoftwo
+		\fi
+	\else
+		\expandafter\@secondoftwo
+	\fi
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Lecture du tableau %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% lit le tableau : consid\`ere que \\ s\'epare les lignes
+\newcommand\ST@read@tab{%
+	\def\ST@total@colnumber{0}%
+	\ST@rowcount\z@
+	\ST@search@hline% on met de c\^ot\'e la (ou les) ligne sup\'erieure du tableau
+	\ST@read@tab@i
+}
+
+\newcommand\ST@read@tab@i{%
+	\advance\ST@rowcount\@ne
+	\ST@Ifinstr\ST@tab{\ST@eol}% si contient \\, il reste encore des lignes
+		{\expandafter\ST@split\expandafter\ST@tab\expandafter{\ST@eol}\ST@current@row\ST@tab
+		\@namedef{endrow@\number\ST@rowcount\expandafter}\expandafter{\ST@eol}% est la fin de cette ligne, pour l'instant
+		\ST@Iffirstis\ST@tab[% on prend en compte l'\'eventuel argument optionnel de \\
+			{\ST@between\ST@tab[]\ST@temp@a% prend ce qui est entre crochet
+			\ST@Ifinstr\ST@temp@a,% si c'est une r\'ef\'erence (on teste juste la pr\'esence de la virgule, ça devrait suffire)
+				\relax% on ne fait rien
+				{\ST@split\ST@tab]\ST@temp@a\ST@tab% sinon, coupe au crocher fermant
+				\expandafter\ST@expadd@tomacro\csname endrow@\number\ST@rowcount\endcsname{\ST@temp@a]}}% ajoute l'argument optionnel \'a la fin de ligne
+			}%
+			\relax
+		\ST@search@hline% on va purger les hlines et les mettre dans la fin de ligne
+		\ifx\ST@tab\@empty
+			\let\ST@next@readrows\relax
+			\edef\ST@total@rownumber{\number\ST@rowcount}%
+		\else
+			\let\ST@next@readrows\ST@read@tab@i
+		\fi
+		}%
+		{\let\ST@current@row\ST@tab% plus de ligne ? on prend le tout c-\'a-d la ligne incompl\`ete qui finit le tableau
+		\let\ST@next@readrows\relax
+		\edef\ST@total@rownumber{\number\ST@rowcount}}%
+	\ST@Ifinstr\ST@current@row{\@empty\SThiderow}% il est demand\'e de masquer la colonne ?
+		{\edef\ST@row@skiplist{(\number\ST@rowcount)\ST@row@skiplist}% on ajoute le num\'ero de ligne \'a masquer \'a la skiplist
+		\StrDel\ST@current@row{\@empty\SThiderow}[\ST@current@row]%
+		}%
+		\relax
+	\ST@colcount\z@
+	\let\ST@multicol@number\@empty
+	\let\ST@nextcell\@empty
+	\ST@read@cells% lit les cellules de la ligne courante \ST@current@row
+	\ST@next@readrows
+}
+
+\newcommand\ST@read@cells{% divise la ligne contenue dans \ST@current@row en cellules
+	\advance\ST@colcount\@ne
+	\ST@Ifinstr\ST@current@row&%
+		{\ST@split\ST@current@row&\ST@current@cell\ST@current@row
+		\let\ST@next@readcells\ST@read@cells}%
+		{\let\ST@current@cell\ST@current@row
+		\let\ST@next@readcells\relax
+		\ifnum\ST@colcount>\ST@total@colnumber\edef\ST@total@colnumber{\number\ST@colcount}\fi}%
+	\ST@Ifinstr\ST@current@cell{\@empty\SThidecol}% on doit masquer cette colonnes ?
+		{\ST@Ifinstr\ST@col@skiplist{\expandafter(\number\ST@colcount)}% ça a d\'ej\'a \'et\'e demand\'e ?
+			\relax% on fait rien
+			{\edef\ST@col@skiplist{(\number\ST@colcount)\ST@col@skiplist}% sinon -> ajout \'a la skiplist
+			\ifnum\ST@colcount>\ST@last@skipcol\edef\ST@last@skipcol{\number\ST@colcount}\fi
+			}%
+		\StrDel\ST@current@cell{\@empty\SThidecol}[\ST@current@cell]%
+		}%
+		\relax
+	\exploregroups
+	\ST@Ifinstr\ST@current@cell{\@empty\multicolumn}% tester la pr\'esence d'un \multicol
+		{\ST@firstarg@after\ST@current@cell\multicolumn\ST@multicol@number}%
+		{\let\ST@multicol@number\@empty}%
+	\IfSubStr\ST@current@cell\STnumericfieldmarker% il y a un marqueur de champ num\'erique ?
+		{\IfSubStr\ST@current@cell{\@empty\STcopy}\ST@invalidSTcopy\relax% s'il y a un \STcopy, erreur (pas de champ num\'erique et de \STcopy dans une m\^eme cellule)
+		\StrBehind\ST@current@cell\STnumericfieldmarker[\ST@current@formula]%
+		\noexploregroups
+		\StrChar\ST@current@formula1[\ST@temp@a]% \ST@temp@a contient {<formule}
+		\exploregroups
+			\let\ST@temp@b\STnumericfieldmarker
+			\ST@expadd@tomacro\ST@temp@b\ST@temp@a
+			\StrSubstitute[1]\ST@current@cell\ST@temp@b\STnumericfieldmarker[\ST@current@cell]% on remplace :={<formule>} par ":="
+		\noexploregroups
+		\ST@keep@firstcar\ST@temp@a% dans la formule, on enl\`eve les accolades
+		\ST@removespaces\ST@temp@a% et tous les espaces
+		\ifx\ST@temp@a\@empty% \ST@temp@a contient la formule : si la formule est vide
+			\ifx\ST@copylist\@empty% pas de copylist ?
+				\@namedef{code@\number\ST@colcount @\number\ST@rowcount}{0}% met le code \'a 0
+			\else% si la copylist existe
+				\ST@lookincopylist{\number\ST@colcount}{\number\ST@rowcount}\ST@celltocopy% on cherche si la cellule en cours est dans une plage de copie
+				\ifx\ST@celltocopy\@empty
+					\@namedef{code@\number\ST@colcount @\number\ST@rowcount}{0}% si c'est non, met le code \'a 0
+					\StrDel[1]\ST@current@cell\STnumericfieldmarker[\ST@current@cell]% on supprime aussi ":="
+				\else
+					\ST@letname{formula@\number\ST@colcount @\number\ST@rowcount}\ST@celltocopy% il y a une cellule \'a copier : on l'assigne au champ num\'erique
+					\@namedef{code@\number\ST@colcount @\number\ST@rowcount}{1}% et on met le code \'a 1
+				\fi
+			\fi
+		\else% la formule n'est pas vide
+			\ST@letname{formula@\number\ST@colcount @\number\ST@rowcount}\ST@temp@a% et on assigne \'a la formule
+			\@namedef{code@\number\ST@colcount @\number\ST@rowcount}{1}% code 1 \'a priori
+		\fi
+		}% ci dessous, il n'y a pas de marqueur de champ num\'erique
+		{\IfSubStr\ST@current@cell\STtextcell% si c'est une cellule de texte
+			{\StrDel\ST@current@cell\STtextcell[\ST@current@cell]% on le(s) supprime les flags
+			\@namedef{code@\number\ST@colcount @\number\ST@rowcount}{0}% met le code \'a 0
+			}% ci dessous, ce n'est pas une cellule texte, c'est donc une cellule purement champ num\'erique sans marqueur
+			{\StrDel\ST@current@cell\space[\ST@temp@a]%
+			\ifx\@empty\ST@temp@a% il n'y a que des espaces, c'est donc une cellule vide
+				\ifx\ST@copylist\@empty% pas de copylist ?
+					\@namedef{code@\number\ST@colcount @\number\ST@rowcount}{0}% met le code \'a 0
+				\else% si la copylist existe
+					\ST@lookincopylist{\number\ST@colcount}{\number\ST@rowcount}\ST@celltocopy% on cherche si la cellule en cours est dans un oplage de copie
+					\ifx\ST@celltocopy\@empty
+						\@namedef{code@\number\ST@colcount @\number\ST@rowcount}{0}% si c'est non, met le code \'a 0
+					\else
+						\let\ST@current@cell\STnumericfieldmarker% il y a une cellule \'a copier ici
+						\ST@letname{formula@\number\ST@colcount @\number\ST@rowcount}\ST@celltocopy% on l'assigne au champ num\'erique
+						\@namedef{code@\number\ST@colcount @\number\ST@rowcount}{1}% et on met le code \'a 1
+					\fi
+				\fi
+			\else% ici, la cellule est compos\'ee d'une champ num\'erique sans marqueur
+				\@namedef{code@\number\ST@colcount @\number\ST@rowcount}{1}% toute la cellule est consid\'er\'ee comme champ num\'erique
+				\ST@remove@first@spaces\ST@current@cell
+				\ST@Ifinstr\ST@current@cell{\@empty\STcopy}%
+					{\ST@findcopyargs\ST@current@cell\ST@copyrange\ST@copyformula% on chope les arguments de \STcopy
+					\ST@seekcopyoffset\ST@copyrange% cherche les d\'ecalages
+					\edef\ST@copyrange{\ST@hoffest,\ST@voffest}% et affecte sous forme a,b o\`u a et b sont des nombres ou sont vides
+					\expandafter\def\expandafter\ST@newtocopylist\expandafter{\expandafter|\ST@copyformula|}% \ST@newtocopylist est le nouvel \'el\'ement \'a ajouter \'a la copylist
+					\ST@edefadd@tomacro\ST@newtocopylist{[\number\ST@colcount,\number\ST@rowcount]}%
+					\ST@expadd@tomacro\ST@newtocopylist{\expandafter(\ST@copyrange)}%
+					\ST@expadd@tomacro\ST@newtocopylist\ST@copylist% ajoute la copylist \'a la fin
+					\let\ST@copylist\ST@newtocopylist% et l'assigne \'a copylist
+					\ST@transposeformula00\ST@copyformula\ST@copyformula% on transpose \'eventuellement pour g\'erer les "!"
+					\ST@letname{formula@\number\ST@colcount @\number\ST@rowcount}\ST@copyformula% affecte la formule inchang\'ee au champ num\'erique courant
+					}%
+					{\ST@letname{formula@\number\ST@colcount @\number\ST@rowcount}\ST@current@cell% et on assigne toute la cellule
+					\let\ST@current@cell\STnumericfieldmarker% et on met le flag pour la formule
+					}%
+			\fi
+			}%
+		}%
+	\noexploregroups
+	\ifnum\csname code@\number\ST@colcount @\number\ST@rowcount\endcsname>\z@% si le code est > 0
+		\ST@try@calc@cell(\number\ST@colcount,\number\ST@rowcount)% on essaie de calculer la cellule
+	\fi
+	\ST@letname{text@\number\ST@colcount @\number\ST@rowcount}\ST@current@cell
+	\unless\ifx\@empty\ST@multicol@number% si c'est une cellule qui contient \multicolumn
+		\loop% on met tous les codes des cellules fusion\'ees qui suivent la cellule en cours \'a -1
+			\ifnum\ST@multicol@number>\@ne
+				\edef\ST@multicol@number{\number\numexpr\ST@multicol@number-1}%
+				\advance\ST@colcount\@ne
+				\@namedef{code@\number\ST@colcount @\number\ST@rowcount}{-1}% -1 = cellule multicol
+		\repeat
+	\fi
+	\ST@next@readcells
+}
+
+% On va essayer de purger dans #1 toutes les \hline, \clines, \hhline etc, et ajouter tout ce beau monde
+% et leur ev\'entuels arguments dans des sc sp\'eciales (par ex \endrow@3 pour la fin de la 3e ligne.)
+\newcommand\ST@search@hline{%
+	\ST@ifvalid@csname{endrow@\number\ST@rowcount}%
+		\relax
+		{\ST@letname{endrow@\number\ST@rowcount}\@empty}%
+	\ST@search@hline@i
+}
+
+\newcommand\ST@search@hline@i{%
+	\ST@remove@first@spaces\ST@tab% on enl\`eve les espaces au d\'ebut
+	\StrChar\ST@tab1[\ST@temp@a]% \ST@temp@a est le 1er car
+	\let\ST@next\ST@search@hline@i
+	\IfStrEqCase\ST@temp@a{% on envisage tous les cas de trac\'e de ligne horizontale
+		{\@empty\hline}{\StrGobbleLeft\ST@tab1[\ST@tab]\expandafter\ST@add@tomacro\csname endrow@\number\ST@rowcount\endcsname\hline}%
+		{\@empty\cline}{\StrSplit\ST@tab2\ST@temp@a\ST@tab\expandafter\ST@expadd@tomacro\csname endrow@\number\ST@rowcount\endcsname\ST@temp@a}%
+		{\@empty\hhline}{\StrSplit\ST@tab2\ST@temp@a\ST@tab\expandafter\ST@expadd@tomacro\csname endrow@\number\ST@rowcount\endcsname\ST@temp@a}%
+		{\@empty\noalign}{\StrSplit\ST@tab2\ST@temp@a\ST@tab\expandafter\ST@expadd@tomacro\csname endrow@\number\ST@rowcount\endcsname\ST@temp@a}%
+		{\@empty\toprule}{% les commandes de booktabs
+			\StrSplit\ST@tab1\ST@temp@a\ST@tab% chope le 1er lex\`eme : la commande \toprule
+			\IfBeginWith\ST@tab[{\StrBefore\ST@tab][\ST@temp@b]\ST@expadd@tomacro\ST@temp@a{\ST@temp@b]}\StrBehind\ST@tab][\ST@tab]}\relax
+			\expandafter\ST@expadd@tomacro\csname endrow@\number\ST@rowcount\endcsname\ST@temp@a
+			}%
+		{\@empty\midrule}{%
+			\StrSplit\ST@tab1\ST@temp@a\ST@tab% chope le 1er lex\`eme : la commande \midrule
+			\IfBeginWith\ST@tab[{\StrBefore\ST@tab][\ST@temp@b]\ST@expadd@tomacro\ST@temp@a{\ST@temp@b]}\StrBehind\ST@tab][\ST@tab]}\relax
+			\expandafter\ST@expadd@tomacro\csname endrow@\number\ST@rowcount\endcsname\ST@temp@a
+			}%
+		{\@empty\bottomrule}{%
+			\StrSplit\ST@tab1\ST@temp@a\ST@tab% chope le 1er lex\`eme : la commande \bottomrule
+			\IfBeginWith\ST@tab[{\StrBefore\ST@tab][\ST@temp@b]\ST@expadd@tomacro\ST@temp@a{\ST@temp@b]}\StrBehind\ST@tab][\ST@tab]}\relax
+			\expandafter\ST@expadd@tomacro\csname endrow@\number\ST@rowcount\endcsname\ST@temp@a
+			}%
+		{\@empty\cmidrule}{%
+			\StrSplit\ST@tab1\ST@temp@a\ST@tab% chope le 1er lex\`eme : la commande \cmidrule
+			\IfBeginWith\ST@tab[{\StrBefore\ST@tab][\ST@temp@b]\ST@expadd@tomacro\ST@temp@a{\ST@temp@b]}\StrBehind\ST@tab][\ST@tab]}\relax
+			\IfBeginWith\ST@tab({\StrBefore\ST@tab)[\ST@temp@b]\ST@expadd@tomacro\ST@temp@a{\ST@temp@b)}\StrBehind\ST@tab)[\ST@tab]}\relax
+			\StrSplit\ST@tab1\ST@temp@b\ST@tab% chope l'argument obligatoire : {a-b}
+			\ST@expadd@tomacro\ST@temp@a\ST@temp@b% l'ajoute \'a \ST@temp@b
+			\expandafter\ST@expadd@tomacro\csname endrow@\number\ST@rowcount\endcsname\ST@temp@a% et on ajoute le tout \'a endrow
+			}%
+		{\@empty\addlinespace}{%
+			\StrSplit\ST@tab1\ST@temp@a\ST@tab% chope le 1er lex\`eme : la commande \addlinespace
+			\IfBeginWith\ST@tab[{\StrBefore\ST@tab][\ST@temp@b]\ST@expadd@tomacro\ST@temp@a{\ST@temp@b]}\StrBehind\ST@tab][\ST@tab]}\relax
+			\expandafter\ST@expadd@tomacro\csname endrow@\number\ST@rowcount\endcsname\ST@temp@a
+			}%
+		{\@empty\morecmidrules}{\StrGobbleLeft\ST@tab1[\ST@tab]\expandafter\ST@add@tomacro\csname endrow@\number\ST@rowcount\endcsname\morecmidrules}%
+		{\@empty\specialrule}{\StrSplit\ST@tab4\ST@temp@a\ST@tab\expandafter\ST@expadd@tomacro\csname endrow@\number\ST@rowcount\endcsname\ST@temp@a}%
+		}[\let\ST@next\relax]%
+	\ST@next
+}
+
+% Cette macro transpose toutes les r\'ef\'erences (absolues et relatives) de la sc #3.
+% Le d\'ecalage est de #1 (nombre sign\'e) pour les colonnes et de #2 (nombre sign\'e) pour les lignes.
+% La sc #4 recoit la formule transpos\'ee.
+\newcommand\ST@transposeformula[4]{%
+	\def\ST@addcol{#1}\def\ST@addrow{#2}\let\ST@temp@formula#3%
+	\let\ST@transposed@formula\@empty
+	\ST@transposeformula@i
+	\let#4\ST@transposed@formula
+}
+
+\newcommand\ST@transposeformula@i{%
+	\unless\ifx\@empty\ST@temp@formula% tant que l'on n'a pas parcouru \ST@temp@formula
+		\ST@splitatfirstcar\ST@temp@formula\ST@firstcar\ST@temp@formula% prend le 1er car de \ST@temp@formula
+		\if\expandafter\noexpand\STtransposecar\expandafter\noexpand\ST@firstcar% si ce caract\`ere est un !
+			\let\ST@addcol@\z@% pas de tranposition sur la colonne
+			\ST@splitatfirstcar\ST@temp@formula\ST@firstcar\ST@temp@formula% on prend le premier caract\`ere qui suit le !
+		\else
+			\let\ST@addcol@\ST@addcol% sinon, on copie le vecteur
+		\fi
+		\expandafter\ST@ifcar@isletter\expandafter{\ST@firstcar}% est-ce que le 1er car est une lettre ?
+			{\if\expandafter\noexpand\STtransposecar\expandafter\expandafter\expandafter\noexpand\expandafter\@car\ST@temp@formula\@nil% le caract\`ere suivant est un "!" ?
+				\let\ST@addrow@\z@% pas de tranposition sur la ligne
+				\expandafter\expandafter\expandafter\def\expandafter\expandafter\expandafter\ST@temp@formula\expandafter\expandafter\expandafter{\expandafter\@cdr\ST@temp@formula\@nil}% on prend ce qui est apr\`es le !
+			\else
+				\let\ST@addrow@\ST@addrow% sinon, on copie le vecteur
+			\fi
+			\IfInteger\ST@temp@formula\relax\relax% on prend le nombre qui suit
+			\ifnum\integerpart>\z@% si ce nombre est plus grand que 0 -> r\'ef\'erence valide
+				\let\ST@temp@formula\@xs@afterinteger% on prend ce qui est apr\`es le nombre
+				\expandafter\lowercase\expandafter{\expandafter\def\expandafter\ST@firstcar\expandafter{\ST@firstcar}}% met en minuscules
+				\edef\ST@firstcar{\number\numexpr\expandafter`\ST@firstcar-`a+1+\ST@addcol@}% est le num\'ero de la colonne
+				\ifnum\ST@firstcar<\@ne\ST@illegal@copy\fi% erreur de copie ?
+				\ST@edefadd@tomacro\ST@transposed@formula{%
+					\ifcase\ST@firstcar \or a\or b\or c\or d\or e\or f\or g\or h\or i\or j\or k\or l\or m\or
+					n\or o\or p\or q\or r\or s\or t\or u\or v\or w\or x\or y\or z\fi
+					\number\numexpr\integerpart+\ST@addrow@}%
+				\ifnum\numexpr\integerpart+\ST@addrow@<\@ne\ST@illegal@copy\fi% erreur de copie ?
+			\else
+				\let\ST@temp@formula\@xs@afterinteger
+				\ST@expadd@tomacro\ST@transposed@formula\ST@firstcar
+			\fi
+			}%
+			{\if[\expandafter\noexpand\ST@firstcar% si le 1er car est [
+				\ST@left\ST@temp@formula]\ST@temp@ref% on prend ce qui est entre crochet
+				\ST@right\ST@temp@formula]\ST@temp@formula% pour la suite, on prend ce qui apr\`es le crochet
+				\ST@left\ST@temp@ref,\ST@rel@num% ce qui est avant la virgule
+				\if\expandafter\noexpand\STtransposecar\expandafter\expandafter\expandafter\noexpand\expandafter\@car\ST@rel@num\@nil% commence par un "!" ?
+					\let\ST@addcol@\ST@addcol% compensation pour conserver la cellule initiale
+					\expandafter\expandafter\expandafter\def\expandafter\expandafter\expandafter\ST@rel@num\expandafter\expandafter\expandafter{\expandafter\@cdr\ST@rel@num\@nil}% on prend ce qui est apr\`es le !
+				\else
+					\let\ST@addcol@\z@% sinon, on n'ajoute rien
+				\fi
+				\IfInteger\ST@rel@num
+					{\edef\ST@addcol@{\number\numexpr\ST@rel@num-\ST@addcol@}%
+					\ST@right\ST@temp@ref,\ST@rel@num% ce qui est apr\`es la virgule
+					\if\expandafter\noexpand\STtransposecar\expandafter\expandafter\expandafter\noexpand\expandafter\@car\ST@rel@num\@nil% commence par un "!"?
+						\let\ST@addrow@\ST@addrow% on compense pour conserver la cellule initiale
+						\expandafter\expandafter\expandafter\def\expandafter\expandafter\expandafter\ST@rel@num\expandafter\expandafter\expandafter{\expandafter\@cdr\ST@rel@num\@nil}% on prend ce qui est apr\`es le !
+					\else
+						\let\ST@addrow@\z@% sinon, on n'ajoute rien
+					\fi
+					\IfInteger\ST@rel@num
+						{\ST@edefadd@tomacro\ST@transposed@formula{[\ST@addcol@,\number\numexpr\ST@rel@num-\ST@addrow@]}%
+						}%
+						\ST@illegal@relativeref
+					}%
+					\ST@illegal@relativeref
+			\else
+				\ST@expadd@tomacro\ST@transposed@formula\ST@firstcar
+			\fi
+			}%
+	\expandafter\ST@transposeformula@i
+	\fi
+}
+
+% Cherche dans la sc #1 les 3 arguments qui se trouvent apr\`es \STcopy
+% Affecte le 1er \'a #2, le 2\`e \'a #3 et le 3\`e \'a #4
+\newcommand\ST@findcopyargs[3]{%
+	\def\ST@argaftercopy##1\STcopy##2##3##4\@nil{%
+		\def#1{##1}\ST@expadd@tomacro#1{\STnumericfieldmarker##4}% dans #1,supprime \STcopy{<arg1>}{<arg2>} et le remplace par :=
+		\def#2{##2}\def#3{##3}%
+	}%
+	\expandafter\ST@argaftercopy#1\@nil
+}
+
+% teste si #1 est dans l'intervalle [#3,#3+#5] et si #2 est dans [#4,#4+#6]
+% si #5 est vide, c'est l'intervalle [#3,+inf] et si #6 est vide, c'est [#4,+inf]
+\def\ST@Ifin#1#2[#3,#4](#5,#6)%
+{%
+	\ifnum#1<#3
+		\let\ST@next\@secondoftwo
+	\else
+		\ifnum#2<#4
+			\let\ST@next\@secondoftwo
+		\else
+			\ifx\@empty#5\@empty
+				\ifx\@empty#6\@empty
+					\let\ST@next\@firstoftwo
+				\else
+					\ifnum#2>\numexpr#4+#6\relax
+						\let\ST@next\@secondoftwo
+					\else
+						\let\ST@next\@firstoftwo
+					\fi
+				\fi
+			\else
+				\ifnum#1>\numexpr#3+#5\relax
+					\let\ST@next\@secondoftwo
+				\else
+					\ifx\@empty#6\@empty
+						\let\ST@next\@firstoftwo
+					\else
+						\ifnum#2>\numexpr#4+#6\relax
+							\let\ST@next\@secondoftwo
+						\else
+							\let\ST@next\@firstoftwo
+						\fi
+					\fi
+				\fi
+			\fi
+		\fi
+	\fi
+	\ST@next
+}
+
+% Regarde dans la liste de copie si la cellule de coodonn\'ees #1 #2 est dans une plage de copie
+% si oui, affecte \'a #3 la formule transpos\'ee
+% La liste de copy est parcourue de gauche \'a droite avec sortie d\`es qu'une plage qui convient est rencontr\'ee
+\newcommand\ST@lookincopylist[3]{%
+	\let\ST@alias@copylist\ST@copylist
+	\let\ST@returnedformula\@empty
+	\def\ST@copycol{#1}\def\ST@copyrow{#2}\let#3\@empty
+	\ST@lookincopylist@i
+	\let#3\ST@returnedformula
+}
+
+\newcommand\ST@lookincopylist@i{%
+	\expandafter\ST@testfirstincopylist\ST@alias@copylist\@nil
+	\ifx\@empty\ST@alias@copylist
+		\let\ST@next\relax
+	\else
+		\ifx\@empty\ST@returnedformula
+			\let\ST@next\ST@lookincopylist@i
+		\else
+			\let\ST@next\relax
+		\fi
+	\fi
+	\ST@next
+}
+
+% Teste si un \'el\'ement de la copylist contient une plage qui inclus la cellule en cours.
+\def\ST@testfirstincopylist|#1|[#2,#3](#4,#5)#6\@nil%
+{%
+	\def\ST@alias@copylist{#6}% on enl\`eve le premier \'el\'ement de la copylist
+	\ST@Ifin\ST@copycol\ST@copyrow[#2,#3](#4,#5)% si ça correspond
+		{\def\ST@returnedformula{#1}%
+		\ST@transposeformula{\numexpr\ST@copycol-#2}{\numexpr\ST@copyrow-#3}\ST@returnedformula\ST@returnedformula
+		}%
+		{\ifx\@empty#5\@empty\else
+			\ifnum\ST@copyrow>\numexpr#3+#5\relax
+				\ST@subst\ST@copylist{|#1|[#2,#3](#4,#5)}{}% si on a d\'epass\'e la ligne, on retire ce premier \'el\'ement de la copylist
+			\fi
+		\fi
+		}%
+}
+
+% Cherche dans la sc#1 du type ">4,v9" les d\'ecalages horizontaux et verticaux
+% sp\'ecifi\'es avec > et v
+% S'il trouve > ou v sans nombre derri\`ere, le d\'ecalage correspondant est vide
+% S'il ne trouve pas > ou v, le d\'ecalage correspond est \'egal \'a 0
+% Assigne les d\'ecalages trouv\'es dans \ST@hoffest et \ST@voffest
+\newcommand\ST@seekcopyoffset[1]{%
+	\ST@Ifinstr#1>%
+		{\ST@findcopyoffest#1>\ST@hoffest}%
+		{\def\ST@hoffest{0}}%
+	\ST@Ifinstr#1v%
+		{\ST@findcopyoffest#1v\ST@voffest}%
+		{\def\ST@voffest{0}}%
+}
+
+% Cherche dans la sc #1 ce qui est entre #2 et ,
+\newcommand\ST@findcopyoffest[3]{%
+	\def\ST@findcopyoffest@i##1#2##2,##3\@nil{\def#3{##2}}%
+	\expandafter\ST@findcopyoffest@i#1,\@nil
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%% Recherche d'une r\'ef\'erence %%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% teste si le token #1 est une lettre (majuscule ou minuscule)
+\newcommand\ST@ifcar@isletter[1]{%
+	\ifcat\relax\noexpand#1
+		\let\ST@next\@secondoftwo% faux si c'est une sc
+	\else
+		\ifnum`#1<\ifnum`#1<`a`A\else`a\fi
+			\let\ST@next\@secondoftwo
+		\else
+			\ifnum`#1>\ifnum`#1<`a`Z\else`z\fi
+				\let\ST@next\@secondoftwo
+			\else
+				\let\ST@next\@firstoftwo
+			\fi
+		\fi
+	\fi
+	\ST@next
+}
+
+% cherche une r\'ef\'erence du type lettre+nombre dans la sc #1
+% si on trouve, renvoie les coordonn\'ees dans #2 sous la forme x@y
+% si on ne trouve pas, #2 est vide.
+\newcommand\ST@findref@informula[2]{%
+	\let\ST@temp@formula#1%
+	\ST@findref@informula@i
+	\let#2\ST@temp@formula
+	\unless\ifx\@empty\ST@ref@found
+		\ST@Iffirstis\ST@after@ref@found|\relax{%
+			\ST@exp@two@args{\ST@subst@once#1}\ST@ref@found{\ST@ref@found|}%
+			}%
+	\fi
+}
+
+\newcommand\ST@findref@informula@i{%
+	\let\ST@next@search\ST@findref@informula@i
+	\ifx\@empty\ST@temp@formula
+		\let\ST@next@search\relax
+	\else
+		\StrSplit\ST@temp@formula1\ST@firstcar\ST@temp@formula% prend le 1er car de ce qui reste
+		\expandafter\ST@ifcar@isletter\expandafter{\ST@firstcar}% est-ce que le 1er car est une lettre ?
+			{\IfInteger\ST@temp@formula\relax\relax% on prend le nombre qui suit
+			\ifnum\integerpart>\z@% si ce nombre est plus grand que 0 -> r\'ef\'erence valide
+				\let\ST@after@ref@found\@xs@afterinteger
+				\edef\ST@ref@found{\ST@firstcar\number\integerpart}% est la r\'ef\'erence trouv\'ee
+				\edef\ST@distant@rownumber{\number\integerpart}% on chope ce nombre pour le num\'ero de colonne
+				\edef\ST@distant@colnumber{\number\numexpr\expandafter`\ST@firstcar-`a+1}% traduction lettre->chiffre
+				\ifnum\ST@distant@colnumber<\z@\edef\ST@distant@colnumber{\number\numexpr\ST@distant@colnumber+32}\fi% met les majuscules en minuscules
+				\edef\ST@temp@formula{\ST@distant@colnumber @\ST@distant@rownumber}% les coordonn\'ees de la r\'ef\'erence
+				\let\ST@next@search\relax
+			\fi
+			}%
+			{\if[\expandafter\noexpand\ST@firstcar% si le 1er car est [
+				\ST@right\ST@temp@formula]\ST@after@ref@found
+				\ST@left\ST@temp@formula]\ST@temp@formula% on prend ce qui est entre crochet
+				\expandafter\def\expandafter\ST@ref@found\expandafter{\expandafter[\ST@temp@formula]}%
+				\ST@left\ST@temp@formula,\ST@rel@num
+				\IfInteger\ST@rel@num
+					{\edef\ST@distant@colnumber{\number\numexpr\ST@current@colnumber+\ST@rel@num}%
+					\ST@right\ST@temp@formula,\ST@rel@num
+					\IfInteger\ST@rel@num
+						{\edef\ST@distant@rownumber{\number\numexpr\ST@current@rownumber+\ST@rel@num}%
+						\edef\ST@temp@formula{\ST@distant@colnumber @\ST@distant@rownumber}% les coordonn\'ees de la r\'ef\'erence
+						\let\ST@next@search\relax
+						}%
+						\ST@illegal@relativeref
+					}%
+					\ST@illegal@relativeref
+			\fi
+			}%
+		\fi
+	\ST@next@search
+}
+
+% cette commande teste si la sc #1 est syntaxiquement une r\'ef\'erence
+\newcommand\ST@ifref[1]{%
+	\let\ST@temp@formula#1%
+	\let\ST@ref@found\@empty
+	\ST@findref@informula@i
+	\ifx\@empty\ST@ref@found
+			\let\ST@next\@secondoftwo
+		\else
+			\ifx#1\ST@ref@found
+				\let\ST@next\@firstoftwo
+			\else
+				\let\ST@next\@secondoftwo
+			\fi
+		\fi
+	\ST@next
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%% Le noyau : \'evaluation de toutes les cellules %%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Essaie de calculer la cellule (#1,#2)
+\def\ST@try@calc@cell(#1,#2)%
+{%
+	\ST@ifvalid@csname{formula@#1@#2}% on v\'erifie que la formule existe
+		{\expandafter\ifx\csname formula@#1@#2\endcsname\@empty
+			\@namedef{code@#1@#2}{0}% si vide, code \'a 0
+		\else% et qu'elle est non vide
+			\def\ST@current@colnumber{#1}\def\ST@current@rownumber{#2}%
+			\expandafter\ST@find@first@func\csname formula@#1@#2\endcsname% cherche une fonction dans la formule
+			\ifx\@empty\ST@function@namefound% s'il n'y a pas de fonction
+				\expandafter\ST@findref@informula\csname formula@#1@#2\endcsname\ST@coord
+				\ifx\@empty\ST@coord% ni de r\'ef\'erence
+					\ST@calc@cell(#1,#2)% on va la calculer la cellule
+				\fi
+			\fi
+		\fi}\relax
+}
+
+\def\ST@calc@cell(#1,#2)%
+{% calcule la formule num\'erique de la cellule (#1,#2)
+	\unless\ifnum\csname code@#1@#2\endcsname<\@ne% si le code est >= 1
+		\expandafter\let\expandafter\ST@temp@a\csname formula@#1@#2\endcsname% \ST@temp@a est le contenu de la formule
+		\ST@Iffirstis\ST@temp@a-{\expandafter\def\expandafter\ST@temp@a\expandafter{\expandafter0\ST@temp@a}}\relax
+		\FPeval\ST@temp@a\ST@temp@a% on calcule cette formule
+		\unless\ifx\ST@rounddigit\@empty\FPround\ST@temp@a\ST@temp@a\ST@rounddigit\fi% on arrondi s'il faut
+		\ifST@clipround% on arrondit en enlevant les 0 inutiles ?
+			\FPclip\ST@temp@a\ST@temp@a
+		\else% si on laisse certains 0 inutiles
+			\unless\ifx\ST@rounddigit\@empty% on ne tronque que si le nombre n'est pas vide
+				\FPtrunc\ST@temp@a\ST@temp@a\ST@rounddigit
+			\fi
+		\fi
+		\ST@letname{formula@#1@#2}\ST@temp@a% assigne le r\'esultat \'a la formule
+		\@namedef{code@#1@#2}{2}% et met le code \'a 2 (cellule calcul\'ee)
+	\fi
+}
+
+% Calcule toutes les formules du tableau
+\newcommand\ST@eval@tab{%
+	\ST@rowcount\@ne\ST@colcount\@ne
+	\ST@eval@tab@i
+}
+
+\newcommand\ST@eval@tab@i{%
+	\ifnum\ST@rowcount>\ST@total@rownumber
+		\let\ST@nextcell\relax
+	\else
+		\ST@ifvalid@csname{formula@\number\ST@colcount @\number\ST@rowcount}% si la formule existe
+			{\ST@eval@cell(\number\ST@colcount,\number\ST@rowcount)}% on la calcule
+			\relax
+		\advance\ST@colcount\@ne
+		\let\ST@nextcell\ST@eval@tab@i
+		\ifnum\ST@colcount>\ST@total@colnumber
+			\ST@colcount\@ne
+			\advance\ST@rowcount\@ne
+		\fi
+	\fi
+	\ST@nextcell
+}
+
+% la sc #1 est le nom d'une fonction.
+% La macro renvoie dans la sc #2 : 1, 2 ou 2 selon que #1 est le nom d'une macro \'a argument num\'erique, \'a argument plage ou \'a argument texte.
+% #2 est vaut 0 si #1 n'est pas le nom d'une fonction
+\newcommand\ST@determine@function@code[2]{%
+	\ST@Ifinstr{\ST@functions@with@num@arg,}{#1,}%
+		{\def#2{1}}%
+		{\ST@Ifinstr{\ST@functions@with@range@arg,}{#1,}%
+			{\def#2{2}}%
+			{\ST@Ifinstr{\ST@functions@with@text@arg,}{#1,}%
+				{\def#2{3}}%
+				{\def#2{0}}%
+			}%
+		}%
+}
+
+% \'Evalue la cellule (#1#2) par ses coordonn\'ees num\'eriques (col,row)
+\def\ST@eval@cell(#1,#2)%
+{%
+	\def\ST@dependance@tree{(#1,#2)}%
+	\let\ST@stackcall\@empty
+	\let\ST@function@namesaved\@empty
+	\ST@eval@cell@i(#1,#2)% on appelle la macro r\'ecursive
+	\ifST@message
+		\let\ST@deptree\@empty
+		\ST@show@dependance@tree
+		\ST@dependance@tree
+		\message{\space\space\space\space\space cell \ST@deptree^^J}%
+	\fi
+}
+
+% Ceci est la macro principale : elle \'evalue la cellule (#1,#2)
+\def\ST@eval@cell@i(#1,#2)% #1 = no colonne  #2 = no ligne
+{%
+	\ifnum\csname code@#1@#2\endcsname=\@ne% on ne fait quelque chose que si le code est 1 : cellule non calcul\'ee
+		\def\ST@current@colnumber{#1}\def\ST@current@rownumber{#2}%
+		\expandafter\ST@find@first@func\csname formula@#1@#2\endcsname% cherche une fonction dans la formule
+		\ifx\@empty\ST@function@namefound% il n'y a pas de fonction
+			\IfSubStr[2]\ST@dependance@tree{(#1,#2)}%
+				{\edef\ST@coord{#1,#2}\ST@circular@reference}% message et on s'arr\^ete si r\'ef\'erence circulaire
+				\relax
+			\expandafter\ST@findref@informula\csname formula@#1@#2\endcsname\ST@coord% y a t-il une r\'ef\'erence dans l'argument ?
+			\ifx\ST@coord\@empty% pas de r\'ef\'erence dans l'argument
+				\ifx\ST@function@namesaved\@empty% si aucune fonction n'a \'et\'e d\'ecel\'ee
+					\ST@calc@cell(#1,#2)% on calcule la cellule en cours
+				\else
+					\ST@Ifinstr{\ST@functions@with@textresult,}{\ST@function@namesaved,}% si la derni\`ere fonction rend du texte
+						{\ifx\ST@stackcall\@empty% et si on est dans la cellule source
+							\@namedef{code@#1@#2}{0}% on met le code \'a 0, la cellule devient textuelle
+							\exploregroups
+							\expandafter\StrSubstitute\expandafter[\expandafter\@ne\expandafter]\csname text@#1@#2\expandafter\endcsname\expandafter\STnumericfieldmarker\csname formula@#1@#2\expandafter\endcsname\expandafter[\csname text@#1@#2\endcsname]% copie de la formule vers la zone texte
+							\noexploregroups
+							\ST@letname{formula@#1@#2}\@empty% et plus rien dans la formule
+						\else
+							\ST@calc@cell(#1,#2)% sinon, on se trouve dans une cellule appel\'ee par une macrofonction et donc, on la calcule
+						\fi
+						}%
+						{\ST@calc@cell(#1,#2)}% c'est une fonction qui donne un arg num\'erique : on calcule la cellule en cours
+				\fi
+			\else
+				\ST@ifvalid@csname{code@\ST@coord}% le code distant exite ?
+					{\ifcase\csname code@\ST@coord\endcsname% code distant = 0 ==> cellule vide ou textuelle, pas bon du tout !
+						\edef\ST@temp@callcell{#1,#2}% coordonn\'ees de la cellule appelante
+						\edef\ST@coord{\ST@distant@colnumber,\ST@distant@rownumber}% coordonn\'ees appel\'ees
+						\ST@zerocodecell@cell% erreur : r\'ef\'erence \'a une cellule de code 0
+					\or% code distant = 1
+						\edef\ST@dependance@tree{\ST@dependance@tree(\ST@distant@colnumber,\ST@distant@rownumber)}% on l'ajoute \'a l'arbre des d\'ependances
+						% on doit \'evaluer cette formule distante et ensuite, on doit encore recommence avec la formule en cours : on les ajoute sur la pile lifo
+						\edef\ST@stackcall{(\ST@distant@colnumber,\ST@distant@rownumber)(#1,#2)\ST@stackcall}%
+					\or% code distant = 2, la cellule distante est calcul\'ee, on cr\'e\'e un alias pour le contenu de la formule distante
+						\expandafter\let\expandafter\ST@distant@formula\csname formula@\ST@coord\endcsname
+						% si la valeur distante est <0, on la met entre parenth\`eses
+						\ST@Iffirstis\ST@distant@formula-%
+							{\expandafter\def\expandafter\ST@distant@formula\expandafter{\expandafter(\ST@distant@formula)}}%
+							\relax
+						% on remplace toutes les r\'ef\'erences par la valeur distante
+						\expandafter\ST@expsubst\csname formula@#1@#2\endcsname{\ST@ref@found|}\ST@distant@formula
+						\edef\ST@stackcall{(#1,#2)\ST@stackcall}% puis, on \'evalue \'a nouveau cette cellule
+					\else% code distant n'est pas {0,1,2} donc est -1, pas bon du tout !
+						\edef\ST@temp@callcell{#1,#2}% coordonn\'ees de la cellule appelante
+						\ST@subst\ST@coord @,% coordonn\'ees appel\'ees
+						\ST@multicol@cell
+					\fi}%
+					{\edef\ST@temp@callcell{#1,#2}% coordonn\'ees de la cellule appelante
+					\ST@subst\ST@coord @,% coordonn\'ees appel\'ees
+					\ST@undefined@cell% code distant inexistant -> cellule hors limite du tableau
+					}%
+			\fi
+		\else% il y a une fonction dans la formule
+			\let\ST@function@namesaved\ST@function@namefound
+			\ST@determine@function@code\ST@function@namefound\ST@codefunc% d\'etermine le code de la fonction
+			\ifcase\ST@codefunc\relax
+				\PackageError\ST@package@name{This error should not occur! Please email the author. Thanks.}{}%
+			\or% le code vaut 1, c'est une fonction \'a argument num\'erique
+				\ST@findref@informula\ST@function@argfound\ST@temp@formula% y a t-il une r\'ef\'erence dans l'argument de la formule ?
+				\ifx\ST@temp@formula\@empty% pas de r\'ef\'erence dans l'argument de la fonction
+					\expandafter\let\expandafter\ST@current@formula\csname formula@#1@#2\endcsname% alias pour la formule
+					\let\ST@tobereplaced\ST@function@namefound
+					\ST@expadd@tomacro\ST@tobereplaced{\expandafter(\ST@function@argfound)}% ce qui va \^etre replac\'e : fonction(argument)
+					\ST@Ifinstr{\ST@functions@no@calc@arg,}{\ST@function@namefound,}% doit-on calculer l'argument de cette fonction ?
+						\relax
+						{\FPeval\ST@function@argfound\ST@function@argfound\FPclip\ST@function@argfound\ST@function@argfound}%
+					\csname ST@func@\ST@function@namefound\endcsname\ST@function@argfound\ST@result@func% puis on \'evalue la fonctionfound
+					\ST@Iffirstis\ST@result@func-{\expandafter\def\expandafter\ST@result@func\expandafter{\expandafter(\ST@result@func)}}\relax
+					\ST@expsubst\ST@current@formula\ST@tobereplaced\ST@result@func% on replace dans l'alias
+					\ST@letname{formula@#1@#2}\ST@current@formula% on l'assigne dans la formule
+					\ifx\@empty\ST@current@formula% pour cause de macro fonction "tag" qui est seule et qui a disparue apr\`es substitution
+						\@namedef{code@#1@#2}{0}%
+					\else
+						\edef\ST@stackcall{(#1,#2)\ST@stackcall}% puis, on \'evalue \'a nouveau cette cellule
+					\fi
+				\else
+					\ifnum\csname code@\ST@temp@formula\endcsname=\tw@% si la r\'ef\'erence est calcul\'ee, on la replace par sa valeur
+						\expandafter\let\expandafter\ST@current@formula\csname formula@\ST@temp@formula\endcsname% alias pour la formule distante
+						\ST@Iffirstis\ST@current@formula-%
+							{\expandafter\def\expandafter\ST@current@formula\expandafter{\expandafter(\ST@current@formula)}}%
+							\relax
+						\let\ST@tobereplaced\ST@function@namefound
+						\ST@expadd@tomacro\ST@tobereplaced{\expandafter(\ST@function@argfound)}%
+						\let\ST@replaced\ST@tobereplaced
+						\ST@expsubst\ST@replaced{\ST@ref@found|}\ST@current@formula
+						\ST@subst\ST@tobereplaced|{}%
+						\expandafter\ST@expsubst\csname formula@#1@#2\endcsname\ST@tobereplaced\ST@replaced
+						\edef\ST@stackcall{(#1,#2)\ST@stackcall}%
+					\else% la r\'ef\'erence n'est pas calcul\'ee, donc d'abord il faut
+						\edef\ST@stackcall{(\ST@distant@colnumber,\ST@distant@rownumber)(#1,#2)\ST@stackcall}% l'\'evaluer, et ensuite r\'e-evaluer la cellule courante
+						\edef\ST@dependance@tree{\ST@dependance@tree(\ST@distant@colnumber,\ST@distant@rownumber)}% mise \'a jour de l'arbre des d\'ependances
+					\fi
+				\fi
+			\or% le code vaut 2, c'est une fonction \'a argument «plage de cellules»
+				\let\ST@tobereplaced\ST@function@namefound\ST@expadd@tomacro\ST@tobereplaced{\expandafter(\ST@function@argfound)}%
+				\csname ST@func@\ST@function@namefound\endcsname\ST@function@argfound\ST@result@func% puis on essaie d'\'evaluer la fonction
+				\unless\ifx\ST@result@func\@empty% si le calcul a abouti
+					\ST@Iffirstis\ST@result@func-{\expandafter\def\expandafter\ST@result@func\expandafter{\expandafter(\ST@result@func)}}\relax
+					\expandafter\ST@expsubst\csname formula@#1@#2\endcsname\ST@tobereplaced\ST@result@func% on replace dans la formule
+					\edef\ST@stackcall{(#1,#2)\ST@stackcall}% puis, on \'evalue \'a nouveau cette cellule
+				\fi
+			\or% le code vaut 3, c'est un fonction dont l'argument est textuel
+				\let\ST@function@argfound@edefed\ST@function@argfound
+				\ST@Ifinstr{\ST@functions@with@assign@argument,}{\ST@function@namefound,}%
+					{\let\ST@temp@formula\@empty}%
+					{\ST@findref@informula\ST@function@argfound\ST@temp@formula}% y a t-il une r\'ef\'erence dans l'argument de la fonction ?
+				\ifx\ST@temp@formula\@empty% pas de r\'ef\'erence dans l'argument de la fonction
+					\expandafter\let\expandafter\ST@current@formula\csname formula@#1@#2\endcsname% alias pour la formule
+					\let\ST@tobereplaced\ST@function@namefound
+					\ST@expadd@tomacro\ST@tobereplaced{\expandafter(\ST@function@argfound)}% ce qui va \^etre remplac\'e : fonction(argument)
+					\csname ST@func@\ST@function@namefound\endcsname\ST@function@argfound@edefed\ST@result@func% puis on \'evalue la fonction
+					\ST@expsubst\ST@current@formula\ST@tobereplaced\ST@result@func% on replace dans l'alias
+					\ST@letname{formula@#1@#2}\ST@current@formula% on l'assigne dans la formule
+					\edef\ST@stackcall{(#1,#2)\ST@stackcall}% puis, on \'evalue \'a nouveau cette cellule
+				\else% il y a une r\'ef\'erence dans l'argument de la fontion
+					\ifnum\csname code@\ST@temp@formula\endcsname=\z@% si la r\'ef\'erence est une cellule texte
+						\expandafter\let\expandafter\ST@current@formula\csname text@\ST@temp@formula\endcsname% alias pour la zone texte distante
+						\StrDel[1]\ST@current@formula\STnumericfieldmarker[\ST@current@formula]% on enl\`eve le := si besoin
+						\ST@Ifinstr\ST@current@formula{\@empty\multicolumn}% on ne prend que le texte s'il y a un \multicolumn qui traine
+							{\ST@thirdarg@after\ST@current@formula\multicolumn\ST@current@formula}\relax
+						\let\ST@tobereplaced\ST@function@namefound
+						\ST@expadd@tomacro\ST@tobereplaced{\expandafter(\ST@function@argfound)}%
+						\ST@subst\ST@tobereplaced|{}%
+						\csname ST@func@\ST@function@namefound\endcsname\ST@current@formula\ST@result@func% puis on \'evalue la fonction
+						\expandafter\ST@expsubst\csname formula@#1@#2\endcsname\ST@tobereplaced\ST@result@func
+						\edef\ST@stackcall{(#1,#2)\ST@stackcall}% puis, on \'evalue \'a nouveau cette cellule
+					\else
+						\PackageError\ST@package@name{Macro function \ST@function@namefound\space requires a reference to a text cell!}\ST@seedoc@i
+					\fi
+				\fi
+			\fi
+		\fi
+		\expandafter\ST@next@onstack
+	\fi
+}
+
+% On regarde s'il y a des appels de calcul de cellules en attente
+% Si oui, on enl\`eve le 1er appel de la pile lifo et on l'ex\'ecute
+\newcommand\ST@next@onstack{%
+	\unless\ifx\ST@stackcall\@empty
+		\ST@split\ST@stackcall)\ST@temp@a\ST@stackcall
+		\ST@add@tomacro\ST@temp@a)%
+		\ST@sanitize@stack
+		\expandafter\def\expandafter\ST@temp@a\expandafter{\expandafter\ST@eval@cell@i\ST@temp@a}%
+		\expandafter\ST@temp@a
+	\fi
+}
+
+\newcommand\ST@sanitize@stack{% enl\`eve de \ST@stackcall toutes les occurrences de \ST@temp@a
+	\ST@Ifinstr\ST@stackcall\ST@temp@a
+		{\expandafter\ST@subst\expandafter\ST@stackcall\expandafter{\ST@temp@a}{}%
+		\ST@sanitize@stack
+		}%
+		\relax
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Macro-fonctions %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% liste des fonctions dont l'argument est num\'erique
+\newcommand\ST@functions@with@num@arg{%
+	id,fact,ifeq,ifgt,iflt,numtofrshortdate,numtoengshortdate,numtofrlongdate,gcd,lcm,%
+	numtoenglongdate,numtofrmonth,numtoengmonth,numtofrday,numtoengday}
+
+% liste des fonctions dont l'argument est une plage ou est vide
+\newcommand\ST@functions@with@range@arg{sum,rand,randint,sumprod}
+
+% liste des fonctions dont l'argument est un texte
+\newcommand\ST@functions@with@text@arg{frshortdatetonum,engshortdatetonum,englongdatetonum,frlongdatetonum,scitodec,tag,row,col,cell}
+
+% liste des fonctions dont l'argument ne doit pas \^etre calcul\'e
+\newcommand\ST@functions@no@calc@arg{ifeq,ifgt,iflt,gcd,lcm}
+
+% liste des fonctions dont l'argument est une variable -> il ne faut donc pas aller chercher des r\'ef\'erences dans l'argument
+\newcommand\ST@functions@with@assign@argument{tag,row,col,cell}
+
+% liste des fonctions dont le r\'esultat est un texte
+\newcommand\ST@functions@with@textresult{%
+	numtofrshortdate,numtoengshortdate,numtofrlongdate,numtoenglongdate,%
+	numtofrmonth,numtoengmonth,numtofrday,numtoengday}
+
+% liste totale des fonctions
+\edef\ST@functions@list{\ST@functions@with@range@arg,\ST@functions@with@num@arg,\ST@functions@with@text@arg}
+
+\newcommand\ST@for[2]{% \ST@for{#1}{code} -> ex\'ecute le code pour toutes les cellules des plages pass\'ees en argument #1
+	\def\ST@forcode{#2}%
+	\expandafter\def\expandafter\ST@for@rangelist\expandafter{#1;}%
+	\ST@for@i
+}
+
+\newcommand\ST@for@loopcode{% #2 est le code \'a ex\'ecuter dans la boucle for
+	\ST@forcode% on ex\'ecute le code
+	\let\ST@nextfor\ST@for@loopcode
+	\advance\ST@colcount@i\@ne
+	\ifnum\ST@colcount@i>\ST@for@col@end
+		\ST@colcount@i\ST@for@col@start
+		\advance\ST@rowcount@i\@ne
+		\ifnum\ST@rowcount@i>\ST@for@row@end
+			\ST@right\ST@for@rangelist;\ST@for@rangelist
+			\ifx\ST@for@rangelist\@empty\let\ST@nextfor\relax\else\let\ST@nextfor\ST@for@i\fi
+		\fi
+	\fi
+	\ST@nextfor
+}
+
+\newcommand\ST@for@i{%
+	\ST@left\ST@for@rangelist;\ST@for@currentrange
+	\ST@left{\ST@for@currentrange:}{\@empty:}\ST@temp@a
+	\ST@ifref\ST@temp@a\relax\ST@invalid@range
+	\let\ST@for@col@start\ST@distant@colnumber
+	\let\ST@for@row@start\ST@distant@rownumber
+	\ST@colcount@i\ST@distant@colnumber
+	\ST@rowcount@i\ST@distant@rownumber
+	\ST@Ifinstr\ST@for@currentrange{\@empty:}%
+		{\ST@right\ST@for@currentrange{\@empty:}\ST@temp@a
+		\ST@ifref\ST@temp@a\relax\ST@invalid@range
+		\let\ST@for@col@end\ST@distant@colnumber
+		\let\ST@for@row@end\ST@distant@rownumber
+		\let\ST@nextfor\ST@for@loopcode
+		\ifnum\ST@for@col@start>\ST@for@col@end\let\ST@nextfor\relax\fi
+		\ifnum\ST@for@row@start>\ST@for@row@end\let\ST@nextfor\relax\fi
+		}%
+		{\ST@forcode
+		\ST@right\ST@for@rangelist;\ST@for@rangelist
+		\ifx\ST@for@rangelist\@empty
+			\let\ST@nextfor\relax
+		\else
+			\let\ST@nextfor\ST@for@i
+		\fi
+		}%
+	\ST@nextfor
+}
+
+% Cette macro cherche dans la sc #1 la premi\`ere fonction qu'elle trouve ne contenant pas d'autre fonction dans son argument
+% En sortie, \ST@function@namefound contient le nom de la fonction trouv\'ee et \ST@function@argfound son argument.
+% Si aucune fonction mot-cl\'e n'est trouv\'e, ces 2 derni\`eres s\'equences de contr\^oles sont vides.
+\newcommand\ST@find@first@func[1]{%
+	\let\ST@function@namefound\@empty\let\ST@function@argfound\@empty
+	\let\ST@function@namefound@\@empty\let\ST@function@argfound@\@empty
+	\let\ST@tempfunc#1%
+	\ST@find@first@func@i
+}
+
+\newcommand\ST@find@first@func@i{%
+	\edef\ST@tempfunctions@list{\ST@functions@list,}% r\'einitialise la liste
+	\let\ST@tempfunc@\ST@tempfunc% sauveagrde pour restauration ult\'erieure
+	\let\ST@function@namefound\@empty% initialise avant appel \'a la macro
+	\ST@Ifinstr\ST@tempfunc(% s'il y a une parenth\`ese
+		{\ST@find@first@func@ii% cherche la 1ere fonction dans l'argument
+		\ifx\ST@function@namefound\@empty% elle n'existe pas ?
+			\let\ST@function@namefound\ST@function@namefound@\let\ST@function@argfound\ST@function@argfound@% on restaure les valeurs pr\'ec\'edentes
+		\else% si il y a une fonction dans l'argument
+			\ST@right\ST@tempfunc@\ST@function@namefound\ST@tempfunc% prend ce qui est apr\`es le nom de la fonction
+			\ST@seekfunc@arg\ST@tempfunc\ST@function@argfound% isole l'argument entre parenth\`eses
+			\let\ST@function@namefound@\ST@function@namefound\let\ST@function@argfound@\ST@function@argfound% met \'a jour les valeurs pr\'ec\'edentes
+			\let\ST@tempfunc\ST@function@argfound% recommence avec l'argument
+			\expandafter\ST@find@first@func@i
+		\fi}%
+		{\let\ST@function@namefound\ST@function@namefound@\let\ST@function@argfound\ST@function@argfound@}%
+}
+
+\newcommand\ST@find@first@func@ii{%
+	\unless\ifx\ST@tempfunc\@empty% tant que le contenu n'est pas vide
+		\unless\ifx\ST@tempfunctions@list\@empty% et tant que tous les noms de fonctions n'ont pas \'et\'e explor\'es
+			\ST@split\ST@tempfunctions@list,\ST@current@funcname\ST@tempfunctions@list
+			\ST@Ifinstr\ST@tempfunc{\ST@current@funcname(}% si l'argument contient le nom de fonction courant
+				{\let\ST@function@namefound\ST@current@funcname
+				\ST@left\ST@tempfunc{\ST@current@funcname(}\ST@tempfunc% on r\'eduit l'argument \'a ce qui est avant ce nom
+				}%
+				\relax
+			\expandafter\expandafter\expandafter\ST@find@first@func@ii
+		\fi
+	\fi
+}
+
+% la sc #1 commence normalement (sinon, ça va gueuler) par une parenth\`ese
+% La macro trouve l'argument se trouvant entre les parenth\`eses les plus ext\'erieures
+% et l'assigne \'a la sc #2
+\newcommand\ST@seekfunc@arg[2]{%
+	\begingroup
+		\everyeof{\ST@nil}% met un \@nil \`a la fin du fichier virtuel
+		\endlinechar\m@ne
+		\catcode\z@12
+		\catcode`(=1 \catcode`)=2
+		\afterassignment\ST@gobble@remain
+		\expandafter\def\expandafter\ST@temp@a\scantokens\expandafter{#1}%
+		\catcode`(=12 \catcode`)=12
+		\def\ST@assign@result##1\ST@nil{\endgroup\def#2{##1}}%
+		\expandafter\ST@assign@result\scantokens\expandafter{\ST@temp@a}% on fait l'assignation
+}
+
+\newcommand\ST@func@sum[2]{% #1 est la sc contenant la plage de valeurs, #2 est la sc recevant le r\'esultat
+	\def#2{0}% r\'esultat nul pour l'instant
+	\let\ST@temp@stack\@empty% pile d'appel temporaire vide aussi au d\'ebut
+	\ST@for{#1}% on parcourt la <plage de cellules>
+		{\ifcase\csname code@\number\ST@colcount@i @\number\ST@rowcount@i\endcsname\relax% on ne prend en compte que les code 1 et 2
+		\or% code=1
+			\edef\ST@temp@stack{\ST@temp@stack(\number\ST@colcount@i,\number\ST@rowcount@i)}%
+		\or% code=2
+			\ifx\ST@temp@stack\@empty% on ne prend la peine d'additionner que si toutes les cellules sont calcul\'ees
+				\expandafter\FPadd\expandafter#2\expandafter#2\csname formula@\number\ST@colcount@i @\number\ST@rowcount@i\endcsname
+				\edef\ST@dependance@tree{\ST@dependance@tree(\number\ST@colcount@i,\number\ST@rowcount@i)}% mise \'a jour de l'arbre des d\'ependances
+			\fi
+		\fi
+		}%
+	\ifx\ST@temp@stack\@empty% toutes les cellules dans la plage \'etaient calcul\'ees ?
+		\FPclip#2#2% on \^ote les 0 inutiles si le calcul a \'et\'e men\'e au bout
+	\else
+		\let#2\@empty
+		\edef\ST@stackcall{\ST@temp@stack(\ST@current@colnumber,\ST@current@rownumber)\ST@stackcall}% on met \'a jour la pile d'appel
+	\fi
+}
+
+\newcommand\ST@func@sumprod[2]{% #1 est la sc contenant la plage de valeurs, #2 est la sc recevant le r\'esultat
+	\ST@left{#1;};\ST@firstmat
+	\ST@right#1;\ST@othermat
+	\ST@left\ST@firstmat{\@empty:}\ST@temp@a
+	\ST@ifref\ST@temp@a\relax\ST@invalid@range
+	\let\ST@mat@firstcol\ST@distant@colnumber
+	\let\ST@mat@firstrow\ST@distant@rownumber
+	\StrBehind\ST@firstmat{\@empty:}[\ST@temp@a]%
+	\ST@ifref\ST@temp@a\relax\ST@invalid@range
+	\edef\ST@matcol{\number\numexpr\ST@distant@colnumber-\ST@mat@firstcol}%
+	\edef\ST@matrow{\number\numexpr\ST@distant@rownumber-\ST@mat@firstrow}%
+	\ST@count\@ne
+	\loop% regarde si toutes les matrices ont la m\^eme dimension que la 1ere et pour chacune, calcule les vecteurs de d\'ecalage par rapport \'a la premi\`ere
+		\unless\ifx\ST@othermat\@empty
+			\ST@left{\ST@othermat;};\ST@currentmat
+			\ST@right{\ST@othermat;};\ST@othermat
+			\ST@left{\ST@currentmat:}{\@empty:}\ST@temp@a
+			\ST@ifref\ST@temp@a\relax\ST@invalid@range
+			\let\ST@currentmatcol\ST@distant@colnumber
+			\let\ST@currentmatrow\ST@distant@rownumber
+			\expandafter\edef\csname ST@vectorcol@\romannumeral\ST@count\endcsname{\number\numexpr\ST@distant@colnumber-\ST@mat@firstcol}%
+			\expandafter\edef\csname ST@vectorrow@\romannumeral\ST@count\endcsname{\number\numexpr\ST@distant@rownumber-\ST@mat@firstrow}%
+			\ST@right\ST@currentmat{\@empty:}\ST@temp@a
+			\ST@ifref\ST@temp@a\relax\ST@invalid@range
+			\edef\ST@currentmatcol{\number\numexpr\ST@distant@colnumber-\ST@currentmatcol}%
+			\edef\ST@currentmatrow{\number\numexpr\ST@distant@rownumber-\ST@currentmatrow}%
+			\unless\ifnum\ST@matcol=\ST@currentmatcol\ST@unmatch@matrixdim\fi% la dimension horizontale ne correspond pas
+			\unless\ifnum\ST@matrow=\ST@currentmatrow\ST@unmatch@matrixdim\fi% la dimension verticale ne correspond pas
+			\advance\ST@count\@ne
+	\repeat
+	\let\ST@temp@stack\@empty% pile d'appel temporaire vide au d\'ebut
+	\edef\ST@numbermat{\number\ST@count}% c'est le nombre de matrices \'a multiplier
+	\def#2{0}% r\'esultat nul pour l'instant
+	\ST@for{\ST@firstmat}% pour chaque cellule de la 1ere matrice
+		{\def\ST@inter@result{0}% r\'esultat partiel nul pour l'instant
+		\ifcase\csname code@\number\ST@colcount@i @\number\ST@rowcount@i\endcsname
+		\or% code =1
+			\edef\ST@temp@stack{\ST@temp@stack(\number\ST@colcount@i,\number\ST@rowcount@i)}%
+			\edef\ST@dependance@tree{\ST@dependance@tree(\number\ST@colcount@i,\number\ST@rowcount@i)}% mise \'a jour de l'arbre des d\'ependances
+		\or% code=2
+			\expandafter\let\expandafter\ST@inter@result\csname formula@\number\ST@colcount@i @\number\ST@rowcount@i\endcsname
+		\fi
+		\ST@count\@ne
+		\loop% on multiplie tous les nombres qui se correspondent dans les matrices
+			\edef\ST@tempcoord{\number\numexpr\ST@colcount@i+\csname ST@vectorcol@\romannumeral\ST@count\endcsname @\number\numexpr\ST@rowcount@i+\csname ST@vectorrow@\romannumeral\ST@count\endcsname}%
+			\ifcase\csname code@\ST@tempcoord\endcsname
+				\def\ST@inter@result{0}% code =0 -> on met le r\'esultat partiel \'a 0
+			\or% code =1
+				\ST@subst\ST@tempcoord @,%
+				\edef\ST@temp@stack{\ST@temp@stack(\ST@tempcoord)}%
+				\edef\ST@dependance@tree{\ST@dependance@tree(\ST@tempcoord)}% mise \'a jour de l'arbre des d\'ependances
+			\or% code=2
+				\expandafter\FPmul\expandafter\ST@inter@result\expandafter\ST@inter@result\csname formula@\ST@tempcoord\endcsname
+			\else
+				\def\ST@inter@result{0}% code = autre -> on met le r\'esultat partiel \'a 0
+			\fi
+			\advance\ST@count\@ne
+			\ifnum\ST@count<\ST@numbermat
+		\repeat
+		\FPadd#2#2\ST@inter@result
+		}%
+	\ifx\ST@temp@stack\@empty% toutes les cellules dans la plage \'etaient calcul\'ees ?
+		\FPclip#2#2% on \^ote les 0 inutiles si le calcul a \'et\'e men\'e au bout
+	\else
+		\let#2\@empty
+		\edef\ST@stackcall{\ST@temp@stack(\ST@current@colnumber,\ST@current@rownumber)\ST@stackcall}% on met \'a jour la pile d'appel
+	\fi
+}
+
+\newcommand\ST@func@id[2]{\expandafter\def\expandafter#2\expandafter{#1}}
+
+% Calcule la factorielle du nombre #1 et met le r\'esultat dans la sc #2
+\newcommand\ST@func@fact[2]{%
+	\FPifint{#1}%
+		\FPifgt{#1}{18}%
+			\ST@fact@outofrange
+		\else
+			\FPifpos{#1}%
+				\edef#2{%
+					\ifcase#1 1\or1\or2\or6\or24\or120\or720\or5040\or40320\or362880\or3628800\or39916800\or479001600\or
+					6227020800\or87178291200\or1307674368000\or20922789888000\or355687428096000\or6402373705728000\fi}%
+			\else
+				\ST@fact@outofrange
+			\fi
+		\fi
+	\else
+		\ST@fact@outofrange
+	\fi
+}
+
+\newif\ifST@gcd
+\newcommand\ST@arithmetic[2]{% #1 est une liste de nombres s\'epar\'es par des virgules, #2 la sc qui reçoit leur pgcd ou ppcm selon \ifST@gcd
+	\ST@split{#1},#2\ST@argB
+	\ST@Ifinstr\ST@argB,{\ST@split\ST@argB,\ST@argB\ST@remain\let\ST@next\ST@arithmetic}{\let\ST@remain\@empty\let\ST@next\@gobbletwo}%
+	\let\ST@argA#2%
+	\FPeval\ST@argA\ST@argA\FPeval\ST@argB\ST@argB% \'evalue les 2 nombres au cas o\`u il y ait des op\'erations
+	\FPeval#2{trunc(abs(max(\ST@argB,\ST@argA)),0)}%
+	\FPeval\ST@argB{trunc(abs(min(\ST@argB,\ST@argA)),0)}%
+	\FPifzero\ST@argB\else% si 0, on ignore puisque tous les nombres divisent 0 ou en sont leur multiple
+		\ifST@gcd\else\FPmul\ST@argC#2\ST@argB\fi
+		\loop
+			\let\ST@argA\ST@argB
+			\FPeval\ST@argB{trunc(#2-trunc(#2/\ST@argB,0)*\ST@argB,0)}% reste de la division #2/\ST@argB
+			\let#2\ST@argA
+			\FPifzero\ST@argB\else
+		\repeat
+		\ifST@gcd\else\FPeval#2{trunc(\ST@argC/#2,0)}\fi
+	\fi
+	\csname @\ifST@gcd firstofone\else gobble\fi\endcsname{\FPifeq#21\let\ST@next\@gobbletwo\fi}% pour le pgcd, inutile de continuer si le pgcd est 1
+	\expandafter\expandafter\expandafter\ST@next\expandafter\expandafter\expandafter{\expandafter#2\expandafter,\ST@remain}#2%
+}
+
+\newcommand\ST@func@gcd[2]{% #1 est une liste de nombres s\'epar\'es par des virgules, #2 la sc qui reçoit leur pgcd
+	\ST@gcdtrue\ST@arithmetic{#1}#2%
+}
+
+\newcommand\ST@func@lcm[2]{% #1 est une liste de nombres s\'epar\'es par des virgules, #2 la sc qui reçoit leur ppcm
+	\ST@gcdfalse\ST@arithmetic{#1}#2%
+}
+
+% d\'etermine la graine pour fp en fonction de la date et de l'heure
+\newcommand\ST@seed{\FPseed\number\time\number\day\number\month}
+
+% la fonction randint
+\newcommand\ST@func@randint[2]{% #1=sc contenant l'argument #2: sc recevant le r\'esultat
+	\ST@Ifinstr#1,% s'il y a 2 nombres -> intervalle [nb1;nb2]
+		{\ST@split#1,\ST@limita\ST@limitb
+		\FPifeq\ST@limita\ST@limitb\PackageError\ST@package@name{Macro function randint require two different numbers}\ST@seedoc@i\fi
+		\FPifgt\ST@limita\ST@limitb
+			\let\ST@temp@a\ST@limitb\let\ST@limitb\ST@limita\let\ST@limita\ST@temp@a
+		\fi
+		\FPifint\ST@limita\else\PackageError\ST@package@name{Macro function randint require integer argument}\ST@seedoc@i\fi
+		\FPifint\ST@limitb\else\PackageError\ST@package@name{Macro function randint require integer argument}\ST@seedoc@i\fi
+		\FPrandom#2%
+		\FPeval#2{trunc(trunc(#2*(\ST@limitb-\ST@limita+1),0)+\ST@limita,0)}%
+		}%
+		{\FPifint#1\else\PackageError\ST@package@name{Macro function randint require integer argument}\ST@seedoc@i\fi
+		\FPrandom#2% s'il n'y a qu'un nombre -> intervalle [0;nb2]
+		\FPeval#2{trunc(#2*(#1+1),0)}%
+		}%
+}
+
+\newcommand\ST@func@rand[2]{% #1=sc contenant l'argument (ignor\'e) #2: sc recevant le r\'esultat
+	\FPrandom#2%
+}
+
+\newcommand\ST@genzeros[1]{\if#1m0\expandafter\ST@genzeros\fi}
+\newcommand\ST@powerten[2]{% g\'en\`ere 10^abs(#1) dans la sc #2
+	\edef#2{1\expandafter\ST@genzeros\romannumeral\number\ifnum#1<\z@-\fi#1000\relax}%
+}
+\newcommand\ST@func@scitodec[2]{% #1=sc contenant l'argument #2: sc recevant le r\'esultat
+	\expandafter\lowercase\expandafter{\expandafter\def\expandafter#1\expandafter{#1}}%
+	\ST@Ifinstr#1{ee}% on regarde s'il y a "ee"
+		{\ST@split#1{ee}\ST@mantissa\ST@exposant
+		\ST@powerten\ST@exposant\ST@tenpow
+		\csname FP\ifnum\ST@exposant<\z@ div\else mul\fi\endcsname#2\ST@mantissa\ST@tenpow}%
+		{\IfDecimal#1%
+			{\let#2#1}%
+			{\PackageError\ST@package@name{Illegal number in scitodec argument}\ST@seedoc@i}}%
+}
+
+% les fonctions de test
+\def\ST@list@offour#1,#2,#3,#4\@nil{%
+	\def\ST@argA{#1}\def\ST@argB{#2}\def\ST@argC{#3}\def\ST@argD{#4}%
+}
+
+\newcommand\ST@def@funcif[3]{%
+	\expandafter\ST@list@offour#1\@nil
+	\FPeval\ST@argA\ST@argA\FPeval\ST@argB\ST@argB
+	\csname FPif#3\endcsname\ST@argA\ST@argB
+		\FPset#2\ST@argC
+	\else
+		\FPset#2\ST@argD
+	\fi
+}
+
+\newcommand\ST@func@ifeq[2]{\ST@def@funcif#1#2{eq}}
+\newcommand\ST@func@ifgt[2]{\ST@def@funcif#1#2{gt}}
+\newcommand\ST@func@iflt[2]{\ST@def@funcif#1#2{lt}}
+
+% Transforme une date en nombre
+\newcommand\ST@datetonum[4]{% #1=sc recevant le r\'esultat  #2=jj  #3=mm  #4=aa
+	\FPeval#1{#3+9-12*trunc((#3+9)/12,0)}%
+	\FPeval\ST@@@year{#4-trunc(#1/10,0)}%
+	\FPeval#1{365*\ST@@@year+trunc(\ST@@@year/4,0)-trunc(\ST@@@year/100,0)+trunc(\ST@@@year/400,0)+trunc((#1*306+5)/10,0)+#2-1}%
+	\FPclip#1#1%
+}
+
+% Transforme un nombre en une date
+\newcommand\ST@numtodate[4]{% #1=nombre repr\'esentant la date #2=jour #3=mois #4=ann\'ee
+	\FPeval#4{trunc((10000*#1+14780)/3652425,0)}%
+	\FPeval#2{#1-(365*#4+trunc(#4/4,0)-trunc(#4/100,0)+trunc(#4/400,0))}%
+	\FPifneg#2%
+		\FPadd#4#4{-1}%
+		\FPeval#2{#1-(365*#4+trunc(#4/4,0)-trunc(#4/100,0)+trunc(#4/400,0))}%
+	\fi
+	\FPeval#3{trunc((100*#2+52)/3060,0)}%
+	\FPeval#4{#4+trunc((#3+2)/12,0)}\FPclip#4#4%
+	\FPeval#2{#2-trunc((#3*306+5)/10,0)+1}\FPclip#2#2%
+	\FPeval#3{#3+2-12*trunc((#3+2)/12,0)+1}\FPclip#3#3%
+}
+
+\def\ST@parse@datefr#1/#2/#3\@nil{%
+	\def\ST@@@day{#1}\def\ST@@@month{#2}\def\ST@@@year{#3}%
+}
+
+\def\ST@parse@dateeng#1/#2/#3\@nil{%
+	\def\ST@@@day{#3}\def\ST@@@month{#2}\def\ST@@@year{#1}%
+}
+
+% transforme une date française courte du type jj/mm/aaaa en nombre
+\newcommand\ST@func@frshortdatetonum[2]{% #1=sc \'etant l'argument jj/mm/aaaa #2=sc recevant le r\'esultat
+	\expandafter\ST@parse@datefr#1\@nil
+	\ST@datetonum#2\ST@@@day\ST@@@month\ST@@@year
+}
+
+% Transforme un nombre en une date française de type jj/mm/aaaa
+\newcommand\ST@func@numtofrshortdate[2]{% % #1=nombre repr\'esentant la date #2=sc recevant le r\'esultat
+	\ST@numtodate#1\ST@@@day\ST@@@month\ST@@@year
+	\edef#2{\ST@@@day/\ST@@@month/\ST@@@year}%
+}
+
+% Transforme un nombre en une date longue française du type «14 juillet 1789»
+\newcommand\ST@func@numtofrlongdate[2]{% % #1=nombre repr\'esentant la date #2=sc recevant le r\'esultat
+	\ST@numtodate#1\ST@@@day\ST@@@month\ST@@@year
+	\edef#2{\ST@@@day\space\ifcase\ST@@@month\or janvier\or f\'evrier\or mars\or avril\or mai\or
+	juin\or juillet\or ao\^ut\or septembre\or octobre \or novembre\or d\'ecembre\fi\space\ST@@@year}%
+}
+
+% Extrait d'un nombre repr\'esentant une date le mois en toutes lettres en français
+\newcommand\ST@func@numtofrmonth[2]{% % #1=nombre repr\'esentant la date #2=sc recevant le r\'esultat
+	\ST@numtodate#1\ST@@@day\ST@@@month\ST@@@year
+	\edef#2{\ifcase\ST@@@month\or janvier\or f\'evrier\or mars\or avril\or mai\or
+	juin\or juillet\or ao\^ut\or septembre\or octobre \or novembre\or d\'ecembre\fi}%
+}
+
+% Extrait d'un nombre rep\'esentant une date le nom du jour en français
+\newcommand\ST@func@numtofrday[2]{% % #1=nombre repr\'esentant la date #2=sc recevant le r\'esultat
+	\FPeval\ST@@@day{#1-7*trunc(#1/7,0)}\FPclip\ST@@@day\ST@@@day
+	\edef#2{\ifcase\ST@@@day mercredi\or jeudi\or vendredi\or samedi\or dimanche\or lundi\or mardi\fi}
+}
+
+% transforme une date anglaise courte du type aaaa/mm/jj en nombre
+\newcommand\ST@func@engshortdatetonum[2]{% #1=sc \'etant l'argument aaaa/mm/jj #2=sc recevant le r\'esultat
+	\expandafter\ST@parse@dateeng#1\@nil
+	\ST@datetonum#2\ST@@@day\ST@@@month\ST@@@year
+}
+
+% Transforme un nombre en une date anglaise de type aaaa/mm/jj
+\newcommand\ST@func@numtoengshortdate[2]{% % #1=nombre repr\'esentant la date #2=sc recevant le r\'esultat
+	\ST@numtodate#1\ST@@@day\ST@@@month\ST@@@year
+	\edef#2{\ST@@@year/\ST@@@month/\ST@@@day}
+}
+
+% Transforme un nombre en une date longue anglaise du type «July 14, 1789»
+\newcommand\ST@func@numtoenglongdate[2]{% % #1=nombre repr\'esentant la date #2=sc recevant le r\'esultat
+	\ST@numtodate#1\ST@@@day\ST@@@month\ST@@@year
+	\edef#2{\ifcase\ST@@@month\or January\or February\or March\or April\or May\or
+	June\or July\or August\or September\or October\or November\or December\fi\space\ST@@@day,\space\ST@@@year}%
+}
+
+% Extrait d'un nombre repr\'esentant une date le mois en toutes lettres en anglais
+\newcommand\ST@func@numtoengmonth[2]{% % #1=nombre repr\'esentant la date #2=sc recevant le r\'esultat
+	\ST@numtodate#1\ST@@@day\ST@@@month\ST@@@year
+	\edef#2{\ifcase\ST@@@month\or January\or February\or March\or April\or May\or
+	June\or July\or August\or September\or October\or November\or December\fi}%
+}
+
+% Extrait d'un nombre rep\'esentant une date le nom du jour en anglais
+\newcommand\ST@func@numtoengday[2]{% % #1=nombre repr\'esentant la date #2=sc recevant le r\'esultat
+	\FPeval\ST@@@day{#1-7*trunc(#1/7,0)}\FPclip\ST@@@day\ST@@@day
+	\edef#2{\ifcase\ST@@@day wednesday\or thursday\or friday\or saturday\or sunday\or monday\or tuesday\fi}
+}
+
+% Teste si la date contenue dans les 3 sc #1 (jour) #2(mois) #3(ann\'ee) est valide. Sinon, envoie un message d'erreur
+\newcommand\ST@test@date@validity[3]{%
+	\IfInteger#1\relax\ST@invalid@date
+	\IfInteger#2\relax\ST@invalid@date
+	\IfInteger#3\relax\ST@invalid@date
+	\ifnum#2<\@ne\ST@invalid@date\fi
+	\ifnum#2>12 \ST@invalid@date\fi
+	\ifnum#1<\@ne\ST@invalid@date\fi
+	\ifnum#1>\ifcase#2\or31\or29\or31\or30\or31\or30\or31\or31\or30\or31\or30\or31\fi\ST@invalid@date\fi
+	\ifnum#3<\@ne\ST@invalid@date\fi% on va s'arr\^eter \'a JC quand m\^eme :-)
+}
+
+% Transforme une date anglaise longue du type «July 14, 1789» en un nombre
+\newcommand\ST@func@englongdatetonum[2]{% #1=sc contenant la date longue #2=sc recevant le r\'esultat
+	\ST@analyse@text@engdate#1\ST@@@day\ST@@@month\ST@@@year
+	\ST@datetonum#2\ST@@@day\ST@@@month\ST@@@year
+}
+
+\newcommand\ST@analyse@text@engdate[4]{% #1=texte repr\'esentant la date #2=jour #3=n° mois #4=ann\'ee
+	\if\noexpand\today\expandafter\noexpand#1%
+		\edef#2{\number\day}\edef#3{\number\month}\edef#4{\number\year}%
+	\else
+		\ST@left#1\space#3%
+		\ST@removespaces#3%
+		\expandafter\lowercase\expandafter{\expandafter\def\expandafter#3\expandafter{#3}}%
+		\IfStrEqCase#3{%
+			{january}{\def#3{1}}%
+			{february}{\def#3{2}}%
+			{march}{\def#3{3}}%
+			{april}{\def#3{4}}%
+			{may}{\def#3{5}}%
+			{june}{\def#3{6}}%
+			{july}{\def#3{7}}%
+			{august}{\def#3{8}}%
+			{september}{\def#3{9}}%
+			{october}{\def#3{10}}%
+			{november}{\def#3{11}}%
+			{december}{\def#3{12}}%
+		}[\def#3{-1}]%
+		\ST@right#1\space#2%
+		\ST@Ifinstr#2,{\ST@split#2,#2#4}{\ST@split#2{ }#2#4}%
+		\IfInteger#2\relax{\edef#2{\number\integerpart}}%
+		\ST@removespaces#4%
+		\ST@test@date@validity#2#3#4%
+	\fi
+}
+
+% Transforme une date anglaise longue du type «14 juillet 1789» en un nombre
+\newcommand\ST@func@frlongdatetonum[2]{% #1=sc contenant la date longue #2=sc recevant le r\'esultat
+	\ST@analyse@text@frdate#1\ST@@@day\ST@@@month\ST@@@year
+	\ST@datetonum#2\ST@@@day\ST@@@month\ST@@@year
+}
+
+\def\ST@utfencoding{utf8}
+
+\newcommand\ST@analyse@text@frdate[4]{% #1=texte repr\'esentant la date #2=jour #3=n° mois #4=ann\'ee
+	\if\noexpand\today\expandafter\noexpand#1%
+		\edef#2{\number\day}\edef#3{\number\month}\edef#4{\number\year}%
+	\else
+		\ST@split#1{ }#2#3%
+		\IfInteger#2\relax{\edef#2{\number\integerpart}}%
+		\ST@split#3{ }#3#4%
+		\ST@removespaces#3%
+		\def\ST@e{^^e9}\def\ST@u{^^fb}% \'e et û en latin1
+		\ifdefined\inputencodingname\ifx\ST@utfencoding\inputencodingname
+			\def\ST@e{^^c3^^a9}\def\ST@u{^^c3^^bb}% \'e et û en utf8
+		\fi\fi
+		\expandafter\ST@subst\expandafter#3\expandafter{\ST@e}e\ST@subst#3\'{}%
+		\expandafter\ST@subst\expandafter#3\expandafter{\ST@u}u\ST@subst#3\^{}%
+		\expandafter\lowercase\expandafter{\expandafter\def\expandafter\ST@temp@a\expandafter{#3}}%
+		\IfStrEqCase#3{%
+			{janvier}{\def#3{1}}{fevrier}{\def#3{2}}{mars}{\def#3{3}}%
+			{avril}{\def#3{4}}{mai}{\def#3{5}}{juin}{\def#3{6}}%
+			{juillet}{\def#3{7}}{aout}{\def#3{8}}{septembre}{\def#3{9}}%
+			{octobre}{\def#3{10}}{novembre}{\def#3{11}}{decembre}{\def#3{12}}%
+		}[\def#3{-1}]%
+		\ST@test@date@validity#2#3#4%
+	\fi
+}
+
+\newcommand\ST@func@tag[2]{%
+	\let#2\@empty
+	\ifcsname ST@@\detokenize\expandafter{#1}\endcsname
+		\PackageWarning\ST@package@name{The tag "\detokenize\expandafter{#1}" already exists, previous is lost.}%
+	\fi
+	\expandafter\edef\csname ST@@\detokenize\expandafter{#1}\endcsname{\number\ST@colcount,\number\ST@rowcount}%
+	\ST@expadd@tomacro\ST@tag@list{%
+		\expandafter\let\csname ST@celltag@\detokenize\expandafter{#1}\expandafter\endcsname\csname formula@\number\ST@colcount @\number\ST@rowcount\endcsname}%
+	\expandafter\ST@coord@toref\csname ST@@\detokenize\expandafter{#1}\endcsname
+}
+
+\newcommand\ST@func@cell[2]{%
+	\unless\ifcsname ST@@\detokenize\expandafter{#1}\endcsname\ST@unknown@tag\fi
+	\edef#2{\csname ST@@\detokenize\expandafter{#1}\endcsname}%
+}
+
+\newcommand\ST@func@row[2]{%
+	\unless\ifcsname ST@@\detokenize\expandafter{#1}\endcsname\ST@unknown@tag\fi
+	\edef#2{\expandafter\expandafter\expandafter\@gobble\csname ST@@\detokenize\expandafter{#1}\endcsname}%
+}
+
+\newcommand\ST@func@col[2]{%
+	\unless\ifcsname ST@@\detokenize\expandafter{#1}\endcsname\ST@unknown@tag\fi
+	\edef#2{%
+		\number\numexpr
+			\expandafter\expandafter\expandafter\expandafter\expandafter\expandafter\expandafter
+			`\expandafter\expandafter\expandafter\@car\csname ST@@\detokenize\expandafter{#1}\endcsname\@nil-64}%
+}
+
+% \newcommand\ST@func@timetosec[2]{%
+% 	\ST@left{#1}:\ST@nb@hours
+% 	\ST@right{#1}:\ST@nb@min
+% 	\ST@Ifinstr\ST@nb@min:%
+% 		{\ST@right\ST@nb@min:\ST@nb@sec
+% 		\ST@left\ST@nb@min:\ST@nb@min
+% 		}%
+% 		{\def\ST@nb@sec{0}}%
+% 	\FPeval#2{\ST@nb@sec+60*\ST@nb@min+3600*\ST@nb@hours}%
+% 	\FPclip#2#2%
+% }
+% 
+% \newcommand\ST@func@sectotime[2]{%
+% 	\FPeval\ST@nb@hours{trunc(#1/3600,0)}\FPclip\ST@nb@hours\ST@nb@hours
+% 	\FPeval\ST@nb@min{trunc((#1-\ST@nb@hours*3600)/60,0)}\FPclip\ST@nb@min\ST@nb@min
+% 	\FPeval\ST@nb@sec{#1-3600*\ST@nb@hours-60*\ST@nb@min}\FPclip\ST@nb@sec\ST@nb@sec
+% 	\edef#2{%
+% 		\ST@nb@hours
+% 		:\ifnum\ST@nb@min<10 0\fi\ST@nb@min
+% 		\ifnum\ST@nb@sec>\z@:\ifnum\ST@nb@sec<10 0\fi\ST@nb@sec\fi}%
+% }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%% Construction du tableau \'a afficher %%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand\ST@search@lastshowcol{% cherche le num\'ero de la derni\`ere colonne non masqu\'ee
+	\ST@colcount\ST@total@colnumber% on commence par la fin
+	\ST@search@lastshowcol@i
+}
+
+\newcommand\ST@search@lastshowcol@i{%
+	\ST@Ifinstr{\ST@col@skiplist}{\expandafter(\number\ST@colcount)}%
+		{\advance\ST@colcount\m@ne\ST@search@lastshowcol@i}%
+		{\edef\ST@lastshowcol{\number\ST@colcount}}%
+}
+
+% cherche "<<ref>>" dans la sc #1 et remplace toutes ces occurences par le champ num\'erique de "ref"
+\newcommand\ST@displaynumfields[1]{%
+	\StrBehind#1\ST@startdisplay[\ST@dipslaycell]%
+	\StrBefore\ST@dipslaycell\ST@enddisplay[\ST@dipslaycell]%
+	\let\ST@next\@gobble% \'a priori, on ne reboucle pas
+	\unless\ifx\@empty\ST@dipslaycell% si ce qui a entre les marqueurs n'est pas vide
+		\ST@ifref\ST@dipslaycell% et si c'est une r\'ef\'erence valide
+			{\let\ST@next\ST@startdisplay
+			\ST@expadd@tomacro\ST@next\ST@dipslaycell
+			\ST@expadd@tomacro\ST@next\ST@enddisplay
+			\expandafter\let\expandafter\ST@dipslaycell\csname formula@\ST@temp@formula\endcsname% alias pour la formule distante
+			\unless\ifx\ST@decsep\ST@decsepfp\ST@substdecsep\ST@dipslaycell\fi% subsitution du s\'eparateur d\'ecimal s'il y a lieu
+			\StrSubstitute#1\ST@next\ST@dipslaycell[#1]% on substitue <<ref>> par le champ num\'erique de la formule distante
+			\let\ST@next\ST@displaynumfields
+			}\relax
+	\fi
+	\ST@next#1%
+}
+
+\newcommand\ST@build@tab{%
+	\ST@rowcount\@ne\ST@colcount\@ne
+	\expandafter\ST@expadd@tomacro\expandafter\ST@tab\csname endrow@0\endcsname% la (ou les) \'eventuelle ligne sup\'erieure du tableau
+	\ST@build@tab@i
+}
+
+\newcommand\ST@build@tab@i{% reconstitue le tableau \'a partir des valeurs calcul\'ees et des cellules
+	\ifnum\ST@rowcount>\ST@total@rownumber
+		\let\ST@nextcell\relax
+	\else
+		\let\ST@nextcell\ST@build@tab@i
+		\ST@Ifinstr\ST@row@skiplist{\expandafter(\number\ST@rowcount)}% la ligne fait partie de la skiplist ?
+			{\advance\ST@rowcount\@ne}% on passe \'a la ligne suivante
+			{%
+			\ST@Ifinstr\ST@col@skiplist{\expandafter(\number\ST@colcount)}% la colonne fait partie de la skiplist ?
+				\ST@hiddencoltrue
+				{%
+				\ST@hiddencolfalse
+				\ST@ifvalid@csname{text@\number\ST@colcount @\number\ST@rowcount}% si la cellule existe
+					{\expandafter\let\expandafter\ST@temp@b\csname text@\number\ST@colcount @\number\ST@rowcount\endcsname% on cr\'e\'e un alias pour le texte
+					\exploregroups
+					\ifnum\csname code@\number\ST@colcount @\number\ST@rowcount\endcsname=\tw@% si la cellule contient un champ num\'erique
+						\expandafter\let\expandafter\ST@temp@a\csname formula@\number\ST@colcount @\number\ST@rowcount\endcsname% alias pour la valeur
+						\unless\ifx\ST@decsep\ST@decsepfp\ST@substdecsep\ST@temp@a\fi% et si le "." doit \^etre remplac\'e par "," on substitue
+						\StrSubstitute[1]\ST@temp@b\STnumericfieldmarker{\expandafter\STprintnum\expandafter{\ST@temp@a}}[\ST@temp@a]% on remplace le flag de formule par la valeur calcul\'ee
+					\else% si la cellule ne contient pas de champ num\'erique
+						\StrDel[1]\ST@temp@b\STnumericfieldmarker[\ST@temp@a]% on enl\`eve l'\'eventuel marqueur
+					\fi
+					\ST@displaynumfields\ST@temp@a% affiche les champs num\'eriques des cellules entre << et >>
+					\noexploregroups
+					\ST@expadd@tomacro\ST@tab\ST@temp@a% on ajoute la cellule au tableau
+					}\relax
+				}%
+			\advance\ST@colcount\@ne% on passe \'a la colonne suivante !
+			\ST@ifvalid@csname{code@\number\ST@colcount @\number\ST@rowcount}% y a t-il encore un code d\'efini ensuite ?
+				{\ifnum\csname code@\number\ST@colcount @\number\ST@rowcount\endcsname<\z@% on est dans une cellule contenant \multicol ?
+					\expandafter\ST@firstarg@after\csname text@\number\numexpr\ST@colcount-1@\number\ST@rowcount\endcsname\multicolumn\ST@multicol@number% combien de cellules ?
+					\advance\ST@colcount\ST@multicol@number% on va voir apr\`es le multicol en sautant toutes les valeurs des colonnes interm\'ediaires
+					\advance\ST@colcount\m@ne
+					\ST@ifvalid@csname{code@\number\ST@colcount @\number\ST@rowcount}% y a t-il un code d\'efini apr\`es le multicol ?
+						{\ST@add@tomacro\ST@tab&}% on ajoute la tabulation
+						\relax
+				\else% pas de \multicolumn
+					\unless\ifST@hiddencol% si la cellule n'est pas masqu\'ee
+						\unless\ifnum\ST@colcount>\ST@lastshowcol% si ce n'est pas la derni\`ere cellule affich\'ee
+							\ST@add@tomacro\ST@tab&%on ajoute la tabulation
+						\fi
+					\fi
+				\fi}%
+				{\ST@ifvalid@csname{endrow@\number\ST@rowcount}%
+					{\expandafter\ST@expadd@tomacro\expandafter\ST@tab\csname endrow@\number\ST@rowcount\endcsname}% ajoute la fin de la ligne
+					\relax
+				\ST@colcount\@ne% on remet la colonne \'a 1
+				\advance\ST@rowcount\@ne% on passe \'a la ligne suivante
+				}%
+			}%
+	\fi
+	\ST@nextcell
+}
+
+% format des lettres et nombres repr\'esentant les coordonn\'ees (helvetica gras tr\`es petit)
+\newcommand\ST@debugformat@headers{%
+	\usefont{T1}{phv}{b}{n}%
+}
+
+% format utilis\'e pour les cellules
+\newcommand\ST@debug@format@cells{%
+	\usefont{T1}{lmtt}{m}{n}%
+}
+
+\newcommand\ST@colorcell{%
+	\ifST@colortblloaded\noexpand\cellcolor[gray]{.6}\fi
+}
+
+\newcommand\STdebug[1]{%
+	\ST@debugmodetrue% on se met en mode d\'ebogage
+	\begingroup
+	\def\ST@debuginfo{#1}%
+	\ifmmode\scriptscriptstyle\else\scriptsize\fi
+	\def\ST@temp@a{formula}% pour n'afficher les fins de ligne que dans ce cas
+	\IfStrEqCase\ST@debuginfo{%
+		{formula}\relax{text}\relax{code}\relax
+		}[\ST@illegaldebugcommand]%
+	\ST@debug@format@cells
+	\tabcolsep0.3em
+	\ST@rowcount\@ne\ST@colcount\@ne
+	\edef\ST@debugtab{%
+		\noexpand\begin{tabular}{r|*{\number\numexpr\ST@lastshowcol+1}{c|}}%
+		\noexpand\multicolumn1{c}{\ST@colorcell}&%
+		}%
+	\loop
+		\ST@edefadd@tomacro\ST@debugtab{\noexpand\multicolumn1c{\ST@colorcell\noexpand\ST@debugformat@headers\@Alph\ST@colcount}}%
+		\ifnum\ST@colcount<\ST@lastshowcol
+			\advance\ST@colcount\@ne
+			\ST@add@tomacro\ST@debugtab&%
+	\repeat
+	\ST@colcount\@ne
+	\ST@edefadd@tomacro\ST@debugtab{%
+		&% passe \'a la derni\`ere colonne de la premi\`ere ligne
+		\noexpand\multicolumn1l{%
+			\ifx\ST@temp@a\ST@debuginfo
+				\ST@ifvalid@csname{endrow@\number\ST@rowcount}%
+					{\detokenize\expandafter\expandafter\expandafter{\csname endrow@0\endcsname}}%
+					\relax
+			\fi}%
+		\noexpand\\\noexpand\cline{2-\number\numexpr\ST@lastshowcol+1}%
+		}%
+	\ST@debug@tab@i
+}
+
+\newcommand\ST@debug@tab@i{% affiche le tableau de d\'ebobage
+	\ifnum\ST@rowcount>\ST@total@rownumber
+		\ST@edefadd@tomacro\ST@debugtab{\noexpand\cline{2-\number\numexpr\ST@lastshowcol+1}\noexpand\end{tabular}}%
+		\ST@debugtab% affichage du tableau de d\'ebogage
+		\ifmmode\\[0.5ex]\else\par\smallskip\fi% retour \'a la ligne
+		\expandafter\endgroup
+	\else
+		\ifnum\ST@colcount=\@ne
+			\ST@edefadd@tomacro\ST@debugtab{%
+				\noexpand\multicolumn1{c|}{\ST@colorcell\noexpand\ST@debugformat@headers\number\ST@rowcount}&}%
+		\fi
+		\ifcsname\ST@debuginfo @\number\ST@colcount @\number\ST@rowcount\endcsname% si l'info existe pour la cellule concern\'ee
+			\ifx\ST@temp@a\ST@debuginfo
+				\expandafter\ST@subst\csname\ST@debuginfo @\number\ST@colcount @\number\ST@rowcount\endcsname|{}%
+			\fi
+			\ST@edefadd@tomacro\ST@debugtab{\detokenize\expandafter\expandafter\expandafter{\csname\ST@debuginfo @\number\ST@colcount @\number\ST@rowcount\endcsname}}% on ajoute la cellule au tableau que l'on a detokenis\'ee au pr\'ealable
+		\fi
+		\advance\ST@colcount\@ne% on passe \'a la colonne suivante !
+		\ifnum\ST@colcount>\ST@lastshowcol% si c'est la derni\`ere cellule affich\'ee
+			\ST@edefadd@tomacro\ST@debugtab{%
+				&\noexpand\multicolumn1l{%
+				\ifx\ST@temp@a\ST@debuginfo
+					\ST@ifvalid@csname{endrow@\number\ST@rowcount}%
+						{\detokenize\expandafter\expandafter\expandafter{\csname endrow@\number\ST@rowcount\endcsname}}%
+						\relax
+				\fi}%
+				\noexpand\\\noexpand\cline{2-\number\numexpr\ST@lastshowcol+1}}%
+			\ST@colcount\@ne% on remet la colonne \'a 1
+			\advance\ST@rowcount\@ne% on passe \'a la ligne suivante
+		\else% il reste encore des cellules dans la ligne
+			\ST@add@tomacro\ST@debugtab&% on ajoute la tabulation
+		\fi
+		\expandafter\ST@debug@tab@i
+	\fi
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%% Environnement spreadtab et macros publiques %%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% d\'efinit quelle sera le s\'equence de conytr\^ole qui finira les lignes
+% dans les tableaux de spreadtab
+\newcommand*\STeol[1]{\def\ST@eol{#1}}
+\STeol\\
+
+% renvoie la valeur num\'erique de la cellule de tag #1
+\newcommand\STtag[1]{%
+	\ifcsname ST@celltag@\detokenize\expandafter{#1}\endcsname\expandafter\@firstoftwo\else\expandafter\@scondoftwo\fi
+		{\csname ST@celltag@\detokenize\expandafter{#1}\endcsname}
+		{\PackageError\ST@package@name{Tag "#1" is unknown, have you defined it?}\ST@seedoc@i}%
+}
+
+\newcommand*\STmakegtag[1]{%
+	\STmakegtag@i#1,\STmakegtag@i,%
+}
+
+\def\STmakegtag@i#1,{%
+	\ifx\STmakegtag@i#1%
+	\else
+		\def\ST@temp@a{#1}%
+		\ifx\@empty\ST@temp@a
+			\PackageWarning\ST@package@name{An empty tag is ignored.}%
+		\else
+			\ifcsname ST@celltag@\detokenize\expandafter{#1}\endcsname
+				\global\expandafter\let\csname ST@celltag@\detokenize\expandafter{#1}\expandafter\endcsname
+					\csname ST@celltag@\detokenize\expandafter{#1}\endcsname
+			\else
+				\PackageError\ST@package@name{Tag "#1" is unknown, have you defined it?}\ST@seedoc@i
+			\fi
+		\fi
+		\expandafter\STmakegtag@i
+	\fi
+}
+
+% d\'efinit le s\'eparateur d\'ecimal
+\newcommand*\STsetdecimalsep[1]{\def\ST@decsep{#1}}
+\def\ST@decsepfp{.}% le s\'eparateur d\'ecimal donn\'e par fp
+\STsetdecimalsep.% le point par d\'efaut
+
+\STmessage{true}% affiche les messages par d\'efaut
+
+\newif\ifST@clipround
+\newcommand*\STautoround{\@ifstar{\ST@cliproundfalse\ST@autoround}{\ST@cliproundtrue\ST@autoround}}
+\newcommand*\ST@autoround[1]{\def\ST@rounddigit{#1}}
+\STautoround{}% pas d'arrondi par d\'efaut
+
+\newcommand\STsavecell[2]{% met dans la sc #1 la valeur du champ num\'erique de la cellule sp\'ecifi\'ee par sa r\'ef\'erence ABSOLUE
+	\def\ST@temp@ref{#2}%
+	\ST@ifref\ST@temp@ref\relax\ST@illegal@ref
+	\ST@Ifinstr\ST@temp@ref[\ST@illegal@ref\relax
+	\expandafter\let\expandafter#1\csname formula@\ST@temp@formula\endcsname% le nombre est assign\'e \'a #1
+	\unless\ifx\ST@decsep\ST@decsepfp\ST@substdecsep#1\fi% et si le "." doit \^etre remplac\'e par "," on substitue
+	\global\let#1#1% on rend l'assignation globale
+}
+
+\long\def\ST@get@body@env#1\end{%
+	\expandafter\def\expandafter\ST@tab\expandafter{\ST@tab#1}\ST@find@end
+}
+
+\newcommand\ST@find@end[1]{%
+	\def\ST@temp@a{#1}%
+	\ifx\ST@temp@a\ST@package@name
+		\expandafter\spreadtab@i
+	\else
+		\ST@add@tomacro\ST@tab{\end{#1}}%
+		\expandafter\ST@get@body@env
+	\fi
+}
+
+\long\def\ST@get@body@cs#1\endspreadtab{%
+	\def\ST@tab{#1}\spreadtab@i
+}
+
+\newcommand\spreadtab[2][]{%
+	\ifx\ST@package@name\@currenvir% on vient d'un \begin{spreadtab} ?
+		\endgroup
+		\let\ST@get@body\ST@get@body@env
+	\else
+		\let\ST@get@body\ST@get@body@cs
+	\fi
+	\let\ST@FPmessages\ifFPmessages
+	\ifST@message\FPmessagesfalse\fi% pas de message de calcul de FP
+	\saveexpandmode\expandarg% 1-d\'eveloppement des arguments (r\'eglages de xstring)
+	\saveexploremode\noexploregroups% pas d'exploration des groupes (r\'eglages de xstring)
+	\edef\ST@catocde@saved{\catcode`:=\the\catcode`:\relax\catcode`;=\the\catcode`;\relax}%
+	\@makeother\:\@makeother\;% changer les catcodes pour \'eviter les incompatibilit\'es avec frenchb
+	\def\ST@tab@preamble{#2}% pr\'eambule du tableau
+	\StrChar{\@empty#2}\@ne[\ST@tab@name]%
+	\def\ST@optcode{#1}%
+	\let\ST@copylist\@empty
+	\let\ST@row@skiplist\@empty
+	\let\ST@col@skiplist\@empty
+	\def\ST@last@skipcol{0}%
+	\edef\ST@previous@seed{\number\FPseed}% sauvegarde de la graine
+	\ST@seed% graine variable
+	\ST@emit@message{New spreadtab: \string\begin\detokenize{#2}^^J* reading tab:}%
+	\let\ST@tab\@empty
+	\ST@get@body% met le code du tableau dans \ST@tab
+}
+
+\newcommand\spreadtab@i{%
+	\let\ST@tag@list\@empty
+	\let\ST@ref@found\@empty
+	\ST@read@tab% analyse le tableau contenu dans \ST@tab
+	\ST@emit@message{ok^^J}%
+	\ST@search@lastshowcol% cherche la derni\`ere colonne affich\'ee
+	\ST@debugmodefalse% \'a priori, on n'est pas en mode d\'ebogage
+	\let\ST@savecell\STsavecell
+	\let\STsavecell\@gobbletwo
+	\let\STdisplaytab\relax
+	\ST@optcode% ex\'ecute l'argument optionnel en ne tenant compte que de \STdebug
+	\let\STdebug\@gobble
+	\def\STdisplaytab{%
+		\ST@debugmodefalse
+		\ST@emit@message{\space\space\space\space\space Debug mode: display final tab^^J}%
+		\let\STdisplaytab\relax}%
+	\ST@optcode% ex\'ecute l'argument optionnel en ne tenant compte que de \STdisplaytab s'il y figure
+	\unless\ifST@debugmode% si on doit afficher le tableau, on fait le boulot
+		\ST@emit@message{* computing formulas:^^J}%
+		\ST@eval@tab
+		\let\STsavecell\ST@savecell
+		\ST@optcode% ex\'ecute l'argument optionnel en ne tenant compte que de \STsavecell
+		\expandafter\def\expandafter\ST@tab\expandafter{\expandafter\begin\ST@tab@preamble}%
+		\ST@emit@message{* building tab:}%
+		\ST@build@tab
+		\ST@emit@message{ok^^J}%
+		\ST@expadd@tomacro\ST@tab{\expandafter\end\ST@tab@name}%
+		\expandafter\ST@tab% affiche le tableau
+	\fi
+	\ST@emit@message{End of spreadtab: \string\end\detokenize\expandafter{\ST@tab@name}^^J^^J}%
+	\FPseed\ST@previous@seed% restauration de la graine
+	\let\ifFPmessages\ST@FPmessages
+	\restoreexpandmode\restoreexploremode
+ 	\ST@catocde@saved
+ 	\ST@tag@list
+	\ST@sanitize@cs
+}
+
+\newcommand\ST@sanitize@cs{%
+	\ST@letname{endrow@0}\ST@undef@content
+	\ST@sanitize@cs@i1}
+
+\newcommand\ST@sanitize@cs@i[1]{%
+	\unless\ifnum#1>\ST@total@rownumber
+		\def\ST@temp@a{#1}%
+		\ST@letname{endrow@#1}\ST@undef@content
+		\ST@sanitize@cs@ii1%
+		\expandafter\ST@sanitize@cs@i\expandafter{\number\numexpr#1+1\expandafter}%
+	\fi
+}
+
+\newcommand\ST@sanitize@cs@ii[1]{%
+	\unless\ifnum#1>\ST@total@colnumber
+		\ST@letname{formula@#1@\ST@temp@a}\ST@undef@content
+		\ST@letname{code@#1@\ST@temp@a}\ST@undef@content
+		\ST@letname{text@#1@\ST@temp@a}\ST@undef@content
+		\expandafter\ST@sanitize@cs@ii\expandafter{\number\numexpr#1+1\expandafter}%
+	\fi
+}
+
+\def\ST@undef@content{\ST@undef@content}
+
+\endinput
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Historique %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+v0.1alpha  avril 2009
+-------------------------------------------------------------------------------
+v0.1beta1   2009/06/06
+-------------------------------------------------------------------------------
+v0.1beta2   2009/06/07
+    1   Une valeur n\'egative dans une cellule provoque un bug.
+        Les valeurs n\'egatives sont d\'esormais mises entre parenth\`eses
+    2   Espaces supprim\'es en d\'ebut de formules.
+-------------------------------------------------------------------------------
+v0.1beta3   2009/06/12
+    1   Espaces laiss\'es dans les formules pour pouvoir utiliser la notation
+        postfix\'ee de fp.
+    2   Les r\'ef\'erences ne sont plus «@(B4)» mais indiff\'eremment «b4» ou
+        «B4».
+    3   R\'ef\'erences relatives possibles par [x,y] ou x et y sont les
+        d\'ecalages de la colonne et de la ligne par rapport \'a la cellule
+        o\`u est la formule.
+    4   Bugs corrig\'es pour rendre le package compatible avec tabularx ou
+        tabulary (entre autres).
+-------------------------------------------------------------------------------
+v0.1beta4   2009/06/21
+    1   Les espaces sont supprim\'es au d\'ebut de chaque cellule, cela
+        cr\'eait un bug lorsque la cellule commençait par un nombre n\'egatif.
+    2   Mise en place de la compatibilit\'e avec la commande
+        \multicolumn{nbre}{type}{contenu} du package \'eponyme
+    3   Possibilit\'e de masquer des lignes ou des colonnes enti\`eres avec les
+        commandes \SThiderow et \SThidecol
+        Seule condition : aucune colonne masqu\'ee ne doit se trouver dans les
+        colonnes impliqu\'ees dans un \multicolum \'a moins de prendre de
+        grandes pr\'ecautions et savoir les cons\'equences que cela occasionne.
+-------------------------------------------------------------------------------
+v0.1beta5   2009/06/29
+    1   Am\'elioration des messages d'erreur et d'information
+    2   Suppression de tests superflus
+    3   Red\'efinition de \STtextcell en «@» qui est plus simple
+    4   Impl\'ementation de \STsavecell
+    5   \'Ecriture de la documentation provisoire en français
+-------------------------------------------------------------------------------
+v0.1beta6   2009/08/23
+    1   Correction d'un bug : dans une cellule, on ne pouvait pas \'ecrire
+        plusieurs fois la m\^eme r\'ef\'erence.
+    2   Correction d'un bug avec \multicolumn : cette commande \'etait mal
+        g\'er\'ee lorsqu'employ\'ee avec une cellule de texte.
+    3   Impl\'ementation de macro-fonctions avec diff\'erenciation selon le
+        type d'argument et le type de donn\'ee renvoy\'ee.
+    4   Possibilit\'e d'imbrication des macro-fonctions.
+    5   Mise en place d'un environnement « spreadtab »
+    6   Nombreuses optimisations pour une meilleure vitesse d'ex\'ecution
+-------------------------------------------------------------------------------
+v0.1pre     2009/09/02
+    1   Mise au point des messages d'erreurs et des arr\^ets de compilation
+        selon les erreurs rencontr\'ees.
+    2   Correction d'un bug dans \ST@coord@toref
+    3   Les cellules vides, textuelles ou jointes par un \multicolumn sont
+        ignor\'ees dans les plages de cellules concern\'ees par les fonctions
+        sum et sumprod
+    4   Les noms de mois accentu\'es et \today sont d\'esormais permis en
+        argument de la fonction frlongdatetonum
+    5   somprod corrig\'e en sumprod, plus anglais !
+    6   La macro fonction rnd, trop complexe est supprim\'ee au profit de rand
+        et randint
+    7   Am\'eliorations et optimisations
+-------------------------------------------------------------------------------
+v0.1        2009/11/03  Premi\`ere version publique sur le CTAN
+-------------------------------------------------------------------------------
+v0.2        2010/01/24
+    1   On peut d\'efinir le s\'eparateur d\'ecimal par la macro
+        \STsetdecimalsep{<caract\`ere>}
+    2   Il est possible de copier une formule dans le tableau \'a l'aide de
+        \STcopy{>a,vb}{formule} o\`u a et b sont les nombres de cellules
+        horizontaux et verticaux vers lesquels la formule sera copi\'ee.
+    3   D\'esormais, spreadtab est enti\`erement compatible avec toutes les
+        commandes du package booktabs
+    4   La commande \noalign et son argument est prise en compte lorsqu'elle se
+        trouve apr\`es un \\
+    5   Suppression d'espaces ind\'esirables
+    6   Mise en place d'un mode d\'ebogage o\`u l'on peut visualiser les champs
+        num\'eriques, les champs textuels ou les codes des cellules du tableau
+-------------------------------------------------------------------------------
+v0.2a       2010/02/02
+    1   Ajout de la traduction en vietnamien et correction d'erreurs dans la
+        documentation française.
+    2   Implementation beta et donc non visible des macros fonctions gcd, lcm
+        Ces macro-fonctions ne sont pas encore document\'ees.
+-------------------------------------------------------------------------------
+v0.3        2010/03/28
+    1   La macro \STautoround{x} admet une version \'etoil\'ee pour laquelle
+        les nombres sont arrondis et format\'es pour avoir x chiffres apr\`es
+        la virgule en rajoutant des 0 inutiles si besoin
+    2   La valeur sauvegard\'ee par \STsavecell tient d\'esormais compte du
+        s\'eparateur d\'ecimal
+    3   Macro fonctions "gcd" (PGCD), "lcm" (PPCM) et "scitodec" pour convertir
+        une \'ecriture scientifique en une \'ecriture d\'ecimale
+    4   Dans le champ textuel d'une cellule, on peut d\'esormais afficher le
+        champ num\'erique d'une cellule avec <<ref>>
+    5   Am\'elioration de l'algorithme pour \STcopy : enleve une formule de
+        \ST@copylist lorsqu'on a d\'epass\'e la derni\`ere ligne de la plage
+        o\`u elle doit \^etre copi\'ee
+    6   Correction d'un bug lorsque la macro-fonction admettant un argument
+        textuel a un argument faisant r\'ef\'erence \'a une autre cellule :
+        enlever ":=" si besoin
+    7   Correction d'un bug dans xstring qui changeait les catcodes des tokens
+        de \@xs@afterinteger lorsqu'on appelle \IfInteger
+    8   Correction d'un bug dans \ST@build@tab@i pour prendre en compte les
+        cellules de code 0 dans lesquelles ":=" doit \^etre supprim\'e
+-------------------------------------------------------------------------------
+v0.3a       2010/05/15
+    1   Correction d'un bug dans \ST@gobble@remain : ce qui reste \'a manger
+        peut contenir des tokens de catcode 1 ou 2 ce qui fait que
+        l'utilisation d'arguments d\'elimit\'es ne fonctionnerait pas dans ces
+        cas.
+-------------------------------------------------------------------------------
+v0.3b       2010/06/06
+    1   Correction d'un bug concernant les macro-fonctions renvoyant un texte.
+        Lorsque leur argument contenait une r\'ef\'erence, celle-ci devenait
+        une cellule texte.
+    2   Correction d'un bug sur la macro \ST@stackcall : il faut y enlever
+        toutes les occurrences de la cellule en train d'\^etre calcul\'ee
+    3   Modification de l'ordre de calcul des cellules concern\'ees par les
+        macro fonctions sum et somprod
+    4   Correction d'un bug dans la façon dont sont produites les skiplist
+        \ST@row@skiplist et \STcol@skiplist
+    5   Impl\'ementation de la macro fonction "id"
+-------------------------------------------------------------------------------
+v0.3c       2011/04/08
+    1   Correction d'un gros bug lors de la substitution d'une r\'ef\'erence de
+        type <lettre><nbre> lorsque nbre>10 : a10 \'etait vu comme "a1" suivi
+        de 0, et m\^eme pour tous les nbre>10 !
+    2   Macro \STprintnum
+-------------------------------------------------------------------------------
+v0.4        2011/07/04
+    1   Les calculs se font en dehors d'un groupe pour \'eviter l'erreur de
+        save-satck
+    2   Possibilit\'e d'\'ecrire aussi \spreadtab<code tableau>\endspreadtab
+    3   Macros fonctions tag, cell, row, col et la macro \STtag qui permet de
+        faire appel \`a la valeur de la cellule marqu\'ee par la macro fonction
+        tag. \STmakegtag rend les sauvegardes globales.
+    4   La commande \STeol permet de choisir quel est le marqueur de
+        fin de ligne dans les tableau de spreadtab
+    5   dans une cellule mixte, les macro fonctions renvoyant du texte ont leur
+        r\'esultat qui prend la place de :={<formule>}
+-------------------------------------------------------------------------------
+v0.4a       2011/08/11
+    1  Un bug corrig\'e dans \ST@search@hline@i
+-------------------------------------------------------------------------------
+v0.4b       2012/05/13
+    1  Un bug corrig\'e dans \ST@func@sum

@@ -1,0 +1,306 @@
+\ProvidesPackage{dlfltxbcodetips}[2010/03/04 v0.5 by Lars 'daleif' Madsen]
+
+% this pacakge collects some macros presented as code tips in my LaTeX
+% book: "Introduktion til LaTeX". As the macros might be useful for
+% other than the normal readers of my book, the longer macros are
+% collected in this package.
+
+% This package be distributed and/or modified under the
+%% conditions of the LaTeX Project Public License, either version 1.3
+%% of this license or (at your option) any later version.
+%% The latest version of this license is in
+%%   http://www.latex-project.org/lppl.txt
+%% and version 1.3 or later is part of all distributions of LaTeX
+%% version 2003/12/01 or later.
+%% 
+%% This work has the LPPL maintenance status "maintained".
+%% 
+%% The Current Maintainer of this work is Lars Madsen (daleif@imf.au.dk).
+%%
+
+
+% HISTORY
+%
+% 20070601 Added better implementation of \nuparrow, \ndownarrow and
+%          \bigtimes, all due to Enrico Gregorio
+%          also made the environment uded inside \NewShadedTheorem
+%          configurable. 
+% 20070604 Karl Ove Hufthammer mentioned that mathdesign does not like
+%          amssymb, and _does_ implement \nleftarrow \nrightnarrow. The
+%          package option 'noamssymb' now disables loading amssymb
+% 20070606 alternative konstruction of \NewShadedTheorem, now using
+%          ntheorem konstructions internally
+% 20070710 bug fix regarding shadedtheorems, the counter aliasing did
+%          not work correctly
+% 20070711 Bug fixed in \ArrowBetweenLines, the \ifin@ should go
+%          inside the \noalign, not outside.
+% 20080617 added \DeclareMathSymbolShorthand and \DeclareMathSet
+% 20080618 redesigned and renamed \PullBack to \MoveEqLeft
+% 20080828 added better implementation of \MakeDeclareMathSetCommand
+% 20100304 updated for latest release
+
+\newif\ifdlf@do@load@amssymb
+\dlf@do@load@amssymbtrue
+
+\DeclareOption{noamssymb}{\dlf@do@load@amssymbfalse}
+
+\ProcessOptions\relax
+
+\RequirePackage{amsmath}
+
+
+
+% \InsertTheoremBreak removes the spacing above the first item,
+% \InsertTheoremBreak* does not
+\newcommand\InsertTheoremBreak{%
+    \@ifstar{\item[\vbox{\null}]}{%
+      \begingroup % keep changes local
+      \setlength\itemsep{0pt}%
+      \setlength\parsep{0pt}%
+       \item[\vbox{\null}]%
+      \endgroup%
+     }}
+
+
+
+% for making theorems with shaded background
+% requires the use of ntheorem, (x)color and framed
+% currently only ntheorem is supported (perhaps support for amsthm or
+% theorem will be added later)
+% has the same syntax as \newtheorem
+%
+% redesigned 2007/06/06
+\def\theoremframecommand{}
+\newcommand\NewShadedTheorem[1]{%
+  \@ifnextchar[{\NST@levelii{#1}}{\NST@levelii{#1}[]}}
+\def\NST@levelii#1[#2]#3{%
+  \@ifnextchar[{\NST@leveliii{#1}[#2]{#3}}{\NST@leveliii{#1}[#2]{#3}[]}}
+\newcommand\NST@helper[1]{%
+  \edef\@tempa{c@#1}\edef\@tempb{c@#1@inner}%
+  \expandafter\let\csname\@tempa\expandafter\endcsname\csname\@tempb\endcsname%
+  \edef\@tempa{p@#1}\edef\@tempb{p@#1@inner}%
+  \expandafter\let\csname\@tempa\expandafter\endcsname\csname\@tempb\endcsname%
+  \edef\@tempa{cl@#1}\edef\@tempb{cl@#1@inner}%
+  \expandafter\let\csname\@tempa\expandafter\endcsname\csname\@tempb\endcsname%
+  \edef\@tempa{the#1}\edef\@tempb{the#1@inner}%
+  \expandafter\let\csname\@tempa\expandafter\endcsname\csname\@tempb\endcsname%
+}
+\def\NST@leveliii#1[#2]#3[#4]{%
+  \ifx\\#2\\% i.e. no common counter
+    \ifx\\#4\\% i.e. no dominant counter
+      \newshadedtheorem{#1@inner}{#3}%
+      \NST@helper{#1}%
+    \else% i.e. dominant counter
+      \newshadedtheorem{#1@inner}{#3}[#4]%
+      \NST@helper{#1}%
+  \fi%
+  \else% i.e. common counter
+    \newshadedtheorem{#1@inner}[#2]{#3}%
+  \fi%
+  \newenvironment{#1}{%
+    % code stolen from ntheorem.sty
+    \thm@topsepadd \theorempostskipamount
+    \ifvmode \advance\thm@topsepadd\partopsep\fi
+    \trivlist
+    \@topsep \theorempreskipamount
+    \@topsepadd \thm@topsepadd
+    \item
+      \setlength\theorempreskipamount{0pt}%
+      \setlength\theorempostskipamount{0pt}%
+      \begin{#1@inner}
+      }{\end{#1@inner}\endtrivlist\@endparenv}%
+  }
+
+
+
+
+% this implements a stack that holds a user build mathindent
+% not easy to explain in words see the documentation
+\newtoks\dlf@STACK
+\def\dlf@Prepend#1(to:)#2{\toks0={#1}%
+  \global\edef\act{\global\noexpand#2={\the\toks0 \the#2}}%
+  \act}
+\def\dlf@PopOff#1{\global\edef\act{\global\noexpand\dlf@SplitOff\the#1%
+    (tail:)\noexpand#1}\act}
+\def\dlf@SplitOff#1#2(tail:)#3{#3={#2}} 
+\newlength\MathIndentLength
+\newcommand\MathIndent{\kern\MathIndentLength}
+\newcommand\PopMathIndent{%
+  \@ifstar{\@PopMathIndent\relax}{\@PopMathIndent\MathIndent}}
+\newcommand\@PopMathIndent[1]{\dlf@PopOff\dlf@STACK
+  \settowidth\@tempdimc{\ensuremath{\displaystyle\phantom{\the\dlf@STACK}}}
+  \setlength{\global\MathIndentLength}{\@tempdimc}#1}
+\newcommand\SetMathIndent[1]{\dlf@STACK={}\dlf@Prepend{{#1}}(to:)\dlf@STACK
+  \settowidth\@tempdimc{\ensuremath{\displaystyle\phantom{\the\dlf@STACK}}}
+  \setlength{\global\MathIndentLength}{\@tempdimc}#1}
+\newcommand\AddtoMathIndent[1]{\dlf@Prepend{{#1}}(to:)\dlf@STACK
+  \settowidth\@tempdimc{\ensuremath{\displaystyle\phantom{\the\dlf@STACK}}}
+   \setlength{\global\MathIndentLength}{\@tempdimc}#1}
+
+
+% this constructs a version of \bigtimes. The version here is due to
+% Enrico Gregorio, presented in http://groups.google.com/group/comp.text.tex/msg/9685c9405df2ff94
+
+\newcommand\dlf@b@gtimes[1]{%
+  \vcenter{\hbox{#1$\m@th\mkern-2mu\times\mkern-2mu$}}}
+\newcommand\dlf@bigtimes{%
+  \mathchoice{\dlf@b@gtimes\huge}         % display style
+             {\dlf@b@gtimes\LARGE}        % text style
+             {\dlf@b@gtimes{}}            % script style
+             {\dlf@b@gtimes\footnotesize} % script script style
+}
+\newcommand\bigtimes{\mathop{\dlf@bigtimes}\displaylimits}
+
+
+
+\ifdlf@do@load@amssymb
+  \RequirePackage{amssymb}
+\fi
+
+\RequirePackage{graphicx}
+
+% better construction for \nuparrow and \ndownarrow, se also
+% http://groups.google.com/group/comp.text.tex/msg/689cc8bd604fdb51 
+% again due to Enrico Gregorio
+% construction requires graphicx
+\def\dlf@nrotarrow#1#2{%
+  \setbox0=\hbox{$\m@th#1\uparrow$}\dimen0=\dp0
+  \setbox0=\hbox{%
+    \reflectbox{\rotatebox[origin=c]{90}{$\m@th#1\mkern2.22mu #2$}}}%
+  \dp0=\dimen0 \box0 \mkern2.3965mu
+}
+
+% needs to delay things
+\AtBeginDocument{
+  \@ifundefined{nrightarrow}{%
+    \PackageWarning{dlfltxbcodetips}{\string\nrightarrow\space not found,^^J 
+      \string\nuparrow\space will not be defined}
+  }{
+    \def\nuparrow{\mathrel{\mathpalette\dlf@nrotarrow\nrightarrow}}
+  }
+  
+  \@ifundefined{nleftarrow}{%
+    \PackageWarning{dlfltxbcodetips}{\string\nleftarrow\space not found,^^J 
+      \string\ndownarrow\space will not be defined}
+  }{
+    \def\ndownarrow{\mathrel{\mathpalette\dlf@nrotarrow\nleftarrow}} 
+  }
+}
+
+
+
+\newcommand\ProvidePGFPagesFourOnOneWithSpaceForNotes{%
+  \@ifpackageloaded{pgfpages}{%
+    \pgfpagesdeclarelayout{4 on 1 with space for notes}
+    { \edef\pgfpageoptionheight{\the\paperwidth} % landscaped by default
+      \edef\pgfpageoptionwidth{\the\paperheight}
+      \def\pgfpageoptionborder{0pt}}
+    {  \pgfpagesphysicalpageoptions{logical pages=4,%
+        physical height=\pgfpageoptionheight,%
+        physical width=\pgfpageoptionwidth}
+      \ifdim\paperheight>\paperwidth\relax
+      % put side-by-side
+      \pgfpageslogicalpageoptions{1}{%
+        border shrink=\pgfpageoptionborder,%
+        resized width=.25\pgfphysicalwidth,%
+        resized height=.5\pgfphysicalheight,%
+        center=\pgfpoint{.125\pgfphysicalwidth}{.75\pgfphysicalheight}}%
+      \pgfpageslogicalpageoptions{2}{%
+        border shrink=\pgfpageoptionborder,%
+        resized width=.25\pgfphysicalwidth,%
+        resized height=.5\pgfphysicalheight,%
+        center=\pgfpoint{.625\pgfphysicalwidth}{.75\pgfphysicalheight}}%
+      \pgfpageslogicalpageoptions{3}{%
+        border shrink=\pgfpageoptionborder,%
+        resized width=.25\pgfphysicalwidth,%
+        resized height=.5\pgfphysicalheight,%
+        center=\pgfpoint{.125\pgfphysicalwidth}{.25\pgfphysicalheight}}%
+      \pgfpageslogicalpageoptions{4}{%
+        border shrink=\pgfpageoptionborder,%
+        resized width=.25\pgfphysicalwidth,%
+        resized height=.5\pgfphysicalheight,%
+        center=\pgfpoint{.625\pgfphysicalwidth}{.25\pgfphysicalheight}}%
+      \else % stack on top of one another
+      \pgfpageslogicalpageoptions{1}{%
+        border shrink=\pgfpageoptionborder,%
+        resized width=.5\pgfphysicalwidth,%
+        resized height=.25\pgfphysicalheight,%
+        center=\pgfpoint{.25\pgfphysicalwidth}{.875\pgfphysicalheight}}%
+      \pgfpageslogicalpageoptions{2}{%
+        border shrink=\pgfpageoptionborder,%
+        resized width=.5\pgfphysicalwidth,%
+        resized height=.25\pgfphysicalheight,%
+        center=\pgfpoint{.25\pgfphysicalwidth}{.625\pgfphysicalheight}}%
+      \pgfpageslogicalpageoptions{3}{%
+        border shrink=\pgfpageoptionborder,%
+        resized width=.5\pgfphysicalwidth,%
+        resized height=.25\pgfphysicalheight,%
+        center=\pgfpoint{.25\pgfphysicalwidth}{.375\pgfphysicalheight}}%
+      \pgfpageslogicalpageoptions{4}{%
+        border shrink=\pgfpageoptionborder,%
+        resized width=.5\pgfphysicalwidth,%
+        resized height=.25\pgfphysicalheight,%
+        center=\pgfpoint{.25\pgfphysicalwidth}{.125\pgfphysicalheight}}%
+      \fi    
+    }
+  }{%
+    \PackageError{dlfltxbcodetips}{\string\ProvidePGFPagesFourOnOneWithSpaceForNotes^^J
+      can only be used after the pgfpages package have been loaded}{}
+}}
+
+
+
+\begingroup
+\catcode`\_=\active
+\gdef\OverloadUnderscoreInMath{%
+  \protected\gdef_{\@ifnextchar|\subtextup\sb}
+  \gdef\subtextup|##1|{\sb{\textup{##1}}}
+  \AtBeginDocument{\catcode`\_=12 \mathcode`\_=32768 }
+}
+\endgroup
+\@onlypreamble\OverloadUnderscoreInMath
+
+
+\@ifundefined{DeclareMathSymbolShorthand}{
+  \usepackage{keyval}
+\newcommand*\DeclareMathSymbolShorthand[2]{% #1=keyvals, #2=arg.
+   \begingroup
+   \setkeys{DMSS}{name=#2,#1}%
+   \if\DMSS@overwrite % check for overwrite?
+   \else
+     \expandafter\@ifdefinable\csname \DMSS@prefix\DMSS@name\endcsname{%
+       \def\DMSS@overwrite{00}% okay to redefine.
+     }%
+   \fi%
+   \if\DMSS@overwrite % Do definition or not.
+     \expandafter\@firstofone%
+   \else\expandafter\@gobble\fi%
+   {\protected\expandafter%
+     \xdef\csname \DMSS@prefix\DMSS@name \endcsname{%
+       \unexpanded\expandafter{\DMSS@format{#2}}}}%
+   \endgroup}
+\define@key{DMSS}{format}{\let\DMSS@format#1}
+\define@key{DMSS}{format*}{\def\DMSS@format{\expandafter#1\@firstofone}}
+\define@key{DMSS}{name}{\def\DMSS@name{#1}}
+\define@key{DMSS}{prefix}{\def\DMSS@prefix{#1}}
+\define@key{DMSS}{overwrite}[true]{%
+   \edef\DMSS@overwrite{\csname if#1\endcsname 00\else 01\fi}}
+\setkeys{DMSS}{overwrite=false}
+\setkeys{DMSS}{format*=}
+\newcommand\MakeDeclareMathSetCommand[3]{%
+  % #1 = command name 
+  % #2 = default prefix name
+  % #3 = default format
+  % make format macro for eacy reference
+   \expandafter\MakeDeclareShorthandCommandAux\csname math#2format\endcsname
+   {#1}{#2}{#3}}
+\def\MakeDeclareShorthandCommandAux#1#2#3#4{%
+   \newcommand*#1{#4}%
+   \newcommand*#2[2][]{%
+     \DeclareMathSymbolShorthand{format=#1,prefix=#3,##1}{##2}%
+   }}
+\MakeDeclareMathSetCommand{\DeclareMathSet}{numbers}{\mathbb}
+}{} % is defined already so do nothing
+
+
+

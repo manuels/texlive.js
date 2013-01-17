@@ -1,0 +1,354 @@
+% relsize.sty       4.0       Sept 21, 2011
+% This software is contributed to the public domain.
+%
+% LaTex2e version by Donald Arseneau <asnd@triumf.ca> and
+% Matt Swift <swift@bu.edu>.
+% Original LaTex2.09 smaller.sty author: Bernie Cosell <cosell at WILMA.BBN.COM> 
+%
+% Setting the font size relative to the current size
+%
+% commands are:
+% \relsize{n}  where n gives the number of steps ("mag-step" = factor of 1.2)
+%              to change the size by;  n = 3 changes from \normalsize to 
+%              \LARGE size.  Negative n selects smaller fonts. n is an
+%              integer (or half-integer).
+%
+% \smaller == \relsize{-1},  \smaller[n] == \relsize{-n}
+% \larger  == \relsize{1},   \larger[n]  == \relsize{n}
+%
+% \textsmaller{text}, \textlarger{text} - versions that take an argument
+%
+% \relscale{f}   like \relsize, but instead of scale-steps,
+%                the parameter is a scale factor, such as .75
+% \textscale{f}{text}
+%
+% The font-size command nearest the requested size will be used, and if
+% the size error is more than \RSpercentTolerance, then the size will
+% be adjusted more precisely using \fontsize.  (The default empty 
+% \RSpercentTolerance signals automatic handling, choosing the tolerance 
+% based on the font declarations.)
+%
+% \mathsmaller{A}, \mathlarger{B}       - math versions 
+%   (The math versions are entirely different from the text versions.)
+%
+% More comments at the end of this file, and full documentation in
+% relsize-doc.pdf
+
+\ProvidesPackage{relsize}[2011/09/21 ver 4.0]
+
+\DeclareRobustCommand\relsize[1]{%
+\ifmmode \@nomath\relsize\else
+  \begingroup
+  % number of demi-magsteps -> \@tempcnta
+  \@tempdima#1\p@ \@tempdima2.0002\@tempdima \divide\@tempdima\p@
+  \@tempcnta\@tempdima
+  % \message{^^JChange \the\@tempcnta\space half-magsteps from \f@size. }%
+  % calculate desired target size -> \@tempdimb
+  \@tempdimb\f@size\p@
+  \ifnum\@tempcnta<\z@ 
+    \def\@tempa{.912871}\@tempcnta=-\@tempcnta
+  \else
+    \def\@tempa{1.09545}%
+  \fi
+  \@whilenum {\@tempcnta>\z@}\do {%
+    \advance\@tempcnta\m@ne
+    \@tempdimb\@tempa\@tempdimb}%
+    % \message{ target size \the\@tempdimb. }%
+  \rs@scaleToB
+\fi}
+
+\DeclareRobustCommand\relscale[1]{%
+\ifmmode \@nomath\relscale\else
+  \begingroup
+  \@tempdimb\f@size\p@ \@tempdimb#1\@tempdimb
+  \rs@scaleToB
+\fi}
+
+\DeclareRobustCommand\textscale[2]{\leavevmode
+  \begingroup\relscale{#1}#2\endgroup}
+
+%  Change font size to \@tempdimb.  Follows from \relsize or \relscale
+\def\rs@scaleToB{%
+  %\message{Change font size from \f@size\space to \the\@tempdimb. }%
+  % perform automatic tolerance adjustment, if requested
+  \ifx\RSpercentTolerance\@empty \rs@autoTol \fi
+  % apply limits
+  \ifdim\@tempdimb<\RSsmallest \@tempdimb=\RSsmallest 
+      \rs@size@warning{small}{\RSsmallest}\fi
+  \ifdim\@tempdimb>\RSlargest \@tempdimb=\RSlargest 
+      \rs@size@warning{large}{\RSlargest}\fi
+  % Look up that size in list of pre-defined sizes.  Put error of
+  % closest match in \@tempdima
+  \def\@tempa{\relax}\@tempdima-\@m\p@
+  \let\rs@size\rs@lookup  \rs@fontsizes
+  %\message{Look up best as \expandafter\string\@tempa, off by \the\@tempdima}%
+  % See how close match was (abs difference -> \@tempdima)
+  \ifdim\@tempdima<\z@ \@tempdima-\@tempdima\fi
+  %  ... percentage error in \@tempdima (as a count)
+  %  (messiness to prevent numeric overflows)
+  \ifdim\@tempdima<160\p@ \@tempdima 100\@tempdima 
+    \ifdim\@tempdimb>\p@ \divide\@tempdima\@tempdimb \fi
+    %\message{or \number\@tempdima \@percentchar. }%
+  \fi
+  % if error is beyond tolerance, append \fontsize adjustment.  
+  \ifnum\@tempdima>\RSpercentTolerance
+    %\message{Adjust size to \strip@pt\@tempdimb. }%
+    \@tempdima1.2\@tempdimb % baselineskip (could be improved)
+    \edef\@tempa{\expandafter\noexpand\@tempa \noexpand\fontsize
+      {\strip@pt\@tempdimb}{\strip@pt\@tempdima}\noexpand\selectfont}\fi
+  % Now execute size-change command \@tempa
+  \expandafter\endgroup\@tempa
+  %\message{Font size is now \f@size. }%
+}
+
+% For each defined font size, compare its actual size to the desired
+% size (\@tempdimb) and the error of the best previous match (\@tempdima).
+% Record this command (\@tempa) if it is closer.
+\def\rs@lookup#1#2{% #1=command #2=size
+  \begingroup
+  \advance\@tempdimb-#2\relax
+  \ifdim\@absVal\@tempdimb<\@absVal\@tempdima % improvement
+    \endgroup
+    \def\@tempa{#1}%
+    \@tempdima#2\relax \advance\@tempdima-\@tempdimb
+  \else
+    \endgroup
+  \fi}
+
+
+% Tolerance for size mis-match (%).  The empty definition triggers
+% automatic selection: 5 for scalable fonts, 30 otherwise.
+
+\def\rs@autoTol{%
+  \expandafter\expandafter\expandafter\rs@autoTOL
+  \expandafter\meaning
+  \csname\f@encoding/\f@family/\f@series/\f@shape\endcsname-\delimiter
+}
+\def\rs@autoTOL#1>#2-#3\delimiter{%
+   \ifx\delimiter#3\delimiter % no -
+     \def\RSpercentTolerance{30}%
+   \else % font size def has -, assume it covers continuum 
+     \def\RSpercentTolerance{5}%
+   \fi
+   % \message{ Automatic tolerance is \RSpercentTolerance. }%
+}
+
+%  Warning messages
+
+\newcommand\rs@size@warning[2]{\PackageWarning{relsize}{%
+ Size requested is too #1.\MessageBreak Using #2 instead}}
+
+% derived commands
+
+\DeclareRobustCommand\larger[1][\@ne]{\relsize{+#1}}
+\DeclareRobustCommand\smaller[1][\@ne]{\relsize{-#1}}
+\DeclareRobustCommand\textlarger[2][\@ne]{\leavevmode{\relsize{+#1}#2}}
+\DeclareRobustCommand\textsmaller[2][\@ne]{\leavevmode{\relsize{-#1}#2}}
+
+
+% Some initializations.
+
+% Default empty definition triggers auto-tolerance.
+% Beware that \providecommand makes \long macro that fails to trigger.
+
+\def\RSpercentTolerance{} 
+
+% The next two aren't the real initializations!  The real ones are done
+% in \@tempb below.  The user can change them afterwards.
+
+\def\RSsmallest{999pt}
+\def\RSlargest{1pt}
+
+% Right now we assemble a list of the font sizes
+
+\def\rs@size{\noexpand\rs@size\noexpand}
+\def\rs@fontsizes{}
+\def\@tempa#1{\ifx\@undefined#1\else
+  \expandafter\@tempb#1\@empty\relax\relax\delimiter{#1}\fi}
+\def\@absVal#1{\ifnum#1<\z@-\fi#1}
+% parse definition of font-size command (like \large)
+% #1 = \@setfontsize  #2 = the command (\large) #3 = size #4 = rest
+\def\@tempb#1#2#3#4\delimiter#5{%
+  \let\protect\@unexpandable@protect
+  \message{Examine \string#5 starts \string#1 size may be \string#3. }%
+  \ifcase0\ifx\protect#1\@firstofone\relax\ifx\@empty#31\fi\fi % normal 
+    \@tempdimb\z@
+    \ifx\@setfontsize#1\relax\ifx#5#2\@firstofone\relax
+      \afterassignment\strip@prefix \@tempdimb #3pt>%
+    \fi\fi
+    \ifdim\@tempdimb=\z@ % Failed to parse size
+      \def\RSpercentTolerance{3}% Both a setting and a flag
+    \else 
+      \edef\rs@fontsizes{\rs@fontsizes\rs@size#2{\the\@tempdimb}}%
+      \ifdim\@tempdimb<\RSsmallest \edef\RSsmallest{\the\@tempdimb}\fi
+      \ifdim\@tempdimb>\RSlargest \edef\RSlargest{\the\@tempdimb}\fi
+    \fi
+  \or % self-protected: recurse
+    \expandafter\@tempb#2\@empty\relax\relax\delimiter{#5}%
+  \fi
+  \let\protect\@typeset@protect}
+
+% examine each (expected) pre-defined font size 
+\@tempa\normalsize
+\@tempa\small
+\@tempa\footnotesize
+\@tempa\large
+\@tempa\Large
+\@tempa\LARGE
+\@tempa\scriptsize
+\@tempa\tiny
+\@tempa\huge
+\@tempa\Huge
+\@tempa\HUGE  % moresize.sty
+\@tempa\ssmall
+
+\ifx\RSpercentTolerance\@empty \else 
+
+  \PackageWarningNoLine{relsize}
+     {Failed to get list of defined font sizes.\MessageBreak
+      Size scaling will attempt arbitrary sizes.}
+
+  \def\RSsmallest{\p@}%
+  \def\RSlargest{100pt}%
+  \ifx\rs@fontsizes\@empty \def\RSpercentTolerance{0}\fi
+
+\fi
+
+%
+% Math commands (completely different)
+
+\DeclareRobustCommand\mathsmaller[1]{\bgroup
+  \let\rs@makechoice\rs@makesmallerchoice
+  \def\rs@mathatom{#1}%
+  \futurelet\@tempa\rs@collect@decor
+}
+\DeclareRobustCommand\mathlarger[1]{\bgroup
+  \let\rs@makechoice\rs@makelargerchoice
+  \def\rs@mathatom{#1}%
+  \futurelet\@tempa\rs@collect@decor
+}
+
+% Collect the tokens that 'decorate' the atom, to apply them directly on the
+% symbol, not after the closing brace.
+% Math so far is in \rs@mathatom; next tok is \@tempa; continuation is \@tempb
+% Don't nest \ifs because token may be \if or \fi or \or...
+\def\rs@collect@decor{%
+  \let\@tempb\rs@makechoice
+  \ifx\@tempa\limits \let\@tempb\rs@collect@one@decor \fi
+  \ifx\@tempa\displaylimits \let\@tempb\rs@collect@one@decor \fi
+  \ifx\@tempa\nolimits \let\@tempb\rs@collect@one@decor \fi
+  \if\noexpand\@tempa^\let\@tempb\rs@collect@two@decor \fi 
+  \if\noexpand\@tempa_\let\@tempb\rs@collect@two@decor \fi 
+  \ifx\@tempa\sp \let\@tempb\rs@collect@two@decor \fi
+  \ifx\@tempa\sb \let\@tempb\rs@collect@two@decor \fi
+  \@tempb}
+\def\rs@collect@one@decor#1{%
+  \expandafter\def\expandafter\rs@mathatom\expandafter{\rs@mathatom#1}%
+  \futurelet\@tempa\rs@collect@decor}
+\def\rs@collect@two@decor#1#2{\expandafter
+  \def\expandafter\rs@mathatom\expandafter{\rs@mathatom#1{\rs@sstyle{#2}}}%
+  \futurelet\@tempa\rs@collect@decor}
+\let\rs@sstyle\@firstofone
+
+\def\rs@makesmallerchoice{\mathchoice
+  {\textstyle \let\rs@sstyle\scriptstyle \rs@mathatom}%
+  {\scriptstyle \let\rs@sstyle\scriptstyle \rs@mathatom}%
+  {\scriptscriptstyle \let\rs@sstyle\scriptscriptstyle \rs@mathatom}%
+  {\scriptscriptstyle \let\rs@sstyle\scriptscriptstyle \rs@mathatom}%
+ \egroup}
+\def\rs@makelargerchoice{\mathchoice
+  {\protected@edef\rs@sstyle##1{%
+      \protect\set@fontsize {1}{\f@size}{\f@baselineskip}\protect\selectfont
+      \hbox{$\scriptstyle ##1\m@th$}}%
+   \mbox{\larger$\displaystyle\rs@mathatom\m@th$}}%
+  {\displaystyle \let\rs@sstyle\scriptstyle \rs@mathatom}%
+  {\textstyle \let\rs@sstyle\scriptscriptstyle \rs@mathatom}%
+  {\scriptstyle \let\rs@sstyle\scriptscriptstyle \rs@mathatom}%
+ \egroup}
+
+\endinput
+==========================================================
+
+R E L S I Z E . S T Y           ver 4.0       Sept 21, 2011
+
+by Donald Arseneau,  asnd@triumf.ca,  Vancouver, Canada
+originally based on smaller.sty by Bernie Cosell, cosell@WILMA.BBN.COM, 
+and combined with the version by Matt Swift, swift@bu.edu.
+
+
+It is frequently the case that something should be typeset somewhat larger
+or smaller than the surrounding text, whatever that size happens to be.
+Specifying such sizing commands explicitly makes it difficult to modify the
+font sizes of a document at a later time, and makes it hard to write macros
+that work at arbitrary sizes.  Relsize.sty defines several commands for LaTeX
+to set font sizes relative to the current size.
+
+For i being an integer (or half-integer) magstep increment (like 2),
+and optional arg [i] defaulting to i=1,
+And f being a scale factor (like 0.75)
+And text being the text argument
+
+\relsize{i}     ungrouped size change by i steps
+\larger[i]      ungrouped size change by (optional) i steps
+\smaller[i]     ungrouped size change by (optional) -i steps
+\relscale{f}    ungrouped size change by scale factor f
+\textlarger[i]{text}   "text" size enlarged by i steps
+\textsmaller[i]{text}  "text" size reduced by i steps
+\textscale{f}{text}    "text" sized scaled by factor f
+
+
+If the size requested is too small or too large, a warning is given, and
+the size will only change as far as appropriate, typically \tiny or \Huge.
+These limits are controlled by the commands \RSsmallest and \RSlargest, which
+get set automatically when relsize.sty is loaded, but you can redefine them
+to other length values: \renewcommand\RSlargest{50pt}.
+
+Fine point:  The combination \relsize{n}\relsize{-n} is not guaranteed to 
+restore the current font size! 
+
+Typically, the font-size commands do not select fonts at regular size
+intervals.  \relsize (and the others) will select, and execute, the command
+for the size closest to the desired size.  Then, if the relative difference 
+from the target size is more than \RSpercentTolerance a further font-size
+selection is made.  By default, \RSpercentTolerance is an empty macro, which
+causes automatic selection: "30" (30%) when the current "fontshape" definition
+is composed of only discrete sizes, and "5" when the fontshape definition
+covers ranges of sizes.  The higher setting for discrete fonts ensures
+only the pre-defined sizes get used.  (By default LaTeX uses Computer
+Modern fonts at discrete sizes; you get full coverage of sizes by using
+\usepackage{type1cm} or various other font packages.)  For special uses, 
+or when the font shape definitions are not parsed properly, you can redefine 
+the percent tolerance: 
+\renewcommand\RSpercentTolerance{10}.
+
+All of the commands described above are text commands; they cannot be used
+in math mode.  There are special \mathsmaller and \mathlarger commands
+provided, but these do not use the same sizes that the text versions use.
+Instead, they step between the usual math "styles" which you can explicitly
+set using the commands \displaystyle, \textstyle, \scriptstyle, and
+\scriptscriptstyle [see Lamport, LaTeX/Manual (1st ed, p.54); GMS The LaTeX
+Companion, p.255].  However, the \mathlarger command will also increase the
+size beyond regular \displaystyle by selecting a larger regular font size
+(using \larger).  (Yes, this is a kludge, and doesn't work very well, but 
+it can still be useful.)  If you want to use this to create big integral 
+signs, then you must also load the package "exscale" so that math symbols
+can change size.  The sizes selected are: 
+
+Current style       \mathsmaller gives         \mathlarger gives
+---------------     ----------------------     ------------------------
+\displaystyle       \textstyle (almost same)   \displaystyle in a \larger font
+\textstyle          \scriptstyle               \displaystyle (almost same)
+\scriptstyle        \scriptscriptstyle         \textstyle
+\scriptscriptstyle  \scriptscriptstyle (same)  \scriptstyle
+
+These commands will attempt to attach superscripts and subscripts to the 
+symbol as if the symbol were used alone, but math accents and the math 
+spacing behave as if the symbol is enclosed in braces (which it is).
+Operators should be explicitly declared to use the right operator
+type (\mathrel, \mathbin, \mathop) to get the correct spacing.
+
+Due to their oddities, the math larger/smaller commands should not be 
+trusted blindly, and they will not be useful in every instance.
+
+
+Donald Arseneau                         asnd@triumf.ca

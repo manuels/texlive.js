@@ -1,0 +1,1401 @@
+%--------------------------------------------
+%
+% Package pgfplots, library for dynamic content in PDF files
+% (clickable plots)
+%
+% Copyright 2007/2008 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%--------------------------------------------
+
+\pgfutil@ifundefined{pgfplotsset}{%
+	\PackageError{pgfplots}{Sorry, \string\usetikzlibrary{pgfplots.clickable} needs to hook into PGFPlots routines, disabling it -- please provide the command AFTER \string\usepackage{pgfplots}}{}%
+	\endinput
+}{%
+}%
+
+
+\edef\pgfplotscatcodeDQ{\the\catcode`\"}%
+\catcode`\"=12
+\newif\ifpgfplots@clickable
+\newif\ifpgfplots@annot@printable
+
+\pgfqkeys{/pgfplots}{
+	@backgroundpath@hook/.add code={}{\pgfplots@create@clickable@plotarea@hook},
+	clickable/.is if=pgfplots@clickable,
+	clickable/.default=true,
+	clickable=true,
+	/pgfplots/execute at begin axis/.add={}{%
+		\pgfplots@clickable@beginaxis
+	},%
+	clickable coords code/.code={%
+		\def\pgfplots@clickable@init@@{%
+			\pgfplots@clickable@startcoordcollect
+			\pgfplotsset{%
+				/pgfplots/execute at end plot@@/.add={}{%
+					\pgfplots@clickable@endcoordcollect
+				},
+				/pgfplots/execute for finished point/.add={}{%
+					\pgfplots@clickable@coordcollect{#1}%
+				},%
+			}%
+			\let\pgfplots@clickable@init@@=\relax
+		}%
+		\pgfkeysalso{%
+			/pgfplots/execute at begin plot@@/.add={}{%
+				\pgfplots@clickable@init@@
+			},
+		}%
+	},
+	clickable coords/.style={
+		clickable coords code={\def\pgfplotsretval{#1}},
+	},
+	clickable coords/.default={(xy)},
+	annot/js fillColor/.initial={["RGB",1,1,.855]},
+	annot/point format/.initial={(\%.1f, \%.1f)},
+	annot/point format 3d/.initial={(\%.1f, \%.1f, \%.1f)},
+	annot/slope format/.initial={\%.1f*x \%+.1f},
+	annot/printable/.is if=pgfplots@annot@printable,
+	annot/printable/.default=true,
+	% Available are:
+% Times-Roman           font.Times
+% Times-Bold            font.TimesB
+% Times-Italic          font.TimesI
+% Times-BoldItalic      font.TimesBI
+% Helvetica             font.Helv
+% Helvetica-Bold        font.HelvB
+% Helvetica-Oblique     font.HelvI
+% Helvetica-BoldOblique font.HelvBI
+% Courier               font.Cour
+% Courier-Bold          font.CourB
+% Courier-Oblique       font.CourI
+% Courier-BoldOblique   font.CourBI
+% Symbol                font.Symbol
+% ZapfDingbats          font.ZapfD
+	annot/font/.initial={font.Times},
+%	annot/font={"CMR10"},
+	annot/textSize/.initial=11,
+	annot/richtext/.initial=true,
+	annot/richtext/.default=true,
+	annot/popup size generic/.initial=auto,
+	annot/popup size snap/.initial=auto,
+	clickable coords size/.style={
+		/pgfplots/annot/popup size snap={#1},
+	},
+	annot/popup size/.style={
+		/pgfplots/annot/popup size generic={#1},
+		/pgfplots/annot/popup size snap={#1},
+	},
+	annot/width/.initial=,
+	annot/height/.initial=,
+	annot/jsname/.initial=,
+	annot/dim/.initial=2,
+	annot/xmin/.initial=,
+	annot/xmax/.initial=,
+	annot/ymin/.initial=,
+	annot/ymax/.initial=,
+	annot/zmin/.initial=,
+	annot/zmax/.initial=,
+	annot/xscale/.initial=, % "log" or "linear" or "log:<basis>"
+	annot/yscale/.initial=,
+	annot/zscale/.initial=,
+	annot/minminmin/.initial=,
+	annot/xaxis/.initial=,
+	annot/yaxis/.initial=,
+	annot/zaxis/.initial=,
+	% format: 
+	% 	[<plot1coords>, <plot2coords>,...,<plotncoords>]
+	% with <ploticoords> = [<coord>,<coord>,....,<coord>]
+	% and <coord> = [ <x>, <y>, "text" ]
+	% for example:
+	% 	[[[0.0e0,-4.0849609e-1,": (0,0)"],[1.25e-1,-3.7412109e-1,": (3,1)"],[2.5e-1,-3.0849609e-1,": (2,1)"],[3.75e-1,-2.1162109e-1,": (3,3)"],[5.0e-1,-8.3496094e-2,": (1,1)"],[6.25e-1,7.5878906e-2,": (3,5)"],[7.5e-1,2.6650391e-1,": (2,3)"],[8.75e-1,4.8837891e-1,": (3,7)"],[1.0e0,7.4150391e-1,": (0,1)"]]]
+	annot/collected plots/.initial=,
+	annot/snap dist/.initial=4,
+	every semilogy axis/.append style={/pgfplots/annot/point format={(\%.1f, \%.1e)}},
+	every semilogx axis/.append style={/pgfplots/annot/point format={(\%.1e, \%.1f)}},
+	every loglog axis/.append style={/pgfplots/annot/point format={(\%.1e, \%.1e)}},
+}
+
+\pgfkeysifdefined{/pgfplots/annot/xy pattern}{%
+}{%
+	\pgfkeyssetvalue{/pgfplots/annot/xy pattern}{(xy)}%
+}%
+\pgfkeysifdefined{/pgfplots/annot/no such coord}{%
+}{%
+	\pgfkeyssetvalue{/pgfplots/annot/no such coord}{--}%
+}%
+
+% ATTENTION:
+% The eforms package creates \begin{Form} and \end{Form} in \AtBeginDocument and \AtEndDocument!
+\def\pgfplots@glob@TMPa{pgfsys-pdftex.def}
+\ifx\pgfplots@glob@TMPa\pgfsysdriver
+	\RequirePackage[pdftex]{insdljs}
+	\RequirePackage[pdftex]{eforms}
+\else
+\def\pgfplots@glob@TMPa{pgfsys-dvipdfm.def}
+\ifx\pgfplots@glob@TMPa\pgfsysdriver
+	\RequirePackage[dvipdfm]{insdljs}
+	\RequirePackage[dvipdfm]{eforms}
+\else
+\def\pgfplots@glob@TMPa{pgfsys-dvips.def}
+\ifx\pgfplots@glob@TMPa\pgfsysdriver
+	\RequirePackage[dvips]{insdljs}
+	\RequirePackage[dvips]{eforms}
+\else
+\def\pgfplots@glob@TMPa{pgfsys-textures.def}
+\ifx\pgfplots@glob@TMPa\pgfsysdriver
+	\RequirePackage[textures]{insdljs}
+	\RequirePackage[textures]{eforms}
+\else
+	\RequirePackage{insdljs}
+	\RequirePackage{eforms}
+\fi\fi\fi\fi
+
+% Work-around for a bug in \begindljs of acrotex:
+% if " is active, \begindljs will be wrong.
+%--------------------------------------------------
+% HAS BEEN FIXED IN THE MEANTIME
+% \def\begindljs
+% {%
+%     \iwvo{\string\begingroup}
+%     {\uccode`c=`\%\uppercase{\iwvo{\string\obeyspaces\string\obeylines\string\global\string\let\string^\string^M=\string\jsR c}}}
+%     {\escapechar=-1 \lccode`C=`\%\lowercase{\iwvo{\string\\catcode`\string\\"=12C}}}
+% }
+%-------------------------------------------------- 
+
+% Bugfix to fix incompatibility when '<' and '>' are active (as for
+% \usepackage[spanish]{babel}:
+\def\write@objs@BUGGY
+{%
+    \iwvo{\begingroup}
+    {\lccode`C=`\%\lowercase{\iwvo{\string\ccpdftex C}}}
+    {\lccode`C=`\%\lowercase{\iwvo{\string\input{dljscc.def}C\the\dljsobjtoks}}}
+    \iwvo{\endgroup}
+    \iwvo{\string\endinput}%
+}
+\def\write@objs@CORRECT
+{%
+	\iwvo{\begingroup}
+	\iwvo{\string\catcode`\string\<=12 }
+	\iwvo{\string\catcode`\string\>=12 }
+	{\lccode`C=`\%\lowercase{\iwvo{\string\ccpdftex C}}}
+	{\lccode`C=`\%\lowercase{\iwvo{\string\input{dljscc.def}C\the\dljsobjtoks}}}
+	\iwvo{\endgroup}
+	\iwvo{\string\endinput}%
+}
+\pgfutil@ifundefined{write@objs}{}{%
+	\ifx\write@objs\write@objs@BUGGY
+		\let\write@objs=\write@objs@CORRECT
+	\fi
+}%
+
+\def\pgfplots@clickable@no{0}
+
+% This catcode-hackery is too much for me, I don't get '|' to work in
+% conjunction with ltxdoc document style.
+% So, I simply use \pgfplotsVERTBAR instead... *sigh*.
+{
+\catcode`\"=12
+\gdef\pgfplotsDQ{"}%
+\catcode`\|=12
+\gdef\pgfplotsVERTBAR{|}%
+\catcode`\#=12
+\gdef\pgfplotsHASH{#}%
+\catcode`\%=12 \gdef\pgfplotsPERCENT{%}}
+
+% this here is a bugfix to resolve an incompatibility between insdljs
+% an \usepackage[spanish]{babel}:
+\def\@roman#1{\romannumeral #1}%
+
+% FIXME : write this stuff DIRECTLY into a pdf using \pdfobj! I don't
+% need ANY TeX code inside of the methods. Maybe I can even use some
+% sort of "include external .js file" command instead of /S /Javascript /JS
+%
+% FIXME : collect this stuff using \beginpgfplotsverbatim ...
+% \endpgfplotsverbatim to avoid the \catcode problems! Who knows
+% whether there are more of them...
+%
+% FIXME : using '\jobname' here produces a bug in insdljs :-(
+% The problem: insdljs creates a macro named 'dlsj\jobname' or
+% something like that, but if fails to use '\csname' properly. So:
+% only normal letters are allowed inside of the argument here.
+\begin{insDLJS}[processAnnotatedPlot]{pgfplotsJS}{pgfplots Clickable Plot Code}
+/*********************************************************************************
+ * function sprintf() - written by Kevin van Zonneveld as part of the php to javascript 
+ * conversion project.
+ * 
+ * More info at: http://kevin.vanzonneveld.net/techblog/article/phpjs_licensing/
+ * 
+ * This is version: 1.33
+ * php.js is copyright 2008 Kevin van Zonneveld.
+ * 
+ * Portions copyright Michael White (http://crestidg.com), _argos, Jonas
+ * Raoni Soares Silva (http://www.jsfromhell.com), Legaev Andrey, Ates Goral
+ * (http://magnetiq.com), Philip Peterson, Martijn Wieringa, Webtoolkit.info
+ * (http://www.webtoolkit.info/), Carlos R. L. Rodrigues
+ * (http://www.jsfromhell.com), Ash Searle (http://hexmen.com/blog/),
+ * Erkekjetter, GeekFG (http://geekfg.blogspot.com), Johnny Mast
+ * (http://www.phpvrouwen.nl), marrtins, Alfonso Jimenez
+ * (http://www.alfonsojimenez.com), Aman Gupta, Arpad Ray
+ * (mailto:arpad@php.net), Karol Kowalski, Mirek Slugen, Thunder.m, Tyler
+ * Akins (http://rumkin.com), d3x, mdsjack (http://www.mdsjack.bo.it), Alex,
+ * Alexander Ermolaev (http://snippets.dzone.com/user/AlexanderErmolaev),
+ * Allan Jensen (http://www.winternet.no), Andrea Giammarchi
+ * (http://webreflection.blogspot.com), Arno, Bayron Guevara, Ben Bryan,
+ * Benjamin Lupton, Brad Touesnard, Brett Zamir, Cagri Ekin, Cord, David,
+ * David James, DxGx, FGFEmperor, Felix Geisendoerfer
+ * (http://www.debuggable.com/felix), FremyCompany, Gabriel Paderni, Howard
+ * Yeend, J A R, Leslie Hoare, Lincoln Ramsay, Luke Godfrey, MeEtc
+ * (http://yass.meetcweb.com), Mick@el, Nathan, Nick Callen, Ozh, Pedro Tainha
+ * (http://www.pedrotainha.com), Peter-Paul Koch
+ * (http://www.quirksmode.org/js/beat.html), Philippe Baumann, Sakimori,
+ * Sanjoy Roy, Simon Willison (http://simonwillison.net), Steve Clay, Steve
+ * Hilder, Steven Levithan (http://blog.stevenlevithan.com), T0bsn, Thiago
+ * Mata (http://thiagomata.blog.com), Tim Wiel, XoraX (http://www.xorax.info),
+ * Yannoo, baris ozdil, booeyOH, djmix, dptr1988, duncan, echo is bad, gabriel
+ * paderni, ger, gorthaur, jakes, john (http://www.jd-tech.net), kenneth,
+ * loonquawl, penutbutterjelly, stensi
+ * 
+ * Dual licensed under the MIT (MIT-LICENSE.txt)
+ * and GPL (GPL-LICENSE.txt) licenses.
+ * 
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the
+ * "Software"), to deal in the Software without restriction, including
+ * without limitation the rights to use, copy, modify, merge, publish,
+ * distribute, sublicense, and/or sell copies of the Software, and to
+ * permit persons to whom the Software is furnished to do so, subject to
+ * the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included
+ * in all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ * IN NO EVENT SHALL KEVIN VAN ZONNEVELD BE LIABLE FOR ANY CLAIM, DAMAGES
+ * OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
+ */ 
+// ATTENTION: this method has been masked such that special characters of TeX and javascript 
+// don't produce problems.
+function sprintf( ) {
+    // Return a formatted string
+    // 
+    // +    discuss at: http://kevin.vanzonneveld.net/techblog/article/javascript_equivalent_for_phps_sprintf/
+    // +       version: 804.1712
+    // +   original by: Ash Searle (http://hexmen.com/blog/)
+    // + namespaced by: Michael White (http://crestidg.com)
+    // *     example 1: sprintf("\pgfplotsPERCENT01.2f", 123.1);
+    // *     returns 1: 123.10
+
+    var regex = /\pgfplotsPERCENT\pgfplotsPERCENT\pgfplotsVERTBAR\pgfplotsPERCENT(\d+\$)?([-+\pgfplotsHASH0 ]*)(\*\d+\$\pgfplotsVERTBAR\*\pgfplotsVERTBAR\d+)?(\.(\*\d+\$\pgfplotsVERTBAR\*\pgfplotsVERTBAR\d+))?([scboxXuidfegEG])/g;
+    var a = arguments, i = 0, format = a[i++];
+
+    // pad()
+    var pad = function(str, len, chr, leftJustify) {
+        var padding = (str.length >= len) ? '' : Array(1 + len - str.length >>> 0).join(chr);
+        return leftJustify ? str + padding : padding + str;
+    };
+
+    // justify()
+    var justify = function(value, prefix, leftJustify, minWidth, zeroPad) {
+        var diff = minWidth - value.length;
+        if (diff > 0) {
+            if (leftJustify \pgfplotsVERTBAR\pgfplotsVERTBAR !zeroPad) {
+            value = pad(value, minWidth, ' ', leftJustify);
+            } else {
+            value = value.slice(0, prefix.length) + pad('', diff, '0', true) + value.slice(prefix.length);
+            }
+        }
+        return value;
+    };
+
+    // formatBaseX()
+    var formatBaseX = function(value, base, prefix, leftJustify, minWidth, precision, zeroPad) {
+        // Note: casts negative numbers to positive ones
+        var number = value >>> 0;
+        prefix = prefix && number && {'2': '0b', '8': '0', '16': '0x'}[base] \pgfplotsVERTBAR\pgfplotsVERTBAR '';
+        value = prefix + pad(number.toString(base), precision \pgfplotsVERTBAR\pgfplotsVERTBAR 0, '0', false);
+        return justify(value, prefix, leftJustify, minWidth, zeroPad);
+    };
+
+    // formatString()
+    var formatString = function(value, leftJustify, minWidth, precision, zeroPad) {
+        if (precision != null) {
+            value = value.slice(0, precision);
+        }
+        return justify(value, '', leftJustify, minWidth, zeroPad);
+    };
+
+    // finalFormat()
+    var doFormat = function(substring, valueIndex, flags, minWidth, _, precision, type) {
+        if (substring == '\pgfplotsPERCENT\pgfplotsPERCENT') return '\pgfplotsPERCENT';
+
+        // parse flags
+        var leftJustify = false, positivePrefix = '', zeroPad = false, prefixBaseX = false;
+        for (var j = 0; flags && j < flags.length; j++) switch (flags.charAt(j)) {
+            case ' ': positivePrefix = ' '; break;
+            case '+': positivePrefix = '+'; break;
+            case '-': leftJustify = true; break;
+            case '0': zeroPad = true; break;
+            case '\pgfplotsHASH': prefixBaseX = true; break;
+        }
+
+        // parameters may be null, undefined, empty-string or real valued
+        // we want to ignore null, undefined and empty-string values
+        if (!minWidth) {
+            minWidth = 0;
+        } else if (minWidth == '*') {
+            minWidth = +a[i++];
+        } else if (minWidth.charAt(0) == '*') {
+            minWidth = +a[minWidth.slice(1, -1)];
+        } else {
+            minWidth = +minWidth;
+        }
+
+        // Note: undocumented perl feature:
+        if (minWidth < 0) {
+            minWidth = -minWidth;
+            leftJustify = true;
+        }
+
+        if (!isFinite(minWidth)) {
+            throw new Error('sprintf: (minimum-)width must be finite');
+        }
+
+        if (!precision) {
+            precision = 'fFeE'.indexOf(type) > -1 ? 6 : (type == 'd') ? 0 : void(0);
+        } else if (precision == '*') {
+            precision = +a[i++];
+        } else if (precision.charAt(0) == '*') {
+            precision = +a[precision.slice(1, -1)];
+        } else {
+            precision = +precision;
+        }
+
+        // grab value using valueIndex if required?
+        var value = valueIndex ? a[valueIndex.slice(0, -1)] : a[i++];
+
+        switch (type) {
+            case 's': return formatString(String(value), leftJustify, minWidth, precision, zeroPad);
+            case 'c': return formatString(String.fromCharCode(+value), leftJustify, minWidth, precision, zeroPad);
+            case 'b': return formatBaseX(value, 2, prefixBaseX, leftJustify, minWidth, precision, zeroPad);
+            case 'o': return formatBaseX(value, 8, prefixBaseX, leftJustify, minWidth, precision, zeroPad);
+            case 'x': return formatBaseX(value, 16, prefixBaseX, leftJustify, minWidth, precision, zeroPad);
+            case 'X': return formatBaseX(value, 16, prefixBaseX, leftJustify, minWidth, precision, zeroPad).toUpperCase();
+            case 'u': return formatBaseX(value, 10, prefixBaseX, leftJustify, minWidth, precision, zeroPad);
+            case 'i':
+            case 'd': {
+                        var number = parseInt(+value);
+                        var prefix = number < 0 ? '-' : positivePrefix;
+                        value = prefix + pad(String(Math.abs(number)), precision, '0', false);
+                        return justify(value, prefix, leftJustify, minWidth, zeroPad);
+                    }
+            case 'e':
+            case 'E':
+            case 'f':
+            case 'F':
+            case 'g':
+            case 'G':
+                        {
+                        var number = +value;
+                        var prefix = number < 0 ? '-' : positivePrefix;
+                        var method = ['toExponential', 'toFixed', 'toPrecision']['efg'.indexOf(type.toLowerCase())];
+                        var textTransform = ['toString', 'toUpperCase']['eEfFgG'.indexOf(type) \pgfplotsPERCENT 2];
+                        value = prefix + Math.abs(number)[method](precision);
+                        return justify(value, prefix, leftJustify, minWidth, zeroPad)[textTransform]();
+                    }
+            default: return substring;
+        }
+    };
+
+    return format.replace(regex, doFormat);
+}
+/*********************************************************************************/
+
+% see https://developer.mozilla.org/en/Core_JavaScript_1.5_Guide/Inheritance
+
+var lastPoint = null;
+var posOnMouseDownX = -1;
+var posOnMouseDownY = -1;
+
+// preallocation.
+var tmpArray1 = new Array(3);
+var tmpArray2 = new Array(3);
+
+var clickablePatternForXY="\pgfkeysvalueof{/pgfplots/annot/xy pattern}";
+var clickableStringNoSuchCoord = "\pgfkeysvalueof{/pgfplots/annot/no such coord}";
+
+var nan = Number.NaN;
+var NAN = Number.NaN;
+var inf = Number.POSITIVE_INFINITY;
+var INF = Number.POSITIVE_INFINITY;
+
+var pgfplotsAxisRegistry = new Object();
+pgfplotsAxisRegistry["rectangle"]	= function( axisAnnotObj ) { return new PGFPlotsAxis( axisAnnotObj ); }
+pgfplotsAxisRegistry["ternary"]		= function( axisAnnotObj ) { return new PGFPlotsTernaryAxis( axisAnnotObj ); }
+
+function PGFPlotsClassExtend( child, super )
+{
+	for (var property in super.prototype) {
+		if (typeof child.prototype[property] == "undefined")
+			child.prototype[property] = super.prototype[property];
+	}
+	return child;
+}
+
+function PGFPlotsCreateAxisFor( axisAnnotObj, docObject )
+{
+	var ret = null;
+	if( pgfplotsAxisRegistry[axisAnnotObj.axisType] ) {
+		ret = pgfplotsAxisRegistry[axisAnnotObj.axisType](axisAnnotObj);
+		ret.docObject = docObject;
+	}
+	return ret;
+}
+
+function ClickableCoord(canvasx,canvasy, realx,realy, text)
+{
+	this.dim=2;
+	this.canvasx=canvasx;
+	this.canvasy=canvasy;
+	this.realx=realx;
+	this.realy=realy;
+	this.text=text;
+}
+ClickableCoord.prototype = 
+{
+	dim : 0,
+	canvasx : 0,
+	canvasy : 0,
+	realx : 0,
+	realy : 0,
+	realz : 0,
+	text : "",
+	sourcePlotIdx : -1,
+	sourceCoordIdx : -1,
+
+	isSnapToNearestCoord : function() {
+		return this.sourcePlotIdx >= 0;
+	},
+
+	/**
+	 * Takes an already existing TextField, changes its value to point.text and places it at (x,y).
+	 * Additional \c displayOpts will be used to format it.
+	 */
+	draw : function( docObject, canvas, displayOpts )
+	{
+		var charsX = 1;
+		var charsY = 1.5;
+		var popupSize = ( this.isSnapToNearestCoord() ? displayOpts.popupSizeSnap : displayOpts.popupSizeGeneric );
+		if( popupSize == "auto" ) {
+			charsX = Math.max( 5,this.text.length )/2;
+
+		} else {
+			var commaOff = popupSize.indexOf( "," );
+			if( commaOff >= 0 ) {
+				charsX = popupSize.substring( 0, commaOff );
+				charsY = popupSize.substring( commaOff+1 );
+			} else
+				charsX = popupSize;
+		}
+	//	console.println( this.text );
+
+		if( !displayOpts.richText  )
+			canvas.value = ""+this.text;
+		else {
+			canvas.richText=true;
+			var xmlValue = "<?xml version=\"1.0\"?>"+
+				"<body> " + % xmlns=\"http://www.w3.org/1999/xhtml\" xmlns:xfa=\"http://www.xfa.org/schema/xfa-data/1.0/\" xfa:APIVersion=\"Acrobat:9.3.2\" xfa:spec=\"2.0.2\">" +
+				%"<p>"+
+				"<span>"+ % style="font-size:9.0pt;text-align:left;color:#7E0000;font-weight:normal;font-style:normal;font-family:Helvetica,sans-serif;font-stretch:normal"
+					this.text + 
+				"</span>"+
+				%"</p>"+
+				"</body>";
+			canvas.richValue = util.xmlToSpans(xmlValue);
+% debug helper:
+% spans= new Array();
+% spans[0] = new Object();
+% spans[0].text = this.text;
+% spans[0].textColor = ["RGB",0.5,0,0];
+% canvas.richValue = spans;
+% console.println(util.spansToXML(canvas.richValue));
+	 	}
+		var R = canvas.rect;
+		R[0] = this.canvasx;
+		R[1] = this.canvasy;
+		R[2] = R[0] + charsX*displayOpts.textSize;
+		R[3] = R[1] - charsY*displayOpts.textSize;
+		canvas.rect = R;
+		canvas.textFont = displayOpts.textFont;
+		canvas.textSize = displayOpts.textSize;
+		canvas.multiline = true;
+		canvas.fillColor = displayOpts.fillColor;//["RGB",1,1,.855];
+		canvas.doNotSpellCheck = true;
+		canvas.readonly = true;
+		if( displayOpts.printable )
+			canvas.display = display.visible;
+		else
+			canvas.display = display.noPrint;
+		
+		var mark = docObject.getField( canvas.name + "mark");
+		if( mark ) {
+			R = mark.rect;
+			R[0]=this.canvasx-2;
+			R[1]=this.canvasy-2;
+			R[2]=R[0]+4;
+			R[3]=R[1]+4;
+			mark.value="";
+			mark.rect = R;
+			mark.fillColor = ["RGB",0,0,0];
+			mark.doNotSpellCheck = true;
+			mark.readonly = true;
+			if( displayOpts.printable )
+				mark.display = display.visible;
+			else
+				mark.display = display.noPrint;
+		}
+	}
+}
+
+
+
+function PGFPlotsAxis(properties) {
+	for (var property in properties)
+		this[property] = properties[property];
+}
+PGFPlotsAxis.prototype = {
+	/**
+	 * @return an instance of ClickableCoord or null.
+	 * The returned canvas coordinates are NOT yet initialised.
+	 */
+	findNearest : function( point, rect, startSearchAt )
+	{
+		var actx;
+		var acty;
+		var minSoFar = 1e324;
+		var minPtSoFar = null;
+		var tmpPt = null;
+		var dist =0;
+		var startPlot = 0;
+		var startCoord = 0;
+		var collectedPlots = this.collectedPlots;
+		if( point.dim > 2 )
+			tmpPt = new ClickableCoord(0,0,0,0,"");
+			
+		if( startSearchAt != null && startSearchAt.isSnapToNearestCoord() ) {
+			startPlot = startSearchAt.sourcePlotIdx;
+			startCoord= startSearchAt.sourceCoordIdx;
+		}
+		for( var i = startPlot; i<collectedPlots.length; ++i ) {
+			for( var j = startCoord; j<collectedPlots[i].length; ++j ) {
+				if( point.dim == 2 ) {
+					actx = collectedPlots[i][j][0] - point.realx;
+					acty = collectedPlots[i][j][1] - point.realy;
+				} else {
+					// dim > 2 should be compared using CANVAS coordinates, not real coordinates:
+					tmpPt.realx = collectedPlots[i][j][0];
+					tmpPt.realy = collectedPlots[i][j][1];
+					if( collectedPlots[i][j].length-1 >= 3 )
+						tmpPt.realz = collectedPlots[i][j][2];
+					else
+						tmpPt.realz = 0;
+					this.computeCanvasFor( tmpPt, rect );
+					actx = tmpPt.canvasx - point.canvasx;
+					acty = tmpPt.canvasy - point.canvasy;
+				}
+				dist = actx*actx + acty*acty;
+				if( dist < minSoFar ) {
+					if( minPtSoFar == null )
+						minPtSoFar = new ClickableCoord(-1,-1,0,0,"");
+					minPtSoFar.realx = collectedPlots[i][j][0];
+					minPtSoFar.realy = collectedPlots[i][j][1];
+					if( collectedPlots[i][j].length-1 >= 3 )
+						minPtSoFar.realz = collectedPlots[i][j][2];
+					else
+						minPtSoFar.realz = 0;
+					minPtSoFar.text= collectedPlots[i][j][ collectedPlots[i][j].length-1 ];
+					minPtSoFar.sourcePlotIdx = i;
+					minPtSoFar.sourceCoordIdx = j;
+					minSoFar = dist;
+				}
+			}
+		}
+		if( minPtSoFar )
+			this.computeCanvasFor(minPtSoFar,rect);
+		return minPtSoFar;
+	},
+
+	/**
+	 * Returns either a ClickableCoord describing the point under the mouse cursor or a snap--to--nearest result near the mouse cursor.
+	 *
+	 * @param this the axis in which we shall search.
+	 * @param x,y the input canvas coordinates
+	 * @param canvas a pointer to the Drawing object (TextField) whose 'rect' field is the drawing canvas.
+	 * @param startSearch either null or an instance of ClickableCoord for which isSnapToNearestCoord() returns true. 
+	 *   If it is not null, the next matching point *after* it will be returned (or null if there is no matching snap--to--nearest coord after it).
+	 * @return an instance of ClickableCoord or null in case the startSearch!=null and there are no further matches.
+	 */
+	findClickableCoord : function( x,y, canvas, startSearch )
+	{
+		// Get and modify bounding box. The mouse movement is only accurate up to one point 
+		// (mouseX and mouseY are integers), so the bounding box should be an integer as well.
+		var rect = canvas.rect; // rect = [ mincanvasx mincanvasy maxcanvasx maxcanvasy ]; relative to upper left corner
+		rect[0] = Math.round(rect[0]);
+		rect[1] = Math.round(rect[1]);
+		rect[2] = Math.round(rect[2]);
+		rect[3] = Math.round(rect[3]);
+		canvas.rect= rect;
+
+		var realx=-1;
+		var realy=-1;
+		if( this.dim == 2 ) {
+			// the following code inverts computeCanvasFor():
+			var minminminx = rect[0] + this.minminmin[0];
+			var minminminy = rect[3] + this.minminmin[1];
+			var vecx = x - minminminx;
+			var vecy = y - minminminy;
+			var A = [ 
+				[this.xaxis[0], this.yaxis[0]],
+				[this.xaxis[1], this.yaxis[1]] ];
+			var b = [ vecx, vecy ];
+
+			var rowpermut = [0, 1];
+			if( Math.abs(A[0][0]) < 0.0001 ) {
+				rowpermut[0] = 1;
+				rowpermut[1] = 0;
+			}
+			var pivot = -A[rowpermut[1]][0] / A[rowpermut[0]][0];
+			var unity = (b[rowpermut[1]] + pivot*b[rowpermut[0]]) / (A[rowpermut[1]][1] + pivot * A[rowpermut[0]][1]);
+			var unitx = (b[rowpermut[0]] - A[rowpermut[0]][1] * unity) / A[rowpermut[0]][0];
+
+			realx = this.xmin + unitx * (this.xmax - this.xmin);
+			realy = this.ymin + unity * (this.ymax - this.ymin);
+			//console.println( "unitx = " + unitx + "; unity " + unity );
+		}
+
+
+		var point = new ClickableCoord( x,y, realx, realy, clickablePatternForXY);
+		point.dim = this.dim;
+
+		if( startSearch && !startSearch.isSnapToNearestCoord() ) {
+			console.println( "WARNING: startSearch().isSnapToNearestCoord() has been expected!" );
+			startSearch = null;
+		}
+		
+		var nearestClickableCoord = this.findNearest( point, rect, startSearch );
+		if( nearestClickableCoord ) {
+			if( getDist( point.canvasx,point.canvasy,  nearestClickableCoord.canvasx, nearestClickableCoord.canvasy ) < this.snapDist ) {
+				return nearestClickableCoord;
+			}
+		}
+		if( startSearch )
+			point = null;
+		if( this.dim > 2 ) { // we didn't find a snap--to--nearest point.
+			point.text = clickableStringNoSuchCoord;
+		}
+
+		return point;
+	},
+
+	/**
+	 * Takes point's real coordinates and computes its canvas coordinates. The result is written back into \c point.
+	 */
+	computeCanvasFor : function( point, rect)
+	{
+		var unitx = (point.realx - this.xmin) / (this.xmax -this.xmin);
+		var unity = (point.realy - this.ymin) / (this.ymax -this.ymin);
+
+		point.canvasx = rect[0] + this.minminmin[0] + this.xaxis[0] * unitx + this.yaxis[0] * unity;
+		point.canvasy = rect[3] + this.minminmin[1] + this.xaxis[1] * unitx + this.yaxis[1] * unity;
+		if( this.dim >= 3 ) {
+			var unitz = (point.realz - this.zmin) / (this.zmax -this.zmin);
+			point.canvasx += this.zaxis[0] * unitz;
+			point.canvasy += this.zaxis[1] * unitz;
+		}
+	},
+
+	handleDragNDrop : function( formName, displayOpts )
+	{
+		if( this.dim == 3 )
+			return;
+
+		var result = this.docObject.getField( formName + "-result");
+		var result2 = this.docObject.getField( formName + "-result2");
+		var resultmark = this.docObject.getField( formName + "-resultmark");
+		var result2mark = this.docObject.getField( formName + "-result2mark");
+		var slope 	= this.docObject.getField( formName + "-slope" );
+		if( !result ) {
+			console.println( "WARNING: there is no TextField \"" + formName + "-result\" to display results for interactive element \"" + formName + "\"");
+			return;
+		}
+
+		var a = this.docObject.getField(formName);
+		if( ! a ) {
+			console.println( "Warning: there is no form named \"" + formName + "\"" );
+			return;
+		}
+		// dragging the mouse results in slope computation:
+		// placeClickableCoord shows the endpoint coords and returns the (transformed) coordinates into tmpArray1 and tmpArray2:
+		this.placeClickableCoord( 
+			this.findClickableCoord( posOnMouseDownX, posOnMouseDownY, a, null ),
+			result, displayOpts, tmpArray1 );
+		this.placeClickableCoord( 
+			this.findClickableCoord( mouseX, mouseY, a, null ),
+			result2, displayOpts, tmpArray2 );
+
+		var m =  ( tmpArray2[1] - tmpArray1[1] ) / ( tmpArray2[0] - tmpArray1[0] );
+		var n =  tmpArray1[1] - m * tmpArray1[0];
+
+		var slopePoint = new ClickableCoord(
+			0.5 * ( mouseX + posOnMouseDownX ),
+			0.5 * ( mouseY + posOnMouseDownY ),
+			-1,-1,
+			sprintf( displayOpts.slopeFormat, m, n ));
+		slopePoint.draw(
+			this.docObject,
+			slope,
+			displayOpts );
+
+		// FIXME! these document rights seem to forbid modifications to annotations, although they work for text fields!?
+		//var lineobj = this.getAnnot( a.page, formName + '-line' );
+		//console.println( 'lineobj = ' + lineobj );
+		//lineobj.points = [[mouseX,mouseY],[posOnMouseDownX,posOnMouseDownY]];
+		//lineobj.display = display.visible;
+	},
+
+	handleClick : function( formName, displayOpts )
+	{
+		var result = this.docObject.getField( formName + "-result");
+		var result2 = this.docObject.getField( formName + "-result2");
+		var resultmark = this.docObject.getField( formName + "-resultmark");
+		var result2mark = this.docObject.getField( formName + "-result2mark");
+		var slope 	= this.docObject.getField( formName + "-slope" );
+		if( !result ) {
+			console.println( "WARNING: there is no TextField \"" + formName + "-result\" to display results for interactive element \"" + formName + "\"");
+			return;
+		}
+		result2.display = display.hidden;
+		slope.display = display.hidden;
+		result2mark.display = display.hidden;
+
+		var a = this.docObject.getField(formName);
+		if( ! a ) {
+			console.println( "Warning: there is no form named \"" + formName + "\"" );
+			return;
+		}
+
+		var point = null;
+		var bSearchPoint = true;
+		if( lastPoint ) {
+			if( getDist( mouseX,mouseY,  lastPoint.canvasx,lastPoint.canvasy) < this.snapDist ) {
+				if( lastPoint.isSnapToNearestCoord() )
+					++lastPoint.sourceCoordIdx;
+				else
+					bSearchPoint = false;
+
+			} else
+				lastPoint = null; // no search restriction.
+		}
+		if( bSearchPoint )
+			point = this.findClickableCoord( mouseX, mouseY, a, lastPoint ); 
+
+		lastPoint = point;
+
+		// clicking twice onto the same point hides it:
+		if( point == null ) {
+			result.display = display.hidden;
+			resultmark.display = display.hidden;
+			return;
+		}
+
+		this.placeClickableCoord( 
+			point,
+			result, displayOpts, null );
+	},
+
+	/**
+	 * Changes all required Field values of \c plotRegionField, inserts the proper
+	 * value and displays it at the pdf positions (x,y) .
+	 *
+	 * @param plotRegionField a reference to a Field object.
+	 * @param x the x canvas coordinate where the annotation shall be placed and which is used to determine
+	 *  the annotation text.
+	 * @param y the corresponding y coord.
+	 * @param axis An object containing axis references.
+	 * @param displayOpts An object for display flags.
+	 * @param[out] retCoords will be filled with the point in axis coordinates (should have length axis.dim).
+	 */
+	placeClickableCoord : function( point, textField, displayOpts, retCoords )
+	{
+		var transformedCoordx = point.realx;
+		var transformedCoordy = point.realy;
+
+		if( this.xscale.length >= 3 && this.xscale.substr(0,3) == "log" ) {
+			if( this.xscale.length > 4 ) // log:<basis>
+				point.realx = point.realx * Math.log( this.xscale.substr(4) );
+			else {
+				// pgfplots handles log plots base e INTERNALLY, but uses base 10 for display.
+				// convert to base 10:
+				transformedCoordx = point.realx / Math.log(10);
+			}
+			point.realx = Math.exp(point.realx);
+		}
+		if( this.yscale.length >= 3 && this.yscale.substr(0,3) == "log" ) {
+			if( this.yscale.length > 4 ) // log:<basis>
+				point.realy = point.realy * Math.log( this.yscale.substr(4) );
+			else {
+				// pgfplots handles log plots base e INTERNALLY, but uses base 10 for display.
+				// convert to base 10:
+				transformedCoordy = point.realy / Math.log(10);
+			}
+			point.realy = Math.exp(point.realy);
+		}
+		if( this.dim > 2 ) {
+			if( this.zscale.length >= 3 && this.zscale.substr(0,3) == "log" ) {
+				if( this.zscale.length > 4 ) // log:<basis>
+					point.realz = point.realz * Math.log( this.zscale.substr(4) );
+				else {
+					// pgfplots handles log plots base e INTERNALLY, but uses base 10 for display.
+					// convert to base 10:
+					transformedCoordz = point.realz / Math.log(10);
+				}
+				point.realz = Math.exp(point.realz);
+			}
+		}
+
+		// replace the text substring "(xy)" with the actual coordinates:
+		var coordOff = point.text.indexOf(clickablePatternForXY);
+		if( coordOff >= 0 ) {
+			point.text = 
+				point.text.substring( 0, coordOff ) + 
+				sprintf( displayOpts.pointFormat, point.realx,point.realy,point.realz) +
+				point.text.substr( coordOff+clickablePatternForXY.length );
+		}
+		point.draw( this.docObject, textField, displayOpts );
+
+		if( retCoords ) {
+			retCoords[0] = transformedCoordx;
+			retCoords[1] = transformedCoordy;
+			if( this.dim > 2 )
+				retCoords[2] = transformedCoordz;
+		}
+
+	}
+
+}
+
+function PGFPlotsTernaryAxis(properties) {
+	PGFPlotsAxis.call(this,properties);
+}
+PGFPlotsTernaryAxis.prototype = {
+	findClickableCoord : function( x,y, canvas, startSearch )
+	{
+		// Get and modify bounding box. The mouse movement is only accurate up to one point 
+		// (mouseX and mouseY are integers), so the bounding box should be an integer as well.
+		var rect = canvas.rect; // rect = [ mincanvasx mincanvasy maxcanvasx maxcanvasy ]; relative to lower left corner
+		rect[0] = Math.round(rect[0]);
+		rect[1] = Math.round(rect[1]);
+		rect[2] = Math.round(rect[2]);
+		rect[3] = Math.round(rect[3]);
+		canvas.rect= rect;
+
+		var ternaryScale = 1 / ( rect[2] - rect[0] );
+		var X = ( x - rect[0] ) * ternaryScale;
+		var Y = ( y - rect[3] ) * ternaryScale;
+
+		var realx = 1.15470053837925 * Y; // 2/sqrt(3) 
+		var realz = X - 0.5 * realx;
+		var realy = 1 - realx - realz;
+
+		if( realx < 0 \pgfplotsVERTBAR\pgfplotsVERTBAR realy < 0 \pgfplotsVERTBAR\pgfplotsVERTBAR realz < 0 )
+			return null;
+
+		var point = new ClickableCoord( x,y, realx, realy, clickablePatternForXY);
+		point.realz = realz;
+		point.dim = this.dim;
+
+		if( startSearch && !startSearch.isSnapToNearestCoord() ) {
+			console.println( "WARNING: startSearch().isSnapToNearestCoord() has been expected!" );
+			startSearch = null;
+		}
+		
+		var nearestClickableCoord = this.findNearest( point, rect, startSearch );
+		if( nearestClickableCoord ) {
+			if( getDist( point.canvasx,point.canvasy,  nearestClickableCoord.canvasx, nearestClickableCoord.canvasy ) < this.snapDist ) {
+				return nearestClickableCoord;
+			}
+		}
+		if( startSearch )
+			point = null;
+
+		return point;
+	},
+
+	/**
+	 * Takes point's real coordinates and computes its canvas coordinates. The result is written back into \c point.
+	 */
+	computeCanvasFor : function( point, rect)
+	{
+		var unitx = (point.realx - this.xmin) / (this.xmax -this.xmin);
+		var unity = (point.realy - this.ymin) / (this.ymax -this.ymin);
+		var unitz = (point.realz - this.zmin) / (this.zmax -this.zmin);
+
+		var ternaryScale = ( rect[2] - rect[0] );
+		point.canvasx = rect[0] + ternaryScale* 0.5 * (unitx + 2 * unitz);
+		point.canvasy = rect[3] + ternaryScale* 0.866025403784* unitx; // sqrt(3)/2
+	},
+}
+PGFPlotsClassExtend( PGFPlotsTernaryAxis, PGFPlotsAxis );
+
+
+
+function getVecLen( t1,t2 ) {
+	return Math.sqrt( t1*t1 + t2*t2);
+}
+function getDist( x1,y1, x2,y2 ) {
+	var t1 = (x1-x2);
+	var t2 = (y1-y2);
+	return getVecLen(t1,t2);
+}
+
+function axisMouseDown(formName ) 
+{
+	posOnMouseDownX = mouseX;
+	posOnMouseDownY = mouseY;
+}
+
+/**
+ * @param formName the name of the clickable button. It is expected to be as large as the underlying plot.
+ * @param axis an object with the fields
+ *   - xmin, xmax
+ *   - ymin, ymax
+ *   - xscale, yscale
+ * @param displayOpts an object with the fields
+ *   - pointFormat an sprintf format string to format the final point coordinates.
+ *   The default is  "(\pgfplotsPERCENT.2f,\pgfplotsPERCENT.2f)"
+ *   - fillColor the fill color for the annotation. Options are
+ *    transparent, gray, RGB or CMYK color. Default is
+ *       ["RGB",1,1,.855]
+ *	 - textFont / textSize
+ */
+function axisMouseUp(formName, axisAnnotObj, displayOpts)
+{
+	var axis = PGFPlotsCreateAxisFor(axisAnnotObj,this);
+	if( axis == null )
+		return;
+
+	if( Math.abs( mouseX - posOnMouseDownX ) > 6 \pgfplotsVERTBAR\pgfplotsVERTBAR
+		Math.abs( mouseY - posOnMouseDownY ) > 6 )
+	{
+		axis.handleDragNDrop( formName, displayOpts );
+
+	} else {
+		axis.handleClick( formName, displayOpts );
+	}
+}
+
+
+\end{insDLJS}
+%--------------------------------------------------
+% function hideClickableTextfields() {
+% 	for (var i = 0; i < this.numFields; i++) {
+% 		var fieldName = this.getNthFieldName(i);
+% 		console.println("checking Field " + fieldName + " ... ");
+% 		if( fieldName.substr( 0, 13 ) == "clickableplot" && fieldName.indexOf( "-result", 12 ) >= 0 ) {
+% 			console.println("hiding Field " + fieldName + " ... ");
+% 			this.getField( fieldName ).display = display.hidden;
+% 		}
+% 	}
+% }
+% hideClickableTextfields();
+%-------------------------------------------------- 
+
+
+\pgfkeysdef{/pgfplots/annot/xy pattern}{\pgfplots@clickable@xypat@error}%
+\pgfkeysdef{/pgfplots/annot/xy pattern/.initial}{\pgfplots@clickable@xypat@error}%
+\def\pgfplots@clickable@xypat@error{\pgfplots@error{Sorry, \string\pgfplotsset{annot/xy pattern/.initial=...} can only be assigned *before* \string\usepgfplotslibrary{clickable}}}%
+
+\pgfkeysdef{/pgfplots/annot/no such coord}{\pgfplots@clickable@nosuchcoord@error}%
+\pgfkeysdef{/pgfplots/annot/no such coord/.initial}{\pgfplots@clickable@nosuchcoord@error}%
+\def\pgfplots@clickable@nosuchcoord@error{\pgfplots@error{Sorry, \string\pgfplotsset{annot/no such coord/.initial=...} can only be assigned *before* \string\usepgfplotslibrary{clickable}}}%
+
+\def\pgfplots@clickable@beginaxis{%
+	\pgfplotsapplistXglobalnewempty\pgfplots@clickable@collectedplots
+	\gdef\pgfplots@clickable@collectedplots@isempty{1}%
+}%
+
+\def\pgfplots@clickable@startcoordcollect{%
+	\pgfplotsapplistXnewempty\pgfplots@clickable@collectedplot
+	\def\pgfplots@clickable@collectedplot@isempty{1}%
+}%
+
+{\catcode`\|=0 |catcode`|\=12 |gdef|pgfplots@clickable@bslash{\}}%
+{
+\catcode`\"=13
+\catcode`\|=13
+\catcode`\#=12
+\gdef\pgfplots@clickable@coordcollect@handlechars{%
+	\def"{\string\\\string\"}%
+	\def\#{#}%
+	\expandafter\def\csname \string"\endcsname{\string\\\string\"}%
+	\def|{\string"}%
+	\def\n{\pgfplots@clickable@bslash\string\n}%
+	\def\r{\pgfplots@clickable@bslash\string\r}%
+	\def\t{\pgfplots@clickable@bslash\string\t}%
+	\def\\{\pgfplots@clickable@bslash\pgfplots@clickable@bslash}%
+}%
+}
+\def\pgfplots@clickable@coordcollect#1{%
+	\begingroup
+	\ifx\pgfplots@current@point@x\pgfutil@empty
+		\def\pgfmathresult{nan}%
+	\else
+		\pgfplotscoordmath{x}{tostring}\pgfplots@current@point@x
+	\fi
+	\let\pgfplots@current@point@x=\pgfmathresult
+	%
+	\ifx\pgfplots@current@point@y\pgfutil@empty
+		\def\pgfmathresult{nan}%
+	\else
+		\pgfplotscoordmath{y}{tostring}\pgfplots@current@point@y
+	\fi
+	\let\pgfplots@current@point@y=\pgfmathresult
+	%
+	\ifpgfplots@curplot@threedim
+		\ifx\pgfplots@current@point@z\pgfutil@empty
+			\def\pgfmathresult{nan}%
+		\else
+			\pgfplotscoordmath{z}{tostring}\pgfplots@current@point@z
+		\fi
+		\let\pgfplots@current@point@z=\pgfmathresult
+	\fi
+	%
+	\begingroup
+		\pgfplots@clickable@coordcollect@handlechars
+		#1%
+		\xdef\pgfplots@glob@TMPa{\pgfplotsretval}%
+%\message{I have '\pgfplotsretval'}%
+	\endgroup
+	\xdef\pgfplots@glob@TMPa{\if1\pgfplots@clickable@collectedplot@isempty\else,\fi[\pgfplots@current@point@x,\pgfplots@current@point@y\ifpgfplots@curplot@threedim,\pgfplots@current@point@z\fi,"\pgfplots@glob@TMPa"]}%
+	\endgroup
+	\expandafter\pgfplotsapplistXpushback\expandafter{\pgfplots@glob@TMPa}\to\pgfplots@clickable@collectedplot
+	\def\pgfplots@clickable@collectedplot@isempty{0}%
+}%
+\def\pgfplots@clickable@endcoordcollect{%
+	\pgfplotsapplistXlet\pgfplots@clickable@collectedplot@=\pgfplots@clickable@collectedplot
+	\if1\pgfplots@clickable@collectedplots@isempty
+		\expandafter\pgfplotsapplistXglobalpushback\expandafter{\expandafter[\pgfplots@clickable@collectedplot@]}\to\pgfplots@clickable@collectedplots
+	\else
+		\expandafter\pgfplotsapplistXglobalpushback\expandafter{\expandafter,\expandafter[\pgfplots@clickable@collectedplot@]}\to\pgfplots@clickable@collectedplots
+	\fi
+	\gdef\pgfplots@clickable@collectedplots@isempty{0}%
+}%
+
+% Creates an area which is clickable. A click produces a popup which
+% contains information about the point under the cursor.
+%
+% The complete (!) context needs to be provided using key-value-pairs,
+% either in '#1' or set before invocation of \pgfplotsclickablecreate.
+%
+% This command actually creates an AcroForm which employs javascript
+% whenever it is clicked. A javascript Object is created which
+% represents the context (axis limits and options). This javascript
+% object is available at runtime.
+%
+% @remark This method is public and it is NOT restricted to pgfplots.
+% The pgfplots hook simply initialises the required key-value-pairs in
+% '#1'.
+% @remark This method does not draw anything. It initialises only a
+% clickable area and javascript code.
+%
+% The required key-value-pairs are documented in the pdf-manual or can
+% be seen above.
+%
+% @attention Complete key-value validation is NOT performed here. It
+% can happen that invalid options will produce javascript bugs when
+% opened with Acrobat Reader. Use the javascript console to find them.
+\def\pgfplotsclickablecreate[#1]{%
+	\def\pgfplots@loc@TMPa{#1}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+	\else
+		\pgfqkeys{/pgfplots/annot}{#1}%
+	\fi
+	\pgfkeysgetvalue{/pgfplots/annot/jsname}\pgfplots@clickable@uniquename
+	\ifx\pgfplots@clickable@uniquename\pgfutil@empty
+		\edef\pgfplots@clickable@uniquename{clickableplot\pgfplots@clickable@no}%
+		\begingroup
+			\c@pgf@counta=\pgfplots@clickable@no\relax
+			\advance\c@pgf@counta by1
+			\xdef\pgfplots@clickable@no{\the\c@pgf@counta}%
+		\endgroup
+	\fi
+	%
+	\pgfkeysgetvalue{/pgfplots/annot/collected plots}\pgfplots@clickable@collectedplots@@
+	\ifx\pgfplots@clickable@collectedplots@@\pgfutil@empty
+		\def\pgfplots@clickable@collectedplots@@{[]}%
+	\fi
+	%
+	\edef\pgfplots@clickable@expanded@args{%
+		{\pgfkeysvalueof{/pgfplots/annot/width}}%
+		{\pgfkeysvalueof{/pgfplots/annot/height}}%
+		{\pgfplots@clickable@uniquename}%
+		{{
+			axisType:	"\pgfkeysvalueof{/pgfplots/axis type}",
+			dim:	\pgfkeysvalueof{/pgfplots/annot/dim},
+			xmin:	\pgfkeysvalueof{/pgfplots/annot/xmin}, 
+			xmax:	\pgfkeysvalueof{/pgfplots/annot/xmax},
+			ymin:	\pgfkeysvalueof{/pgfplots/annot/ymin},
+			ymax:	\pgfkeysvalueof{/pgfplots/annot/ymax},
+			xscale:	"\pgfkeysvalueof{/pgfplots/annot/xscale}",
+			yscale:	"\pgfkeysvalueof{/pgfplots/annot/yscale}",
+			\ifnum\pgfkeysvalueof{/pgfplots/annot/dim}=3
+			zmin:	\pgfkeysvalueof{/pgfplots/annot/zmin},
+			zmax:	\pgfkeysvalueof{/pgfplots/annot/zmax},
+			zscale:	"\pgfkeysvalueof{/pgfplots/annot/zscale}",
+			zaxis:		\pgfkeysvalueof{/pgfplots/annot/z axis},
+			\fi
+			collectedPlots: \pgfplots@clickable@collectedplots@@,
+			snapDist:	\pgfkeysvalueof{/pgfplots/annot/snap dist},
+			minminmin:		\pgfkeysvalueof{/pgfplots/annot/minminmin},
+			xaxis:		\pgfkeysvalueof{/pgfplots/annot/x axis},
+			yaxis:		\pgfkeysvalueof{/pgfplots/annot/y axis}
+		}}%
+		{{
+			pointFormat: "\ifnum\pgfkeysvalueof{/pgfplots/annot/dim}=3 \pgfkeysvalueof{/pgfplots/annot/point format 3d}\else \pgfkeysvalueof{/pgfplots/annot/point format}\fi",
+			slopeFormat: "\pgfkeysvalueof{/pgfplots/annot/slope format}",
+			fillColor:\pgfkeysvalueof{/pgfplots/annot/js fillColor},
+			textFont:\pgfkeysvalueof{/pgfplots/annot/font},
+			textSize:\pgfkeysvalueof{/pgfplots/annot/textSize},
+			richText:\pgfkeysvalueof{/pgfplots/annot/richtext},
+			popupSizeGeneric:"\pgfkeysvalueof{/pgfplots/annot/popup size generic}",
+			popupSizeSnap:"\pgfkeysvalueof{/pgfplots/annot/popup size snap}",
+			printable: \ifpgfplots@annot@printable true\else false\fi
+		}}%
+	}%
+	\expandafter\pgfplots@create@clickable@plotarea\pgfplots@clickable@expanded@args
+}%
+
+% Defines either \def\pgfplotsretval{1} if the current axis is
+% clickable or \def\pgfplotsretval{0} if not.
+%
+% The initial configuration is `1' for any 2d axis, `1' for 3d axes
+% with 'clickable coords' and `0' for 3d axes without `clickable
+% coords'.
+%
+% Overwrite \pgfplotsclickable@check@enable@axistype@<theaxistype>  to
+% make axis type specific things.
+\def\pgfplotsclickable@check@enable{%
+	\def\pgfplotsretval{1}%
+	\ifpgfplots@threedim
+		\ifx\pgfplots@clickable@collectedplots@@\pgfutil@empty
+			\def\pgfplotsretval{0}%
+		\fi
+	\fi
+	\csname pgfplotsclickable@check@enable@axistype@\pgfkeysvalueof{/pgfplots/axis type}\endcsname
+}%
+
+% This thing is invoked from within pgfplots. It prepares and invokes
+% \pgfplotsclickablecreate.
+% 
+\def\pgfplots@create@clickable@plotarea@hook{%
+	\ifpgfplots@clickable
+		\begingroup
+		% communicate collected plot coordinates:
+		\pgfplotsapplistXgloballet\pgfplots@clickable@collectedplots@@=\pgfplots@clickable@collectedplots
+		\pgfplotsapplistXglobalnewempty\pgfplots@clickable@collectedplots
+		\t@pgfplots@tokc=\expandafter{\pgfplots@clickable@collectedplots@@}%
+		\edef\pgfplots@clickable@collectedplots@@{[\the\t@pgfplots@tokc]}%
+		\pgfkeyslet{/pgfplots/annot/collected plots}\pgfplots@clickable@collectedplots@@
+		%
+		\pgfplotsclickable@check@enable
+		\if1\pgfplotsretval
+			%
+			\pgfplotscoordmath{x}{datascaletrafo inverse}{\pgfplots@xmin}%
+			\pgfplotscoordmath{x}{tostring}{\pgfmathresult}%
+			\let\pgfplots@clickable@xmin=\pgfmathresult
+			\pgfplotscoordmath{x}{datascaletrafo inverse}{\pgfplots@xmax}%
+			\pgfplotscoordmath{x}{tostring}{\pgfmathresult}%
+			\let\pgfplots@clickable@xmax=\pgfmathresult
+			%
+			\pgfplotscoordmath{y}{datascaletrafo inverse}{\pgfplots@ymin}%
+			\pgfplotscoordmath{y}{tostring}{\pgfmathresult}%
+			\let\pgfplots@clickable@ymin=\pgfmathresult
+			\pgfplotscoordmath{y}{datascaletrafo inverse}{\pgfplots@ymax}%
+			\pgfplotscoordmath{y}{tostring}{\pgfmathresult}%
+			\let\pgfplots@clickable@ymax=\pgfmathresult
+			%
+			\ifpgfplots@threedim
+				\pgfplotscoordmath{z}{datascaletrafo inverse}{\pgfplots@zmin}%
+				\pgfplotscoordmath{z}{tostring}{\pgfmathresult}%
+				\let\pgfplots@clickable@zmin=\pgfmathresult
+				\pgfplotscoordmath{z}{datascaletrafo inverse}{\pgfplots@zmax}%
+				\pgfplotscoordmath{z}{tostring}{\pgfmathresult}%
+				\let\pgfplots@clickable@zmax=\pgfmathresult
+			\fi
+			%
+			% Convert to user interface of clickable lib:
+			\pgfplotspointbbdiagonal
+			\edef\pgfplots@clickable@wd{\the\pgf@x}%
+			\pgfkeyslet{/pgfplots/annot/width}\pgfplots@clickable@wd
+			\edef\pgfplots@clickable@ht{\the\pgf@y}%
+			\pgfkeyslet{/pgfplots/annot/height}\pgfplots@clickable@ht
+			\pgfkeyslet{/pgfplots/annot/xmin}\pgfplots@clickable@xmin
+			\pgfkeyslet{/pgfplots/annot/xmax}\pgfplots@clickable@xmax
+			\pgfkeyslet{/pgfplots/annot/ymin}\pgfplots@clickable@ymin
+			\pgfkeyslet{/pgfplots/annot/ymax}\pgfplots@clickable@ymax
+			\ifpgfplots@xislinear
+				\pgfkeyssetvalue{/pgfplots/annot/xscale}{linear}%
+			\else
+				\pgfkeyssetvalue{/pgfplots/annot/xscale}{log:\pgfkeysvalueof{/pgfplots/log basis x}}%
+			\fi
+			\ifpgfplots@yislinear
+				\pgfkeyssetvalue{/pgfplots/annot/yscale}{linear}%
+			\else
+				\pgfkeyssetvalue{/pgfplots/annot/yscale}{log:\pgfkeysvalueof{/pgfplots/log basis y}}%
+			\fi
+			\ifpgfplots@threedim
+				\pgfkeyslet{/pgfplots/annot/zmin}\pgfplots@clickable@zmin
+				\pgfkeyslet{/pgfplots/annot/zmax}\pgfplots@clickable@zmax
+				\ifpgfplots@zislinear
+					\pgfkeyssetvalue{/pgfplots/annot/zscale}{linear}%
+				\else
+					\pgfkeyssetvalue{/pgfplots/annot/zscale}{log:\pgfkeysvalueof{/pgfplots/log basis z}}%
+				\fi
+			\fi
+			%
+			% note that \pgfplotspointbblowerleft has *not* been
+			% transformed after \endtikzpicture in pgfplots.code.tex.
+			% That's why I can use it here:
+			\pgfpointdiff
+				\pgfplotspointbblowerleft
+				{\pgfplotspointminminmin}%
+			\pgf@sys@bp@correct\pgf@x \pgf@sys@bp@correct\pgf@y
+			\edef\pgfplots@loc@TMPa{[\pgf@sys@tonumber\pgf@x, \pgf@sys@tonumber\pgf@y]}%
+			\pgfkeyslet{/pgfplots/annot/minminmin}\pgfplots@loc@TMPa
+			%
+			\pgfplotspointxaxis
+			\pgf@sys@bp@correct\pgf@x \pgf@sys@bp@correct\pgf@y
+			\edef\pgfplots@loc@TMPa{[\pgf@sys@tonumber\pgf@x, \pgf@sys@tonumber\pgf@y]}%
+			\pgfkeyslet{/pgfplots/annot/x axis}\pgfplots@loc@TMPa
+			%
+			\pgfplotspointyaxis
+			\pgf@sys@bp@correct\pgf@x \pgf@sys@bp@correct\pgf@y
+			\edef\pgfplots@loc@TMPa{[\pgf@sys@tonumber\pgf@x, \pgf@sys@tonumber\pgf@y]}%
+			\pgfkeyslet{/pgfplots/annot/y axis}\pgfplots@loc@TMPa
+			%
+			\ifpgfplots@threedim
+				\pgfplotspointzaxis
+				\pgf@sys@bp@correct\pgf@x \pgf@sys@bp@correct\pgf@y
+				\edef\pgfplots@loc@TMPa{[\pgf@sys@tonumber\pgf@x, \pgf@sys@tonumber\pgf@y]}%
+				\pgfkeyslet{/pgfplots/annot/z axis}\pgfplots@loc@TMPa
+			\fi
+			%
+			\pgfkeyssetvalue{/pgfplots/annot/dim}{\ifpgfplots@threedim 3\else2\fi}%
+			%
+			%
+			\pgfinterruptboundingbox%
+			\pgftext[left,bottom,at=\lowerleftinnercorner]{\pgfplotsclickablecreate[]}%
+			\endpgfinterruptboundingbox%
+		\fi
+		\endgroup
+	\fi
+}
+
+% This is the low-level method which creates Acroforms and Javascript
+% code.
+% #1: width
+% #2: height
+% #3: name
+% #4: the axisAnnotObj object (see javascript docs above)
+% #5: the displayOpts object (see javascript docs above)
+\def\pgfplots@create@clickable@plotarea#1#2#3#4#5{%
+%\tracingmacros=2\tracingcommands=2
+	%\leavevmode
+	%--------------------------------------------------
+	% hyperref.sty implementation:
+	%--------------------------------------------------
+	% \PushButton[name=#3,borderwidth=0,bordersep=0,
+	%        onclick={processAnnotatedPlot("#3", #4, #5);}]{\vbox to #2{\hsize=#1\vfill\hfill}}%
+	% \TextField[name=#3-result,hidden=true]{}%
+	%-------------------------------------------------- 
+	%
+	%-------------------------------------------------- 
+	% eforms.sty implementation:
+	% it allows more customization.
+	%-------------------------------------------------- 
+	%
+	% Hier kommen Annotation Directories zum Zuge!
+	% -> siehe Annotations in pdf reference
+	\def\pushButtonDefaults{	
+		\W{0}% border width
+		\Border{0 0 0}%
+	}%
+	\def\textFieldDefaults{%
+		\W{1}% border width
+		\S{B}% border style ( one of SDBIU )
+		\F{2}% "display" bitflag. 2^1= hidden (see "Annotation Flags" in pdf reference)
+		%ATTENTION: \F 2 (hidden) produces INCOMPATIBILITIES with figure environment!?
+		%  ---> ok, that has been fixed by recent versions of hyperref.
+		%  (the pdf catalog may be incomplete in older hyperref pdftex drivers)
+		\Ff{1}% "Field characteristics" bitflag. 2^0 = "read-only"
+	}%
+	\pushButton[
+		%\A{/S/JavaScript/JS(processAnnotatedPlot("#3", #4, #5);)}%
+		\AA{
+			% /U = "mouse UP"
+			% /D = "mouse DOWN"
+			/U << /S/JavaScript/JS(axisMouseUp("#3", #4, #5);) >> 
+			/D << /S/JavaScript/JS(axisMouseDown("#3");) >> 
+		}%
+		]
+		{#3}
+		{#1}{#2}%
+	\textField{#3-result}{0pt}{0pt}%
+	\textField{#3-result2}{0pt}{0pt}%
+	\textField{#3-resultmark}{0pt}{0pt}%
+	\textField{#3-result2mark}{0pt}{0pt}%
+	\textField{#3-slope}{0pt}{0pt}%
+	% Unfortunately, line annotations can't be created/changed in acrobat
+	% javascript due to right problems :-(
+	%--------------------------------------------------
+	% \hbox to 0pt{\vsize=0pt \pdfannot{
+	% 		/Subtype	/Line
+	% 		/Open		/false
+	% 		/NM			(#3-line)
+	% 		/C			
+	% 		/CA			
+	% 		/Subj		()
+	% 		/Contents	()
+	% 		/L			[0 0 0 0]
+	% 		/LE			[/None /OpenArrow] % PDF 1.4
+	% 	%	/Ff			194
+	% }}%
+	%-------------------------------------------------- 
+	%	
+	%
+	%\setLinkBbox[%
+	%	\Border{}%
+	%	\A{/S/JavaScript/JS(processme("#3");)}%
+	%	\rawPDF{/C[1 0 0] /NM (#3)}%
+	%  ]%
+	%  {#1}{#2}{}%
+}
+
+\catcode`\"=\pgfplotscatcodeDQ
+\endinput

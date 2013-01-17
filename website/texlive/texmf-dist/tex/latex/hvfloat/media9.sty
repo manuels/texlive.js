@@ -1,0 +1,2089 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% media9.sty
+%
+% multimedia inclusion package
+%
+% Copyright 2012 Alexander Grahn
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% This package implements Adobe-Reader 9 and X compatible RichMedia
+% annotation for multimedia (Flash & 3D) inclusion according to:
+%
+% Adobe Supplement to ISO 32000, BaseVersion 1.7, ExtensionLevel 3
+%
+% Supported workflows:
+%
+%   pdflatex, lualatex
+%   (lua)latex-->dvips-->ps2pdf/Distiller
+%   latex-->dvipdfmx
+%   xelatex
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% This work may be distributed and/or modified under the
+% conditions of the LaTeX Project Public License, either version 1.3
+% of this license or (at your option) any later version.
+% The latest version of this license is in
+%   http://www.latex-project.org/lppl.txt
+% and version 1.3 or later is part of all distributions of LaTeX
+% version 2005/12/01 or later.
+%
+% This work has the LPPL maintenance status `maintained'.
+%
+% The Current Maintainer of this work is A. Grahn.
+
+\RequirePackage{expl3}
+\RequirePackage{xparse}
+\RequirePackage{l3keys2e}
+\RequirePackage{ifpdf}
+
+\def\g@mix@date@tl{2012/05/02}
+\def\g@mix@version@tl{0.7}
+\ProvidesExplPackage{media9}{\g@mix@date@tl}{\g@mix@version@tl}
+{acrobat-9 compatible media}
+
+\tl_gset:Nx\g_mix_date_tl{\g@mix@date@tl}
+\tl_gset:Nx\g_mix_version_tl{\g@mix@version@tl}
+
+\cs_if_exist:NTF\msg_set:nnnn{
+  \msg_set:nnnn{media9}{support~outdated}{
+    Support~package~#1~too~old.
+  }{
+    Please~install~an~up~to~date~version~of~#1.\\
+    Loading~media9~will~abort!
+  }
+}{
+  \PackageError{media9}{Support~package~expl3~too~old.}{
+      Please~install~an~up~to~date~version~of~expl3.\\
+      Loading~media9~will~abort!
+  }
+  \tex_endinput:D
+}
+\@ifpackagelater{expl3}{2011/09/08}{}{
+  \msg_error:nnx{media9}{support~outdated}{l3kernel}
+  \tex_endinput:D
+}
+\@ifpackagelater{xparse}{2011/09/08}{}{
+  \msg_error:nnx{media9}{support~outdated}{l3packages}
+  \tex_endinput:D
+}
+\@ifpackagelater{l3keys2e}{2011/09/08}{}{
+  \msg_error:nnx{media9}{support~outdated}{l3packages}
+  \tex_endinput:D
+}
+
+%testing for PDF output
+\bool_new:N\g_mix_pdfoutput_bool
+\bool_gset_false:N\g_mix_pdfoutput_bool
+%\cs_if_exist:NT\pdfoutput{
+%  \int_compare:nT{\pdfoutput>0}{\bool_gset_true:N\g_mix_pdfoutput_bool}
+%}
+\ifpdf \bool_gset_true:N\g_mix_pdfoutput_bool \fi
+
+%pdfTeX version check
+\pdftex_if_engine:T{
+  \int_compare:nT{\pdftexversion<130}{
+    \msg_interrupt:xxx{media9~error}{pdfTeX,~version~>=~1.30~required.}{}
+  }
+}
+
+%package options
+
+%unknown package option error message
+\msg_set:nnnn{media9}{unknown~package~option}{Unknown~package~option~`#1'.}{
+  Package option~'#1'~is~not~known~by~media9:\\
+  perhaps~it~is~spelled~incorrectly.
+}
+
+\bool_new:N\g_mix_dvipdfmx_bool
+\bool_new:N\g_mix_pkgdraft_bool
+\tl_gset:Nn\g_mix_pkgact_tl{/XA}
+\tl_gset:Nn\g_mix_pkgdeact_tl{/PC}
+\tl_gset:Nn\g_mix_pkgtransp_tl{false}
+\tl_gset:Nn\g_mix_pkgcontextclick_tl{false}
+\tl_gset:Nn\g_mix_pkgplaycnt_tl{-1}
+\tl_gset:Nn\g_mix_pkgplayspd_tl{1}
+\tl_gset:Nn\g_mix_pkgplaytpe_tl{None}
+\tl_gset:Nn\g_mix_pkgtools_tl{false}
+\tl_gset:Nn\g_mix_pkgnrdflt_tl{/NR~true}
+\tl_gset:Nn\g_mix_pkgnav_tl{false}
+\tl_gset:Nn\g_mix_pkgopt_bg_tl{}
+\tl_gset:Nn\g_mix_pkgopt_ls_tl{}
+\tl_gset:Nn\g_mix_pkgopt_rm_tl{}
+\bool_new:N\g_mix_pkgiiidcalc_bool
+\keys_define:nn{media9}{
+  dvipdfmx .bool_gset:N = \g_mix_dvipdfmx_bool,
+  xetex    .bool_gset:N = \g_mix_dvipdfmx_bool,
+
+  draft .choice:,
+  draft / true .code:n = {\bool_gset_true:N\g_mix_pkgdraft_bool},
+  draft / false .code:n = {\bool_gset_false:N\g_mix_pkgdraft_bool},
+  draft .default:n = {true},
+
+  final .choice:,
+  final / true .code:n = {\bool_gset_false:N\g_mix_pkgdraft_bool},
+  final / false .code:n = {\bool_gset_true:N\g_mix_pkgdraft_bool},
+  final .default:n = {true},
+
+  activate .choice:,
+  activate / pagevisible .code:n = {\tl_gset:Nn\g_mix_pkgact_tl{/PV}},
+  activate / pageopen .code:n = {\tl_gset:Nn\g_mix_pkgact_tl{/PO}},
+  activate / onclick .code:n = {\tl_gset:Nn\g_mix_pkgact_tl{/XA}},
+  activate .value_required:,
+
+  deactivate .choice:,
+  deactivate / pageinvisible .code:n = {\tl_gset:Nn\g_mix_pkgdeact_tl{/PI}},
+  deactivate / pageclose .code:n = {\tl_gset:Nn\g_mix_pkgdeact_tl{/PC}},
+  deactivate / onclick .code:n = {\tl_gset:Nn\g_mix_pkgdeact_tl{/XD}},
+  deactivate .value_required:,
+
+  transparent .choice_code:n = {
+    \tl_gset:Nx\g_mix_pkgtransp_tl{\l_keys_choice_tl}},
+  transparent .generate_choices:n = {true,false},
+  transparent .default:n = {true},
+
+  passcontext .choice_code:n = {\tl_gset:Nx\g_mix_pkgcontextclick_tl{
+    \l_keys_choice_tl}},
+  passcontext .generate_choices:n = {true,false},
+  passcontext .default:n = {true},
+
+  %3D specific options
+  3Dplaytype .choice:,
+  3Dplaytype / none .code:n = {\tl_gset:Nn\g_mix_pkgplaytpe_tl{None}},
+  3Dplaytype / linear .code:n = {\tl_gset:Nn\g_mix_pkgplaytpe_tl{Linear}},
+  3Dplaytype / oscillating .code:n = {
+    \tl_gset:Nn\g_mix_pkgplaytpe_tl{Oscillating}},
+  3Dplaytype .value_required:,
+
+  3Dplaycount .code:n = {\tl_gset:Nn\g_mix_pkgplaycnt_tl{
+    \exp_after:wN\int_value:w \dim_eval:w#1sp\dim_eval_end:}},
+  3Dplaycount .value_required:,
+
+  3Dplayspeed .tl_gset_x:N = \g_mix_pkgplayspd_tl,
+  3Dplayspeed .value_required:,
+
+  3Dtoolbar .choice_code:n = {\tl_gset:Nx\g_mix_pkgtools_tl{\l_keys_choice_tl}},
+  3Dtoolbar .generate_choices:n = {true,false},
+  3Dtoolbar .default:n = {true},
+
+  3Dnavpane .choice_code:n = {\tl_gset:Nx\g_mix_pkgnav_tl{\l_keys_choice_tl}},
+  3Dnavpane .generate_choices:n = {true,false},
+  3Dnavpane .default:n = {true},
+
+  3Dpartsattrs .choice_code:n = {
+    \tl_set:Nn\l_mix_keep_tl{keep}
+    \tl_if_eq:NNTF\l_keys_choice_tl\l_mix_keep_tl{
+      \tl_gset:Nn\g_mix_pkgnrdflt_tl{/NR~false}
+    }{
+      \tl_gset:Nn\g_mix_pkgnrdflt_tl{/NR~true}
+    }
+  },
+  3Dpartsattrs .generate_choices:n = {keep,restore},
+  3Dpartsattrs .value_required:,
+
+  3Dmenu .bool_gset:N = \g_mix_pkgiiidcalc_bool,
+
+  3Dbg .code:n = {
+    \tl_gset:Nx\g_mix_pkgopt_bg_tl{
+      /BG<</Subtype/SC/CS/DeviceRGB/C[#1]/EA~true>>}
+  },
+  3Dbg .value_required:,
+
+  3Dlights .code:n = {
+    \tl_gset:Nx\g_mix_pkgopt_ls_tl{/LS<</Subtype/#1>>}
+  },
+  3Dlights .value_required:,
+
+  3Drender .code:n = {
+    \tl_gset:Nx\g_mix_pkgopt_rm_tl{/RM<</Subtype/#1>>}
+  },
+  3Drender .value_required:,
+
+  unknown .code:n = {
+    \msg_error:nnx{media9}{unknown~package~option}{\exp_not:V\l_keys_key_tl}
+  },
+}
+\ProcessKeysOptions{media9}
+\xetex_if_engine:T{\bool_gset_true:N\g_mix_dvipdfmx_bool}
+
+\box_new:N\l_mix_poster_box
+\dim_new:N\g_mix_wd_dim
+\dim_new:N\g_mix_ht_dim
+\dim_new:N\g_mix_dp_dim
+
+\int_new:N\g_mix_rmcnt_int
+\int_new:N\l_mix_viewcnt_int %counter for 3D views per annot
+
+\bool_new:N\g_mix_url_bool
+\bool_new:N\l_mix_url_bool
+\bool_new:N\g_mix_iiidcalc_bool
+
+%missing package error message
+%example usage:
+%  \msg_error:nnxx{media9}{missing~package}{graphicx}{[dvipdfmx]}
+%  \msg_error:nnx{media9}{missing~package}{graphicx}
+\msg_set:nnn{media9}{missing~package}{
+  Package~`#1'~has~not~been~loaded~yet.\\
+  Put~the~line\\
+  ~~\string\usepackage#2{#1}\\
+  to~the~preamble~of~your~document.
+}
+
+%file not found error message
+%example usage:
+%  \msg_error:nnxx{media9}{file~not~found}{myfile.swf}
+\msg_set:nnnn{media9}{file~not~found}{
+  Loine~\msg_line_number: :~
+  File~`#1'~not~found.}{Make~sure~file~`#1'~exists~and~is~readable!}
+
+\pdftex_if_engine:TF{
+  %\pdfmdfivesum is used for hashing object references of embedded files
+  \cs_new:Nn\mix_filemdfivesum:n{\pdfmdfivesum~file~{#1}}
+  \cs_new:Nn\mix_filesize:n{\pdffilesize{#1}}
+  \cs_new:Nn\mix_filedump:nnn{\pdffiledump~offset~#1~length~#2~{#3}}
+  \cs_new:Nn\mix_unescapehex:n{(\pdfunescapehex{#1})}
+}{
+  \luatex_if_engine:TF{
+    \RequirePackage{pdftexcmds}
+    \cs_new:Nn\mix_filemdfivesum:n{\pdf@filemdfivesum{#1}}
+    \cs_new:Nn\mix_filesize:n{\pdf@filesize{#1}}
+    \cs_new:Nn\mix_filedump:nnn{\pdf@filedump{#1}{#2}{#3}}
+    \cs_new:Nn\mix_unescapehex:n{<#1>}
+  }{
+    \cs_new:Nn\mix_filemdfivesum:n{#1}
+  }
+}
+
+%reset various variables for every new media inclusion
+\cs_new:Nn\mix_reset:{
+  \tl_gset:Nx\g_mix_label_tl{rm@\int_use:N\g_mix_rmcnt_int}
+  \tl_gset:Nx\g_mix_usrlabel_tl{}
+  \tl_gset:Nn\g_mix_flashvars_tl{}
+  \tl_gset:Nn\g_mix_assets_tl{}
+  \tl_gset:Nn\g_mix_configurations_tl{}
+  \tl_gset_eq:NN\g_mix_act_tl\g_mix_pkgact_tl
+  \tl_gset_eq:NN\g_mix_deact_tl\g_mix_pkgdeact_tl
+  \bool_gset_false:N\g_mix_url_bool
+  \box_clear:N\l_mix_poster_box
+  \tl_set:Nn\l_mix_scripts_tl{}
+  \bool_gset_eq:NN\g_mix_usrdraft_bool\g_mix_pkgdraft_bool
+  \seq_gclear:N\g_mix_res_seq
+  \seq_gclear:N\g_mix_script_seq
+  \int_gzero:N\g_mix_resizeflag_int
+  \tl_gset:Nn\g_mix_scalearg_tl{1.0}
+  \tl_gset:Nn\g_mix_wdarg_tl{\width}
+  \tl_gset:Nn\g_mix_htarg_tl{\height}
+  \tl_gset:Nn\g_mix_dparg_tl{\depth}
+  \tl_gset_eq:NN\g_mix_transp_tl\g_mix_pkgtransp_tl
+  \tl_gset_eq:NN\g_mix_contextclick_tl\g_mix_pkgcontextclick_tl
+
+  %3D specific settings
+  \bool_gset_false:N\g_mix_opt_iiidview_bool
+  \bool_gset_eq:NN\g_mix_iiidcalc_bool\g_mix_pkgiiidcalc_bool
+
+  \tl_gset_eq:NN\g_mix_playcnt_tl\g_mix_pkgplaycnt_tl
+  \tl_gset_eq:NN\g_mix_playspd_tl\g_mix_pkgplayspd_tl
+  \tl_gset_eq:NN\g_mix_playtpe_tl\g_mix_pkgplaytpe_tl
+  \tl_gset_eq:NN\g_mix_tools_tl\g_mix_pkgtools_tl
+  \tl_gset_eq:NN\g_mix_nrdflt_tl\g_mix_pkgnrdflt_tl
+  \tl_gset_eq:NN\g_mix_nav_tl\g_mix_pkgnav_tl
+
+  \tl_gset_eq:NN\g_mix_opt_bg_tl\g_mix_pkgopt_bg_tl
+  \tl_gset_eq:NN\g_mix_opt_ls_tl\g_mix_pkgopt_ls_tl
+  \tl_gset_eq:NN\g_mix_opt_rm_tl\g_mix_pkgopt_rm_tl
+  \tl_gset:Nn\g_mix_opt_coo_tl{0~0~0}
+  \tl_gset:Nn\g_mix_opt_ctoc_tl{0~-1~0}
+  \tl_gset:Nn\g_mix_opt_ciiw_tl{}
+  \fp_gset:Nn\g_mix_opt_roo_fp{1e-8}
+  \fp_gset:Nn\g_mix_opt_aac_fp{30}
+  \fp_gset:Nn\g_mix_opt_oscale_fp{1}
+  \fp_gset:Nn\g_mix_opt_roll_fp{0}
+
+  \bool_set_false:N\l_mix_roo_bool
+  \bool_gset_false:N\g_mix_opt_ciiw_bool
+  \bool_gset_false:N\g_mix_opt_iiidortho_bool
+
+  \tl_set:Nn\l_mix_iiidviewarray_tl{}
+  \tl_gset:Nn\g_mix_vfile_tl{}
+}
+
+%3D settings to be reset before creating an additional view
+\cs_new:Nn\mix_iiidreset:{
+  \tl_set:Nn\l_mix_bg_tl{}
+  \tl_set:Nn\l_mix_ls_tl{}
+  \tl_set:Nn\l_mix_rm_tl{}
+  \tl_set:Nn\l_mix_coo_tl{0~0~0}
+  \tl_set:Nn\l_mix_ctoc_tl{0~-1~0}
+  \tl_set:Nn\l_mix_ciiw_tl{}
+
+  \fp_set:Nn\l_mix_roo_fp{1e-8}
+  \fp_set:Nn\l_mix_aac_fp{30}
+  \fp_set:Nn\l_mix_oscale_fp{1}
+  \fp_set:Nn\l_mix_roll_fp{0}
+
+  \bool_set_false:N\l_mix_roo_bool
+  \bool_set_false:N\l_mix_ciiw_bool
+  \bool_set_false:N\l_mix_iiidortho_bool
+
+  \tl_set:Nn\l_mix_naarray_tl{} %array of node dicts
+  \tl_set:Nn\l_mix_saarray_tl{} %array of crosssect dicts
+  \tl_set_eq:NN\l_mix_nr_tl\g_mix_nrdflt_tl %keep or restore part attributes
+}
+
+%wrong image resource for 3D
+\msg_set:nnn{media9}{wrong~image~resource}{
+  Image~resource~file\\~~'#1'\\has~wrong~type.\\\\
+  In~3D~context,~driver~#2~only~accepts~files~of~type\\#3\\
+  as~image~resources.
+}
+
+%commands for creating PDF objects, annots etc.
+\bool_if:NTF\g_mix_pdfoutput_bool{
+  %helper func to remove `0 R' part from pdf obj reference
+  \cs_new:Npn\mix_reftonum:w #1~0~R {#1}
+  \cs_new:Nn\mix_pdfobj:nnn{
+    % #1:objref; if empty, a new object number will be reserved
+    % #2:type of object (dict|array|stream|fstream)
+    % #3:content (key-value, file, string); may be empty
+    \tl_set:Nn\l_mix_usenum_tl{}
+    \tl_if_blank:oTF{#1}{
+      \pdfobj~reserveobjnum
+      \tl_set:Nx\l_mix_usenum_tl{useobjnum~\the\pdflastobj}
+    }{
+      \tl_set:Nx\l_mix_usenum_tl{useobjnum~\exp_after:wN \mix_reftonum:w #1}
+    }
+    \tl_if_blank:oF{#3}{
+      \prg_case_str:nnn{#2}{
+        {dict}{\immediate\pdfobj~\l_mix_usenum_tl~{<<#3>>}}
+        {array}{\immediate\pdfobj~\l_mix_usenum_tl~{[#3]}}
+        {stream}{\immediate\pdfobj~\l_mix_usenum_tl~stream~{#3}}
+        {fstream}{\immediate\pdfobj~\l_mix_usenum_tl~stream~file~{#3}}
+      }{}
+    }
+    \tl_gset:Nx\g_mix_pdflastobj_tl{\int_use:c{pdflastobj}~0~R}
+  }
+
+  \cs_new:Nn\mix_pdfannot:nnnn{
+    % #1:width, #2:height, #3:depth, #4:content (key-value)
+    \immediate\pdfannot~width~#1~height~#2~depth~#3 {#4}
+    \tl_gset:Nx\g_mix_pdflastann_tl{\int_use:c{pdflastannot}~0~R}
+  }
+
+  \cs_new:Nn\mix_pdfxform:n{%#1:savebox number
+    \immediate\pdfxform~resources~{\the\pdfpageresources}~#1
+    \tl_gset:Nx\g_mix_pdflastxform_tl{\int_use:c{pdflastxform}~0~R}
+  }
+
+  \cs_new:Nn\mix_pdfximage:n{%#1:bitmap file name
+    \bool_if:nTF{
+      \str_if_eq_p:Vn\l_mix_ext_tl{png}
+      ||\str_if_eq_p:Vn\l_mix_ext_tl{jpg}
+      ||\str_if_eq_p:Vn\l_mix_ext_tl{jpeg}
+      ||\str_if_eq_p:Vn\l_mix_ext_tl{jbig2}
+      ||\str_if_eq_p:Vn\l_mix_ext_tl{jb2}
+    }{
+      \immediate\pdfximage{#1}
+      \tl_gset:Nx\g_mix_pdflastximage_tl{\int_use:c{pdflastximage}~0~R}
+    }{
+      \msg_error:nnxxx{media9}{wrong~image~resource}{#1}{pdftex}{
+        png,~jpeg~and~jbig2
+      }
+    }
+  }
+
+  \cs_new:Nn\mix_ndname:n{%#1:HEX encoded string
+    %converted to binary UTF16BE using \pdfunescapehex (pdfTeX only)
+    \tl_set:Nn\l_mix_ndname_tl{\mix_unescapehex:n{#1}}
+  }
+}{
+  \int_new:N\g_mix_obj_int % object ID
+  \bool_if:NTF\g_mix_dvipdfmx_bool{ %dvipdfmx/XeTeX
+    \cs_new:Nn\mix_pdfobj:nnn{
+      % #1:objref; if empty, a new object number will be reserved
+      % #2:type of object (dict|array|stream|fstream)
+      % #3:content (key-value, file, string); may be empty
+      \tl_set:Nn\l_mix_usenum_tl{}
+      \tl_if_blank:oTF{#1}{
+        \prg_case_str:nnn{#2}{
+          {dict}{\special{pdf:obj~@mix@obj\int_use:N\g_mix_obj_int\space<<>>}}
+          {array}{\special{pdf:obj~@mix@obj\int_use:N\g_mix_obj_int\space[]}}
+          {stream}{\special{pdf:stream~@mix@obj\int_use:N\g_mix_obj_int\space(#3)}}
+          {fstream}{
+            \message{<#3>}
+            \special{pdf:fstream~@mix@obj\int_use:N\g_mix_obj_int\space(#3)}
+          }
+        }{}
+        \tl_set:Nx\l_mix_usenum_tl{@mix@obj\int_use:N\g_mix_obj_int}
+        \int_gincr:N\g_mix_obj_int
+      }{
+        \tl_set:Nx\l_mix_usenum_tl{#1}
+      }
+      \tl_if_blank:oF{#3}{
+        \prg_case_str:nnn{#2}{
+          {dict}{\special{pdf:put~\l_mix_usenum_tl\space<<#3>>}}
+          {array}{\special{pdf:put~\l_mix_usenum_tl\space#3}}
+        }{}
+      }
+      \tl_gset:Nx\g_mix_pdflastobj_tl{\l_mix_usenum_tl}
+    }
+
+    \cs_new:Nn\mix_pdfannot:nnnn{
+      % #1:width, #2:height, #3:depth, #4:content (key-value)
+      \special{pdf:ann~@mix@obj\int_use:N\g_mix_obj_int\space
+        width~#1\space
+        height~#2\space
+        depth~#3~<<#4>>
+      }
+      \tl_gset:Nx\g_mix_pdflastann_tl{@mix@obj\int_use:N\g_mix_obj_int}
+      \int_gincr:N\g_mix_obj_int
+    }
+
+    \cs_new:Nn\mix_pdfxform:n{%#1:savebox number
+      \special{pdf:bxobj~@mix@obj\int_use:N\g_mix_obj_int\space
+        width\space\dim_eval:n{\box_wd:N #1}\space
+        height\space\dim_eval:n{\box_ht:N #1}\space
+        depth\space\dim_eval:n{\box_dp:N #1}
+      }
+      \begin{picture}(0,0)\put(0,0){\box_use:N #1}\end{picture}
+      \special{pdf:exobj}
+      \tl_gset:Nx\g_mix_pdflastxform_tl{@mix@obj\int_use:N\g_mix_obj_int}
+      \int_gincr:N\g_mix_obj_int
+    }
+
+    \cs_new:Nn\mix_pdfximage:n{%#1:bitmap file name
+      \bool_if:nTF{
+          \str_if_eq_p:Vn\l_mix_ext_tl{png}
+        ||\str_if_eq_p:Vn\l_mix_ext_tl{jpg}
+        ||\str_if_eq_p:Vn\l_mix_ext_tl{jpeg}
+      }{
+        \special{pdf:image~@mix@obj\int_use:N\g_mix_obj_int\space
+          %move initial display off the page
+          matrix~0.000001~0~0~0.000001~-1000000~-1000000~(#1)}
+        \tl_gset:Nx\g_mix_pdflastximage_tl{@mix@obj\int_use:N\g_mix_obj_int}
+        \int_gincr:N\g_mix_obj_int
+      }{
+        \msg_error:nnxxx{media9}{wrong~image~resource}{#1}{dvipdfmx/xetex}{
+          png~and~jpeg
+        }
+      }
+    }
+
+    \cs_new:Nn\mix_ndname:n{%#1:HEX encoded UTF16BE string
+      \tl_set:Nn\l_mix_ndname_tl{<#1>}
+    }
+  }{
+    % dvips
+    \bool_new:N\g_mix_powerdot_bool %to cope with some powerdot oddity
+    \@ifclassloaded{powerdot}{\bool_gset_true:N\g_mix_powerdot_bool}{}
+
+    %define `?pdfmark' operator as in file hdvips.def from package `hyperref'
+    \AtBeginDvi{
+      \cs_if_exist:NF\pdfmark{
+        \special{!~
+          systemdict~/pdfmark~known
+          {
+            userdict~/?pdfmark~systemdict~/exec~get~put
+          }{
+            userdict~/?pdfmark~systemdict~/pop~get~put~
+            userdict~/pdfmark~systemdict~/cleartomark~get~put
+          }
+          ifelse~
+        }
+      }
+    }
+
+    \cs_new:Nn\mix_pdfobj:nnn{
+      % #1:objref; if empty, a new object number will be reserved
+      % #2:type of object (dict|array|stream|fstream)
+      % #3:content (key-value, file, string); may be empty
+      \tl_set:Nn\l_mix_usenum_tl{}
+      \tl_if_blank:oTF{#1}{
+        \special{ps:~mark~/_objdef~{mix@obj\int_use:N\g_mix_obj_int}~/type
+          \prg_case_str:nnn{#2}{
+            {dict}{/dict}
+            {array}{/array}
+            {stream}{/stream}
+            {fstream}{/stream}
+          }{}~
+          /OBJ~pdfmark~
+        }
+        \tl_set:Nx\l_mix_usenum_tl{{mix@obj\int_use:N\g_mix_obj_int}}
+        \int_gincr:N\g_mix_obj_int
+      }{
+        \tl_set:Nx\l_mix_usenum_tl{#1}
+      }
+      \tl_if_blank:oF{#3}{
+        \prg_case_str:nnn{#2}{
+          {dict}{\special{ps:~mark~\l_mix_usenum_tl~<<#3>>/PUT~pdfmark~}}
+          {array}{
+            \special{ps:~mark~\l_mix_usenum_tl~0~[#3]/PUTINTERVAL~pdfmark~}
+          }
+          {stream}{\special{ps:~mark~\l_mix_usenum_tl~(#3)/PUT~pdfmark~}}
+%          {fstream}{
+%            \special{ps:~
+%              mark~\l_mix_usenum_tl~{(#3)~(r)~file}?pdfmark~/PUT~pdfmark~
+%            }
+%          }
+          {fstream}{
+            \tl_set:Nn\l_mix_offset_tl{0}
+            \tl_set:Nx\l_mix_fsize_tl{\mix_filesize:n{#3}}
+            \message{<#3}
+            %embed file in chunks of 32768 Bytes into PS as chunks of
+            %65536 Bytes of HEX code
+            \bool_while_do:nn{
+              \int_compare_p:n{\l_mix_offset_tl<\l_mix_fsize_tl}
+            }{
+              \special{ps:~
+                mark~
+                  \l_mix_usenum_tl~
+                  (\mix_filedump:nnn{\l_mix_offset_tl}{32767}{#3})~
+                  /ASCIIHexDecode~filter~/PUT~
+                pdfmark~
+              }
+              \tl_set:Nx\l_mix_offset_tl{\int_eval:n{\l_mix_offset_tl+32767}}
+              \message{.}
+            }
+            \message{>}
+            \special{ps:~
+              mark~\l_mix_usenum_tl~/CLOSE~pdfmark~
+            }
+          }
+        }{}
+      }
+      \tl_gset:Nx\g_mix_pdflastobj_tl{\l_mix_usenum_tl}
+    }
+
+    \cs_new:Nn\mix_pdfannot:nnnn{
+      \hbox_set:Nn\l_tmpa_box{
+        \box_move_down:nn{#3}{
+          \hbox_to_zero:n{
+            \special{ps:~currentpoint~/mix@lly~exch~def~/mix@llx~exch~def}
+          }
+        }
+        \skip_horizontal:n{#1}
+        \box_move_up:nn{#2}{
+          \hbox_to_zero:n{
+            \special{ps:~currentpoint~/mix@ury~exch~def~/mix@urx~exch~def}
+          }
+        }
+      }
+      \box_set_wd:Nn\l_tmpa_box{\c_zero_dim}
+      \box_set_ht:Nn\l_tmpa_box{\c_zero_dim}
+      \box_set_dp:Nn\l_tmpa_box{\c_zero_dim}
+      \box_use_clear:N\l_tmpa_box
+      \special{ps:~
+        mark~
+          /_objdef~{mix@obj\int_use:N\g_mix_obj_int}
+          /Rect~[mix@llx~mix@lly~mix@urx~mix@ury]
+          #4~
+        /ANN~pdfmark~
+      }
+      \tl_gset:Nx\g_mix_pdflastann_tl{{mix@obj\int_use:N\g_mix_obj_int}}
+      \int_gincr:N\g_mix_obj_int
+    }
+
+    \cs_new:Nn\mix_pdfxform:n{%#1:savebox number
+      %mark bbox of box#1
+      \hbox_set:Nn\l_tmpa_box{
+        \box_move_down:nn{\box_dp:N #1}{
+          \hbox_to_zero:n{
+            \special{ps:~currentpoint~/mix@lly~exch~def~/mix@llx~exch~def}
+          }
+        }
+        \skip_horizontal:n{\box_wd:N #1}
+        \box_move_up:nn{\box_ht:N #1}{
+          \hbox_to_zero:n{
+            \special{ps:~currentpoint~/mix@ury~exch~def~/mix@urx~exch~def}
+          }
+        }
+      }
+      \box_set_wd:Nn\l_tmpa_box{\c_zero_dim}
+      \box_set_ht:Nn\l_tmpa_box{\c_zero_dim}
+      \box_set_dp:Nn\l_tmpa_box{\c_zero_dim}
+      \box_use_clear:N\l_tmpa_box
+      %define some length values in current PS coordinate units
+      \hbox_set:Nn\l_tmpa_box{
+        \special{ps:~currentpoint~/origin@y~exch~def~/origin@x~exch~def}
+        \skip_horizontal:n{72.27pt}
+        \box_move_up:nn{72.27pt}{
+          \hbox_to_zero:n{
+            \special{ps:~
+              currentpoint~origin@y~exch~sub~/one@inch@y~exch~def~
+              origin@x~sub~/one@inch@x~exch~def
+            }
+          }
+        }
+      }
+      \box_set_wd:Nn\l_tmpa_box{\c_zero_dim}
+      \box_set_ht:Nn\l_tmpa_box{\c_zero_dim}
+      \box_use_clear:N\l_tmpa_box
+      \special{ps:~
+        gsave~
+        %translate graphics to upper left page corner
+        \bool_if:NF\g_mix_powerdot_bool{
+          {
+            mix@llx~neg~mix@ury~neg~translate~
+            one@inch@x~DVImag~div~neg~one@inch@y~DVImag~div~neg~translate
+          }?pdfmark~
+        }
+        %distill graphics into XObject
+        mark~
+          /_objdef~{mix@obj\int_use:N\g_mix_obj_int}
+          /BBox~[mix@llx~mix@lly~mix@urx~mix@ury]
+        /BP~pdfmark~
+        {
+          isls{%landscape mode (powerdot, geometry /w landscape option)
+            /mix@dxdy~{
+              mix@urx~mix@llx~sub~abs~
+              mix@ury~mix@lly~sub~abs~div
+            }~bind~def
+            /mix@dydx~{1~mix@dxdy~div}~bind~def
+            /mix@cx~{mix@urx~mix@llx~add~2~div}~bind~def
+            /mix@cy~{mix@ury~mix@lly~add~2~div}~bind~def
+            % graphics needs to be rescaled for some reason ...
+            [mix@dxdy~0~0~mix@dydx~1~mix@dxdy~sub~mix@cx~mul~
+              1~mix@dydx~sub~mix@cy~mul]~concat
+            %... rotated by 270 degrees ...
+            [0~-1~1~0~mix@cx~mix@cy~sub~mix@cx~mix@cy~add]~concat
+            %... and flipped around vertical axis
+            [-1~0~0~1~mix@llx~mix@urx~add~0]~concat
+          }{% flip around horizontal axis in portrait mode
+            [1~0~0~-1~0~mix@lly~mix@ury~add]~concat
+          }ifelse
+        }?pdfmark~
+      }
+      \begin{picture}(0,0)\put(0,0){\box_use:N #1}\end{picture}
+      \special{ps:~mark~/EP~pdfmark~grestore}
+      \tl_gset:Nx\g_mix_pdflastxform_tl{{mix@obj\int_use:N\g_mix_obj_int}}
+      \int_gincr:N\g_mix_obj_int
+    }
+
+    %Image XObject
+    \cs_new:Nn\mix_pdfximage:n{%#1:bitmap file name
+      \bool_if:nTF{
+          \str_if_eq_p:Vn\l_mix_ext_tl{ps}
+        ||\str_if_eq_p:Vn\l_mix_ext_tl{eps}
+      }{
+        \special{ps:~
+          mark~/_objdef~{mix@obj\int_use:N\g_mix_obj_int}~/NI~pdfmark~
+        }
+        \special{psfile=#1~hsize=0~vsize=0}
+        \special{ps:~
+          {
+            0~0~1~[1~0~0~1~0~0]~{}~image~%empty dummy, in case #1 is not
+          }?pdfmark~                     %a valid image file
+        }
+        \tl_gset:Nx\g_mix_pdflastximage_tl{{mix@obj\int_use:N\g_mix_obj_int}}
+        \int_gincr:N\g_mix_obj_int
+      }{
+        \msg_error:nnxxx{media9}{wrong~image~resource}{#1}{dvips}{
+          Postscript~(ps/eps)~with~bitmapped~content
+        }
+      }
+    }
+
+    %3DNode name
+    \cs_new:Nn\mix_ndname:n{%#1:HEX encoded unicode string
+      \special{ps:~
+        /mix@unicode~65535~string~def~
+        (#1)~/ASCIIHexDecode~filter~mix@unicode~readstring~pop~
+        /mix@unicode~exch~def~
+      }
+      %converted to binary UTF16BE by ps2pdf
+      \tl_set:Nn\l_mix_ndname_tl{mix@unicode}
+    }
+  }
+}
+
+\cs_new:Nn\mix_embedasset:n{ %#1 file name or url
+  \filename@parse{#1}
+  \tl_set:Nx\l_mix_ext_tl{\filename@ext}
+  \tl_replace_all:Nnn\l_mix_ext_tl{A}{a}
+  \tl_replace_all:Nnn\l_mix_ext_tl{B}{b}
+  \tl_replace_all:Nnn\l_mix_ext_tl{C}{c}
+  \tl_replace_all:Nnn\l_mix_ext_tl{D}{d}
+  \tl_replace_all:Nnn\l_mix_ext_tl{E}{e}
+  \tl_replace_all:Nnn\l_mix_ext_tl{F}{f}
+  \tl_replace_all:Nnn\l_mix_ext_tl{G}{g}
+  \tl_replace_all:Nnn\l_mix_ext_tl{H}{h}
+  \tl_replace_all:Nnn\l_mix_ext_tl{I}{i}
+  \tl_replace_all:Nnn\l_mix_ext_tl{J}{j}
+  \tl_replace_all:Nnn\l_mix_ext_tl{K}{k}
+  \tl_replace_all:Nnn\l_mix_ext_tl{L}{l}
+  \tl_replace_all:Nnn\l_mix_ext_tl{M}{m}
+  \tl_replace_all:Nnn\l_mix_ext_tl{N}{n}
+  \tl_replace_all:Nnn\l_mix_ext_tl{O}{o}
+  \tl_replace_all:Nnn\l_mix_ext_tl{P}{p}
+  \tl_replace_all:Nnn\l_mix_ext_tl{Q}{q}
+  \tl_replace_all:Nnn\l_mix_ext_tl{R}{r}
+  \tl_replace_all:Nnn\l_mix_ext_tl{S}{s}
+  \tl_replace_all:Nnn\l_mix_ext_tl{T}{t}
+  \tl_replace_all:Nnn\l_mix_ext_tl{U}{u}
+  \tl_replace_all:Nnn\l_mix_ext_tl{V}{v}
+  \tl_replace_all:Nnn\l_mix_ext_tl{W}{w}
+  \tl_replace_all:Nnn\l_mix_ext_tl{X}{x}
+  \tl_replace_all:Nnn\l_mix_ext_tl{Y}{y}
+  \tl_replace_all:Nnn\l_mix_ext_tl{Z}{z}
+  \bool_if:NTF\l_mix_url_bool{
+    \cs_if_exist:cF{url_#1}{
+      \mix_pdfobj:nnn{}{dict}{/FS/URL/F(#1)}
+      \tl_gset:cx{url_#1}{\g_mix_pdflastobj_tl}%
+    }
+    %every new url should be added to assets tree of the current annot
+    \cs_if_exist:cF{url_\int_use:c{g_mix_rmcnt_int}_#1}{
+      \tl_gput_right:Nx\g_mix_assets_tl{~(#1)~\tl_use:c{url_#1}}
+      \tl_new:c{url_\int_use:c{g_mix_rmcnt_int}_#1}
+    }
+    \tl_gset:Nx\g_mix_lastasset_tl{\tl_use:c{url_#1}}
+  }{
+    \file_if_exist:nTF{#1}{
+      \file_add_path:nN{#1}\l_mix_file_tl
+    }{
+      \msg_error:nnxx{media9}{file~not~found}{#1}
+    }
+    \bool_if:nTF{
+      %in 3D context, image resources must be embedded as Image XObjects, not
+      %as file streams
+      \g_mix_iiid_bool && (
+        \str_if_eq_p:Vn\l_mix_ext_tl{jpg}
+        || \str_if_eq_p:Vn\l_mix_ext_tl{jpeg}
+        || \str_if_eq_p:Vn\l_mix_ext_tl{png}
+        || \str_if_eq_p:Vn\l_mix_ext_tl{jbig2}
+        || \str_if_eq_p:Vn\l_mix_ext_tl{jb2}
+        || \str_if_eq_p:Vn\l_mix_ext_tl{ps}
+        || \str_if_eq_p:Vn\l_mix_ext_tl{eps}
+        || \str_if_eq_p:Vn\l_mix_ext_tl{pdf}
+      )
+    }{
+      \cs_if_exist:cF{imgXobj_\mix_filemdfivesum:n{\l_mix_file_tl}}{
+        \mix_pdfximage:n{\l_mix_file_tl}
+        \tl_gset:cx{imgXobj_\mix_filemdfivesum:n{\l_mix_file_tl}}{
+          \g_mix_pdflastximage_tl
+        }
+      }
+      %create fake FileSpec for current file name if not yet existent
+      \cs_if_exist:cF{ImgFileSpecFor3D_#1}{
+        \tl_gset:cx{ImgFileSpecFor3D_#1}{
+          \tl_use:c{imgXobj_\mix_filemdfivesum:n{\l_mix_file_tl}}
+        }
+      }
+      %add FileSpec to assets tree of current annot
+      \cs_if_exist:cF{fileAsset_\int_use:c{g_mix_rmcnt_int}_#1}{
+        \tl_gput_right:Nx\g_mix_assets_tl{
+          ~(#1)~\tl_use:c{ImgFileSpecFor3D_#1}
+        }
+        \tl_new:c{fileAsset_\int_use:c{g_mix_rmcnt_int}_#1}
+      }
+      \tl_gset:Nx\g_mix_lastasset_tl{
+        \tl_use:c{ImgFileSpecFor3D_#1}
+      }
+    }{
+      %remaining file types in 3D context and any file type in case of Flash
+      %context will be embedded as ordinary fstreams;
+      \cs_if_exist:cF{fileEmb_\mix_filemdfivesum:n{\l_mix_file_tl}}{
+        \mix_pdfobj:nnn{}{fstream}{\l_mix_file_tl}
+        \tl_gset:cx{fileEmb_\mix_filemdfivesum:n{\l_mix_file_tl}}{
+          \g_mix_pdflastobj_tl
+        }
+      }
+      %create FileSpec for current file name if not yet existent
+      \cs_if_exist:cF{fileSpec_#1}{
+        \mix_pdfobj:nnn{}{dict}{
+          /Type/Filespec
+          /F~(#1)
+          /UF~(#1)
+          /EF~<</F~\tl_use:c{fileEmb_\mix_filemdfivesum:n{\l_mix_file_tl}}>>
+        }
+        \tl_gset:cx{fileSpec_#1}{\g_mix_pdflastobj_tl}
+      }
+      %add FileSpec to assets tree of current annot
+      \cs_if_exist:cF{fileAsset_\int_use:c{g_mix_rmcnt_int}_#1}{
+        \tl_gput_right:Nx\g_mix_assets_tl{
+          ~(#1)~\tl_use:c{fileSpec_#1}
+        }
+        \tl_new:c{fileAsset_\int_use:c{g_mix_rmcnt_int}_#1}
+      }
+      \tl_gset:Nx\g_mix_lastasset_tl{
+        \tl_use:c{fileSpec_#1}
+      }
+    }
+  }
+}
+
+\cs_new:Nn\mix_draftbox:n{ %#1 text string to be shown in the draft box centre
+  \hbox_overlap_right:n{
+    \hbox_to_wd:nn{\l_mix_wd_tl}{
+      \vrule~height~\l_mix_ht_tl~depth~\l_mix_dp_tl\hss
+      \vrule
+    }
+  }
+  \box_move_down:nn{\l_mix_dp_tl}{
+    \hbox_to_wd:nn{\l_mix_wd_tl}{
+      \vbox_to_ht:nn{\l_mix_tt_tl}{
+        \hrule~width~\l_mix_wd_tl\vss
+        \hbox_to_wd:nn{\l_mix_wd_tl}{\ttfamily{\tiny#1}\hss}\vss
+        \hrule
+      }
+    }
+  }
+}
+
+%calculates widget dimensions from natural ones, taking resizing options
+%into account
+\int_new:N\g_mix_resizeflag_int% resizing flags according to options given
+\cs_new:Nn\mix_scale:n{% #1 box number
+  %natural dimensions \width, \height, \depth, \totalheight
+  \tl_set:Nn\width {\box_wd:N#1}
+  \tl_set:Nn\height{\box_ht:N#1}
+  \tl_set:Nn\depth {\box_dp:N#1}
+  \tl_set:Nn\totalheight{(\height+\depth)}
+  \tl_set:Nx\l_mix_wd_tl{\dim_eval:n{\g_mix_wdarg_tl}}
+  \tl_set:Nx\l_mix_ht_tl{\dim_eval:n{\g_mix_htarg_tl}}
+  \tl_set:Nx\l_mix_dp_tl{\dim_eval:n{\g_mix_dparg_tl}}
+  \tl_set:Nx\l_mix_tt_tl{\dim_eval:n{\g_mix_htarg_tl+\g_mix_dparg_tl}}
+  %resize unspecified dimensions to keep aspect ratio
+  \bool_if:nF{
+    % original poster box must be two dimensional
+    \dim_compare_p:n{\width=\c_zero_dim}
+    ||\dim_compare_p:n{\totalheight=\c_zero_dim}
+  }{
+    \prg_case_int:nnn{\g_mix_resizeflag_int}{
+      {\c_one}{% depth given alone: no rescaling, only vertical movement
+        \tl_set:Nx\l_mix_ht_tl{
+          \dim_eval:n{
+            \totalheight-\l_mix_dp_tl
+          }
+        }
+      }
+      {\c_two}{% height given alone
+        \tl_set:Nx\l_mix_wd_tl{
+          \dim_eval:n{
+            \width*\dim_ratio:nn{\l_mix_ht_tl}{\height}
+          }
+        }
+        \tl_set:Nx\l_mix_dp_tl{
+          \dim_eval:n{
+            \depth*\dim_ratio:nn{\l_mix_ht_tl}{\height}
+          }
+        }
+      }
+      {\c_three}{% height and depth given
+        \tl_set:Nx\l_mix_wd_tl{
+          \dim_eval:n{
+            \width*\dim_ratio:nn{\l_mix_tt_tl}{\totalheight}
+          }
+        }
+      }
+      {\c_four}{% width given alone
+        \tl_set:Nx\l_mix_ht_tl{
+          \dim_eval:n{
+            \height*\dim_ratio:nn{\l_mix_wd_tl}{\width}
+          }
+        }
+        \tl_set:Nx\l_mix_dp_tl{
+          \dim_eval:n{
+            \depth*\dim_ratio:nn{\l_mix_wd_tl}{\width}
+          }
+        }
+      }
+      {\c_five}{% width and depth given
+        \tl_set:Nx\l_mix_ht_tl{
+          \dim_eval:n{
+            \totalheight*\dim_ratio:nn{\l_mix_wd_tl}{\width}-\l_mix_dp_tl
+          }
+        }
+      }
+      {\c_six}{% width and height given
+        \tl_set:Nx\l_mix_dp_tl{
+          \dim_eval:n{
+            \depth*\dim_ratio:nn{\l_mix_ht_tl}{\height}
+          }
+        }
+      }
+    }{} % 0, 7
+  }
+  %apply scaling factor
+  \dim_set:Nn\l_tmpa_dim{\l_mix_wd_tl}
+  \tl_set:Nx\l_mix_wd_tl{\dim_eval:n{\g_mix_scalearg_tl\l_tmpa_dim}}
+  \dim_set:Nn\l_tmpa_dim{\l_mix_ht_tl}
+  \tl_set:Nx\l_mix_ht_tl{\dim_eval:n{\g_mix_scalearg_tl\l_tmpa_dim}}
+  \dim_set:Nn\l_tmpa_dim{\l_mix_dp_tl}
+  \tl_set:Nx\l_mix_dp_tl{\dim_eval:n{\g_mix_scalearg_tl\l_tmpa_dim}}
+  \tl_set:Nx\l_mix_tt_tl{\dim_eval:n{\l_mix_ht_tl+\l_mix_dp_tl}}
+}
+
+\bool_new:N\g_mix_iiid_bool
+\int_new:N\l_mix_lineno_int
+
+\NewDocumentCommand\addmediapath{m}{\file_path_include:n{#1/}}
+
+\NewDocumentCommand\includemedia{omm}{%#1 options, #2 text/image #3 media file
+  \group_begin:
+  \leavevmode
+  \mix_reset:
+  \cs_if_exist:NT\Ginput@path{\cs_set_eq:NN\input@path\Ginput@path}
+  \hbox_set:Nn\l_mix_poster_box{#2}
+  \mix_uribegin: %treat URI characters correctly
+  \keys_set:nn{media9/user}{#1}
+  \mix_uriend:
+  \tl_greplace_all:Nnn\g_mix_flashvars_tl{~&}{&}
+  \tl_greplace_all:Nnn\g_mix_flashvars_tl{&~}{&}
+  \tl_greplace_all:Nnn\g_mix_flashvars_tl{~=}{=}
+  \tl_greplace_all:Nnn\g_mix_flashvars_tl{=~}{=}
+  \tl_gtrim_spaces:N\g_mix_flashvars_tl
+  \mix_scale:n{\l_mix_poster_box}
+  \dim_compare:nT{\width=\c_zero_dim}
+    {\box_set_wd:Nn\l_mix_poster_box{1pt}}
+  \dim_compare:nT{\totalheight=\c_zero_dim}
+    {\box_set_ht:Nn\l_mix_poster_box{1pt}}
+  \bool_if:NTF\g_mix_usrdraft_bool{
+    \mix_draftbox:n{\tl_to_str:n{#3}}
+  }{
+    \mix_pdfxform:n{\l_mix_poster_box}
+    %embed main asset
+    \group_begin:
+      \bool_set_eq:NN\l_mix_url_bool\g_mix_url_bool
+      \mix_uribegin:
+      \mix_embedasset:n{#3}
+      \bool_gset:Nn\g_mix_iiid_bool{ %test on 3D file type
+        \str_if_eq_p:Vn\l_mix_ext_tl{prc}||\str_if_eq_p:Vn\l_mix_ext_tl{u3d}
+      }
+      \tl_gset:Nx\g_mix_mainasset_tl{~\g_mix_lastasset_tl}
+      \mix_uriend:
+    \group_end:
+    %secondary assets (added by addresource)
+    \seq_map_function:NN\g_mix_res_seq\mix_embedasset:n
+    \seq_map_inline:Nn\g_mix_script_seq{
+      \mix_embedasset:n{##1}
+      \tl_put_right:Nx\l_mix_scripts_tl{~\g_mix_lastasset_tl}
+    }
+    %attach 3D calculation script
+    \bool_if:nT{\g_mix_iiid_bool && \g_mix_iiidcalc_bool}{
+      \mix_embedasset:n{3Dmenu.js}
+      \tl_put_left:Nx\l_mix_scripts_tl{~\g_mix_lastasset_tl}
+    }
+    %create 3D views from file (option 3Dviews)
+    \bool_if:nT{\g_mix_iiid_bool && !(\tl_if_blank_p:V\g_mix_vfile_tl)}{
+      \tl_set:Nn\l_mix_level_tl{\c_minus_one}
+      \int_zero:N\l_mix_viewcnt_int
+      \int_zero:N\l_mix_lineno_int
+      \ior_open:Nn\l_mix_vfile_stream{\g_mix_vfile_tl}
+
+      \group_begin:
+      \endlinechar=\c_minus_one
+      \ior_gto:NN\l_mix_vfile_stream\g_mix_inputline_tl
+      \group_end:
+      \bool_until_do:nn{\ior_if_eof_p:N\l_mix_vfile_stream}{
+        \int_incr:N\l_mix_lineno_int
+        %process input line
+        \tl_if_blank:VF\g_mix_inputline_tl{
+          \tl_set:Nx\l_mix_args_tl{{media9/views}{\g_mix_inputline_tl}}
+          \exp_after:wN\keys_set:nn\l_mix_args_tl
+        }
+        \group_begin:
+        \endlinechar=\c_minus_one
+        \ior_gto:NN\l_mix_vfile_stream\g_mix_inputline_tl
+        \group_end:
+      }
+
+      \ior_close:N\l_mix_vfile_stream
+    }
+    \bool_if:nT{ %create default 3D view if required
+      \g_mix_iiid_bool &&
+      (\g_mix_opt_iiidview_bool || \tl_if_blank_p:V\l_mix_iiidviewarray_tl)
+    }{
+      \tl_set_eq:NN\l_mix_bg_tl\g_mix_opt_bg_tl
+      \tl_set_eq:NN\l_mix_ls_tl\g_mix_opt_ls_tl
+      \tl_set_eq:NN\l_mix_rm_tl\g_mix_opt_rm_tl
+      \tl_set_eq:NN\l_mix_coo_tl\g_mix_opt_coo_tl
+      \tl_set_eq:NN\l_mix_ctoc_tl\g_mix_opt_ctoc_tl
+      \tl_set_eq:NN\l_mix_ciiw_tl\g_mix_opt_ciiw_tl
+
+      \fp_set_eq:NN\l_mix_roo_fp\g_mix_opt_roo_fp
+      \fp_set_eq:NN\l_mix_aac_fp\g_mix_opt_aac_fp
+      \fp_set_eq:NN\l_mix_oscale_fp\g_mix_opt_oscale_fp
+      \fp_set_eq:NN\l_mix_roll_fp\g_mix_opt_roll_fp
+
+      \bool_set_eq:NN\l_mix_ciiw_bool\g_mix_opt_ciiw_bool
+      \bool_set_eq:NN\l_mix_iiidortho_bool\g_mix_opt_iiidortho_bool
+      \tl_set:Nn\l_mix_naarray_tl{}
+
+      \bool_if:NF\l_mix_ciiw_bool{
+        \tl_set:Nx\l_mix_args_tl{\l_mix_coo_tl\space\l_mix_ctoc_tl\space}
+        \exp_after:wN\mix_calc_ciiw:w\l_mix_args_tl\q_stop
+      }
+
+      \tl_set:Nn\l_mix_naarray_tl{}
+      \tl_set:Nn\l_mix_saarray_tl{}
+      \tl_set_eq:NN\l_mix_nr_tl\g_mix_nrdflt_tl
+
+      \mix_view:n{Default}
+      \tl_set:Nx\l_mix_dfltview_tl{\g_mix_pdflastobj_tl}
+
+    }
+    \mix_pdfobj:nnn{}{dict}{
+      /Subtype/\bool_if:NTF\g_mix_iiid_bool{3D}{Flash}
+      /Asset~\g_mix_mainasset_tl
+      \bool_if:NF\g_mix_iiid_bool{
+        /Params~<<
+          /Binding/Background
+          \tl_if_blank:VF\g_mix_flashvars_tl{
+           /FlashVars~(\g_mix_flashvars_tl)
+          }
+        >>
+      }
+    }
+    \mix_pdfobj:nnn{}{dict}{/Instances~[\g_mix_pdflastobj_tl]}%
+    \mix_pdfobj:nnn{}{dict}{
+      /Assets~<</Names~[\g_mix_assets_tl]>>
+      /Configurations~[\g_mix_pdflastobj_tl]
+      \bool_if:nT{
+        \g_mix_iiid_bool && !(\tl_if_empty_p:V\l_mix_iiidviewarray_tl)
+      }{
+        /Views~[\l_mix_iiidviewarray_tl]
+      }
+    }
+    \tl_set:Nx\l_mix_content_tl{\g_mix_pdflastobj_tl}
+    \bool_if:nT{
+      \g_mix_iiid_bool && \str_if_eq_p:Vn\g_mix_playtpe_tl{Oscillating}
+    }{
+      \tl_gset:Nx\g_mix_playcnt_tl{\int_eval:n{\g_mix_playcnt_tl*2}}
+    }
+    \mix_pdfobj:nnn{}{dict}{
+      /Activation~<<
+        /Condition\g_mix_act_tl
+        \bool_if:nT{
+          \g_mix_iiid_bool &&
+          !(\str_if_eq_p:Vn\g_mix_playtpe_tl{None})
+        }{%seems to work only with 3D content
+          /Animation~<<
+            /Subtype/\g_mix_playtpe_tl
+            /PlayCount~\g_mix_playcnt_tl
+            /Speed~\g_mix_playspd_tl
+          >>
+        }
+        \bool_if:nT{
+          \g_mix_iiid_bool && (
+            \g_mix_opt_iiidview_bool || \tl_if_blank_p:V\l_mix_iiidviewarray_tl
+          )
+        }{/View~\l_mix_dfltview_tl}
+        /Presentation~<<
+          /Transparent~\g_mix_transp_tl
+          /Style/Embedded
+          \bool_if:NTF\g_mix_iiid_bool{
+            /Toolbar~\g_mix_tools_tl
+            /NavigationPane~\g_mix_nav_tl
+          }{
+            /PassContextClick~\g_mix_contextclick_tl
+          }
+        >>
+        \tl_if_blank:VF\l_mix_scripts_tl{/Scripts~[\l_mix_scripts_tl]}
+      >>
+      /Deactivation~<</Condition\g_mix_deact_tl>>
+    }
+    \tl_set:Nx\l_mix_settings_tl{\g_mix_pdflastobj_tl}
+    \tl_if_empty:NF\g_mix_usrlabel_tl{
+      \tl_gset_eq:NN\g_mix_label_tl\g_mix_usrlabel_tl
+    }
+    % #1:width, #2:height, #3:depth, #4:content (key-value)
+    \mix_pdfannot:nnnn{\l_mix_wd_tl}{\l_mix_ht_tl}{\l_mix_dp_tl}{
+      /Subtype/RichMedia
+      /F~4
+      /BS~<</W~0/S/S>>
+      /Contents~(media~embedded~by~media9~[\g_mix_version_tl~(\g_mix_date_tl)])
+      /NM~(\g_mix_label_tl)
+      /AP~<</N~\g_mix_pdflastxform_tl>>
+      /RichMediaSettings~\l_mix_settings_tl
+      /RichMediaContent~\l_mix_content_tl
+    }
+    \tl_if_empty:NF\g_mix_usrlabel_tl{
+      \mix_pdfobj:nnn{}{dict}{
+        /S/JavaScript/JS~(
+          if(typeof(annotRM)=='undefined'){annotRM=new~Array();}
+          annotRM['\g_mix_label_tl']=
+            this.getAnnotRichMedia(this.pageNum,~'\g_mix_label_tl');
+        )
+      }
+      \mix_pdfannot:nnnn{0pt}{0pt}{0pt}{
+        /Subtype/Widget
+        /FT/Btn/Ff~65537
+        /BS~<</W~0>>
+        /T~(fd@\g_mix_label_tl)
+        /AA~<</PO~\g_mix_pdflastobj_tl~/PV~\g_mix_pdflastobj_tl>>
+      }
+    }
+    \hbox_to_wd:nn{\l_mix_wd_tl}{
+      \vrule~width~\c_zero_dim~height~\l_mix_ht_tl~depth~\l_mix_dp_tl\hss
+    }
+    \int_gincr:N\g_mix_rmcnt_int
+  }
+  \group_end:
+}
+
+%defines environment \mix_uribegin: ... \mix_uriend: to sanitize possibly
+%active chars in URLs (RFC 2396) and path specifications;
+%code contributed by E. Gregorio
+\group_begin:
+\char_set_catcode_active:N\~
+\cs_new:Npn\mix_uribegin:{
+  \group_begin:
+  \tl_map_inline:nn{";/?:@&=+$|,-_.!~*'()}{
+    \group_begin:
+    \char_set_lccode:nn{`\~}{`##1}
+    \tl_to_lowercase:n{\group_end:\cs_set:Npn~}{\token_to_str:N##1}
+  }
+  \cs_set:Npn\%{\token_to_str:N\%}
+}
+\group_end:
+\cs_set_eq:NN\mix_uriend:\group_end:
+
+% macro to format a real number in tl variable
+% * to show at most 9 places after `.'
+% * trailing zeros removed
+\cs_new_protected:Nn\mix_format_num:N{
+  \tl_set:Nx#1{\exp_after:wN\mix_format_num:w#1\q_stop}
+}
+\cs_new:Npn\mix_format_num:w#1.#2\q_stop{
+  #1.\exp_after:wN\mix_trim_places:w#2000000000\q_stop
+}
+\cs_new:Npn\mix_trim_places:w#1#2#3#4#5#6#7#8#9\q_stop{
+  \mix_trim_zeros:f{\exp_after:wN\tl_head:w#9\q_stop#8#7#6#5#4#3#2#1}
+}
+\cs_new:Nn\mix_trim_zeros:n{
+  \exp_after:wN\mix_trim_zeros:w#1\q_stop
+}
+\cs_generate_variant:Nn\mix_trim_zeros:n{f}
+\cs_new:Npn\mix_trim_zeros:w#1#2\q_stop{
+  \str_if_eq:nnTF{#1}{0}{
+    \int_compare:nNnTF{\tl_length:n{#2}}>{\c_one}{
+      \exp_after:wN\mix_trim_zeros:w#2\q_stop
+    }{#2}
+  }{
+    \tl_reverse:n{#2}#1
+  }
+}
+
+%macro for building the C2W transformation matrix
+\cs_new:Npn\mix_calc_ciiw:w#1~#2~#3~#4~#5~#6\q_stop{
+  % #1,#2,#3 centre of orbit coordinates (coo)
+  % #4,#5,#6 centre of orbit to camera direction vector (c2c)
+  %view vector (opposite to c2c)
+  \fp_set:Nn\l_mix_viewx_fp{#4}
+  \fp_set:Nn\l_mix_viewy_fp{#5}
+  \fp_set:Nn\l_mix_viewz_fp{#6}
+  \fp_neg:N\l_mix_viewx_fp
+  \fp_neg:N\l_mix_viewy_fp
+  \fp_neg:N\l_mix_viewz_fp
+
+  %normalize view vector
+  \fp_set:Nn\l_mix_temp_fp{#4}
+  \fp_mul:Nn\l_mix_temp_fp{\l_mix_temp_fp}
+  \fp_set_eq:NN\l_mix_mag_fp\l_mix_temp_fp
+  \fp_set:Nn\l_mix_temp_fp{#5}
+  \fp_mul:Nn\l_mix_temp_fp{\l_mix_temp_fp}
+  \fp_add:Nn\l_mix_mag_fp{\l_mix_temp_fp}
+  \fp_set:Nn\l_mix_temp_fp{#6}
+  \fp_mul:Nn\l_mix_temp_fp{\l_mix_temp_fp}
+  \fp_add:Nn\l_mix_mag_fp{\l_mix_temp_fp}
+  \fp_pow:Nn\l_mix_mag_fp{0.5}
+  \fp_div:Nn\l_mix_viewx_fp{\l_mix_mag_fp}
+  \fp_div:Nn\l_mix_viewy_fp{\l_mix_mag_fp}
+  \fp_div:Nn\l_mix_viewz_fp{\l_mix_mag_fp}
+
+  %camera roll
+  \fp_set_eq:NN\l_mix_temp_fp\l_mix_roll_fp
+  \fp_div:Nn\l_mix_temp_fp{180}
+  \fp_mul:Nn\l_mix_temp_fp{\c_pi_fp}
+  \fp_sin:Nn\l_mix_sinroll_fp{\l_mix_temp_fp}
+  \fp_cos:Nn\l_mix_cosroll_fp{\l_mix_temp_fp}
+
+  %top and bottom views
+  \fp_set:Nn\l_mix_leftx_fp{-1.0}
+  \fp_set:Nn\l_mix_lefty_fp{0.0}
+  \fp_set:Nn\l_mix_leftz_fp{0.0}
+  \fp_compare:nNnTF\l_mix_viewz_fp<\c_zero_fp{% top view
+    %up-vector
+    \fp_set:Nn\l_mix_upx_fp{0.0}
+    \fp_set:Nn\l_mix_upy_fp{1.0}
+    \fp_set:Nn\l_mix_upz_fp{0.0}
+  }{% bottom view
+    %up-vector
+    \fp_set:Nn\l_mix_upx_fp{0.0}%
+    \fp_set:Nn\l_mix_upy_fp{-1.0}%
+    \fp_set:Nn\l_mix_upz_fp{0.0}%
+  }
+  \fp_set_eq:NN\l_mix_temp_fp\l_mix_viewx_fp
+  \fp_abs:N\l_mix_temp_fp
+  \fp_set_eq:NN\l_mix_sumxy_fp\l_mix_temp_fp
+  \fp_set_eq:NN\l_mix_temp_fp\l_mix_viewy_fp
+  \fp_abs:N\l_mix_temp_fp
+  \fp_add:Nn\l_mix_sumxy_fp{\l_mix_temp_fp}
+  \fp_if_zero:NF\l_mix_sumxy_fp{% other views than top and bottom
+    %up-vector = up_world - (up_world dot view) view
+    \fp_set_eq:NN\l_mix_upx_fp\l_mix_viewz_fp
+    \fp_mul:Nn\l_mix_upx_fp{\l_mix_viewx_fp}
+    \fp_neg:N\l_mix_upx_fp
+    \fp_set_eq:NN\l_mix_upy_fp\l_mix_viewz_fp
+    \fp_mul:Nn\l_mix_upy_fp{\l_mix_viewy_fp}
+    \fp_neg:N\l_mix_upy_fp
+    \fp_set_eq:NN\l_mix_upz_fp\l_mix_viewz_fp
+    \fp_mul:Nn\l_mix_upz_fp{\l_mix_viewz_fp}
+    \fp_neg:N\l_mix_upz_fp
+    \fp_add:Nn\l_mix_upz_fp{1.0}
+    %normalize up-vector
+    \fp_set_eq:NN\l_mix_temp_fp\l_mix_upx_fp
+    \fp_mul:Nn\l_mix_temp_fp{\l_mix_temp_fp}
+    \fp_set_eq:NN\l_mix_mag_fp\l_mix_temp_fp
+    \fp_set_eq:NN\l_mix_temp_fp\l_mix_upy_fp
+    \fp_mul:Nn\l_mix_temp_fp{\l_mix_temp_fp}
+    \fp_add:Nn\l_mix_mag_fp{\l_mix_temp_fp}
+    \fp_set_eq:NN\l_mix_temp_fp\l_mix_upz_fp
+    \fp_mul:Nn\l_mix_temp_fp{\l_mix_temp_fp}
+    \fp_add:Nn\l_mix_mag_fp{\l_mix_temp_fp}
+    \fp_pow:Nn\l_mix_mag_fp{0.5}
+    \fp_div:Nn\l_mix_upx_fp{\l_mix_mag_fp}
+    \fp_div:Nn\l_mix_upy_fp{\l_mix_mag_fp}
+    \fp_div:Nn\l_mix_upz_fp{\l_mix_mag_fp}
+    %left vector = up x view
+    \fp_set_eq:NN\l_mix_leftx_fp\l_mix_viewz_fp
+    \fp_mul:Nn\l_mix_leftx_fp{\l_mix_upy_fp}
+    \fp_set_eq:NN\l_mix_temp_fp\l_mix_viewy_fp
+    \fp_mul:Nn\l_mix_temp_fp{\l_mix_upz_fp}
+    \fp_sub:Nn\l_mix_leftx_fp{\l_mix_temp_fp}
+    \fp_set_eq:NN\l_mix_lefty_fp\l_mix_viewx_fp
+    \fp_mul:Nn\l_mix_lefty_fp{\l_mix_upz_fp}
+    \fp_set_eq:NN\l_mix_temp_fp\l_mix_viewz_fp
+    \fp_mul:Nn\l_mix_temp_fp{\l_mix_upx_fp}
+    \fp_sub:Nn\l_mix_lefty_fp{\l_mix_temp_fp}
+    \fp_set_eq:NN\l_mix_leftz_fp\l_mix_viewy_fp
+    \fp_mul:Nn\l_mix_leftz_fp{\l_mix_upx_fp}
+    \fp_set_eq:NN\l_mix_temp_fp\l_mix_viewx_fp
+    \fp_mul:Nn\l_mix_temp_fp{\l_mix_upy_fp}
+    \fp_sub:Nn\l_mix_leftz_fp{\l_mix_temp_fp}
+    %normalize left vector
+    \fp_set_eq:NN\l_mix_temp_fp\l_mix_leftx_fp
+    \fp_mul:Nn\l_mix_temp_fp{\l_mix_temp_fp}
+    \fp_set_eq:NN\l_mix_mag_fp\l_mix_temp_fp
+    \fp_set_eq:NN\l_mix_temp_fp\l_mix_lefty_fp
+    \fp_mul:Nn\l_mix_temp_fp{\l_mix_temp_fp}
+    \fp_add:Nn\l_mix_mag_fp{\l_mix_temp_fp}
+    \fp_set_eq:NN\l_mix_temp_fp\l_mix_leftz_fp
+    \fp_mul:Nn\l_mix_temp_fp{\l_mix_temp_fp}
+    \fp_add:Nn\l_mix_mag_fp{\l_mix_temp_fp}
+    \fp_pow:Nn\l_mix_mag_fp{0.5}
+    \fp_div:Nn\l_mix_leftx_fp{\l_mix_mag_fp}
+    \fp_div:Nn\l_mix_lefty_fp{\l_mix_mag_fp}
+    \fp_div:Nn\l_mix_leftz_fp{\l_mix_mag_fp}
+  }
+
+  %apply camera roll
+  \fp_set_eq:NN\l_mix_leftxprime_fp\l_mix_leftx_fp
+  \fp_mul:Nn\l_mix_leftxprime_fp{\l_mix_cosroll_fp}
+  \fp_set_eq:NN\l_mix_temp_fp\l_mix_upx_fp
+  \fp_mul:Nn\l_mix_temp_fp{\l_mix_sinroll_fp}
+  \fp_add:Nn\l_mix_leftxprime_fp{\l_mix_temp_fp}
+  \fp_set_eq:NN\l_mix_leftyprime_fp\l_mix_lefty_fp
+  \fp_mul:Nn\l_mix_leftyprime_fp{\l_mix_cosroll_fp}
+  \fp_set_eq:NN\l_mix_temp_fp\l_mix_upy_fp
+  \fp_mul:Nn\l_mix_temp_fp{\l_mix_sinroll_fp}
+  \fp_add:Nn\l_mix_leftyprime_fp{\l_mix_temp_fp}
+  \fp_set_eq:NN\l_mix_leftzprime_fp\l_mix_leftz_fp
+  \fp_mul:Nn\l_mix_leftzprime_fp{\l_mix_cosroll_fp}
+  \fp_set_eq:NN\l_mix_temp_fp\l_mix_upz_fp
+  \fp_mul:Nn\l_mix_temp_fp{\l_mix_sinroll_fp}
+  \fp_add:Nn\l_mix_leftzprime_fp{\l_mix_temp_fp}
+
+  \fp_set_eq:NN\l_mix_upxprime_fp\l_mix_upx_fp
+  \fp_mul:Nn\l_mix_upxprime_fp{\l_mix_cosroll_fp}
+  \fp_set_eq:NN\l_mix_temp_fp\l_mix_leftx_fp
+  \fp_mul:Nn\l_mix_temp_fp{\l_mix_sinroll_fp}
+  \fp_sub:Nn\l_mix_upxprime_fp{\l_mix_temp_fp}
+  \fp_set_eq:NN\l_mix_upyprime_fp\l_mix_upy_fp
+  \fp_mul:Nn\l_mix_upyprime_fp{\l_mix_cosroll_fp}
+  \fp_set_eq:NN\l_mix_temp_fp\l_mix_lefty_fp
+  \fp_mul:Nn\l_mix_temp_fp{\l_mix_sinroll_fp}
+  \fp_sub:Nn\l_mix_upyprime_fp{\l_mix_temp_fp}
+  \fp_set_eq:NN\l_mix_upzprime_fp\l_mix_upz_fp
+  \fp_mul:Nn\l_mix_upzprime_fp{\l_mix_cosroll_fp}
+  \fp_set_eq:NN\l_mix_temp_fp\l_mix_leftz_fp
+  \fp_mul:Nn\l_mix_temp_fp{\l_mix_sinroll_fp}
+  \fp_sub:Nn\l_mix_upzprime_fp{\l_mix_temp_fp}
+
+  \fp_set_eq:NN\l_mix_leftx_fp\l_mix_leftxprime_fp
+  \fp_set_eq:NN\l_mix_lefty_fp\l_mix_leftyprime_fp
+  \fp_set_eq:NN\l_mix_leftz_fp\l_mix_leftzprime_fp
+  \fp_set_eq:NN\l_mix_upx_fp\l_mix_upxprime_fp
+  \fp_set_eq:NN\l_mix_upy_fp\l_mix_upyprime_fp
+  \fp_set_eq:NN\l_mix_upz_fp\l_mix_upzprime_fp
+
+  %translation vector
+  \fp_set:Nn\l_mix_transx_fp{#1}
+  \fp_set_eq:NN\l_mix_temp_fp\l_mix_roo_fp
+  \fp_mul:Nn\l_mix_temp_fp{\l_mix_viewx_fp}
+  \fp_sub:Nn\l_mix_transx_fp{\l_mix_temp_fp}
+  \fp_set:Nn\l_mix_transy_fp{#2}
+  \fp_set_eq:NN\l_mix_temp_fp\l_mix_roo_fp
+  \fp_mul:Nn\l_mix_temp_fp{\l_mix_viewy_fp}
+  \fp_sub:Nn\l_mix_transy_fp{\l_mix_temp_fp}
+  \fp_set:Nn\l_mix_transz_fp{#3}
+  \fp_set_eq:NN\l_mix_temp_fp\l_mix_roo_fp
+  \fp_mul:Nn\l_mix_temp_fp{\l_mix_viewz_fp}
+  \fp_sub:Nn\l_mix_transz_fp{\l_mix_temp_fp}
+
+  %format elements of transformation matrix
+  \tl_set:Nx\l_mix_leftx_tl {\fp_use:N\l_mix_leftx_fp }
+  \tl_set:Nx\l_mix_lefty_tl {\fp_use:N\l_mix_lefty_fp }
+  \tl_set:Nx\l_mix_leftz_tl {\fp_use:N\l_mix_leftz_fp }
+  \tl_set:Nx\l_mix_upx_tl   {\fp_use:N\l_mix_upx_fp   }
+  \tl_set:Nx\l_mix_upy_tl   {\fp_use:N\l_mix_upy_fp   }
+  \tl_set:Nx\l_mix_upz_tl   {\fp_use:N\l_mix_upz_fp   }
+  \tl_set:Nx\l_mix_viewx_tl {\fp_use:N\l_mix_viewx_fp }
+  \tl_set:Nx\l_mix_viewy_tl {\fp_use:N\l_mix_viewy_fp }
+  \tl_set:Nx\l_mix_viewz_tl {\fp_use:N\l_mix_viewz_fp }
+  \tl_set:Nx\l_mix_transx_tl{\fp_use:N\l_mix_transx_fp}
+  \tl_set:Nx\l_mix_transy_tl{\fp_use:N\l_mix_transy_fp}
+  \tl_set:Nx\l_mix_transz_tl{\fp_use:N\l_mix_transz_fp}
+  \mix_format_num:N\l_mix_leftx_tl
+  \mix_format_num:N\l_mix_lefty_tl
+  \mix_format_num:N\l_mix_leftz_tl
+  \mix_format_num:N\l_mix_upx_tl
+  \mix_format_num:N\l_mix_upy_tl
+  \mix_format_num:N\l_mix_upz_tl
+  \mix_format_num:N\l_mix_viewx_tl
+  \mix_format_num:N\l_mix_viewy_tl
+  \mix_format_num:N\l_mix_viewz_tl
+  \mix_format_num:N\l_mix_transx_tl
+  \mix_format_num:N\l_mix_transy_tl
+  \mix_format_num:N\l_mix_transz_tl
+
+  %concat elements to matrix
+  \tl_set:Nx\l_mix_ciiw_tl{
+    \l_mix_leftx_tl \space
+    \l_mix_lefty_tl \space
+    \l_mix_leftz_tl \space
+    \l_mix_upx_tl   \space
+    \l_mix_upy_tl   \space
+    \l_mix_upz_tl   \space
+    \l_mix_viewx_tl \space
+    \l_mix_viewy_tl \space
+    \l_mix_viewz_tl \space
+    \l_mix_transx_tl\space
+    \l_mix_transy_tl\space
+    \l_mix_transz_tl
+  }
+}
+
+% 3D view object
+\cs_new:Nn\mix_view:n{
+  \tl_set:Nx\l_mix_oscale_tl{\fp_use:N\l_mix_oscale_fp}
+  \mix_format_num:N\l_mix_oscale_tl
+  \tl_set:Nx\l_mix_aac_tl{\fp_use:N\l_mix_aac_fp}
+  \mix_format_num:N\l_mix_aac_tl
+  \tl_set:Nx\l_mix_roo_tl{\fp_use:N\l_mix_roo_fp}
+  \mix_format_num:N\l_mix_roo_tl
+  \mix_pdfobj:nnn{}{dict}{
+    /MS/M
+    /P<<
+      \bool_if:NTF\l_mix_iiidortho_bool{
+        /Subtype/O/OS~\l_mix_oscale_tl/OB/Min
+      }{
+        /Subtype/P/FOV~\l_mix_aac_tl/PS/Min
+      }
+    >>
+    /C2W~[\l_mix_ciiw_tl]
+    /CO~\l_mix_roo_tl
+    \l_mix_nr_tl
+    /NA~[\l_mix_naarray_tl]
+    /SA~[\l_mix_saarray_tl]
+    \l_mix_bg_tl\l_mix_ls_tl\l_mix_rm_tl
+    /XN~(#1)
+  }
+}
+
+%document command options
+
+\msg_set:nnnn{media9}{unknown~option}{
+  Line~\msg_line_number: :~Unknown~option~`#1'.
+}{
+  Option~'#1'~is~not~known~by~media9:\\
+  perhaps~it~is~spelled~incorrectly.
+}
+
+\msg_set:nnn{media9}{same~label}{
+  Line~\msg_line_number: :~Label~`#1'~multiply~defined.
+}
+\msg_set:nnn{media9}{multiple~labels}{\\
+  @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\\
+  @@~There~were~multiply-defined~labels!~@@\\
+  @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+}
+
+\bool_new:N\g_mix_usrdraft_bool
+\bool_new:N\g_mix_opt_iiidview_bool
+\bool_new:N\l_mix_roo_bool
+\bool_new:N\g_mix_opt_ciiw_bool
+\bool_new:N\g_mix_opt_iiidortho_bool
+\bool_new:N\l_mix_ciiw_bool
+\bool_new:N\l_mix_iiidortho_bool
+
+\seq_new:N\g_mix_res_seq
+\seq_new:N\g_mix_script_seq
+\tl_new:N\g_mix_rmnames_tl
+
+\keys_define:nn{media9/user}{
+  %user override automatic label
+  label .code:n = {
+    \tl_gset:Nx\g_mix_usrlabel_tl{#1}
+    \cs_if_exist:cTF{rm@#1}{
+      \msg_warning:nnx{media9}{same~label}{#1}
+      \cs_if_exist:NF\g_mix_samelabel_tl{
+        \tl_new:N\g_mix_samelabel_tl
+        \AtEndDocument{\msg_warning:nn{media9}{multiple~labels}}
+      }
+    }{
+      \tl_new:c{rm@#1}
+    }
+  },
+  label .value_required:,
+
+  width .code:n = {
+    \tl_gset:Nn\g_mix_wdarg_tl{#1}
+    \int_gadd:Nn\g_mix_resizeflag_int{\c_four}
+  },
+  width .value_required:,
+
+  height .code:n = {
+    \tl_gset:Nn\g_mix_htarg_tl{#1}
+    \int_gadd:Nn\g_mix_resizeflag_int{\c_two}
+  },
+  height .value_required:,
+
+  depth .code:n = {
+    \tl_gset:Nn\g_mix_dparg_tl{#1}
+    \int_gadd:Nn\g_mix_resizeflag_int{\c_one}
+  },
+  depth .value_required:,
+
+  scale .code:n = {\tl_gset:Nx\g_mix_scalearg_tl{#1}},
+  scale .value_required:,
+
+  url .bool_gset:N = \g_mix_url_bool,
+
+  addresource .code:n = {\seq_gput_right:Nn\g_mix_res_seq{#1}},
+  addresource .value_required:,
+
+  add3Djscript .code:n = {\seq_gput_right:Nn\g_mix_script_seq{#1}},
+  add3Djscript .value_required:,
+
+  flashvars .tl_gset_x:N = \g_mix_flashvars_tl,
+  flashvars .value_required:,
+
+  activate .choice:,
+  activate / pagevisible .code:n = {\tl_gset:Nn\g_mix_act_tl{/PV}},
+  activate / pageopen .code:n = {\tl_gset:Nn\g_mix_act_tl{/PO}},
+  activate / onclick .code:n = {\tl_gset:Nn\g_mix_act_tl{/XA}},
+  activate .value_required:,
+
+  deactivate .choice:,
+  deactivate / pageinvisible .code:n = {\tl_gset:Nn\g_mix_deact_tl{/PI}},
+  deactivate / pageclose .code:n = {\tl_gset:Nn\g_mix_deact_tl{/PC}},
+  deactivate / onclick .code:n = {\tl_gset:Nn\g_mix_deact_tl{/XD}},
+  deactivate .value_required:,
+
+  draft .choice:,
+  draft / true .code:n = {\bool_gset_true:N\g_mix_usrdraft_bool},
+  draft / false .code:n = {\bool_gset_false:N\g_mix_usrdraft_bool},
+  draft .default:n = {true},
+
+  final .choice:,
+  final / true .code:n = {\bool_gset_false:N\g_mix_usrdraft_bool},
+  final / false .code:n = {\bool_gset_true:N\g_mix_usrdraft_bool},
+  final .default:n = {true},
+
+  transparent .choice_code:n = {\tl_gset:Nx\g_mix_transp_tl{\l_keys_choice_tl}},
+  transparent .generate_choices:n = {true,false},
+  transparent .default:n = {true},
+
+  passcontext .choice_code:n = {\tl_gset:Nx\g_mix_contextclick_tl{
+    \l_keys_choice_tl}},
+  passcontext .generate_choices:n = {true,false},
+  passcontext .default:n = {true},
+
+  %3D specific options
+  3Dplaytype .choice:,
+  3Dplaytype / none .code:n = {\tl_gset:Nn\g_mix_playtpe_tl{None}},
+  3Dplaytype / linear .code:n = {\tl_gset:Nn\g_mix_playtpe_tl{Linear}},
+  3Dplaytype / oscillating .code:n = {
+    \tl_gset:Nn\g_mix_playtpe_tl{Oscillating}},
+  3Dplaytype .value_required:,
+
+  3Dplaycount .code:n = {\tl_gset:Nn\g_mix_playcnt_tl{
+    \exp_after:wN\int_value:w \dim_eval:w#1sp\dim_eval_end:}},
+  3Dplaycount .value_required:,
+
+  3Dplayspeed .tl_gset_x:N = \g_mix_playspd_tl,
+  3Dplayspeed .value_required:,
+
+  3Dtoolbar .choice_code:n = {\tl_gset:Nx\g_mix_tools_tl{\l_keys_choice_tl}},
+  3Dtoolbar .generate_choices:n = {true,false},
+  3Dtoolbar .default:n = {true},
+
+  3Dnavpane .choice_code:n = {\tl_gset:Nx\g_mix_nav_tl{\l_keys_choice_tl}},
+  3Dnavpane .generate_choices:n = {true,false},
+  3Dnavpane .default:n = {true},
+
+  3Dpartsattrs .choice_code:n = {
+    \tl_set:Nn\l_mix_keep_tl{keep}
+    \tl_if_eq:NNTF\l_keys_choice_tl\l_mix_keep_tl{
+      \tl_gset:Nn\g_mix_nrdflt_tl{/NR~false}
+    }{
+      \tl_gset:Nn\g_mix_nrdflt_tl{/NR~true}
+    }
+  },
+  3Dpartsattrs .generate_choices:n = {keep,restore},
+  3Dpartsattrs .value_required:,
+
+  3Dcoo .code:n = {\tl_gset:Nn\g_mix_opt_coo_tl{#1}
+    \bool_gset_true:N\g_mix_opt_iiidview_bool},
+  3Dcoo .value_required:,
+
+  3Dc2c .code:n = {\tl_gset:Nn\g_mix_opt_ctoc_tl{#1}
+    \bool_gset_true:N\g_mix_opt_iiidview_bool},
+  3Dc2c .value_required:,
+
+  3Dc2w .code:n = {
+    \tl_gset:Nx\g_mix_opt_ciiw_tl{#1}
+    \bool_gset_true:N\g_mix_opt_iiidview_bool
+    \bool_gset_true:N\g_mix_opt_ciiw_bool
+  },
+  3Dc2w .value_required:,
+
+  3Droo .code:n = {
+    \fp_gset:Nn\g_mix_opt_roo_fp{#1}
+    \fp_abs:N\g_mix_opt_roo_fp
+    \fp_if_zero:NT\g_mix_opt_roo_fp{\fp_set:Nn\g_mix_opt_roo_fp{1e-8}}
+    \bool_gset_true:N\g_mix_opt_iiidview_bool
+    \bool_set_true:N\l_mix_roo_bool
+  },
+  3Droo .value_required:,
+
+  3Daac .code:n = {\fp_gset:Nn\g_mix_opt_aac_fp{#1}
+    \bool_gset_true:N\g_mix_opt_iiidview_bool},
+  3Daac .value_required:,
+
+  3Dortho .code:n = {
+    \bool_gset_true:N\g_mix_opt_iiidview_bool
+    \bool_gset_true:N\g_mix_opt_iiidortho_bool
+    \fp_compare:nF{#1=0.0}{
+      \fp_gset:Nn\g_mix_opt_oscale_fp{#1}
+      \bool_if:NF\l_mix_roo_bool{
+        \fp_set:Nn\l_mix_temp_fp{1}
+        \fp_div:Nn\l_mix_temp_fp{#1}
+        \fp_div:Nn\l_mix_temp_fp{2}
+        \fp_gset_eq:NN\g_mix_opt_roo_fp\l_mix_temp_fp
+      }
+    }
+  },
+  3Dortho .default:n = {1},
+
+  3Droll .code:n = {\fp_gset:Nn\g_mix_opt_roll_fp{#1}
+    \bool_gset_true:N\g_mix_opt_iiidview_bool},
+  3Droll .value_required:,
+
+  3Dmenu .bool_gset:N = \g_mix_iiidcalc_bool,
+
+  3Dbg .code:n = {
+    \tl_gset:Nx\g_mix_opt_bg_tl{/BG<</Subtype/SC/CS/DeviceRGB/C[#1]/EA~true>>}
+  },
+  3Dbg .value_required:,
+
+  3Dlights .code:n = {
+    \tl_gset:Nx\g_mix_opt_ls_tl{/LS<</Subtype/#1>>}
+  },
+  3Dlights .value_required:,
+
+  3Drender .code:n = {
+    \tl_gset:Nx\g_mix_opt_rm_tl{/RM<</Subtype/#1>>}
+  },
+  3Drender .value_required:,
+
+  3Dviews .code:n = {
+    \file_if_exist:nTF{#1}{
+      \file_add_path:nN{#1}\l_mix_temp_tl
+      \tl_gset_eq:NN\g_mix_vfile_tl\l_mix_temp_tl
+    }{
+      \msg_error:nnxx{media9}{file~not~found}{#1}
+    }
+  },
+  3Dviews .value_required:,
+
+  unknown .code:n = {
+    \msg_error:nnx{media9}{unknown~option}{\exp_not:V\l_keys_key_tl}
+  },
+}
+
+%3D views file parsing
+
+%messages related to 3D views file parsing
+\msg_set:nnn{media9}{nested~view}{
+  File~#1,~line~#2:\\
+  A~VIEW~section~cannot~be~nested~into~another~section.
+}
+
+\msg_set:nnn{media9}{key~not~allowed}{
+  File~#1,~line~#2:\\
+  Key~`#3'~not~allowed~here;~must~go~into~#4~section.
+}
+
+\msg_set:nnn{media9}{section~not~allowed}{
+  File~#1,~line~#2:\\
+  #3~not~allowed~here;~must~be~a~sub-section~of~a~#4~section.
+}
+
+\msg_set:nnn{media9}{missing~part~name}{
+  File~#1,~line~#2:\\
+  You~must~provide~a~valid~PART~name~(PART=<part name>),~as~displayed\\
+  in~the~model~tree~of~the~3D~object~(go~to~`View'->`Navigation~Panels'\\
+  ->`Model~Tree'~in~Adobe~Reader).
+}
+
+\msg_set:nnn{media9}{missing~utf16~name}{
+  File~#1,~line~#2:\\
+  You~must~provide~a~valid~hex~encoded~part~name~(UTF16NAME=<part~name\\
+  as~hex~encoded~UTF-16~string>).~Enable~`3Dmenu'~option~and~choose\\
+  `Get~Current~View'~from~3D~context~menu~to~generate~correct~views~file\\
+  entries.
+}
+
+\msg_set:nnn{media9}{too~many~cross~sections}{
+  File~#1,~line~#2:\\
+  Adobe~Reader~supports~only~one~cross~section~per~3D~view.\\
+  I~am~ignoring~this~CROSSSECT.
+}
+
+\msg_set:nnn{media9}{no~end~here}{
+  File~#1,~line~#2:\\
+  There~is~nothing~to~END~here.
+}
+
+\cs_new:Npn\mix_parse_vect:w#1~#2~#3\q_stop{
+  \fp_set:Nn\l_mix_x_fp{#1}
+  \fp_set:Nn\l_mix_y_fp{#2}
+  \fp_set:Nn\l_mix_z_fp{#3}
+}
+
+\cs_new:Nn\mix_arcsin:Nnnn{
+  %#1 result (rad), #2 argument, #3 current term no., #4 total number of
+  %terms
+  \int_compare:nTF{#3==\c_zero}{
+    \fp_set:Nn\l_mix_tmpa_fp{1.0}
+    \fp_set:Nn\l_mix_tmpb_fp{1.0}
+    \fp_set:Nn\l_mix_tmpc_fp{1.0}
+    \fp_set:Nn\l_mix_tmpd_fp{#2}
+
+    \fp_set:Nn#1{#2}
+  }{
+    \fp_mul:Nn\l_mix_tmpa_fp{\int_eval:n{2*#3-1}}
+    \fp_mul:Nn\l_mix_tmpb_fp{\int_eval:n{2*#3}}
+    \fp_set:Nn\l_mix_tmpc_fp{\int_eval:n{2*#3+1}}
+    \fp_mul:Nn\l_mix_tmpd_fp{#2}
+    \fp_mul:Nn\l_mix_tmpd_fp{#2}
+
+    \fp_set_eq:NN\l_mix_tmpe_fp\l_mix_tmpd_fp
+    \fp_mul:Nn\l_mix_tmpe_fp{\l_mix_tmpa_fp}
+    \fp_div:Nn\l_mix_tmpe_fp{\l_mix_tmpb_fp}
+    \fp_div:Nn\l_mix_tmpe_fp{\l_mix_tmpc_fp}
+
+    \fp_add:Nn#1{\l_mix_tmpe_fp}
+  }
+  \int_compare:nF{#3==#4}{
+    \mix_arcsin:Nnnn#1{#2}{\int_eval:n{#3+1}}{#4}
+  }
+}
+
+\cs_new:Nn\mix_angfromxy:Nnn{ %#1 result (deg), #2 x, #3 y
+  %#1 result, #2 x, #3 y
+  \fp_set:Nn\l_mix_tmpa_fp{#2}\fp_mul:Nn\l_mix_tmpa_fp{#2}
+  \fp_set:Nn\l_mix_tmpb_fp{#3}\fp_mul:Nn\l_mix_tmpb_fp{#3}
+  \fp_add:Nn\l_mix_tmpa_fp\l_mix_tmpb_fp
+  \fp_pow:Nn\l_mix_tmpa_fp{0.5}
+  \fp_set:Nn\l_mix_asinarg_fp{#3}
+  \fp_div:Nn\l_mix_asinarg_fp\l_mix_tmpa_fp
+  \fp_set:Nn\l_mix_acosarg_fp{#2}
+  \fp_div:Nn\l_mix_acosarg_fp\l_mix_tmpa_fp
+  \fp_set:Nn\l_mix_halfsqrttwo_fp{2}
+  \fp_pow:Nn\l_mix_halfsqrttwo_fp{0.5}
+  \fp_div:Nn\l_mix_halfsqrttwo_fp{2}
+  \mix_arcsin:Nnnn\l_mix_arcsin_fp{\l_mix_asinarg_fp}{0}{10}
+  \mix_arcsin:Nnnn\l_mix_arccos_fp{\l_mix_acosarg_fp}{0}{10}
+  \fp_abs:N\l_mix_asinarg_fp
+  %determine quadrant
+  \fp_compare:nTF{#2>=\c_zero_fp}{
+    \fp_compare:nTF{#3>=\c_zero_fp}{ %I
+      \fp_compare:nNnTF\l_mix_asinarg_fp<\l_mix_halfsqrttwo_fp{
+        \fp_set_eq:NN#1\l_mix_arcsin_fp
+      }{
+        \fp_set:Nn#1{\c_pi_fp}\fp_div:Nn#1{2}
+        \fp_sub:Nn#1\l_mix_arccos_fp
+      }
+    }{                               %IV
+      \fp_compare:nNnTF\l_mix_asinarg_fp<\l_mix_halfsqrttwo_fp{
+        \fp_set_eq:NN#1\l_mix_arcsin_fp
+      }{
+        \fp_set:Nn#1{\c_pi_fp}\fp_div:Nn#1{2}
+        \fp_sub:Nn#1\l_mix_arccos_fp
+        \fp_neg:N#1
+      }
+    }
+  }{
+    \fp_compare:nTF{#3>=\c_zero_fp}{ %II
+      \fp_compare:nNnTF\l_mix_asinarg_fp<\l_mix_halfsqrttwo_fp{
+        \fp_set:Nn#1{\c_pi_fp}
+        \fp_sub:Nn#1\l_mix_arcsin_fp
+      }{
+        \fp_set:Nn#1{\c_pi_fp}\fp_div:Nn#1{2}
+        \fp_sub:Nn#1\l_mix_arccos_fp
+      }
+    }{                               %III
+      \fp_compare:nNnTF\l_mix_asinarg_fp<\l_mix_halfsqrttwo_fp{
+        \fp_set:Nn#1{-\c_pi_fp}
+        \fp_sub:Nn#1\l_mix_arcsin_fp
+      }{
+        \fp_set:Nn#1{\c_pi_fp}\fp_div:Nn#1{2}
+        \fp_sub:Nn#1\l_mix_arccos_fp
+        \fp_neg:N#1
+      }
+    }
+  }
+  \fp_mul:Nn#1{180}\fp_div:Nn#1{\c_pi_fp}
+}
+
+\bool_new:N\l_mix_blankndname_bool
+
+%keys for parsing the 3D views file
+\keys_define:nn{media9/views}{
+  VIEW .code:n = {
+    \int_compare:nF{\l_mix_level_tl<\c_zero}{
+      \msg_error:nnxx{media9}{nested~view}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}
+    }
+    \tl_set:Nn\l_mix_level_tl{\c_zero}
+    \tl_set:Nn\l_mix_cscount_tl{\c_zero}
+    \tl_set:Nx\l_mix_xname_tl{#1}%optional name of the view
+    %reset 3D settings to defaults
+    \mix_iiidreset:
+  },
+  VIEW .default:n = {},
+
+  COO .code:n = {
+    \int_compare:nF{\l_mix_level_tl=\c_zero}{
+      \msg_error:nnxxxx{media9}{key~not~allowed}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}{COO}{a~VIEW}
+    }
+    \tl_set:Nx\l_mix_coo_tl{#1}
+  },
+  COO .value_required:,
+
+  C2C .code:n = {
+    \int_compare:nF{\l_mix_level_tl=\c_zero}{
+      \msg_error:nnxxxx{media9}{key~not~allowed}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}{C2C}{a~VIEW}
+    }
+    \tl_set:Nx\l_mix_ctoc_tl{#1}
+  },
+  C2C .value_required:,
+
+  C2W .code:n = {
+    \int_compare:nF{\l_mix_level_tl=\c_zero}{
+      \msg_error:nnxxxx{media9}{key~not~allowed}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}{C2W}{a~VIEW}
+    }
+    \tl_set:Nx\l_mix_ciiw_tl{#1}
+    \bool_set_true:N\l_mix_ciiw_bool
+  },
+  C2W .value_required:,
+
+  ROO .code:n = {
+    \int_compare:nF{\l_mix_level_tl=\c_zero}{
+      \msg_error:nnxxxx{media9}{key~not~allowed}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}{ROO}{a~VIEW}
+    }
+    \fp_set:Nn\l_mix_roo_fp{#1}
+    \fp_abs:N\l_mix_roo_fp
+    \fp_if_zero:NT\l_mix_roo_fp{\fp_set:Nn\l_mix_roo_fp{1e-8}}
+    \bool_set_true:N\l_mix_roo_bool
+  },
+  ROO .value_required:,
+
+  AAC .code:n = {
+    \int_compare:nF{\l_mix_level_tl=\c_zero}{
+      \msg_error:nnxxxx{media9}{key~not~allowed}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}{AAC}{a~VIEW}
+    }
+    \fp_set:Nn\l_mix_aac_fp{#1}
+  },
+  AAC .value_required:,
+
+  ORTHO .code:n = {
+    \int_compare:nF{\l_mix_level_tl=\c_zero}{
+      \msg_error:nnxxxx{media9}{key~not~allowed}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}{ORTHO}{a~VIEW}
+    }
+    \bool_set_true:N\l_mix_iiidortho_bool
+    \fp_compare:nF{#1=0.0}{
+      \fp_set:Nn\l_mix_oscale_fp{#1}
+      \bool_if:NF\l_mix_roo_bool{
+        \fp_set:Nn\l_mix_temp_fp{1}
+        \fp_div:Nn\l_mix_temp_fp{#1}
+        \fp_div:Nn\l_mix_temp_fp{2}
+        \fp_set_eq:NN\l_mix_roo_fp\l_mix_temp_fp
+      }
+    }
+  },
+  ORTHO .default:n = {1},
+
+  ROLL .code:n = {
+    \int_compare:nF{\l_mix_level_tl=\c_zero}{
+      \msg_error:nnxxxx{media9}{key~not~allowed}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}{ROLL}{a~VIEW}
+    }
+    \fp_set:Nn\l_mix_roll_fp{#1}
+  },
+  ROLL .value_required:,
+
+  BGCOLOR .code:n = {
+    \int_compare:nF{\l_mix_level_tl=\c_zero}{
+      \msg_error:nnxxxx{media9}{key~not~allowed}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}{BGCOLOR}{a~VIEW}
+    }
+    \tl_set:Nx\l_mix_bg_tl{/BG<</CS/DeviceRGB/C[#1]/EA~true>>}
+  },
+  BGCOLOR .value_required:,
+
+  LIGHTS .code:n = {
+    \int_compare:nF{\l_mix_level_tl=\c_zero}{
+      \msg_error:nnxxxx{media9}{key~not~allowed}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}{LIGHTS}{a~VIEW}
+    }
+    \tl_set:Nx\l_mix_ls_tl{/LS<</Subtype/#1>>}
+  },
+  LIGHTS .value_required:,
+
+  RENDERMODE .code:n = {
+    \bool_if:nF{
+      \int_compare_p:n{\l_mix_level_tl=\c_zero} ||
+      \int_compare_p:n{\l_mix_level_tl=\c_one}
+    }{
+      \msg_error:nnxxxx{media9}{key~not~allowed}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}
+        {RENDERMODE}{a~VIEW~or~a~PART}
+    }
+    \int_compare:nT{\l_mix_level_tl=\c_zero}{
+      \tl_set:Nx\l_mix_rm_tl{/RM<</Subtype/#1>>}
+    }
+    \int_compare:nT{\l_mix_level_tl=\c_one}{
+      \tl_set:Nx\l_mix_ndrm_tl{/RM<</Subtype/#1>>} %part (=node) render mode
+    }
+  },
+  RENDERMODE .value_required:,
+
+  PARTSATTRS .choice_code:n = {
+    \int_compare:nF{\l_mix_level_tl=\c_zero}{
+      \msg_error:nnxxxx{media9}{key~not~allowed}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}{PARTSATTRS}{VIEW}
+    }
+    \tl_set:Nn\l_mix_keep_tl{keep}
+    \tl_if_eq:NNTF\l_keys_choice_tl\l_mix_keep_tl{
+      \tl_set:Nn\l_mix_nr_tl{/NR~false}
+    }{
+      \tl_set:Nn\l_mix_nr_tl{/NR~true}
+    }
+  },
+  PARTSATTRS .generate_choices:n = {keep,restore},
+  PARTSATTRS .value_required:,
+
+  PART .code:n = {
+    \int_compare:nF{\l_mix_level_tl=\c_zero}{
+      \msg_error:nnxxxx{media9}{section~not~allowed}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}{PART}{VIEW}
+    }
+    \bool_set_true:N\l_mix_blankndname_bool
+    \bool_set:Nn\l_mix_blankndname_bool{\tl_if_blank_p:o{#1}}
+    \tl_set:Nn\l_mix_level_tl{\c_one}
+    \tl_set:Nn\l_mix_ndname_tl{(#1)} %part (=node) name
+    \tl_set_eq:NN\l_mix_partlineno_int\l_mix_lineno_int
+    %default part settings
+    \tl_set:Nn\l_mix_ndop_tl{} %opacity
+    \tl_set:Nn\l_mix_ndvi_tl{} %visibility
+    \tl_set:Nn\l_mix_ndrm_tl{} %render mode
+    \tl_set:Nn\l_mix_ndtrans_tl{}%transformation matrix
+  },
+  PART .default:n = {},
+
+  UTF16NAME .code:n = { %part (=node) name, UTF16, HEX encoded
+    \int_compare:nF{\l_mix_level_tl=\c_one}{
+      \msg_error:nnxxxx{media9}{key~not~allowed}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}{UTF16NAME}{PART}
+    }
+    \tl_if_blank:oT{#1}{
+      \msg_error:nnxx{media9}{missing~utf16~name}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}
+    }
+    \bool_set_false:N\l_mix_blankndname_bool
+    \mix_ndname:n{feff#1}
+  },
+  UTFNAME .default:n = {},
+
+  OPACITY .code:n = {
+    \int_compare:nF{\l_mix_level_tl=\c_one}{
+      \msg_error:nnxxxx{media9}{key~not~allowed}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}{OPACITY}{PART}
+    }
+    \tl_set:Nx\l_mix_ndop_tl{/O~#1}
+  },
+  OPACITY .value_required:,
+
+  VISIBLE .choice_code:n = {
+    \int_compare:nF{\l_mix_level_tl=\c_one}{
+      \msg_error:nnxxxx{media9}{key~not~allowed}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}{VISIBLE}{PART}
+    }
+    \tl_set:Nx\l_mix_ndvi_tl{/V~\l_keys_choice_tl}
+  },
+  VISIBLE .generate_choices:n = {true,false},
+  VISIBLE .default:n = {true},
+
+  TRANSFORM .code:n = {
+    \int_compare:nF{\l_mix_level_tl=\c_one}{
+      \msg_error:nnxxxx{media9}{key~not~allowed}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}{TRANSLATE}{PART}
+    }
+    \seq_set_split:Nnn\l_mix_args_seq{~}{#1}
+    \seq_map_inline:Nn\l_mix_args_seq{
+      \fp_set:Nn\l_mix_tmpa_fp{##1}
+      \tl_set:Nx\l_mix_tmpa_tl{\fp_use:N\l_mix_tmpa_fp}
+      \mix_format_num:N\l_mix_tmpa_tl
+      \tl_put_right:Nx\l_mix_ndtrans_tl{~\l_mix_tmpa_tl}
+    }
+  },
+  TRANSFORM .value_required:,
+
+  CROSSSECT .code:n = {
+    \int_compare:nF{\l_mix_level_tl=\c_zero}{
+      \msg_error:nnxxxx{media9}{section~not~allowed}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}{CROSSSECT}{VIEW}
+    }
+    \int_compare:nT{\l_mix_cscount_tl>\c_zero}{
+      \msg_warning:nnxx{media9}{too~many~cross~sections}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}
+    }
+    \tl_set:Nn\l_mix_level_tl{\c_two}
+    %default part settings
+    \tl_set:Nn\l_mix_cscentre_tl{0~0~0} %centre of clipping plane
+    \tl_set:Nn\l_mix_csorient_tl{null~0~0} %orientation of plane
+  },
+  CROSSSECT .value_forbidden:,
+
+  CENTER .code:n = {
+    \int_compare:nF{\l_mix_level_tl=\c_two}{
+      \msg_error:nnxxxx{media9}{key~not~allowed}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}{CENTER}{CROSSSECT}
+    }
+    \tl_set:Nx\l_mix_args_tl{#1\space}
+    \exp_after:wN\mix_parse_vect:w\l_mix_args_tl\q_stop
+    \tl_set:Nx\l_mix_x_tl{\fp_use:N\l_mix_x_fp}
+    \mix_format_num:N\l_mix_x_tl
+    \tl_set:Nx\l_mix_y_tl{\fp_use:N\l_mix_y_fp}
+    \mix_format_num:N\l_mix_y_tl
+    \tl_set:Nx\l_mix_z_tl{\fp_use:N\l_mix_z_fp}
+    \mix_format_num:N\l_mix_z_tl
+    \tl_set:Nx\l_mix_cscentre_tl{
+      \l_mix_x_tl\space
+      \l_mix_y_tl\space
+      \l_mix_z_tl
+    }
+  },
+  CENTER .value_required:,
+
+  NORMAL .code:n = {
+    \int_compare:nF{\l_mix_level_tl=\c_two}{
+      \msg_error:nnxxxx{media9}{key~not~allowed}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}{NORMAL}{CROSSSECT}
+    }
+    \tl_set:Nx\l_mix_args_tl{#1\space}
+    \exp_after:wN\mix_parse_vect:w\l_mix_args_tl\q_stop
+    \fp_set_eq:NN\l_mix_tmpa_fp\l_mix_x_fp
+    \fp_mul:Nn\l_mix_tmpa_fp\l_mix_x_fp
+    \fp_set_eq:NN\l_mix_tmpb_fp\l_mix_y_fp
+    \fp_mul:Nn\l_mix_tmpb_fp\l_mix_y_fp
+    \fp_set_eq:NN\l_mix_magxy\l_mix_tmpa_fp
+    \fp_add:Nn\l_mix_magxy\l_mix_tmpb_fp
+    \fp_pow:Nn\l_mix_magxy{0.5}             %sqrt(x^2+y^2)
+    %rot angle of normal vec around Y axis
+    \mix_angfromxy:Nnn\l_mix_roty_fp\l_mix_magxy\l_mix_z_fp
+    \fp_neg:N\l_mix_roty_fp
+    %rot angle of normal vec around Z axis
+    \mix_angfromxy:Nnn\l_mix_rotz_fp\l_mix_x_fp\l_mix_y_fp
+    \tl_set:Nx\l_mix_roty_tl{\fp_use:N\l_mix_roty_fp}
+    \mix_format_num:N\l_mix_roty_tl
+    \tl_set:Nx\l_mix_rotz_tl{\fp_use:N\l_mix_rotz_fp}
+    \mix_format_num:N\l_mix_rotz_tl
+    \tl_set:Nx\l_mix_csorient_tl{null~\l_mix_roty_tl\space\l_mix_rotz_tl}
+  },
+  NORMAL .value_required:,
+
+  END .code:n = {
+    \prg_case_int:nnn{\l_mix_level_tl}{
+      {0}{ %VIEW
+        \bool_if:NF\l_mix_ciiw_bool{
+          \tl_set:Nx\l_mix_args_tl{\l_mix_coo_tl\space\l_mix_ctoc_tl\space}
+          \exp_after:wN\mix_calc_ciiw:w\l_mix_args_tl\q_stop
+        }
+        \int_incr:N\l_mix_viewcnt_int
+        \tl_if_blank:VT\l_mix_xname_tl{
+          \tl_set:Nx\l_mix_xname_tl{View~\int_use:N\l_mix_viewcnt_int}
+        }
+        \mix_view:n{\l_mix_xname_tl}
+        \tl_put_right:Nx\l_mix_iiidviewarray_tl{~\g_mix_pdflastobj_tl}
+        \tl_set:Nn\l_mix_level_tl{\c_minus_one}
+      }
+
+      {1}{ %PART
+        \bool_if:NT\l_mix_blankndname_bool{
+          \msg_error:nnxx{media9}{missing~part~name}
+            {\g_mix_vfile_tl}{\int_use:N\l_mix_partlineno_int}
+        }
+
+        \mix_pdfobj:nnn{}{dict}{
+          /Type/3DNode/N~\l_mix_ndname_tl
+          \l_mix_ndop_tl\l_mix_ndvi_tl\l_mix_ndrm_tl
+          \tl_if_blank:VF\l_mix_ndtrans_tl{
+            /M~[\l_mix_ndtrans_tl]
+          }
+        }
+
+        \tl_put_right:Nx\l_mix_naarray_tl{~\g_mix_pdflastobj_tl}
+        \tl_set:Nn\l_mix_level_tl{\c_zero}
+      }
+      {2}{ %CROSSSECT
+        \int_compare:nT{\l_mix_cscount_tl=\c_zero}{
+          \mix_pdfobj:nnn{}{dict}{
+            /Type/3DCrossSection
+            /C~[\l_mix_cscentre_tl]
+            /O~[\l_mix_csorient_tl]
+            /IV~true
+          }
+          \tl_put_right:Nx\l_mix_saarray_tl{~\g_mix_pdflastobj_tl}
+          \tl_set:Nn\l_mix_cscount_tl{\c_one}
+        }
+        \tl_set:Nn\l_mix_level_tl{\c_zero}
+      }
+    }{
+      \msg_error:nnxx{media9}{no~end~here}
+        {\g_mix_vfile_tl}{\int_use:N\l_mix_lineno_int}
+    }
+  },
+  END .value_forbidden:,
+}

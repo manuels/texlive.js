@@ -1,0 +1,886 @@
+%    DICE3D.MF   
+%
+%  by Thomas A. Heim (1998)
+%
+%  3D-look for dice; works reasonably well only in display size 20pt and up
+%
+%  2D-pictures are characters 1,2,3,4,5,6;
+%  3D-pictures are characters "a" through "x", 
+%              but they're accessible using ligatures #a, #b, #c, #d,
+%              where # is the value on the top face, and
+%              the letter indicates one of the four possible
+%              values on the front face: "a" -> smallest, "d" -> largest
+% 
+%              alternatively, there are ligature tables so that
+%              the letters run from "a" to "f", indicating 1 to 6 dots
+%              on the front face 
+%
+%              (you can change the lig table at the end of the file)
+% 
+%  LICENSE: LPPL
+%
+
+% change this to get a different size
+size_in_points = 30;
+
+mode_setup;
+
+% autorounding := 0;   %  no need to shut off autorounding 
+% smoothing := 0;      %     or smoothing
+
+%  define the unit size
+un#=(size_in_points/10) * pt#;
+define_whole_pixels(un);
+
+font_normal_space 3un#;
+
+% amount of space to the left and right of dice box;
+% if you change this, also change the 2nd parameter to
+% beginchar for each character
+sb = .5 un;
+
+% size of dots on front face
+DotSize = .8un;        
+
+% width and height of front face
+face_width = 8un;
+face_height = 8un;
+
+%  amount of rounding at corners
+dice_c = 1.3DotSize;  
+
+%  transformations front -> side, front -> top, scale with 1/sqrt(8):
+sqrt_eight = 0.35355339;
+
+%  scaled dot diagonal
+dot_xy = sqrt_eight*DotSize;
+
+%  define the affine transformations front->side, front->top
+transform t[];
+
+hide( (0,0) transformed t1 = (0,0) );
+hide( (1,0) transformed t1 = (sqrt_eight,sqrt_eight) );
+hide( (0,1) transformed t1 = (0,1) );
+hide( (0,0) transformed t2 = (0,0) );
+hide( (1,0) transformed t2 = (1,0) );
+hide( (0,1) transformed t2 = (sqrt_eight,sqrt_eight) );
+
+%  t3 transforms front to right side
+t3 = t1 shifted (face_width,0);
+
+%  t4 transforms front to top
+t4 = t2 shifted (0,face_height);
+
+%  the following macro draws a die face, with rounded corners
+def dice_face =
+  begingroup;
+  save w, h;
+  numeric w[], h[];
+
+ lft w1 = sb = w2 - dice_c = w3 - face_width + dice_c = rt w4 - face_width;
+ bot h1 = 0 = h2 - dice_c = h3 - face_height + dice_c = top h4 - face_height;
+
+    draw (w1,h2)---(w1, h3)..(w2, h4)---(w3,h4)..(w4,h3)---
+      (w4,h2)..(w3,h1)---(w2,h1)..cycle;
+
+  endgroup;
+
+enddef;
+
+%  the following macro draws a box, with rounded corners
+def dice_box =
+  begingroup;
+  save w, h;
+  numeric w[], h[];
+
+ lft w1 = sb = w2 - dice_c = w3 - face_width + dice_c = rt w4 - face_width;
+ bot h1 = 0 = h2 - dice_c = h3 - face_height + dice_c = top h4 - face_height;
+
+% the front face:
+    draw (w1,h2)---(w1, h3)..(w2, h4)---(w3,h4)..(w4,h3)---
+      (w4,h2)..(w3,h1)---(w2,h1)..cycle;
+
+% the right side face:
+    draw ((w1,h2) transformed t3)---((w1,h3) transformed t3)..
+    ((w2,h4) transformed t3)---((w3,h4) transformed t3)..
+    ((w4,h3) transformed t3)---((w4,h2) transformed t3)..
+    ((w3,h1) transformed t3)---((w2,h1) transformed t3)..cycle;
+
+% the top face:
+    draw ((w1,h2) transformed t4)---((w1,h3) transformed t4)..
+    ((w2,h4) transformed t4)---((w3,h4) transformed t4)..
+    ((w4,h3) transformed t4)---((w4,h2) transformed t4)..
+    ((w3,h1) transformed t4)---((w2,h1) transformed t4)..cycle;
+
+% connect upper left front to top:
+    draw (w1,h3)..((w1,h2) transformed t4);
+
+  endgroup;
+enddef;
+
+%  the following macros draw dots on the front, side, and top,
+%  with the appropriate transformations, at point z$:
+
+def front_dot (suffix $) =
+fill (z$+(0,DotSize)){right}..{left}(z$-(0,DotSize))..cycle;
+enddef;
+
+def side_dot (suffix $) =
+  fill (z$+(dot_xy,dot_xy)){up}.. {dir 225}(z$+(0,DotSize)){dir 225}.. 
+  {down}(z$-(dot_xy,dot_xy)){down}..{dir 45}(z$-(0,DotSize))..cycle;
+enddef;
+
+def top_dot (suffix $) =
+  fill (z$+(dot_xy,dot_xy)){right}..{dir 225}(z$+(DotSize,0)){dir 225}..
+  {left}(z$-(dot_xy,dot_xy)){left}..{dir 45}(z$-(DotSize,0))..cycle;
+enddef;
+
+def dice_dots = 
+%  this macros defines the possible dot positions:
+%     dots are labeled z1 through z27 as follows
+%         _____________ 
+%       / 19  20  21 / |
+%     / 22  23  24 / 12|
+%   / 25  26  27 / 11  |
+%  ------------- 10  15|
+%  | 1   2   3 |   14  |      i.e., 1-9 on front, 
+%  |           | 13  18|            10-18 on side, 
+%  | 4   5   6 |   17 /             19-27 on top
+%  |           | 16 /   
+%  | 7   8   9 |  /     
+%  -------------/       
+%
+%  the nine positions for dots on the front face:
+ x1 = sb + face_width/4 = x2 - face_width/4 = x3 - face_width/2 = x4 = x7;
+ x5 = x2 = x8;
+ x6 = x3 = x9;
+ y1 = 3/4face_height = y2 = y3;
+ y4 = face_height/2 = y5 = y6;
+ y7 = face_height/4 = y8 = y9;
+%  nine dot positions on the right side face:
+%  (1st and 3rd column are shifted towards the center to avoid 
+%   overlap with frame)
+ z10 = (z1 shifted (sb,0)) transformed t3;
+ z11 = z2 transformed t3;
+ z12 = (z3 shifted (-sb,0)) transformed t3;
+ z13 = (z4 shifted (sb,0)) transformed t3;
+ z14 = z5 transformed t3;
+ z15 = (z6 shifted (-sb,0)) transformed t3;
+ z16 = (z7 shifted (sb,0)) transformed t3;
+ z17 = z8 transformed t3;
+ z18 = (z9 shifted (-sb,0)) transformed t3;
+%  nine dot positions on the top face:
+%  (1st and 3rd row are shifted towards the center to avoid 
+%   overlap with frame)
+ z19 = (z1 shifted (0,-sb)) transformed t4;
+ z20 = (z2 shifted (0,-sb)) transformed t4;
+ z21 = (z3 shifted (0,-sb)) transformed t4;
+ z22 = z4 transformed t4;
+ z23 = z5 transformed t4;
+ z24 = z6 transformed t4;
+ z25 = (z7 shifted (0,sb)) transformed t4;
+ z26 = (z8 shifted (0,sb)) transformed t4;
+ z27 = (z9 shifted (0,sb)) transformed t4;
+enddef;
+
+%  the 2D faces:
+beginchar("1",9un#,8un#,0); "One";
+
+  pickup pencircle scaled .5 un;
+
+  dice_face;          % draw the frame
+  dice_dots;          % get the dot positions
+  front_dot(5);       % draw a dot
+
+endchar;
+
+beginchar("2",9un#,8un#,0); "Two";
+
+  pickup pencircle scaled .5 un;
+
+  dice_face;          % draw the frame
+  dice_dots;          % get the dot positions
+  front_dot(1);       % draw a dot
+  front_dot(9);       % draw a dot
+
+endchar;
+
+beginchar("3",9un#,8un#,0); "Three";
+
+  pickup pencircle scaled .5 un;
+
+  dice_face;          % draw the frame
+  dice_dots;          % get the dot positions
+  front_dot(1);       % draw a dot
+  front_dot(5);       % draw a dot
+  front_dot(9);       % draw a dot
+
+endchar;
+
+beginchar("4",9un#,8un#,0); "Four";
+
+  pickup pencircle scaled .5 un;
+
+  dice_face;          % draw the frame
+  dice_dots;          % get the dot positions
+  front_dot(1);       % draw a dot
+  front_dot(3);       % draw a dot
+  front_dot(7);       % draw a dot
+  front_dot(9);       % draw a dot
+
+endchar;
+
+beginchar("5",9un#,8un#,0); "Five";
+
+  pickup pencircle scaled .5 un;
+
+  dice_face;          % draw the frame
+  dice_dots;          % get the dot positions
+  front_dot(1);       % draw a dot
+  front_dot(3);       % draw a dot
+  front_dot(5);       % draw a dot
+  front_dot(7);       % draw a dot
+  front_dot(9);       % draw a dot
+
+endchar;
+
+beginchar("6",9un#,8un#,0); "Six";
+
+  pickup pencircle scaled .5 un;
+
+  dice_face;          % draw the frame
+  dice_dots;          % get the dot positions
+  front_dot(1);       % draw a dot
+  front_dot(3);       % draw a dot
+  front_dot(4);       % draw a dot
+  front_dot(6);       % draw a dot
+  front_dot(7);       % draw a dot
+  front_dot(9);       % draw a dot
+
+endchar;
+
+%  the 3D dice:
+beginchar("a",12un#,12un#,0); "OneTwoThree";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(23);
+  front_dot(1);
+  front_dot(9);
+  side_dot(10);
+  side_dot(14);
+  side_dot(18);
+endchar;
+
+beginchar("b",12un#,12un#,0); "OneThreeFive";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(23);
+  front_dot(1);
+  front_dot(5);
+  front_dot(9);
+  side_dot(10);
+  side_dot(12);
+  side_dot(14);
+  side_dot(16);
+  side_dot(18);
+   
+endchar;
+
+beginchar("c",12un#,12un#,0); "OneFourTwo";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(23);
+  front_dot(1);
+  front_dot(3);
+  front_dot(7);
+  front_dot(9);
+  side_dot(10);
+  side_dot(18);
+
+endchar;
+
+beginchar("d",12un#,12un#,0); "OneFiveFour";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(23);
+  front_dot(1);
+  front_dot(3);
+  front_dot(5);
+  front_dot(7);
+  front_dot(9);
+  side_dot(10);
+  side_dot(12);
+  side_dot(16);
+  side_dot(18);
+
+endchar;
+
+beginchar("e",12un#,12un#,0); "TwoOneFour";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(19);
+  top_dot(27);
+  front_dot(5);
+  side_dot(10);
+  side_dot(12);
+  side_dot(16);
+  side_dot(18);
+  
+endchar;
+
+beginchar("f",12un#,12un#,0); "TwoThreeOne";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(21);
+  top_dot(25);
+  front_dot(3);
+  front_dot(5);
+  front_dot(7);
+  side_dot(14);
+  
+endchar;
+
+beginchar("g",12un#,12un#,0); "TwoFourSix";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(21);
+  top_dot(25);
+  front_dot(1);
+  front_dot(3);
+  front_dot(7);
+  front_dot(9);
+  side_dot(10);
+  side_dot(12);
+  side_dot(13);
+  side_dot(15);
+  side_dot(16);
+  side_dot(18);
+  
+endchar;
+
+beginchar("h",12un#,12un#,0); "TwoSixThree";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(19);
+  top_dot(27);
+  front_dot(1);
+  front_dot(3);
+  front_dot(4);
+  front_dot(6);
+  front_dot(7);
+  front_dot(9);
+  side_dot(12);
+  side_dot(14);
+  side_dot(16);
+  
+endchar;
+
+beginchar("i",12un#,12un#,0); "ThreeOneTwo";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(19);
+  top_dot(23);
+  top_dot(27);
+  front_dot(5);
+  side_dot(12);
+  side_dot(16);
+  
+endchar;
+
+beginchar("j",12un#,12un#,0); "ThreeTwoSix";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(21);
+  top_dot(23);
+  top_dot(25);
+  front_dot(3);
+  front_dot(7);
+  side_dot(10);
+  side_dot(11);
+  side_dot(12);
+  side_dot(16);
+  side_dot(17);
+  side_dot(18);
+  
+endchar;
+
+beginchar("k",12un#,12un#,0); "ThreeFiveOne";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(21);
+  top_dot(23);
+  top_dot(25);
+  front_dot(1);
+  front_dot(3);
+  front_dot(5);
+  front_dot(7);
+  front_dot(9);
+  side_dot(14);
+  
+endchar;
+
+beginchar("l",12un#,12un#,0); "ThreeSixFive";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(19);
+  top_dot(23);
+  top_dot(27);
+  front_dot(1);
+  front_dot(2);
+  front_dot(3);
+  front_dot(7);
+  front_dot(8);
+  front_dot(9);
+  side_dot(10);
+  side_dot(12);
+  side_dot(14);
+  side_dot(16);
+  side_dot(18);
+  
+endchar;
+
+beginchar("m",12un#,12un#,0); "FourOneFive";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(19);
+  top_dot(21);
+  top_dot(25);
+  top_dot(27);
+  front_dot(5);
+  side_dot(10);
+  side_dot(12);
+  side_dot(14);
+  side_dot(16);
+  side_dot(18);
+  
+endchar;
+
+beginchar("n",12un#,12un#,0); "FourTwoOne";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(19);
+  top_dot(21);
+  top_dot(25);
+  top_dot(27);
+  front_dot(3);
+  front_dot(7);
+  side_dot(14);
+  
+endchar;
+
+beginchar("o",12un#,12un#,0); "FourFiveSix";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(19);
+  top_dot(21);
+  top_dot(25);
+  top_dot(27);
+  front_dot(1);
+  front_dot(3);
+  front_dot(5);
+  front_dot(7);
+  front_dot(9);
+  side_dot(10);
+  side_dot(11);
+  side_dot(12);
+  side_dot(16);
+  side_dot(17);
+  side_dot(18);
+  
+endchar;
+
+beginchar("p",12un#,12un#,0); "FourSixTwo";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(19);
+  top_dot(21);
+  top_dot(25);
+  top_dot(27);
+  front_dot(1);
+  front_dot(2);
+  front_dot(3);
+  front_dot(7);
+  front_dot(8);
+  front_dot(9);
+  side_dot(12);
+  side_dot(16);
+  
+endchar;
+
+beginchar("q",12un#,12un#,0); "FiveOneThree";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(19);
+  top_dot(21);
+  top_dot(23);
+  top_dot(25);
+  top_dot(27);
+  front_dot(5);
+  side_dot(12);
+  side_dot(14);
+  side_dot(16);
+  
+endchar;
+
+beginchar("r",12un#,12un#,0); "FiveThreeSix";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(19);
+  top_dot(21);
+  top_dot(23);
+  top_dot(25);
+  top_dot(27);
+  front_dot(3);
+  front_dot(5);
+  front_dot(7);
+  side_dot(10);
+  side_dot(12);
+  side_dot(13);
+  side_dot(15);
+  side_dot(16);
+  side_dot(18);
+  
+endchar;
+
+beginchar("s",12un#,12un#,0); "FiveFourOne";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(19);
+  top_dot(21);
+  top_dot(23);
+  top_dot(25);
+  top_dot(27);
+  front_dot(1);
+  front_dot(3);
+  front_dot(7);
+  front_dot(9);
+  side_dot(14);
+  
+endchar;
+
+beginchar("t",12un#,12un#,0); "FiveSixFour";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+  top_dot(19);
+  top_dot(21);
+  top_dot(23);
+  top_dot(25);
+  top_dot(27);
+  front_dot(1);
+  front_dot(3);
+  front_dot(4);
+  front_dot(6);
+  front_dot(7);
+  front_dot(9);
+  side_dot(10);
+  side_dot(12);
+  side_dot(16);
+  side_dot(18);
+
+  % dots
+  
+endchar;
+
+beginchar("u",12un#,12un#,0); "SixTwoFour";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(19);
+  top_dot(21);
+  top_dot(22);
+  top_dot(24);
+  top_dot(25);
+  top_dot(27);
+  front_dot(1);
+  front_dot(9);
+  side_dot(10);
+  side_dot(12);
+  side_dot(16);
+  side_dot(18);
+  
+endchar;
+
+beginchar("v",12un#,12un#,0); "SixThreeTwo";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(19);
+  top_dot(20);
+  top_dot(21);
+  top_dot(25);
+  top_dot(26);
+  top_dot(27);
+  front_dot(1);
+  front_dot(5);
+  front_dot(9);
+  side_dot(10);
+  side_dot(18);
+  
+endchar;
+
+beginchar("w",12un#,12un#,0); "SixFourFive";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(19);
+  top_dot(20);
+  top_dot(21);
+  top_dot(25);
+  top_dot(26);
+  top_dot(27);
+  front_dot(1);
+  front_dot(3);
+  front_dot(7);
+  front_dot(9);
+  side_dot(10);
+  side_dot(12);
+  side_dot(14);
+  side_dot(16);
+  side_dot(18);
+  
+endchar;
+
+beginchar("x",12un#,12un#,0); "SixFiveThree";
+
+  pickup pencircle scaled .5 un;
+
+  % draw the box 
+  dice_box;
+  
+  % get the dot positions
+  dice_dots;
+
+  % dots
+  top_dot(19);
+  top_dot(21);
+  top_dot(22);
+  top_dot(24);
+  top_dot(25);
+  top_dot(27);
+  front_dot(1);
+  front_dot(3);
+  front_dot(5);
+  front_dot(7);
+  front_dot(9);
+  side_dot(10);
+  side_dot(14);
+  side_dot(18);
+  
+endchar;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  Use only one of the two ligature tables provided!
+%  (comment out as appropriate!)
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   ligature tables for 3D dice:
+%   #a, #b, #c, #d, where # is the value on the top face,
+%                   and the letter indicates the value on 
+%                   the front face: "a" -> smallest, 
+%                                   "d" -> largest
+ligtable "1" : "a" =: "a", "b" =: "b", "c" =: "c", "d" =: "d";
+ligtable "2" : "a" =: "e", "b" =: "f", "c" =: "g", "d" =: "h";
+ligtable "3" : "a" =: "i", "b" =: "j", "c" =: "k", "d" =: "l";
+ligtable "4" : "a" =: "m", "b" =: "n", "c" =: "o", "d" =: "p";
+ligtable "5" : "a" =: "q", "b" =: "r", "c" =: "s", "d" =: "t";
+ligtable "6" : "a" =: "u", "b" =: "v", "c" =: "w", "d" =: "x";
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%   alternative ligature tables for 3D dice:
+%   #a, #b, #c, #d, #e, #f, where # is the value on the top face,
+%                           and the letter indicates the value on 
+%                           the front face: "a" -> 1
+%                                       ... "f" -> 6
+% ligtable "1" : "b" =: "a", "c" =: "b", "d" =: "c", "e" =: "d";
+% ligtable "2" : "a" =: "e", "c" =: "f", "d" =: "g", "f" =: "h";
+% ligtable "3" : "a" =: "i", "b" =: "j", "e" =: "k", "f" =: "l";
+% ligtable "4" : "a" =: "m", "b" =: "n", "e" =: "o", "f" =: "p";
+% ligtable "5" : "a" =: "q", "c" =: "r", "d" =: "s", "f" =: "t";
+% ligtable "6" : "b" =: "u", "c" =: "v", "d" =: "w", "e" =: "x";
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+end;
+

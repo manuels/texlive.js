@@ -1,0 +1,374 @@
+% Blackboard bold base file, containing lots of horrible hacks.
+% Alan Jeffrey, 12--18 Dec 1989.
+
+% DIGITIZATION
+
+% I'm doing all my own digitization, so I don't need help from MF.
+autorounding := 0;
+
+% To get the unsharp version of x#, say unsharp x#.
+def unsharp = hppp * enddef;
+
+% The only pen I'm working with is of size pen_size.  This makes life
+% rather easier.  To find the x-coordinate whose left-hand edge is
+% at hround x, say leftround x, and similarly for rightround, 
+% topround and bottomround.
+def leftround expr x = hround x + 1/2 pen_size enddef;
+def rightround expr x = hround x - 1/2 pen_size enddef;
+def topround expr y = vround y - 1/2 pen_size enddef;
+def bottomround expr y = vround y + 1/2 pen_size enddef;
+
+% Using this, I can give the equivalent of define_whole_pixels...
+def define_whole_top_pixels (text t) =
+   forsuffixes $ = t:
+      $ := topround unsharp $.#;
+   endfor
+enddef;
+
+def define_whole_bottom_pixels (text t) =
+   forsuffixes $ = t:
+      $ := bottomround unsharp $.#;
+   endfor
+enddef;
+
+% POINTS
+
+% The point y~x is short for (x,y).  The reason for switching the
+% points around is that I find it easier to say Top~Left than
+% (Left, Top).
+primarydef x ~ y = (y,x) enddef;
+
+% To find the average of two points, say p -+- q.
+primarydef x ~ y = (y,x) enddef;
+tertiarydef x -+- y = .5[x,y] enddef;
+
+% To get the point 1/2fatness above p, say above p.  This is useful
+% for drawing lines fatness in width.  Similarly we have commands
+% below, leftof and rightof.
+def above secondary p = 
+   p + 1/2fatness * up
+enddef;
+
+def below secondary p =
+   p + 1/2fatness * down
+enddef;
+
+def leftof secondary p = 
+   p + 1/2fatness * left
+enddef;
+
+def rightof secondary p =
+   p + 1/2fatness * right
+enddef;
+
+% The command farleftof is equivalent to leftof leftof, and similarly
+% farrightof.
+def farleftof secondary p = 
+   p + fatness * left
+enddef;
+
+def farrightof secondary p =
+   p + fatness * right
+enddef;
+
+% To get curves with o-correction, we need to be able to move
+% o pixels up or down.
+def oabove secondary p =
+   p + o * up
+enddef;
+
+def obelow secondary p =
+   p + o * down
+enddef;
+
+% DECLARATIONS
+
+% To declare a new variable foo of type T, say var (T) foo.
+def var (text type) text declarations =
+   save declarations;
+   type declarations
+enddef;
+
+% PATHS
+
+% Given a cyclic path p, outline p draws the path and fills the inside
+% with white.  This is stolen from the MF book, exercise 13.11.
+def outline expr c =
+   begingroup
+      picture region;
+      region := nullpicture;
+      interim turningcheck := 0;
+      addto region contour c;
+      cull region dropping (0,0);
+      cullit;
+      addto currentpicture also -region;
+      cullit;
+      draw c
+   endgroup
+enddef;
+
+% Given a path p, leftside p is the path 1/2 fatness to its left,
+% and similarly rightside.
+def leftside primary apath =
+   apath shifted (1/2fatness * left)
+enddef;
+
+def rightside primary apath =
+   apath shifted (1/2fatness * right)
+enddef;
+
+% Given a path p, fatten p draws the leftside of p,
+% the rightside of p, and joins them up with straight lines.
+def fatten expr apath =
+   leftside apath
+      -- (reverse rightside apath)
+      -- cycle
+enddef;
+
+% Given a point p, splodge p draws an o-corrected circle of radius
+% fatness around p.
+def splodge expr apoint =
+   above apoint + o*up {right}
+      .. rightof apoint + o*right {down}
+      .. below apoint + o*down {left}
+      .. leftof apoint + o*left {up}
+      .. cycle
+enddef;
+
+% The command splodgel does the same, but doesn't close the cycle,
+% and leaves the current point at the left of the circle.
+def splodgel tertiary apoint =
+   leftof apoint + o*left {up}
+      .. above apoint + o*up {right}
+      .. rightof apoint + o*right {down}
+      .. below apoint + o*down {left}
+      .. leftof apoint + o*left {up}
+enddef;
+
+% Similarly, splodger leaves the current point at the right of the
+% circle.
+def splodger tertiary apoint =
+   rightof apoint + o*right {down}
+      .. below apoint + o*down {left}
+      .. leftof apoint + o*left {up}
+      .. above apoint + o*up {right}
+      .. rightof apoint + o*right {down}
+enddef;
+
+% CLIPPING
+
+% sometime (p, q) gives the time along p when it intersects q.
+def sometime (expr apath, bpath) =
+   xpart (apath intersectiontimes bpath)
+enddef;
+
+% othertime (p, q) gives another time at which p intersects q.
+def othertime (expr apath, bpath) =
+   length apath - sometime (reverse apath) (reverse bpath)
+enddef;
+
+% firsttime (p, q) gives the smallest of sometime (p,q) and othertime (p,q).
+def firsttime (expr apath, bpath) =
+   min (sometime (apath) (bpath), othertime (apath) (bpath))
+enddef;
+
+% lasttime (p, q) gives the largest of the two times.
+def lasttime (expr apath, bpath) =
+   max (sometime (apath) (bpath), othertime (apath) (bpath))
+enddef;
+
+% We can then clip p with q by finding the subpath of p from 0 to 
+% the time p intersects q.
+def cliponce (expr apath, clippath) =
+   subpath (0, sometime (apath) (clippath)) of apath
+enddef;
+
+% Similarly, if p intersects q twice, we can find the path between
+% the two times it intersects with cliptwice.
+def cliptwice (expr apath, clippath) =
+   subpath 
+      (firsttime (apath) (clippath), lasttime (apath) (clippath)) 
+   of apath
+enddef;
+
+% Given a path p and two paths q and r which intersect p,
+% we can find the path between when p crosses q and when p crosses r.
+% someclipbetween (p, q, r) will always start at q and finish at r.
+def someclipbetween (expr apath, firstclip, secondclip) =
+   subpath 
+      (sometime (apath) (firstclip),
+       sometime (apath) (secondclip))
+   of
+      apath
+enddef;
+
+% firstclipbetween does the same, but if p intersects q and r more
+% than once, it gives the first clipping.
+def firstclipbetween (expr apath, firstclip, secondclip) =
+   subpath 
+      (firsttime (apath) (firstclip),
+       firsttime (apath) (secondclip))
+   of
+      apath
+enddef;
+
+% lastclipbetween gives the last clipping.
+def lastclipbetween (expr apath, firstclip, secondclip) =
+   subpath 
+      (lasttime (apath) (firstclip),
+       lasttime (apath) (secondclip))
+   of
+      apath
+enddef;
+
+% We can join these together and clip fat lines.
+def fatcliponce (expr apath, clippath) =
+   cliponce (leftside apath) (clippath)
+      -- someclipbetween (clippath) (leftside apath) (rightside apath)
+      -- reverse cliponce (rightside apath) (clippath)
+      -- cycle
+enddef;
+
+def fatcliptwice (expr apath, clippath) =
+   cliptwice (leftside apath) (clippath)
+      -- lastclipbetween (clippath) (leftside apath) (rightside apath)
+      -- cliptwice (rightside apath) (reverse clippath)
+      -- firstclipbetween (clippath) (rightside apath) (leftside apath)
+      -- cycle
+enddef;
+
+% BBCHAR.
+
+% bbchar (c) (l#, w#, r#) (t#, b#) begins a character at code c,
+% of width w# with l# gap at the left and r# gap at the right.
+% It's topmost point is at t# and its bottommost point at b#.
+% From these parameters we calculate Width (the width of the character
+% in whole pixels) and hardTop and hardBottom (the exact top and bottom
+% of the character).  Top is then 1/2 pensize from the top of the character,
+% and Bottom is 1/2 pensize from the bottom.  This means if we draw a line
+% through top, the top of it will exactly touch the top.  We then calculate
+% Left, Middle, and Right in the same way, using calculateLeftetc.
+
+def bbchar 
+   (expr code)
+   (expr sharphardLeft, sharpWidth, sharprightgap)
+   (expr sharphardTop, sharphardBottom) =
+
+   beginchar 
+      (code)
+      (sharphardLeft + sharpWidth + sharprightgap)
+      (max (sharphardTop, 0pt#))
+      (max (-sharphardBottom, 0pt#)); 
+
+      save Top, Bottom, Horizon, hardTop, hardBottom,
+           Width, hardLeft, hardRight, Left, Right, Middle;
+
+      hardTop# = sharphardTop;
+      hardBottom# = sharphardBottom;
+      Width# = sharpWidth;
+      hardLeft# = sharphardLeft;
+      hardRight# = sharphardLeft + sharpWidth;
+
+      define_whole_pixels (Width);
+      define_whole_vertical_pixels (hardTop, hardBottom);
+      Top = topround hardTop;
+      Bottom = bottomround hardBottom;
+
+      Horizon = .5 [Top, Bottom];
+
+      calculateLeftetc;
+
+      pickup pencircle scaled pen_size;
+
+enddef;
+
+def calculateLeftetc =   
+   hardLeft := floor (unsharp hardLeft#);
+   hardRight := hardLeft + Width;
+   
+   Left := (hardLeft + 1/2pen_size);
+   Middle := (hardLeft + 1/2Width);
+   Right := (hardRight - 1/2pen_size);
+enddef;
+
+% bbcap is bbchar with the top at ATop# and the bottom at aBottom#.
+def bbcap (expr code, leftgap, width, rightgap) =
+   bbchar (code) (leftgap, width, rightgap) (ATop#, aBottom#);
+enddef;
+
+% bbnum is bbchar with the dimensions of a number hard-wired.
+def bbnum (expr code) =
+   bbchar (code) (medgap#, numeral#, medgap#) (oneTop#, aBottom#);
+enddef;
+
+% For characters such as < and > which appear a lot blacker than the
+% others, we can surround the character by beginblacker n ... endblacker,
+% which temporarily multiplies fatness by n.
+def beginblacker expr blackness = 
+   begingroup
+      save oldfatness;
+      oldfatness# := fatness#;
+      save fatness;
+      fatness# := oldfatness# * blackness;
+      define_whole_pixels (fatness)
+enddef;
+
+let endblacker = endgroup;
+   
+% SYMMETRY
+
+% To try to get characters symmetric, we need to round the width so there
+% are the same number of characters on the left of the central vertical
+% as there are on the right.  So if we are symmetrical around a pen of
+% size 2n, we need to make the width even.  If we are symmetrical around
+% a pen of size 2n+1 we need to make the width odd.  This is done with
+% roundlike (x) y, which rounds y to be even iff x is even.
+
+def roundlike (expr x) expr y =
+   2 * (round (x -+- y)) - x
+enddef;
+
+% To make the character symmetric, we round Width like pen_size.
+def symmetric =
+   Width := roundlike (pen_size) unsharp Width#;
+   calculateLeftetc
+enddef;
+
+% To make the character symmetric around a fat vertical, we round
+% Width like fatness + pen_size.
+def fatsymmetric =
+   Width := roundlike (fatness + pen_size) unsharp Width#;
+   calculateLeftetc
+enddef;
+
+% DRAWING THE CHARACTERS ON THE SCREEN
+
+% makebox and maketicks nicked from cmbase, adjusted for this job.
+
+def makebox(text rule) =
+ for y=0, hardBottom, hardTop:
+  rule((0,y)t_,(w,y)t_); endfor % horizontals
+ for x=0,hardLeft,hardRight,w:
+  rule((x,hardBottom)t_,(x,hardTop)t_); endfor % verticals
+enddef;
+
+def maketicks(text rule) =
+ for y=0, hardBottom, hardTop:
+  rule((-10,y)t_,(0,y)t_);  % horizontals at left
+  rule((w,y)t_,(w+10,y)t_);  % horizontals at right
+ endfor
+ for x=0,hardLeft,hardRight,w:
+  rule((x,hardBottom-10)t_,(x,hardBottom)t_); % verticals at bottom
+  rule((x,hardTop)t_,(x,hardTop+10)t_);       % verticals at top
+ endfor % verticals at top
+enddef;
+
+% HACKS TO MAKE CMR WORK
+
+% Some parameters I never use, but are needed by the cmr parameter files.
+boolean 
+   square_dots, hefty, serifs, monospace, 
+   variant_g, low_asterisk, math_fitting;
+
+% And that's that.
+

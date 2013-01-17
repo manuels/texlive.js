@@ -1,0 +1,66 @@
+prologues:=1;
+outputtemplate:="%j.mps";
+beginfig(1);
+linecap := butt;
+linejoin := mitered;
+drawoptions (withcolor (1.000000,0.843100,0.000000));
+fill (84.382797,711.479980)..controls (84.382797,713.612976) and (82.652298,715.343994)..(80.519501,715.343994)
+    ..controls (78.386703,715.343994) and (76.656303,713.612976)..(76.656303,711.479980)
+    ..controls (76.656303,709.348022) and (78.386703,707.617004)..(80.519501,707.617004)
+    ..controls (82.652298,707.617004) and (84.382797,709.348022)..(84.382797,711.479980)
+    --cycle;
+linejoin := rounded;
+fill (85.929703,711.479980)--(89.019501,711.479980)--cycle;
+pickup pencircle scaled 0.797011bp;
+draw (85.929703,711.479980)--(89.019501,711.479980);
+pickup pencircle scaled 0.000000bp;
+fill (85.203102,714.184021)--(87.882797,715.729980)--cycle;
+pickup pencircle scaled 0.797011bp;
+draw (85.203102,714.184021)--(87.882797,715.729980);
+pickup pencircle scaled 0.000000bp;
+fill (83.222702,716.164001)--(84.769501,718.840027)--cycle;
+pickup pencircle scaled 0.797011bp;
+draw (83.222702,716.164001)--(84.769501,718.840027);
+pickup pencircle scaled 0.000000bp;
+fill (80.519501,716.890991)--(80.519501,719.979980)--cycle;
+pickup pencircle scaled 0.797011bp;
+draw (80.519501,716.890991)--(80.519501,719.979980);
+pickup pencircle scaled 0.000000bp;
+fill (77.816399,716.164001)--(76.269501,718.840027)--cycle;
+pickup pencircle scaled 0.797011bp;
+draw (77.816399,716.164001)--(76.269501,718.840027);
+pickup pencircle scaled 0.000000bp;
+fill (75.835899,714.184021)--(73.160202,715.729980)--cycle;
+pickup pencircle scaled 0.797011bp;
+draw (75.835899,714.184021)--(73.160202,715.729980);
+pickup pencircle scaled 0.000000bp;
+fill (75.109398,711.479980)--(72.019501,711.479980)--cycle;
+pickup pencircle scaled 0.797011bp;
+draw (75.109398,711.479980)--(72.019501,711.479980);
+pickup pencircle scaled 0.000000bp;
+fill (75.835899,708.776978)--(73.160202,707.229980)--cycle;
+pickup pencircle scaled 0.797011bp;
+draw (75.835899,708.776978)--(73.160202,707.229980);
+pickup pencircle scaled 0.000000bp;
+fill (77.816399,706.796997)--(76.269501,704.117004)--cycle;
+pickup pencircle scaled 0.797011bp;
+draw (77.816399,706.796997)--(76.269501,704.117004);
+pickup pencircle scaled 0.000000bp;
+fill (80.519501,706.070007)--(80.519501,702.979980)--cycle;
+pickup pencircle scaled 0.797011bp;
+draw (80.519501,706.070007)--(80.519501,702.979980);
+pickup pencircle scaled 0.000000bp;
+fill (83.222702,706.796997)--(84.769501,704.117004)--cycle;
+pickup pencircle scaled 0.797011bp;
+draw (83.222702,706.796997)--(84.769501,704.117004);
+pickup pencircle scaled 0.000000bp;
+fill (85.203102,708.776978)--(87.882797,707.229980)--cycle;
+pickup pencircle scaled 0.797011bp;
+draw (85.203102,708.776978)--(87.882797,707.229980);
+z0=.5*urcorner(currentpicture)+.5*ulcorner(currentpicture);
+z1=.5*lrcorner(currentpicture)+.5*llcorner(currentpicture);
+draw (z0+(10.5,2));
+draw (z1-(10.5,2));
+clip currentpicture to ((z0-(9pt,0))--(z0+(8.5pt,0))--(z1+(8.5pt,0))--(z1-(9pt,0))--cycle);
+endfig;
+end

@@ -1,0 +1,489 @@
+%% This is file `kvmacros.tex',
+%% Version of January 7th, 2002
+%% 
+%% Copyright (C) 1998-2002 by Andreas W. Wieland, awwieland@gmx.de 
+%%
+%% This program can be redistributed and/or modified under the terms
+%% of the LaTeX Project Public License distributed from CTAN
+%% archives in directory macros/latex/base/lppl.txt; either
+%% version 1 of the License, or (at your option) any later version,
+%% with `The Program' referring to the software `kvmacros.tex' and its
+%% accompanying documentation and `The Copyright Holder' referring to the
+%% person Andreas W. Wieland.
+%% 
+%% 
+%% 
+%% IMPORTANT NOTICE: 
+%% 
+%% For error reports, comments or suggestions in case of UNCHANGED 
+%% versions send mail to:
+%% awwieland@gmx.de
+%% 
+%% Anyway, if you use my macros, send me an eMail, too. I would like to know
+%% if they are useful to somebody out there.
+%%
+%% Please do not request updates from me directly. Distribution is 
+%% done through Mail-Servers and TeX organizations. 
+%% 
+%% You are allowed to distribute this file under the condition that 
+%% it is distributed together with `kvdoc.tex', `kvdoc.dvi' and `kvdoc.ps'. 
+%% 
+%% If you receive this file alone from someone, complain! 
+%%
+\typeout{}
+\typeout{Macros for typesetting Karnaugh maps and Veitch charts}
+\typeout{Version of January 7th, 2002}
+\typeout{by Andreas W. Wieland, awwieland@gmx.de}
+\typeout{}
+%%
+%% Change History:
+%% August 04th, 1998: Original Version
+%%
+%% August 19th, 1998: Minor changes to make the lines within the maps look
+%% better, also moved the variable identifiers from the right to the left and
+%% added an identifier for the logic function; since then \kvmap has 5
+%% instead of 4 parameters. I also included the documentation in an additional
+%% Postscript-file.  
+%%
+%% September 23rd, 1998: Fixed the problem with double braces by introducing
+%% the \compdummy and \ende macros in the \ifx-comparisons (see below): 
+%% The parameters that are longer than one character do not have to be
+%% enclosed in double braces any longer --- single braces are
+%% sufficient. However, double braces will still be processed correctly.
+%%
+%% May 19th, 1999: Changed the documentation (which was months overdue) after
+%% F. M. Brown pointed me to the incorrectness of the term
+%% "Karnaugh-Veitch-map". Actually, the macros itself haven't
+%% changed. Probably I should introduce macros for typesetting Veitch charts
+%% as well (which would be a minor task). This version was actually never
+%% released. 
+%%
+%% May 25th, 1999: Introduced macros for Veitch charts
+%% (\veitchfoo) and renamed the macros that are solely related to
+%% Karnaugh maps from \kvfoo to \karnaughfoo. Introduced aliases for those
+%% macros that are user-callable to maintain compatibility with older versions:
+%% \kvmap -> \karnaughmap. However, \kvindex, \kvnoindex and \kvunitlength
+%% haven't changed their names as they are related to both Karnaugh maps and
+%% Veitch charts. Changed the (plain stupid) algorithm that processes the
+%% variable-length arguments so that it takes much less time to produce large
+%% maps. Several macros so became redundant and are no longer included. Also I
+%% introduced \kvindexsize and \kvcontentsize to adjust the font size of the
+%% indices and the contents of a diagram. They default to \tiny and
+%% \normalsize. 
+%%
+%% January 17th, 2001: Changed the eMail-address in the macro file and the
+%% accompanying documentation and made minor changes to the documentation.
+%%
+%% January 7th, 2002: Exchanged the \xdef to \gdef in the definition of
+%% \kvargumentstring and \kvgetonechar so that things like {\textbf 1} in the
+%% argumentlist of \karnaughmap do not cause error messages any longer. 
+%% Thanks to Michal Medveck{\'y} for pointing me to this error.
+%%
+%%
+%%
+%% We need a fixed dimension for a single field in a Karnaugh map:
+%%
+\newdimen\kvunitlength
+\kvunitlength=8mm
+%%
+%% We need a default font size for the indices:
+%%
+\newcommand{\kvindexsize}{\tiny}
+%%
+%% And we need a default size for the contents and variable identifiers:
+%%
+\newcommand{\kvcontentsize}{\normalsize}
+%%
+%% First, we have to introduce some counters:
+%%
+%% \kvrecursiondepth is used to control the recursion of the
+%% \karnaughmakemap- and \veitchmakechart-macro. 
+%%
+\newcount\kvrecursiondepth
+%%
+%% The \kvindexcounter is needed for the indices in the fields of the
+%% diagrams. 
+%%
+\newcount\kvindexcounter
+%% 
+%% \kvxsize and \kvysize store the dimensions of an entire diagram.
+%%
+\newcount\kvxsize
+\newcount\kvysize
+%%
+%% Some counters are necessary to compute the marks for the variable
+%% identifiers:
+%%
+\newcount\kvvarno
+\newcount\kvxvarno
+\newcount\kvyvarno
+\newcount\kvmarkstart
+\newcount\kvmarklength
+\newcount\kvmarknum
+\newcount\kvmarkmove
+%%
+%% And we need a savebox to store the variable marks:
+%%
+\newsavebox\kvsavebox
+%%
+%% Single fields in a diagram should be indexed, which makes the map easier to
+%% use. This is the default. If you don't want indices, simply call
+%% \kvnoindex. If you want indices back, call \kvindex:
+%%
+\def\kvnoindex{%
+\def\kvcurrentindex{}}
+%%
+\def\kvindex{%
+\def\kvcurrentindex{%
+\the\kvindexcounter\global\advance\kvindexcounter by 1}%
+}
+%%
+\kvindex
+%%
+%% We need a macro that computes the powers of two:
+%%
+\def\kvpoweroftwo#1#2{% Computes #1=2^#2, both of which have to be counters
+{\ifnum#2>0 
+\global\multiply#1 by 2 
+\advance#2 by -1
+\kvpoweroftwo{#1}{#2}
+\fi}}
+%%
+%% The macros \kvargumentstring, \kvgetchar and \kvgetonechar are needed to
+%% process the variabe-length parameters in \karnaughmap and \veitchchart:
+%%
+\def\kvargumentstring#1{\gdef\kvdummystring{#1{}\noexpand\end}}
+%%
+\def\kvgetchar{\expandafter\kvgetonechar\kvdummystring}
+%%
+\def\kvgetonechar#1#2\end{{#1}\gdef\kvdummystring{#2\noexpand\end}}%
+%%
+%% The Macro \karnaughmakemap calls itself recursively until the parameter #1
+%% equals 1, whereupon it returns a single token from the list of arguments,
+%% enclosed in a \makebox plus the index (if enabled) in a smaller \makebox:
+%%
+\def\karnaughmakemap#1#2{{%
+\kvrecursiondepth=\number#1
+\ifnum\kvrecursiondepth>1
+\divide\kvrecursiondepth by 2
+\unitlength=\kvunitlength
+\multiply\unitlength by \kvrecursiondepth
+%%
+\ifcase#2
+%%
+%% The parameter #2 of \karnaughmakemap is needed because the inner Karnaugh
+%% maps need to be mirrored. This is achieved by the following case-statement,
+%% which orders the inner Karnaugh maps properly:
+%%
+%% Case 0: top-left Karnaugh map
+\begin{picture}(2,2)%
+\put(0,1){\karnaughmakemap{\kvrecursiondepth}{0}}%
+\put(1,1){\karnaughmakemap{\kvrecursiondepth}{1}}%
+\put(0,0){\karnaughmakemap{\kvrecursiondepth}{2}}%
+\put(1,0){\karnaughmakemap{\kvrecursiondepth}{3}}%
+\end{picture}%
+\or
+%% Case 1: top-right Karnaugh map
+\begin{picture}(2,2)%
+\put(1,1){\karnaughmakemap{\kvrecursiondepth}{1}}%
+\put(0,1){\karnaughmakemap{\kvrecursiondepth}{0}}%
+\put(1,0){\karnaughmakemap{\kvrecursiondepth}{3}}%
+\put(0,0){\karnaughmakemap{\kvrecursiondepth}{2}}%
+\end{picture}%
+\or
+%% Case 2: bottom-left Karnaugh map
+\begin{picture}(2,2)%
+\put(0,0){\karnaughmakemap{\kvrecursiondepth}{2}}%
+\put(1,0){\karnaughmakemap{\kvrecursiondepth}{3}}%
+\put(0,1){\karnaughmakemap{\kvrecursiondepth}{0}}%
+\put(1,1){\karnaughmakemap{\kvrecursiondepth}{1}}%
+\end{picture}%
+\or
+%% Case 3: bottom-right Karnaugh map
+\begin{picture}(2,2)%
+\put(1,0){\karnaughmakemap{\kvrecursiondepth}{3}}%
+\put(0,0){\karnaughmakemap{\kvrecursiondepth}{2}}%
+\put(1,1){\karnaughmakemap{\kvrecursiondepth}{1}}%
+\put(0,1){\karnaughmakemap{\kvrecursiondepth}{0}}%
+\end{picture}%
+\fi
+\else
+\unitlength=\kvunitlength
+\begin{picture}(1,1)
+\put(0,0){\makebox(1,1){\kvcontentsize\kvgetchar}}%
+\put(0.05,0.05){\makebox(0.9,0.9)[bl]{\kvindexsize\kvcurrentindex}}%
+\end{picture}
+\fi}}%
+%%
+%% \karnaughmaketopmark typesets the variable marks of a Karnaugh map that are
+%% located on top of the diagram:
+%%
+\def\karnaughmaketopmark{%
+  \unitlength\kvunitlength
+  \begin{picture}(\kvxsize,1)
+    \kvmarkstart=1
+    \kvpoweroftwo{\kvmarkstart}{\kvxvarno} % \kvymarkstart is the start 
+                                % position for the \multiput
+    \kvmarklength=\kvmarkstart 
+    \multiply\kvmarklength by 2 % \kvmarklength is the length of a mark
+    \kvmarkmove=\kvmarkstart 
+    \multiply\kvmarkmove by 4 % This is the move distance for the \multiput.
+    \kvmarknum=\kvxsize
+    \divide\kvmarknum by \kvmarkmove % This is the number of repetitions for
+                                % the \multiput.  
+    %The highest-order variable mark needs a special treatment:
+    \ifnum\kvmarknum=0\kvmarknum=1\divide\kvmarklength by 2\fi 
+    \savebox\kvsavebox(\kvmarklength,1){% 
+      \begin{picture}(\kvmarklength,1)
+      \put(0,0.3){\makebox(\kvmarklength,0.7){\kvcontentsize\kvgetchar}} 
+      \put(0,0.1){\line(0,1){0.4}} 
+      \put(\kvmarklength,0.1){\line(0,1){0.4}}
+      \put(0,0.3){\line(1,0){\kvmarklength}} 
+      \end{picture}}
+    \multiput(\kvmarkstart,0)(\kvmarkmove,0){\kvmarknum}{\usebox\kvsavebox}
+  \end{picture}
+}
+%%
+%% \karnaughmakeleftmark typesets the variable marks of a Karnaugh map that are
+%% located on the left of the diagram:
+%%
+\def\karnaughmakeleftmark{%
+  \unitlength\kvunitlength
+  \begin{picture}(-1,\kvysize)(0,-\kvysize)
+    \kvmarkstart=1
+    \kvpoweroftwo{\kvmarkstart}{\kvyvarno} % \kvmarkstart is the start 
+                                % position for the \multiput
+    \kvmarklength=\kvmarkstart 
+    \multiply\kvmarklength by 2 % \kvmarklength is the length of a mark
+    \kvmarkmove=\kvmarkstart 
+    \multiply\kvmarkmove by 4 % This now is the move distance for the
+                              % \multiput. 
+    \kvmarknum=\kvysize
+    \divide\kvmarknum by \kvmarkmove % This now is the number of 
+                                % repetitions for the \multiput.  
+    %The highest-order variable mark needs a special treatment:
+    \ifnum\kvmarknum=0\kvmarknum=1\divide\kvmarklength by 2\fi 
+    \advance\kvmarkstart by \kvmarklength
+    \savebox\kvsavebox(1,\kvmarklength){%
+      \begin{picture}(1,\kvmarklength)
+        \put(-0.3,0){\makebox(-0.7,\kvmarklength){\kvcontentsize\kvgetchar}}
+        \put(-0.1,0){\line(-1,0){0.4}}
+        \put(-0.1,\kvmarklength){\line(-1,0){0.4}}
+        \put(-0.3,0){\line(0,1){\kvmarklength}}
+      \end{picture}}
+    \multiput(0,-\kvmarkstart)(0,-\kvmarkmove){\kvmarknum}{\usebox\kvsavebox}
+  \end{picture}
+}
+%% \karnaughmakemarks calls \karnaughmaketopmark or \karnaughmakeleftmark
+%% depending on whether \kvvarno is odd or even.
+%%
+\def\karnaughmakemarks{%
+\ifnum\kvvarno>0
+  \let\next=\karnaughmakemarks
+  \ifodd\kvvarno % We have to make a mark at the top
+    \advance\kvxvarno by -1
+    \put(0,\kvxvarno){\karnaughmaketopmark}
+  \else % We have to make a mark at the left
+    \advance\kvyvarno by -1
+    \put(-\kvyvarno,-\kvysize){\karnaughmakeleftmark}
+  \fi
+  \advance\kvvarno by -1
+\else
+  \let\next=\relax
+\fi
+\next
+}
+%%
+%% \karnaughmap is the macro that a user calls if he wants to draw a
+%% Karnaugh map:  
+%%
+\def\karnaughmap#1#2#3#4#5{%
+%%
+%% #1 is the number of variables in the Karnaugh map
+%% #2 is the identifier of the function
+%% #3 is the list of identifiers of those variables 
+%% #4 is the list of tokens that have to be written into the map
+%% #5 is something that you want to draw inside the Karnaugh map
+%%
+\kvvarno=#1  % \kvvarno is the total number of variables 
+\kvyvarno=#1 % \kvyvarno is the number of variable marks at the left 
+\divide\kvyvarno by 2
+\kvxvarno=#1 % \kvxvarno is the number of variable marks on top 
+\advance\kvxvarno by -\kvyvarno
+\kvxsize=1
+\kvpoweroftwo{\kvxsize}{\kvxvarno}
+\kvysize=1
+\kvpoweroftwo{\kvysize}{\kvyvarno}
+\advance\kvxsize by \kvyvarno
+\advance\kvxvarno by \kvysize
+\unitlength\kvunitlength
+\begin{picture}(\kvxsize,\kvxvarno)(-\kvyvarno,-\kvysize)
+\advance\kvxsize by -\kvyvarno
+\advance\kvxvarno by -\kvysize
+\put(0,-\kvysize){%
+\begin{picture}(\kvxsize,\kvysize)
+\multiput(0,0)(0,1){\kvysize}{\line(1,0){\kvxsize}}
+\multiput(0,0)(1,0){\kvxsize}{\line(0,1){\kvysize}}
+\put(0,\kvysize){\line(1,0){\kvxsize}}
+\put(\kvxsize,0){\line(0,1){\kvysize}}
+#5
+\end{picture}}
+\put(-\kvyvarno,0){\makebox(\kvyvarno,\kvxvarno){#2}}
+\kvindexcounter=0
+\kvargumentstring{#4}
+\put(0,-\kvysize){\karnaughmakemap{\kvysize}{0}}
+\ifodd\kvvarno
+{\divide\kvxsize by 2
+\put(\kvxsize,-\kvysize){\karnaughmakemap{\kvysize}{1}}}
+\fi
+\kvargumentstring{#3}
+\karnaughmakemarks
+%%
+\end{picture}
+}%
+%%
+%% The definition of \kvmap is necessary to maintain compatibility with older
+%% versions of this macro package:
+%%
+\def\kvmap{\karnaughmap}%
+%%
+%%
+%% The Macro \veitchmakechart calls itself recursively until the parameter #1
+%% equals 1, whereupon it returns a single token from the list of arguments,
+%% enclosed in a \makebox plus the index (if enabled) in a smaller \makebox:
+%%
+\def\veitchmakechart#1{{%
+\kvrecursiondepth=\number#1
+\ifnum\kvrecursiondepth>1
+\divide\kvrecursiondepth by 2
+\unitlength=\kvunitlength
+\multiply\unitlength by \kvrecursiondepth
+%%
+\begin{picture}(2,2)%
+\put(0,1){\veitchmakechart{\kvrecursiondepth}}%
+\put(1,1){\veitchmakechart{\kvrecursiondepth}}%
+\put(0,0){\veitchmakechart{\kvrecursiondepth}}%
+\put(1,0){\veitchmakechart{\kvrecursiondepth}}%
+\end{picture}%
+\else
+\unitlength=\kvunitlength
+\begin{picture}(1,1)
+\put(0,0){\makebox(1,1){\kvcontentsize\kvgetchar}}%
+\put(0.05,0.05){\makebox(0.9,0.9)[bl]{\kvindexsize\kvcurrentindex}}%
+\end{picture}
+\fi}}%
+%%
+\def\veitchmaketopmark{%
+  \unitlength\kvunitlength
+  \begin{picture}(\kvxsize,1)
+    \kvmarkstart=1
+    \kvpoweroftwo{\kvmarkstart}{\kvxvarno} % \kvymarkstart is the start 
+                                % position for the \multiput
+    \kvmarklength=\kvmarkstart % \kvmarklength is the length of a mark
+    \kvmarkmove=\kvmarkstart 
+    \multiply\kvmarkmove by 2 % This is the move distance for the \multiput.
+    \kvmarknum=\kvxsize
+    \divide\kvmarknum by \kvmarkmove % This is the number of repetitions for
+                                     % the \multiput.  
+    \savebox\kvsavebox(\kvmarklength,1){% 
+      \begin{picture}(\kvmarklength,1)
+      \put(0,0.3){\makebox(\kvmarklength,0.7){\kvcontentsize\kvgetchar}} 
+      \put(0,0.1){\line(0,1){0.4}} 
+      \put(\kvmarklength,0.1){\line(0,1){0.4}}
+      \put(0,0.3){\line(1,0){\kvmarklength}} 
+      \end{picture}}
+    \multiput(\kvmarkstart,0)(\kvmarkmove,0){\kvmarknum}{\usebox\kvsavebox}
+  \end{picture}
+}
+%%
+\def\veitchmakeleftmark{%
+  \unitlength\kvunitlength
+  \begin{picture}(-1,\kvysize)(0,-\kvysize)
+    \kvmarkstart=1
+    \kvpoweroftwo{\kvmarkstart}{\kvyvarno} % \kvmarkstart is the start 
+                                % position for the \multiput
+    \kvmarklength=\kvmarkstart 
+    \kvmarkmove=\kvmarkstart 
+    \multiply\kvmarkmove by 2 % This now is the move distance for the \multiput. 
+    \kvmarknum=\kvysize
+    \divide\kvmarknum by \kvmarkmove % This now is the number of 
+                                     % repetitions for the \multiput.  
+    \advance\kvmarkstart by \kvmarklength
+    \savebox\kvsavebox(1,\kvmarklength){%
+      \begin{picture}(1,\kvmarklength)
+        \put(-0.3,0){\makebox(-0.7,\kvmarklength){\kvcontentsize\kvgetchar}}
+        \put(-0.1,0){\line(-1,0){0.4}}
+        \put(-0.1,\kvmarklength){\line(-1,0){0.4}}
+        \put(-0.3,0){\line(0,1){\kvmarklength}}
+      \end{picture}}
+    \multiput(0,-\kvmarkstart)(0,-\kvmarkmove){\kvmarknum}{\usebox\kvsavebox}
+  \end{picture}
+}
+%%
+\def\veitchmakemarks{%
+\ifnum\kvvarno>0
+  \let\next=\veitchmakemarks
+  \ifodd\kvvarno % We have to make a mark at the top
+    \advance\kvxvarno by -1
+    \put(0,\kvxvarno){\veitchmaketopmark}
+  \else % We have to make a mark at the left
+    \advance\kvyvarno by -1
+    \put(-\kvyvarno,-\kvysize){\veitchmakeleftmark}
+  \fi
+  \advance\kvvarno by -1
+\else
+  \let\next=\relax
+\fi
+\next
+}
+%%
+\def\veitchchart#1#2#3#4#5{%
+%%
+%% #1 is the number of variables in the Veitch chart
+%% #2 is the identifier of the function
+%% #3 is the list of identifiers of those variables 
+%% #4 is the list of tokens that have to be written into the chart
+%% #5 is something that you want to draw inside the Veitch chart
+%%
+\kvvarno=#1  % \kvvarno is the total number of variables 
+\kvyvarno=#1 % \kvyvarno is the number of variable marks at the left 
+\divide\kvyvarno by 2
+\kvxvarno=#1 % \kvxvarno is the number of variable marks on top 
+\advance\kvxvarno by -\kvyvarno
+\kvxsize=1
+\kvpoweroftwo{\kvxsize}{\kvxvarno}
+\kvysize=1
+\kvpoweroftwo{\kvysize}{\kvyvarno}
+\advance\kvxsize by \kvyvarno
+\advance\kvxvarno by \kvysize
+\unitlength\kvunitlength
+\begin{picture}(\kvxsize,\kvxvarno)(-\kvyvarno,-\kvysize)
+\advance\kvxsize by -\kvyvarno
+\advance\kvxvarno by -\kvysize
+\put(0,-\kvysize){%
+\begin{picture}(\kvxsize,\kvysize)
+\multiput(0,0)(0,1){\kvysize}{\line(1,0){\kvxsize}}
+\multiput(0,0)(1,0){\kvxsize}{\line(0,1){\kvysize}}
+\put(0,\kvysize){\line(1,0){\kvxsize}}
+\put(\kvxsize,0){\line(0,1){\kvysize}}
+#5
+\end{picture}}
+\put(-\kvyvarno,0){\makebox(\kvyvarno,\kvxvarno){#2}}
+\kvindexcounter=0
+\kvargumentstring{#4}
+\put(0,-\kvysize){\veitchmakechart{\kvysize}}
+\ifodd\kvvarno
+{\divide\kvxsize by 2
+\put(\kvxsize,-\kvysize){\veitchmakechart{\kvysize}}}
+\fi
+\kvargumentstring{#3}
+\veitchmakemarks
+%%
+\end{picture}
+}%
+%%
+
+%%% Local Variables: 
+%%% mode: latex
+%%% TeX-master: t
+%%% End: 

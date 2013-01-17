@@ -1,0 +1,202 @@
+% This file is part of the Lecturer package.
+% Paul Isambert -- July 2010.
+% 
+% ATTRIBUTES
+%
+\def\ltr@step_restrictions{%
+  vskip hskip everyvstep everyhstep left right
+  transition handout visible group color font on off pdftitle }
+\ltr@boolean_attr{step:handout}
+\ltr@boolean_attr{step:visible}
+\ltr@boolean_attr{step:group}
+\ltr@setattribute step:handout;=true
+\defactiveparameter step {%
+  \ltr@delete_empty{#1:font}%
+  }%
+    
+\def\ltr@step_clear{%
+  \ifltr@step_open
+    \ltr@ifattribute ltr@inner_step:font;
+      {\ltr@usevalueor ltr@inner_slide:font;{\ltr@usevalue job:font;}}{}%
+    \ltr@ifvalue ltr@inner_step:group; = true
+      {\endgroup}{}%
+    \ltr@passvalueand{\reverse\iffemptystring}ltr@inner_step:color;
+      {{\pdfcolorstack0 pop}}{}%
+    \pdfliteral direct {EMC}%
+    \ltr@setattribute ltr@inner_step:meta; = step
+    \passexpanded{\ltr@attribute_deletion{ltr@inner_step}}\ltr@step_restrictions
+  \fi
+  }
+\passexpandednobraces{\restrictparameter step ltr@inner_step:}\ltr@step_restrictions\par
+\ltr@boolean_attr{ltr@inner_step:handout}
+\ltr@boolean_attr{ltr@inner_step:visible}
+\ltr@boolean_attr{ltr@inner_step:group}
+
+\long\def\setstep#1#2\par{%
+  \ltr@setstep_do{#2}{#1}%
+  }%
+\newfor\ltr@setstep_do{1}#2{%
+  \ltr@ifattribute {ltr@\commandtoname#2@inner_step}:meta;
+    {\setparameter{ltr@\commandtoname#2@inner_step}:}
+    {\ltr@setstep_new{#2}}%
+    #1\par
+  }
+\def\ltr@setstep_new#1{%
+  \def#1{%
+    \ltr@step_clear
+    \ltr@setattribute ltr@inner_step:meta;={ltr@\commandtoname#1@inner_step}
+    \ltr@step_do}%
+  \passexpandednobraces{\restrictparameter {ltr@\commandtoname#1@inner_step}:}\ltr@step_restrictions\par
+  \ltr@boolean_attr{{ltr@\commandtoname#1@inner_step}:visible}%
+  \ltr@boolean_attr{{ltr@\commandtoname#1@inner_step}:handout}%
+  \ltr@boolean_attr{{ltr@\commandtoname#1@inner_step}:group}%
+  \defactiveparameter{ltr@\commandtoname#1@inner_step}{%
+    \ltr@delete_empty{##1:font}%
+    }%
+  \setparameter{ltr@\commandtoname#1@inner_step}:
+    meta = step
+  }  
+\setparameter ltr@inner_step:
+  meta = step
+
+%
+%
+%
+%
+%
+% The \step command.
+% 
+\newif\ifltr@step_open
+\newcount\ltr@steps_count
+\newcount\ltr@activesteps_count
+\def\step{%
+  % Close the current step, if any.
+  \ltr@step_clear
+  \ltr@step_do
+  }
+% Steps created with \newstep goes there directly.
+\def\ltr@step_do{%
+  \global\ltr@step_opentrue
+  \ifnextnospace[{\ltr@step_create}{\ltr@step_create[]}%
+  }
+
+\newif\ifltr@step_standalone
+%
+% For the options.
+%
+\newif\ifltr@step_named
+\def\ltr@stepcheck_useatom#1{%
+  \ltr@step_namedtrue
+  \reverse\iffcs{ltr@step_objnum:#1_\the\slideno}
+    {\pdfobj reserveobjnum%
+     \xdefcs{ltr@step_objnum:#1_\the\slideno}{\the\pdflastobj\spacecs}}%
+  \global\lettocs\ltr@step_current{ltr@step_objnum:#1_\the\slideno}%
+  }
+\def\ltr@stepcheck_usepair#1#2{}
+%
+\def\ltr@step_useatom#1{%
+  \ifstring{#1}{here}
+    {\ltr@error{You can't name a step `here', it's a keyword}}
+    {\def\ltr@step_ref{#1}%
+     \iffemptycommand\ltr@step_pdftitle{\def\ltr@step_pdftitle{#1}}}%
+  }
+\def\ltr@step_usepair#1#2{%
+  \ifstring{#1}{on}
+    {\ltr@step_standalonefalse\ltr@step_onoff{on}{#2 }}
+    {\ifstring{#1}{off}
+      {\ltr@step_onoff{off}{#2 }}
+      {\ifstring{#1}{pdftitle}
+         {\def\ltr@step_pdftitle{#2}}
+         {\ltr@setattribute ltr@inner_step:#1;={#2} }}}%
+  }
+\def\ltr@step_usepair#1#2{%
+  \ifstring{#1}{pdftitle}
+         {\def\ltr@step_pdftitle{#2}}
+         {\ltr@setattribute ltr@inner_step:#1;={#2} }%
+  }
+\def\ltr@step_onoff#1#2{%
+  \reverse\iffemptystring{#2}
+    {\ltr@step_onoffloop{#1}{#2 }}%
+  }
+\newfornoempty\ltr@step_onoffloop{1}#2 {%
+  \ifstring{#2}{here}{\ltr@step_standalonetrue}{%
+    \ifcs{ltr@step_#2:#1}
+      {\global\eaddrightcs}
+      {\xdefcs}
+      {ltr@step_#2:#1}{\ltr@step_current 0 R }}%
+      % Add the object to ltr@step_OCG:on/off
+  }
+\def\ltr@step_current{}
+\def\ltr@step_create[#1]{%
+  \global\advance\ltr@steps_count1
+  \ltr@step_namedfalse
+  \ltr@option_launchloop{stepcheck}{#1}%
+  \unless\ifltr@step_named
+    \pdfobj reserveobjnum
+    \xdef\ltr@step_current{\the\pdflastobj\spacecs}%
+  \fi
+  \def\ltr@step_ref{}\def\ltr@step_pdftitle{}%
+  \ltr@step_standalonefalse
+  \ltr@option_launchloop{step}{#1}%
+  \ltr@delete_empty{ltr@inner_step:font}%
+  \ltr@passvalueor{\ltr@step_onoff{on}}ltr@inner_step:on;\ltr@step_standalonetrue
+  \ltr@passvalue{\ltr@step_onoff{off}}ltr@inner_step:off;%
+  \immediate\pdfobj useobjnum\ltr@step_current {%
+    << /Type/OCG /Name(%
+      \ifemptycommand\ltr@step_ref
+        {\ifemptycommand\ltr@step_pdftitle
+           {[step \the\ltr@steps_count]}
+           {\ltr@step_pdftitle}}%
+        {\ltr@step_pdftitle}) >>
+    }%
+  % ... and, if the object has a reference name, it might be referenced,
+  % so its object number now returns its name.
+  \reverse\iffemptycommand\ltr@step_ref{\global\letcs{ltr@step_\ltr@step_current:name}\ltr@step_ref}%
+  % According to the value to the attribute "handout" or "visible"
+  % this group has base state ON or OFF (see catalog).
+  \ltr@ifvalue job:mode; = handout
+    {\ltr@ifvalue ltr@inner_step:handout; = true
+       {\addvisibleOCG{\ltr@step_current}}
+       {\addOCG{\ltr@step_current}}}
+    {\ltr@ifvalue ltr@inner_step:visible; = true
+       {\addvisibleOCG{\ltr@step_current}\ltr@step_standalonefalse}
+       {\addOCG{\ltr@step_current}}}%
+  % Link the step to the OCG.
+  \addproperties{ltr@step_\the\ltr@steps_count:content}{\ltr@step_current}%
+  % If the step appears by itself, it is added it to the list to
+  % be chained in the output routine, and its transition is stored, if any.
+  \ifltr@step_standalone
+    \global\advance\ltr@activesteps_count1
+    \global\eaddright\ltr@page_steplist{\ltr@step_current,}%
+    \iffcs{ltr@inner_transition:\ltr@usevalueor ltr@inner_step:transition;{ltr@no_value}}
+          {\xdefcs{ltr@step_\ltr@step_current:transition}{%
+            \usecs{ltr@inner_transition:\ltr@usevalueor ltr@inner_step:transition;{ltr@no_value}} 0 R}}%
+  \fi
+  % The step is opened, and the every...'s released.
+  \pdfliteral direct {/OC/ltr@step_\the\ltr@steps_count:content BDC}%
+  \ltr@ifvalue ltr@inner_step:group; = true
+    {\begingroup}{}%
+  \ltr@passvalueand{\reverse\iffemptystring}ltr@inner_step:color;
+    {{\pdfcolorstack0 push {\ltr@passvalue\ltr@color_use ltr@inner_step:color;}}}{}%
+  \ltr@usevalue ltr@inner_step:font;%
+  \ifvmode
+    \ltr@settovalue\vskip ltr@inner_step:vskip;%
+    \leftskip=0pt \rightskip=0pt plus 1fill\relax
+    \ltr@ifcasevalue ltr@inner_slide:hpos;
+      \val ff \rightskip=0pt
+      \val rr \leftskip=0pt plus 1fill\relax
+      \val rf \leftskip=0pt plus 1fill\rightskip=0pt
+    \endval
+    \ltr@settovalue{\advance\leftskip}ltr@inner_step:left;%
+    \ltr@settovalue{\advance\rightskip}ltr@inner_step:right;%
+    \ltr@usevalue ltr@inner_step:everyvstep;%
+  \else
+    \ifhmode
+      \ltr@settovalue\hskip ltr@inner_step:hskip;%
+      \ltr@usevalue ltr@inner_step:everyhstep;%
+    \fi
+  \fi
+  \ignorespaces
+  }
+
+\endinput

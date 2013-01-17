@@ -1,0 +1,554 @@
+#! /usr/bin/env perl
+#
+# See POD documentation below or use:
+#
+# $ perldoc texdiff
+#
+# to see embedded documentation. Alternatively, you can create manual
+# or HTML pages using pod2man and pod2html.  Below the POD part you
+# can add your own macros to be skipped by the edit marks.
+#
+# $Id: texdiff 766 2009-09-24 19:19:38Z cengiz $
+
+=pod
+
+=head1 NAME
+
+B<texdiff> - Compares two (La)TeX documents to create a merged version showing changes, similar to that of 'Change Tracking' in some word processors.
+
+=head1 SYNOPSIS
+
+texdiff [--nofloats|-n] old.tex new.tex [diff.tex]
+
+=head1 DESCRIPTION
+
+The first two files are compared and a new TeX file is output. When
+the output file is processed with (La)TeX it marks new changes with
+blue and old text with red with a strike-through line. Furthermore,
+passages with changes are marked at the margin with grey bars by the
+LaTeX C<changebar> package (although only after running C<dvips>, in
+C<xdvi> the bars are one inch too far left to compensate the one inch
+offset inserted by TeX printer drivers).
+
+C<texdiff> uses and therefore requires the C<wdiff> command to insert
+these marks. If LaTeX macros are included in those striked out or
+underlined passages, the latex run will most likely fail. The source
+of most problems lies in C<wdiff> tearing apart pairs of
+braces. Therefore C<texdiff> is a perl script that calls C<wdiff> internally
+and fixes C<wdiff>'s output by re-pairing braces again and handling some
+commonly used LaTeX macros.
+
+For texdiff to work, the following LaTeX code must be inserted in the
+preamble of the LaTeX document:
+
+ \usepackage{xcolor} \usepackage{ulem} \usepackage{changebar}
+ \newcommand\TLSins[1]{\cbstart{}\textcolor{ins}{\uline{#1}}\cbend{}}
+ \newcommand\TLSdel[1]{\cbdelete{}\textcolor{del}{\sout{#1}}}
+
+Define editing colors C<ins> and C<del> with existing C<xcolor> color names:
+ \colorlet{ins}{blue} \colorlet{del}{red}
+
+Or from scratch:
+ \definecolor{ins}{rgb}{0, 0.5, 0}
+
+These macros are NOT automatically interted at \begin{document} like
+the original scripts did (see the B<ACKNOWLEDGMENTS> section below),
+because this will not work on files of a multi-file document (those
+included by \include or \input).  Furthermore, if you insert the
+macros manually, you can tune them as you like, i. e. change text
+color or position of changebars. Have a look at the documentation of
+the ulem and changebar packages on how to do this!
+
+=head1 OPTIONS
+
+=over
+
+=item B<--nofloats>, B<-n>
+
+If given, skips contents of figure environments, but does show
+insertions and deletions in the caption commands. This is done to
+avoid complex messups in subfloat or complex figure environments.
+
+=item B<--debug>, B<-d>
+
+Turns on debugging. Temporary files that contain numbered braces are
+kept and a raw difference file is written as output file name appended
+with '-wdiff.tex'. In addition, several regular expression diagnostics
+are printed. B<Warning: produces a lot of output.>
+
+=back
+
+=head1 AUTHOR
+
+Mark Doll <markdoll<AT>gmx.net>, Cengiz Gunay <cengique<AT>users.sf.net>.
+
+=head1 ACKNOWLEDGMENTS
+
+=over
+
+=item B<*>
+
+Version 0.4, by CG, 2009/09/15. Added use of GetOpt to take an optional
+parameter to skip float (e.g., figure or table) contents. Added an
+optional debug mode. Embedded POD documentation. Fixed problem
+with insertion and deletions appearing in the middle of sectioning
+commands by throwing off LaTeX.
+
+=item B<*>
+
+Version 0.3, modified by Cengiz Gunay <cengique@users.sf.net>,
+2009/06/30. Added some Latex commands that should be excluded and
+fixed handling of '\%' characters.
+
+=item B<*>
+
+Version 0.2, is a perl implementation of TeXdiff by Mark Doll
+<markdoll@gmx.net>, 2006/08/09. It was derived from the original bash
+and perl scripts created by Robert Maron <robmar@mimuw.edu.pl>,
+available at http://www.robmar.net/TexDiff/. This version of texdiff
+is available at http://mark.doll.name/texdiff/.
+
+=back
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyleft 2006-2009, Mark Doll and Cengiz Gunay
+
+This library is free software; you may redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=cut
+
+# TODO:
+#
+# - after removing excluded commands, unify deletions and insertions
+# if there're no other differences
+# - investigate causes of missing brace pairs
+# - put option to add preamble automatically?
+# - put option to flatten first?
+
+use Getopt::Long qw(GetOptions);
+use Pod::Usage;
+use strict;
+use re 'eval';			# CG: for RE code for skipping float contents
+
+## Problematic commands, that will be removed from deletions and moved
+## out of insertions. The array index equals the number of mandatory
+## command parameters.
+
+## INSERT YOUR HOMEBREW MACROS HERE!!!
+# Omit leading backslash and separate by '|', since this will be
+# interpreted as a regular expression.
+my @mycommands = (
+  'RCS\$[^\$]*\$',
+  'cite\w*p|citet|svnid|citep',
+  'if\w+',
+  '',
+  '',
+  'Abb(?:ildung)?(?:p[psw])?',
+);
+
+## standard LaTeX macros
+#FIXME: add more macros here!
+my @stdcommands = (
+  '\\\\|item|\%',   # will match one backslash inside regex
+  'includegraphics|begin|end|input|fancyfoot|subfig|subfloat',
+);
+
+# GetOpt::Long::
+my $nofloats = 0;
+my $help;
+my $DEBUG=0;
+
+my $result = GetOptions ("nofloats|n" => \$nofloats,
+			 "debug|d" => \$DEBUG,
+			 "help|?" => \$help );
+
+#print "Figs= $nofloats\n";
+
+pod2usage( -section => "SYNOPSIS") if ($#ARGV < 1 || $help);
+
+## allow nesting of braces (aka curly brackets) up to 10**$w-1 levels
+my $w = 2;
+
+## wdiff marker
+my $delstart = "TLSdel";
+my $delend   = "TLEdel";
+my $insstart = "TLSins";
+my $insend   = "TLEins";
+
+## LaTeX macros used to mark deletions/insertions in the output
+my $texdelstart = "\\protect\\TLSdel\{";
+my $texdelend   = "\}";
+my $texinsstart = "\\protect\\TLSins\{";
+my $texinsend   = "\}";
+
+
+## parse command line
+my ($in1,$in2,$out) = @ARGV;
+
+## create temp files from input files with all comments removed and
+## all braces numbered
+write_temp($w,$in1,'tmp1.'.$$);
+write_temp($w,$in2,'tmp2.'.$$);
+sub write_temp {
+    my ($w,$file,$tmp) = @_;
+
+    $_ = `cat $file`;
+
+    ## mark pairs of braces with the same $w digits.
+    # i. e. convert "{ { {} } {}}" to "{01 {02 {03}03 }02 {02}02}01" ($w=2).
+    #
+    # FIXME: marking braces before comparison makes them appear
+    # as changes if depth of nesting changes.
+
+    my $max=10**$w-1;
+    $::cnt = 0;
+    s/
+      (?<!\\)
+      (?:
+        \{ (?{ die "Fatal: Braces nested deeper than $max!\n" if ($::cnt >= $max);
+               sprintf("\{%0${w}d",++$::cnt) }) |
+        \} (?{ sprintf("\}%0${w}d",$::cnt--) })
+      )
+    /$^R/gx;
+
+    print STDERR "Warning: ".abs($::cnt)." unmatched ".($::cnt > 0 ? "opening" : "closing")
+         ." brace".(abs($::cnt) == 1 ? "" : "s")."\n" if ($::cnt != 0);
+
+    ## remove comments
+    # also remove trailing newline and all whitespace at the
+    # beginning of the following line like TeX does it
+    s/(?<!\\)%.*?\n[ \t]*//g;
+
+    ## output
+    open(O,">$tmp") or return("Can't open $tmp: $!\n");
+    print O;
+    close O;
+}
+
+my $wdiff_cmd = ( "wdiff --avoid-wraps"
+                . " --start-delete=\'$delstart\' --end-delete=\'$delend\'"
+                . " --start-insert=\'$insstart\' --end-insert=\'$insend\'"
+                . " tmp1.$$ tmp2.$$");
+$_ = `$wdiff_cmd`;
+
+if ($DEBUG) {
+  ## save wdiff output
+  if (open(O,">$out-wdiff.tex")) {
+    print O;
+    close O;
+  } else {
+    print STDERR "Failed to write wdiff output file $out-wdiff.tex.\n";;
+  }
+}
+
+###
+### Phase I: generic processing
+###
+
+## remove paragraph boundaries (two newlines) that wdiff falsely inserted
+# FIXME: Does wdiff always insert same spacing before deletion and the
+# following insertion?!
+s/(
+    ([ \t]*\n[ \t]*\n[ \t]*)
+    $delstart (?!$delend)
+    (?: . (?!$delend) )* .
+    $delend
+  )
+  \2
+  $insstart
+ /$1\n$insstart/gsx;
+
+
+## Restore backslashed Spaces (prevents falsely escaped right braces)
+# Escaped spaces '\ ' at the end of an insertion/deletion will result in the
+# backslash before the end marker and the space after it. Therefore swap
+# whitespace and end marker. (This might falsely make the insertion/deletion
+# span the following paragraph boundary, but this will be fixed by the next
+# step below).  When the end markers finally get replaced by $tex(ins|del)end,
+# which typically is a '}', without this swapping, this would result in escaped
+# right braces and LaTeX complaining about a missing right brace.
+s/(?<!\\)\\($delend|$insend)(\s+)/\\$2$1/g;
+
+
+## split up insertions and deletions that span multiple paragraphs
+while (
+  s/(
+      $delstart (?!$delend)
+      (?: . (?! [ \t]*\n[ \t]*\n[ \t]* | $delend ) )*? .?
+    )
+    ([ \t]*\n[ \t]*\n[ \t]*)
+   /$1$delend$2$delstart/gsx ) {}
+
+while (
+  s/(
+      $insstart (?!$insend)
+      (?: . (?! [ \t]*\n[ \t]*\n[ \t]* | $insend ) )*? .?
+    )
+    ([ \t]*\n[ \t]*\n[ \t]*)
+   /$1$insend$2$insstart/gsx ) {}
+
+
+## Handle unpaired braces
+# Search for all unpaired braces, meaning, they are inside a text
+# deletion or insertion passage, but their counterpart is not within
+# that passage. If they are located inside a deletion passage, simply
+# delete them.  If there a inside a insertion passage, move them out
+# by placing an insertion end marker before and an insertion start
+# marker after the brace. In case that a left brace belongs to a
+# preceding LaTeX command (plus and any more zero-parameter commands
+# directly preceding that command; that's matched by a non-whitespace
+# character sequence started by a backslash), also delete resp. move
+# that/these command(s) together with the left brace.
+#
+# FIXME: why is while loop necessary here, but not for handling right braces?
+#
+# FIXME: If there's not at least one character before the character
+# sequence specified in the look-ahead negative assertion, the match
+# would stop at the second occurence of that sequence instead of the
+# first. This leads to the effect, that the following regular
+# expressions may skip $(del|ins)end if it follows directly the left
+# brace (+number). The use of *? instead of * mitigates this effect,
+# but it's not perfect.
+
+## 1. unpaired left brace inside a deletion: delete brace and any preceding LaTeX command(s)
+while (
+  s/(						# $1: everything till unpaired '{'
+      $delstart (?!$delend)			# would otherwise not detect end marker of empty deletions!
+      (?: . (?!$delend))*?
+    )
+    ( (?<!\\) \\\S* )?				# $2: optional command(s) preceding the '{'
+    (?<!\\) \{([0-9]{$w}) (?!\}\3)		# '{' and $3: number
+    (						# $4: everything what's remaining
+      (?: . (?! (?<!\\)\}\3 | $delend) )*? .?	# will stop at a matching '}', too
+      $delend					# won't match if preceeding line found a matching '}'
+    )
+   /$1$4/sgx ) {}				# remove the '{' with number and any preceeding command(s)
+
+## 2. unpaired left brace inside an insertion: move brace out including any preceding LaTeX command(s)
+while (
+  s/(
+      $insstart (?!$insend)
+      (?: . (?!$insend))*?
+           )
+           ( \s* (?: (?<!\\) \\\S* )? )		# also move preceeding whitespace preceding out
+    (?<!\\) \{([0-9]{$w}) (?!\}\3)
+    (
+      (?: . (?! (?<!\\)\}\3 | $insend) )*? .?
+      $insend
+    )
+   /$1$insend$2\{$3$insstart$4/sgx ) {}		# move the '{' with number and any preceeding command(s) out
+
+## 3. unpaired right brace inside a deletion: delete brace
+s/(							# $1: everything till unpaired '}'
+    $delstart (?!$delend)				# would otherwise not detect end marker of empty deletions!
+    (?> (?:						## grab all paired braces (prevent backtracking):
+      (?: . (?! (?<!\\)\{[0-9]{$w} | $delend) )*? .?	# any text till next (unescaped) '{'
+      \{([0-9]{$w})					# '{' with $2: number
+      (?: . (?! (?<!\\)\}\2        | $delend) )*? .?	#any text till matching '}'
+      \}\2						# '}' with same number $2
+    )* )						## end of disabled backtracking
+    (?: . (?!$delend))*?				# any text
+  )
+  ( \}[0-9]{$w} )					# $3: the (first) unpaired '}' with number
+  (							# $4: everything what's remaining
+    (?: . (?!$delend))*? .?
+    $delend
+  )
+ /$1$4/sgx;						# remove the unpaired '}' with number
+
+## 4. unpaired right brace inside an insertion: move brace out
+s/(
+    $insstart (?! $insend)
+    (?> (?:
+      (?: . (?! (?<!\\)\{[0-9]{$w} | $insend ) )*? .?
+      \{([0-9]{$w})
+      (?: . (?! (?<!\\)\}\2        | $insend ) )*? .?
+      \}\2
+    )* )
+    (?: . (?!$insend))*?
+  )
+  ( \}[0-9]{$w} \s* )				# also move whitespace following the '}' out
+  (
+    (?: . (?!$insend))*? .?
+    $insend
+  )
+ /$1$insend$3$insstart$4/sgx;				# move the unpaired '}' with number out
+
+
+## concatenate consecutive insertions and consecutive deletions
+# Don't concatenate over paragraph (two newlines) boundaries, since
+# the LaTeX macros used to mark changed passages can't span multiple
+# paragraphs. Run this before handling LaTeX-commands specifically to
+# allow as much of a command inside a single passage as possible.
+s/$delend([ \t]*\n?[ \t]*)$delstart/$1/g;
+s/$insend([ \t]*\n?[ \t]*)$insstart/$1/g;
+
+
+
+###
+### Phase II: LaTeX-command specific processing
+###
+
+## For COMPLETELY removed/inserted sections, move section command out.
+#
+# May create empty insertions/removals, therefore execute this before
+# the removal of empty (or whitespace only) insertions/removals!
+#
+# Partly changed section titles have been handled by the preceding
+# rules. In case of removal, prevent renumbering by using asterisk
+# form; in case of insertion, add a short form without markers to
+# prevent problems when LaTeX'ing the diff.
+my $sectionre = "chapter|section|subsection|subsubsection|paragraph";
+s/
+  (						# $1: text before section command
+    $delstart (?!$delend)
+    (?: . (?!$delend) )*?
+  )
+  \\($sectionre)				# '\' and $2: section command
+  \{([0-9]{$w})					# '{' and $3: number
+  ( (?: . (?! (?<!\\)\}\3 | $delend) )*? .? )	# $4: section command parameter (title)
+  ( \}\3 \s* )				# '}' and same number plus following whitespace
+  /$1$delend\\$2\*\{$3$delstart$4$delend$5$delstart/sgx;
+  # move section commmand out and convert command to asterisk form
+
+s/
+  (						# $1: text before section command
+    $insstart (?!$insend)
+    (?: . (?!$insend) )*?
+  )
+  \\($sectionre)				# '\' and $2: section command
+  \{([0-9]{$w})					# '{' and $3: number
+  ( (?: . (?! (?<!\\)\}\3 | $insend) )*? .? )	# $4: section command parameter (title)
+  ( \}\3 \s* )				# $5: '}' and same number plus following whitespace
+  /$1$insend\\$2\[$4\]\{$3$insstart$4$insend$5$insstart/sgx;
+  # move sections command out and add short form without markers
+
+s/
+  \\($sectionre)				# '\' and $1: section command
+  (?{ $::titlecontents = ""; $::optcontents = "" }) # initialize vars
+  ( (?: \[ (?: (?! \] ) . )* \]			# $2: optional argument
+        (?{ print "====Found \\$1 opt arg '$^N'." if $DEBUG; })
+     )? )
+  \{([0-9]{$w})    				# '{' and $3: number
+  (?:			# Groups text followed by ins or del block
+      ( (?! \}\3) (?: (?! \}\3 ) . )*? (?= $insstart | $delstart ) )
+      (?{ print "=====Found ins\|del start before section end '$^N'!\n" if $DEBUG;
+          $::titlecontents .= $^N; $::optcontents .= $^N })
+      (?: ( $delstart (?: (?!$delend) . )* $delend )
+        (?{ print "=====Found del end!\n" if $DEBUG;
+            $::titlecontents .= $^N }) )?  # dont keep deletions in opt
+      (?: $insstart ( (?: (?!$insend) . )* ) $insend
+        (?{ print "=====Found ins end '$^N'!\n" if $DEBUG;
+            $::titlecontents .= "$insstart$^N$insend"; 
+            $::optcontents .= $^N }) )?  # keep insertions in opt
+  )+ #  end text + ins or del (need at least one for this to succeed)
+  (?: ( (?: (?! \}\3 ) . )+ )
+      (?{ print "=====Found text after ins\|del end and before section end: '$^N'!\n" if $DEBUG;
+          $::titlecontents .= $^N; $::optcontents .= $^N}) )?
+  (?: \}\3)				# '}' and same number
+  (?{ print "=====End of \\$1.\n" if $DEBUG;
+      $::optcontents = ($2 ne "" ? $2 : $::optcontents ) })
+  /\\$1\[$::optcontents\]\{$3$::titlecontents\}$3/sgx;
+  # Add a short form with removed insertions and deletions in section commands
+  # Will not add the short form if it already exists.
+
+## Remove problematic commands from deletions and move them out of insertions
+for my $num (0 .. ($#mycommands>$#stdcommands ? $#mycommands : $#stdcommands)) {
+  my $command = "";
+
+  $command .= $mycommands[$num]	 if ($mycommands[$num]                      );
+  $command .= "|"                if ($mycommands[$num] && $stdcommands[$num]);
+  $command .= $stdcommands[$num] if (                     $stdcommands[$num]);
+
+  next if(!$command);
+
+  s/
+    (						# $1: anything before the command
+      $delstart (?!$delend)
+      (?: . (?!$delend) )*? .?
+    )
+    (						# $2: the command with all its parameters
+      \\(?:$command)				# the command itself (preceded by a '\')
+      (?: \[ .*? (?<!\\)\] )*			# any optional parameters (enclosed in '[]')
+      (?: \{([0-9]{$w}) .*? (?<!\\)\}\3 ){$num} # $num mandatory parameters
+    )
+   /$1/gsx;
+
+  s/(
+      $insstart (?!$insend)
+      (?: . (?!$insend) )*? .?
+    )
+    (
+      \\(?:$command)
+      (?: \[ .*? (?<!\\)\] )*
+      (?: \{([0-9]{$w}) .*? (?<!\\)\}\3 ){$num}
+    )
+   /$1$insend$2$insstart/gsx;
+}
+
+## CG: optionally leave figure contents intact: remove deletions and keep
+## insertions. do not touch the caption command
+## => tested with multiple figures
+## => tested with multi-captions and no captions. should work with subfig and subfloat
+
+s/( \\begin\{[0-9]{$w}\s*((?:figure|table)\*?)(?{ $::floatname = $^N })\s*\}[0-9]{$w} )	 # begin figure or table line
+  (?{ print "=====Found figure!\n" if $DEBUG;
+      $::figcontents=$^N })            # Save into variable
+  (?: 			# Groups BLOCK + caption command
+    (?:			# BLOCK of insert and delete commands until caption
+      ( (?! \\caption) (?: (?! $insstart | $delstart | \\caption | \\end\{[0-9]{$w}\s*figure ) . )* )
+      (?{ print "=====Found ins\|del start or caption '$^N'!\n" if $DEBUG;
+          $::figcontents .= $^N })
+      (?: $delstart (?: (?!$delend) . )* $delend
+        (?{ print "=====Found del end!\n" if $DEBUG;  }) )?  # dont keep deletions
+      (?: $insstart ( (?: (?!$insend) . )* ) $insend
+        (?{ print "=====Found ins end '$^N'!\n" if $DEBUG; $::figcontents .= $^N }) )?  # keep insertions
+    )*?			#  end BLOCK
+    (?: (\\caption (?: \[ (?: (?! (?<!\\) \]) . )* \])? \s* 
+      \{ ([0-9]{$w}) (?{ $::captiondepth=$^N })
+      (?: (?! \}(??{ $::captiondepth })) . )* \}(??{$::captiondepth}) )
+      (?{ print "=====" . pos() . ": Found caption ($::captiondepth) '$^N'!\n" if $DEBUG; $::figcontents .= $^N }) )?  	 # caption
+  )*?			# end BLOCK + caption
+  ( \\end\{[0-9]{$w}\s*figure\*?\s*\}[0-9]{$w} )
+  (?{ print "=====Found figure end '$^N'!\n" if $DEBUG; $::figcontents .= $^N })
+  /$::figcontents/gsx;
+
+###
+### Phase III: cleaup, conversion, output
+###
+
+## remove insertions and removals that are empty or only mark whitespace
+s/$delstart(\s*)$delend/$1/g;
+s/$insstart(\s*)$insend/$1/g;
+
+
+## remove brace numbers
+s/(?<!\\)(?:(\{|\})[0-9]{$w})/$1/g;
+
+
+## substitute final LaTeX macro code
+s/$delstart/$texdelstart/g;
+s/$delend/$texdelend/g;
+s/$insstart/$texinsstart/g;
+s/$insend/$texinsend/g;
+
+
+## output
+if ($out ne "") {
+  if (open(O,">$out")) {
+    print O;
+    close O;
+  } else {
+    print STDERR "Failed to write output file $out.\n";
+  }
+} else {
+  print ;
+}
+
+## remove temp files
+if (!$DEBUG) {
+  unlink('tmp1.'.$$);
+  unlink('tmp2.'.$$);
+}

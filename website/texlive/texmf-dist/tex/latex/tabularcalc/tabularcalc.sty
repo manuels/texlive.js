@@ -1,0 +1,520 @@
+%  __________________________________________________
+% |                                                  |
+% |                                                  |
+% |                tabularcalc v0.2                  |
+% |                                                  |
+% |                  April 21 2009                   |
+% |                                                  |
+% |__________________________________________________|
+%
+% This is tabularcalc.sty
+%
+% The "tabularcalc" package consists of the 8 following files:
+%   tabularcalc.sty (this file)
+%   README
+%   tabularcalc_doc_fr.tex, tabularcalc_doc_fr.pdf (manual in french)
+%   tabularcalc_doc_en.tex, tabularcalc_doc_en.pdf (manual in english)
+%   tabularcalc_doc_vn.tex, tabularcalc_doc_vn.tex (manual in vietnamese)
+%
+% Christian Tellechea 2009
+% email : unbonpetit@gmail.com
+% -------------------------------------------------------------------
+% This work may be distributed and/or modified under the
+% conditions of the LaTeX Project Public License, either version 1.3
+% of this license or (at your option) any later version.
+% The latest version of this license is in
+%
+%     http://www.latex-project.org/lppl.txt
+%
+% and version 1.3 or later is part of all distributions of LaTeX
+% version 2005/12/01 or later.
+% -------------------------------------------------------------------
+% This work has the LPPL maintenance status `maintained'.
+%
+% The Current Maintainer of this work is Christian Tellechea
+% -------------------------------------------------------------------
+
+\ProvidesPackage{tabularcalc}[2009/04/20 v0.2 Compute formulas in tables]
+\NeedsTeXFormat{LaTeX2e}
+\RequirePackage{fp}
+\RequirePackage{xstring}
+\RequirePackage[autolanguage]{numprint}
+
+\newcommand\tabularcalcversion     {0.2}
+\newcommand\tabularcalcdate        {2009/04/21}
+\newcommand\tabularcalcfrenchdate  {21 avril 2009}
+\newcommand\tabularcalcenglishdate {April $21^{\mathrm{st}}$ 2009}
+\newcount\tccol
+\newcount\tclin
+\newif\iftc@showval
+\newwrite\tc@export
+
+\newcommand\tc@checkdefine[2]{\@ifdefinable#1{\def#1{#2}}{}}
+\tc@checkdefine\tc@evalexpr{}
+
+\def\tc@evalexpr#1#2#3{% calcul d'une expression avec fp
+	\IfBeginWith{#1}-%
+		{\def\tc@currentresult{0#1}}%
+		{\def\tc@currentresult{#1}}%
+	\FPset{#2}{#3}% variable:=#2
+	\FPeval\tc@currentresult\tc@currentresult
+	\FPclip\tc@currentresult\tc@currentresult}
+
+\DeclareOption{fixFPpow}{%
+	\def\FP@pow#1#2#3{% enl\`eve l'espace ind\'esirable lors du calcul de a^b
+			\FP@beginmessage{POW}%
+			{\def\FP@beginmessage##1{}%
+			\def\FP@endmessage##1{}%
+			\FPifzero{#2}%
+				\FP@pow@zero{#3}%
+			\else
+				\FPifint{#3}% g\`ere les cas (-2)^3
+					\FPifneg{#2}%
+						\FPneg\FP@tmpd{#2}%
+						\FPln\FP@tmpd\FP@tmpd
+						\FPmul\FP@tmpd\FP@tmpd{#3}%
+						\FPexp\FP@tmpd\FP@tmpd
+						\FPtrunc\FP@tmp{#3}0%
+						\ifodd\FP@tmp
+							\FPneg\FP@tmp\FP@tmpd
+						\else
+							\let\FP@tmp\FP@tmpd
+						\fi
+					\else
+						\FPln\FP@tmpd{#2}%
+						\FPmul\FP@tmpd\FP@tmpd{#3}%
+						\FPexp\FP@tmp\FP@tmpd
+					\fi
+				\else
+					\FPln\FP@tmpd{#2}%
+					\FPmul\FP@tmpd\FP@tmpd{#3}%
+					\FPexp\FP@tmp\FP@tmpd
+				\fi
+			\fi
+			\global\let\FP@tmp\FP@tmp}%
+			\FP@endmessage{}%
+			\let#1\FP@tmp}}
+
+\ProcessOptions\relax
+
+\newcommand\tc@addtomacro[2]{\expandafter\def\expandafter#1\expandafter{#1#2}}
+\newcommand\tc@expaddtomacro[2]{%
+	\expandafter\tc@addtomacro\expandafter#1\expandafter{#2}}
+
+\tc@checkdefine\tcnoshowmark{}
+\makeatother\def\tcnoshowmark{@}\makeatletter
+\tc@checkdefine\tcatbeginrow{\rule[-1.2ex]{0pt}{4ex}}
+\tc@checkdefine\tc@cellcode{}
+\tc@checkdefine\tc@currentcellcode{}
+\newcommand\tcresetcellcode{\let\tc@cellcode\@empty}
+\tc@checkdefine\tclistsep{,}
+\tc@checkdefine\tcprintvalue{}
+\def\tcprintvalue#1{\numprint{#1}}
+
+\tc@checkdefine\tcprintresult{}
+\def\tcprintresult#1#2{\numprint{#1}}
+
+\newcommand\edefcellcode[3]{%
+	\ifx\@empty#1\@empty
+		\ifx\@empty#2\@empty
+			\tc@addtomacro\tc@cellcode{#3}%
+		\else
+			\tc@addtomacro\tc@cellcode{\ifnum\tccol=#2 #3\fi}%
+		\fi
+	\else
+		\ifx\@empty#2\@empty
+			\tc@addtomacro\tc@cellcode{\ifnum\tclin=#1 #3\fi}%
+		\else
+			\tc@addtomacro\tc@cellcode{%
+				\ifnum\tclin=#1\relax\ifnum\tccol=#2 #3\fi\fi}%
+		\fi
+	\fi}
+
+\newcommand\defcellcode[3]{\edefcellcode{#1}{#2}{\unexpanded{#3}}}
+
+\tc@checkdefine\tc@firstrule\hline
+\tc@checkdefine\tc@interrule\hline
+\tc@checkdefine\tc@updwnrule\hline
+
+% d\'efinit les 3 types de lignes
+\newcommand\tcsethrule[3]{%
+	\def\tc@updwnrule{#1}\def\tc@firstrule{#2}\def\tc@interrule{#3}}
+
+\newcommand\tcresethrule{\tcsethrule\hline\hline\hline}
+
+\tc@checkdefine\tc@lastvline{}
+\tc@checkdefine\tc@firstcoltype{|c|}
+\tc@checkdefine\tc@othercoltype{c|}
+
+% d\'efinit les 3 types de colonnes
+\newcommand\tcsetcoltype[3][]{%
+	\def\tc@firstcoltype{#2}\def\tc@othercoltype{#3}\def\tc@lastvline{#1}}
+
+\newcommand\tcresetcoltype{\tcsetcoltype{|c|}{c|}}
+
+\newcommand\tc@errmess[1]{\PackageError{tabularcalc}{#1}{}}
+\newcommand\tc@ifemptyerrmess[2]{\ifx\empty#1\tc@errmess{#2}\fi}
+
+\newcommand\htablecalc{%
+	\begingroup
+		\@makeother\:\@makeother\;\@makeother\,
+		\fullexpandarg
+		\def\tc@orientation{h}%
+		\tc@deftableid}
+
+\newcommand\vtablecalc{%
+	\begingroup
+		\@makeother\:\@makeother\;\@makeother\,
+		\fullexpandarg
+		\def\tc@orientation{v}%
+		\tc@deftableid}
+
+\newcommand\tc@deftableid[3][1]{%
+	\def\tc@nbformulas{#1}%
+	\IfSubStr{#3};%
+		{\tc@analysevalueformula{#3}}% construit la liste des valeurs
+		{\StrBefore{#3}=[\tc@formulavariable]% analyse les valeurs
+		 \tc@ifemptyerrmess\tc@formulavariable{Empty variable!}
+		 \StrLen\tc@formulavariable[\tc@temp]%
+		 \ifnum\tc@temp=\@ne\else\tc@errmess{Invalid variable}\fi
+		 \StrBehind{#3}=[\tc@valuelist]%
+		 \tc@ifemptyerrmess\tc@valuelist{No value!}}%
+	\StrCount{\tclistsep\tc@valuelist}\tclistsep[\tc@nbval]% nombre de valeurs
+	\let\tc@coltype\@empty
+	\tc@expaddtomacro\tc@coltype{\tc@firstcoltype*}% construit \tc@coltype
+	\if\tc@orientation h\let\tc@temp\tc@nbval\fi
+	\if\tc@orientation v\let\tc@temp\tc@nbformulas\fi
+	\expandafter\tc@addtomacro\expandafter\tc@coltype\expandafter
+		{\expandafter{\tc@temp}}% qui contiendra par exemple |c|*{4}{c|}
+	\expandafter\tc@addtomacro\expandafter\tc@coltype\expandafter
+		{\expandafter{\tc@othercoltype}}%
+	\tc@expaddtomacro\tc@coltype\tc@lastvline
+	\let\tc@firstrow\@empty% 1ere ligne
+	\tclin\z@\tccol\z@
+	\edef\tc@currentcellcode{\tc@cellcode}%
+	\tc@expaddtomacro\tc@firstrow\tc@currentcellcode
+	\tc@addtomacro\tc@firstrow{\tcatbeginrow#2&}%
+	\tc@expaddtomacro\tc@valuelist\tclistsep
+	\tclin\@ne\tccol\@ne
+	\@nameuse{tc@\tc@orientation readarg}}
+
+\newcommand\tc@analysevalueformula[1]{%
+	\StrBefore{#1};[\tc@valueformula]%
+	\StrBehind{#1};[\tc@valueinterval]%
+	\StrBefore\tc@valueinterval=[\tc@variablevalue]%
+	\StrBehind\tc@valueinterval=[\tc@valueinterval]%
+		\StrLen\tc@variablevalue[\tc@temp]% controles
+		\ifnum\tc@temp=\@ne\else\tc@errmess{Invalid variable}\fi
+		\tc@ifemptyerrmess\tc@valueinterval{Invalid syntax}%
+	\StrBefore\tc@valueformula=[\tc@formulavariable]%
+		\StrLen\tc@formulavariable[\tc@temp]% contrôles
+		\ifnum\tc@temp=\@ne\else\tc@errmess{Invalid variable}\fi
+		\ifx\tc@variablevalue\tc@formulavariable
+			\tc@errmess{Variables must not be the same}%
+		\fi
+	\StrBehind\tc@valueformula=[\tc@valueformula]%
+		\tc@ifemptyerrmess\tc@valueformula{Empty formula}%
+	\StrBefore\tc@valueinterval:[\tc@startvalue]%
+		\tc@ifemptyerrmess\tc@startvalue{Invalid interval}%
+	\StrBehind\tc@valueinterval:[\tc@valueinterval]%
+	\StrBefore{\tc@valueinterval[}[[\tc@endvalue]%
+		\tc@ifemptyerrmess\tc@endvalue{Invalid interval}%
+	\StrBetween\tc@valueinterval[][\tc@valuestep]%
+	\ifx\@empty\tc@valuestep\def\tc@valuestep{1}\fi
+	\def\tc@temp{0}%
+	\ifx\tc@valuestep\tc@temp\tc@errmess{Step must not be 0}\fi
+	\ifdim\tc@startvalue pt<\tc@endvalue pt\ifdim\tc@valuestep pt<0pt%
+		\tc@errmess{Step should be positive}%
+	\fi\fi
+	\ifdim\tc@startvalue pt>\tc@endvalue pt\ifdim\tc@valuestep pt>0pt%
+		\tc@errmess{Step should be negative}%
+	\fi\fi
+	\let\tc@valuelist\@empty
+	\let\tc@currentvalue\tc@startvalue
+	\edef\tc@comparesign{\ifdim\tc@valuestep pt<0pt<\else>\fi}% < ou >
+	\tc@buildvaluelist}
+
+\newcommand\tc@buildvaluelist{%
+	\edef\tc@temp{%
+		\noexpand\tc@evalexpr
+		{\tc@valueformula}{\tc@variablevalue}{\tc@currentvalue}}%
+	\tc@temp
+	\tc@expaddtomacro\tc@valuelist\tc@currentresult
+	\FPadd\tc@currentvalue\tc@currentvalue\tc@valuestep
+	\FPclip\tc@currentresult\tc@currentresult
+	\expandafter\ifdim\expandafter\tc@currentvalue
+		\expandafter p\expandafter t\tc@comparesign\tc@endvalue pt
+	\else
+		\tc@expaddtomacro\tc@valuelist\tclistsep
+		\expandafter\tc@buildvaluelist
+	\fi
+	\tc@temp}
+
+\newcommand\tc@generatevaluelist[3][1]{%
+	\tc@analysevalueformula{#3}%
+	\edef\tc@temp{%
+		\unexpanded{\tc@deftableid[#1]{#2}}%
+		{\tc@formulavariable=\tc@valuelist}}%
+	\tc@temp}
+
+% lit tous les arguments {nom ligne}{formule} et les assigne dans les sc
+% \tcline@i et \tc@formula@i et ainsi de suite, puis va \`a \tc@hbuildlines
+\newcommand\tc@hreadarg[2]{%
+	\tccol\z@
+	\@namedef{tc@line@\romannumeral\tclin}{}%
+	\edef\tc@currentcellcode{\tc@cellcode}%
+	\tc@expaddtocurrentline\tc@currentcellcode
+	\tc@addtocurrentline{\tcatbeginrow#1&}%
+	\@namedef{tc@formula@\romannumeral\tclin}{#2}%
+	\ifnum\tclin<\tc@nbformulas
+		\advance\tclin\@ne
+		\expandafter\tc@hreadarg
+	\else
+		\tccol\@ne
+		\expandafter\tc@hbuildlines
+	\fi}%
+
+\newcommand\tc@vreadarg[2]{%
+	\tclin\z@
+	\edef\tc@currentcellcode{\tc@cellcode}% construit la 1\`ere ligne
+	\tc@expaddtomacro\tc@firstrow{\tc@currentcellcode#1}%
+	\@namedef{tc@formula@\romannumeral\tccol}{#2}%
+	\ifnum\tccol<\tc@nbformulas
+		\tc@addtomacro\tc@firstrow&%
+		\advance\tccol\@ne
+		\expandafter\tc@vreadarg
+	\else
+		\tclin\@ne\tccol\z@
+		\loop% initialise les lignes \`a "\tc@currentcellcode\tcatbeginrow"
+			\@namedef{tc@line@\romannumeral\tclin}{}%
+			\edef\tc@currentcellcode{\tc@cellcode}%
+			\tc@expaddtocurrentline\tc@currentcellcode
+			\tc@addtocurrentline\tcatbeginrow
+			\ifnum\tclin<\tc@nbval
+			\advance\tclin\@ne
+		\repeat
+		\tclin\@ne
+		\expandafter\tc@vbuildlines
+	\fi}%
+
+\newcommand\tc@findskiplist{%
+	\IfBeginWith\tc@currentvalue\tcnoshowmark
+		{\tc@showvalfalse% si le signe \tcnoshowmark est pr\'esent...
+		 \StrGobbleLeft\tc@currentvalue1[\tc@currentvalue]}% ...efface-le
+		{\tc@showvaltrue}%
+	\IfSubStr\tc@currentvalue[% s'il y a une skiplist...
+		{\let\tc@skiplist\tc@currentvalue
+		 \StrBefore\tc@currentvalue[[\tc@currentvalue]% ce qui est avant "["
+		 \StrBehind\tc@skiplist\tc@currentvalue[\tc@skiplist]}% d\'efinit-la
+		{\let\tc@skiplist\@empty}}
+
+\newcommand\tc@addtocurrentline[1]{%
+	\expandafter\tc@addtomacro\csname tc@line@\romannumeral\tclin\endcsname
+	{#1}}
+
+\newcommand\tc@expaddtocurrentline[1]{%
+	\expandafter\tc@addtocurrentline\expandafter{#1}}
+
+% construit toutes les lignes du tableau par r\'ecursivit\'e principale sur
+% le nombre de colonnes
+\newcommand\tc@hbuildlines{%
+	\tclin\z@
+	\StrBefore\tc@valuelist\tclistsep[\tc@currentvalue]% prend \tc@currentvalue
+	\StrBehind\tc@valuelist\tclistsep[\tc@valuelist]% purge \tc@valuelist
+	\ifx\@empty\tc@currentvalue
+	\else
+		\tc@findskiplist
+		\edef\tc@currentcellcode{\tc@cellcode}%
+		\tc@expaddtomacro\tc@firstrow\tc@currentcellcode
+		\iftc@showval% pas de noshowmark : ajoute affichage valeur courante
+			\let\tc@currentvaluerounded\tc@currentvalue
+			\tc@tcroundvalue\tc@currentvaluerounded\tc@printvalueroundprecision
+			\expandafter\tc@addtomacro\expandafter\tc@firstrow
+				\expandafter{\expandafter\tcprintvalue\expandafter
+				{\tc@currentvaluerounded}}%
+		\fi
+		\tclin\@ne
+		\loop
+			\edef\tc@currentcellcode{\tc@cellcode}%
+			\tc@expaddtocurrentline\tc@currentcellcode
+			\tc@displaycurrentresult\tclin
+			\ifnum\tclin<\tc@nbformulas
+			\advance\tclin\@ne
+		\repeat% recommence pour toutes les lignes
+	\fi
+	\ifnum\tccol<\tc@nbval% s'il reste des colonnes
+		\tc@addtomacro\tc@firstrow&% ajoute "&" \`a la 1\`ere ligne
+		\tclin\@ne
+		\loop% et ajoute "&" aux autres lignes
+			\tc@addtocurrentline&%
+			\ifnum\tclin<\tc@nbformulas
+			\advance\tclin\@ne
+		\repeat
+		\advance\tccol\@ne
+		\let\tc@temp\tc@hbuildlines% recommence tout le processus
+	\else
+		\let\tc@nblines\tc@nbformulas
+		\ifx\tc@filename\@empty
+			\let\tc@temp\tc@printtabular% sinon, va afficher la table
+		\else
+			\let\tc@temp\tc@exporttabular% ou l'exporter dans un fichier
+		\fi
+	\fi
+	\tc@temp}
+
+% construit les lignes du tableau par r\'ecursivit\'e principale sur \tclin
+\newcommand\tc@vbuildlines{%
+	\StrBefore\tc@valuelist\tclistsep[\tc@currentvalue]% prend \tc@currentvalue
+	\StrBehind\tc@valuelist\tclistsep[\tc@valuelist]% purge \tc@valuelist
+	\ifx\@empty\tc@currentvalue
+	\else
+		\tc@findskiplist
+		\iftc@showval% pas de noshowmark : ajoute affichage valeur courante
+			\tc@tcroundvalue\tc@currentvalue\tc@printvalueroundprecision
+			\expandafter\tc@expaddtocurrentline\expandafter
+				{\expandafter\tcprintvalue\expandafter{\tc@currentvalue}}%
+		\fi
+		\tccol\@ne
+		\loop
+			\tc@addtocurrentline&% change de cellule dans la ligne en cours
+			\edef\tc@currentcellcode{\tc@cellcode}%
+			\tc@expaddtocurrentline\tc@currentcellcode
+			\tc@displaycurrentresult\tccol% ajoute le r\'esultat courant ou pas
+			\ifnum\tccol<\tc@nbformulas
+			\advance\tccol\@ne
+		\repeat% s'il reste des colonnes, recommence
+	\fi
+	\ifnum\tclin<\tc@nbval
+		\advance\tclin\@ne
+		\let\tc@temp\tc@vbuildlines% s'il reste des lignes, recommence
+	\else
+		\let\tc@nblines\tc@nbval
+		\ifx\tc@filename\@empty
+			\let\tc@temp\tc@printtabular% sinon, va afficher la table
+		\else
+			\let\tc@temp\tc@exporttabular% ou l'exporter dans un fichier
+		\fi
+	\fi
+	\tc@temp}
+
+\newcommand\tc@displaycurrentresult[1]{%
+	\StrBetween\tc@skiplist[][\tc@nexttoskip]%
+	\ifx\@empty\tc@skiplist% pas de skiplist -> ajoute l'affichage de resultat
+		\tc@addcurrentresult#1%
+	\else
+		\ifnum\tc@nexttoskip=\z@% si 0, n'affiche rien
+		\else
+			\ifnum\tc@nexttoskip=#1% si le numero correspond
+				\StrBehind\tc@skiplist][\tc@skiplist]% purge la skiplist
+			\else% sinon, ajoute l'affichage de resultat
+				\tc@addcurrentresult#1%
+			\fi
+		\fi
+	\fi}
+
+\newcommand\tc@addcurrentresult[1]{% #1 : compteur courant
+	\edef\tc@temp{%
+		\noexpand\tc@evalexpr{\@nameuse{tc@formula@\romannumeral#1}}%
+		{\tc@formulavariable}{\tc@currentvalue}}%
+	\tc@temp
+	\tc@tcroundresult\tc@currentresult\tc@printresultroundprecision
+	\edef\tc@temp{%
+		\noexpand\tc@addtocurrentline{\noexpand\tcprintresult
+		{\tc@currentresult}{\tc@currentvalue}}}%
+	\tc@temp}
+
+\newcommand\tc@printcalclines{%
+	\@nameuse{tc@line@\romannumeral\tclin}% affiche la ni\`eme ligne
+	\ifnum\tclin<\tc@nblines% et s'il en reste encore \`a afficher
+		\\\tc@interrule% va \`a la ligne, met le filet
+		\global\advance\tclin\@ne
+		\expandafter\tc@printcalclines% et recommence
+	\fi}%
+
+\newcommand\tc@printtabular{%
+	\global\tclin\z@
+	\def\tc@currentvalue{\begin{tabular}}%
+	\expandafter\tc@currentvalue\expandafter{\tc@coltype}\tc@updwnrule
+		\tc@firstrow\\\tc@firstrule% 1\`ere ligne +  1er filet
+		\global\tclin\@ne
+		\tc@printcalclines% affichage des autres lignes
+		\\\tc@updwnrule% filet du bas
+	\end{tabular}% fin du tableau
+	\endgroup}
+
+% les macro d'export dans un fichier
+\tc@checkdefine\tc@filename{}
+\newcommand\tcwritetofile[1]{\gdef\tc@filename{#1}}
+
+\newcommand\tc@exporttabular{%
+	\immediate\openout\tc@export=\tc@filename
+	\immediate\write\tc@export{%
+		\noexpand\begin{tabular}{\unexpanded\expandafter{\tc@coltype}}%
+		\unexpanded\expandafter{\tc@updwnrule}}%
+	\immediate\write\tc@export{%
+		\unexpanded\expandafter{\tc@firstrow\\}%
+		\unexpanded\expandafter{\tc@firstrule}}%
+	\global\tclin\@ne
+	\tc@exportcalclines
+	\immediate\write\tc@export{\noexpand\end{tabular}}%
+	\immediate\closeout\tc@export
+	\endgroup
+	\gdef\tc@filename{}}
+
+\newcommand\tc@exportcalclines{%
+	\ifnum\tclin<\tc@nblines
+		\let\tc@temp\tc@interrule
+	\else
+		\let\tc@temp\tc@updwnrule
+	\fi
+	\immediate\write\tc@export{%
+		\unexpanded\expandafter\expandafter\expandafter
+		{\csname tc@line@\romannumeral\tclin\endcsname}\noexpand\\
+		\unexpanded\expandafter{\tc@temp}}% affiche la ni\`eme ligne
+	\ifnum\tclin<\tc@nblines% et s'il en reste encore \`a afficher
+		\global\advance\tclin\@ne
+		\expandafter\tc@exportcalclines% et recommence
+	\fi}
+
+%%% Les macros d'arrondi %%%%
+\newcommand\tcprintroundvalue{%
+	\@ifstar
+		{\let\tc@formatroundednumber\@gobbletwo\tc@printroundvalue}%
+		{\let\tc@formatroundednumber\FPclip\tc@printroundvalue}}
+
+\newcommand\tc@printroundvalue[1]{%
+	\ifx\@empty#1\@empty\let\tc@tcroundvalue\@gobbletwo
+	\else\let\tc@tcroundvalue\tc@round\def\tc@printvalueroundprecision{#1}%
+	\fi}
+
+\newcommand\tcprintroundresult{%
+	\@ifstar
+		{\let\tc@formatroundednumber\@gobbletwo\tc@printroundresult}%
+		{\let\tc@formatroundednumber\FPclip\tc@printroundresult}}
+
+\newcommand\tc@printroundresult[1]{%
+	\ifx\@empty#1\@empty\let\tc@tcroundresult\@gobbletwo
+	\else\let\tc@tcroundresult\tc@round\def\tc@printresultroundprecision{#1}%
+	\fi}
+
+\newcommand\tc@round[2]{% #1=sc contenant le nombre #2=rang d'arrondi
+	\FPround#1#1{#2}\tc@formatroundednumber#1#1}
+
+\tcprintroundresult{}% par d'arrondi \`a l'affichage par d\'efaut
+\tcprintroundvalue{}% par d'arrondi \`a l'affichage par d\'efaut
+%
+% Historique
+%------------------------------------------------------------------------------
+% v0.1    19/03/2009
+% - Premi\`ere version
+%------------------------------------------------------------------------------
+% v0.2    21/04/2009
+% - pgfmath est abandonn\'e puisque beaucoup trop imprecis.
+%   Le moteur de calcul est d\'esormais fp.
+%   2 probl\`emes dans \FPpow peuvent \^etre corrig\'e par l'option "fixFPpow".
+% - Les valeurs peuvent \^etre calcul\'ees au lieu d'\^etre entr\'ees une par
+%   une. Cette fonctionnalit\'e tile lorsque ces valeurs suivent une loi
+%   math\'ematique dans un intervalle donn\'e.
+% - Il est possible avec la commande \tcwritetofile d'exporter le prochain
+%   tableau vers un fichier dont on choisit le nom
+% - Ajout de la traduction du manuel en vietnamien.

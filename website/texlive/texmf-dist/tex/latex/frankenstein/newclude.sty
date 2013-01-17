@@ -1,0 +1,959 @@
+%^^A* legal notices
+% \iffalse
+%
+%   This program is part of the Frankenstein bundle for LaTeX.  
+%
+%   Copyright 1995-2001 Matt Swift <swift@alum.mit.edu>.
+%
+%   This file contains both the code and documentation for the
+%   newclude LaTeX package.  It will work ONLY if it is placed in a
+%   proper directory.  Files called README, INSTALL, newclude.tex
+%   and newclude.ins should have also been distributed to you
+%   with this file.  See them for more information on how to typeset
+%   the documentation with LaTeX and how to generate a version of this
+%   file that will work faster than this one.
+%
+%   This program is free software; you may redistribute it and/or
+%   modify it under the conditions of the LaTeX Project Public
+%   License, either version 1.2 or (at your option) any later version.
+%   The latest version of this license is in
+%   http://www.latex-project.org/lppl.txt, and version 1.2 or later is
+%   part of all distributions of LaTeX version 1999/12/01 or later.
+%
+%   This program is distributed in the hope that it will be useful,
+%   but without any warranty; without even the implied warranty of
+%   merchantability or fitness for a particular purpose.  See the
+%   LaTeX Project Public License for more details.
+%
+% \fi  
+%
+%^^A* checks
+%
+%^^A NOTE:  The character table, with two %'s, will get written to all files.
+%% \CharacterTable
+%%  {Upper-case    \A\B\C\D\E\F\G\H\I\J\K\L\M\N\O\P\Q\R\S\T\U\V\W\X\Y\Z
+%%   Lower-case    \a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\u\v\w\x\y\z
+%%   Digits        \0\1\2\3\4\5\6\7\8\9
+%%   Exclamation   \!     Double quote  \"     Hash (number) \#
+%%   Dollar        \$     Percent       \%     Ampersand     \&
+%%   Acute accent  \'     Left paren    \(     Right paren   \)
+%%   Asterisk      \*     Plus          \+     Comma         \,
+%%   Minus         \-     Point         \.     Solidus       \/
+%%   Colon         \:     Semicolon     \;     Less than     \<
+%%   Equals        \=     Greater than  \>     Question mark \?
+%%   Commercial at \@     Left bracket  \[     Backslash     \\
+%%   Right bracket \]     Circumflex    \^     Underscore    \_
+%%   Grave accent  \`     Left brace    \{     Vertical bar  \|
+%%   Right brace   \}     Tilde         \~}
+%
+% \CheckSum{208}
+%
+% \begin{abstract}
+%   \package{Newclude} is a backwards-compatible reimplementation of the
+%   \LaTeX{} system for including files.  The princpal new features are: (1)
+%   the restriction that \cs\clearpage{}s must surround an included file is
+%   removed, (2) the restriction that \cs\include{}s cannot be nested is
+%   removed, and (3) the provision of hooks executed before and after the
+%   contents of an included file.  Newclude accomplishes the first two by using
+%   a single \ext{aux} file instead of many.
+%
+%   Still in development, but already useful in many situations, are new
+%   commands that include partial contents of independent \LaTeX{} files, which
+%   can also be processed on their own (that is, files that contain
+%   \cs\documentclass, |\begin{document}|, etc.).  \package{Newclude} absorbs
+%   and supersedes the former package \package{includex}.
+% \end{abstract}
+% \clearpage
+% \tableofcontents
+%
+% \part{Discussion}
+%
+%   \section{Introduction}
+%
+% Let us call a file that might be included into another document with a
+% command in the \cs\include family a \term{part}.  When a part is actually
+% included during a particular processing run, let us call it an \term{included
+% part}, and when it is not included, let us call it an \term{unincluded part}.
+% Notice that an unincluded part is \emph{not} the same as a file that was
+% never a candidate for inclusion with a command in the \cs\include family.
+%
+% The \package{newclude} package adds these features to the standard LaTeX{}
+% inclusion system:
+% \begin{enumerate}
+%   \item\label{item:hooks} Hooks \cs\AtBeginInclude and \cs\AtEndInclude are provided.
+%   \item\label{item:hooks:opt} Optional arguments to \cs\include and friends
+%         override current values of \cs\AtBeginInclude and \cs\AtEndInclude.
+%   \item \cname{include*} is like \cs\include but with arbitrary commands
+%         rather than \cs\clearpage{}s surrounding the part.
+%   \item \cs\include and friends can be nested.
+%   \item \cs\includeall cancels the effect of \cs\includeonly.
+%   \item \cs\IfAllowed\meta{filename} is a new conditional that branches,
+%         depending on what has been declared in an \cs\includeonly.
+%   \item Commands \cs\includedoc etc.\ include a part that can be processed
+%         independently.  These features are in development.
+% \end{enumerate}
+%
+% \package{Newclude} accepts three mutually-exclusive package options, with
+% \option{tag} the default when no package option is given.
+%
+% Loading \package{newclude} with the \option{simple} option provides only
+% features \ref{item:hooks} and~\ref{item:hooks:opt}.  If you don't use either
+% of these new features, the standard \LaTeX{} and \package{newclude} inclusion
+% systems will behave identically except in some unusual and benign odd cases
+% relating the the parsing of the new optional arguments to \cs\include, which
+% are discussed below in that command's documentation.
+% 
+% The options \option{tag} and \option{allocate} each implement all the above
+% features with a different method.  Each method introduces different
+% discrepancies from standard \LaTeX{} which are discussed below in sections
+% \ref{opt:tag} and~\ref{opt:allocate}.  If I discover how to make one method
+% never inferior to the other, I will remove the other option from the package.
+%
+%   \section{Usage}
+%
+% \DescribeMacro\include
+% \DescribeMacro\AtBeginInclude
+% \DescribeMacro\AtEndInclude
+%   \cs\include\oarg{prehook}\marg{filename}\oarg{posthook} behaves like
+%   standard \LaTeX{}'s \cs\include except that it can be nested and the
+%   contents of the two hook arguments, when they are given, are inserted at
+%   the beginning and end of the part whenever it is included, overriding the
+%   current values of \cs\AtBeginInclude and \cs\AtEndInclude.
+%
+%   \caveat{Right square braces (|]|s) in the optional arguments must be
+%   surrounded by curly braces to avoid confusing the argument parser.}
+%
+%   \caveat{A left square brace (|[|) that immediately follows an
+%   \cs\include command's mandatory \meta{filename} argument (after optional
+%   whitespace) will be considered to delimit the beginning of the
+%   \meta{posthook} argument.  If you want an actual left brace character in
+%   this position, you must precede it with something that will terminate
+%   \TeX's search for an optional argument, such as \cs\relax, |{}|, or a
+%   paragraph division (explicit or implicit).}
+%
+%   The commands \cs\AtBeginInclude\meta{tokens} and
+%   \cs\AtEndInclude\meta{tokens} are analagous to standard \LaTeX{}'s commands
+%   \cs\AtBeginDocument\meta{tokens} and \cs\AtEndDocument\meta{tokens}.
+%
+%   FIX: multiple instances concatenate?
+%
+%   FIX give name to what's held by atbegininclude so that an override can mention it
+%   
+%   When the optional argument \meta{prehook} is given to \cs\include, its
+%   contents will be used instead of whatever has been specified with
+%   \cs\AtBeginInclude, for that one inclusion.  Likewise, \meta{posthook} will
+%   be used in place of whatever has been specified with \cs\AtEndInclude for
+%   that one inclusion.  
+%
+%   For example, putting the \cs\chapter declaration in the \meta{prehook}
+%   argument allows the chapter name, and, optionally, a corresponding \LaTeX{}
+%   label, to be kept in the including file, rather than the included file:
+% \begin{codeexample}
+% \include [\chapter{Whales}
+%           \label{ch:whales}]
+%          {big-cetecea}
+% \end{codeexample}
+%
+%   The \meta{posthook} argument can be used, for example, to delimit or undo
+%   declarations made in the \meta{prehook} or the included file: FIX: better
+%   example, since these coudl simple appear before/after the \cs\include
+%   without ill effect.
+% \begin{codeexample}
+% \include [\begingroup\larger] % this part in larger type
+%          {manifesto}
+%          [\endgroup]
+% \end{codeexample}
+%
+% \DescribeMacro{\include*}
+% \DescribeMacro\IncludeSurround
+% \DescribeMacro\DefaultIncludeSurround
+%   \cname{include*}\oarg{prehook}\marg{filename}\oarg{posthook} is like
+%   \cs\include but omits the usual \cs\clearpage{}s that surround an included
+%   part, replacing them with \cs\IncludeSurround, which defaults to
+%   \cs\DefaultIncludeSurround.  The contents of \cs\IncludeSurround are
+%   inserted before the \meta{prehook} or whatever has been specified with
+%   \cs\AtBeginInclude, and after the \meta{posthook} or whatever has been
+%   specified with \cs\AtEndInclude.
+% 
+%   \caveat{A space gets inserted after an \cname{include*} unless it is
+%   suppressed by a |%| immediately following.  Combined with trailing spaces 
+%   in the included file, this may lead to unwanted spaces.  For this reason,
+%   \cs\DefaultIncludeSurround is initialized to \cname{par}.  When the user
+%   must explicitly change \cs\IncludeSurround to achieve totally smooth flow
+%   from main file to included file, they are more likely to consult this
+%   documentation if they spot a problem.  Package and class writers should
+%   take this difficulty into account when changing \cs\DefaultIncludeSurround.}
+%
+% \DescribeMacro\includeonly
+%   The \cs\includeonly command is reimplemented, but its usage and behavior is
+%   the same as the standard \LaTeX{} version.
+%
+% \DescribeMacro\includeall
+%   The \cs\includeall command cancels the effect of any \cs\includeonly
+%   command presently in effect.  
+% 
+%   If you write an \cs\includeonly so that each file appears on its own line,
+%   it is particularly easy to add and remove files to include by commenting
+%   out their lines, but it becomes laborious to comment out the entire
+%   \cs\includeonly command.  It's easy, however, to uncomment a single
+%   \cs\includeall command when you want to process the entire document.  (Or
+%   \cs\includeall could be inserted from the command line that invokes
+%   \LaTeX{}, and so on.)
+% 
+%   \section{Experimental features}
+%
+% \DescribeMacro\includeenv
+%   \cs\includeenv\oarg{prehook}\marg{filename}\marg{environment name}%
+%                 \marg{instance}\oarg{posthook}
+%   \cs\includeenv*\oarg{prehook}\marg{filename}\marg{environment name}%
+%                 \marg{instance}\oarg{posthook}
+%
+%   \cs\includeenv includes the contents of a single \LaTeX{} environment that
+%   appears in \meta{filename}.  The environment is specified by giving its
+%   name (\meta{environment}) and an instance of that environment in the file
+%   (\meta{instance}).  Presently, \meta{instance} is ignored, so that it will
+%   always be the contents of the first occurrence in \meta{filename} of a
+%   \LaTeX{} environment with the name \meta{environment} that will be
+%   included.  In the future, the \meta{instance} argument may be used to
+%   specify the $n$th instance of the environment within the file, or further
+%   specify the environment to be extracted in some other way.
+%   
+% FIX: right now they're required; skip text up to documentclass OR the target, 
+% then branch?
+%
+% Good preamble syntactic sugar: |\let\TheMarkupDeclarations\begin|
+%
+% \todo{You can insert a \cs\usepackage into the main aux file and have it
+% loaded properly.  If we discover a \cs\usepackage that is not a formatting
+% package, one strategy is to insert a corresponding \cs\usepackage into the
+% (main) aux file and then bail after the preamble.}
+%
+% \todo{You can't skip verbatim text via macro argument processing and sugar.
+% this means that a major reimplementation of skipping using verbatim methods
+% will have to be done.}
+%
+%   The included file is permitted (but not required) to have its own
+%   \cs\documentclass command and \code{\begin{document}}\lips
+%   \cs{\end{document}} pair.  \cs\includeenv extracts the specified
+%   environment by processing the preamble if one exists, skipping text up
+%   until the beginning of the specified environment, processing the contents
+%   of the environment, and skipping the rest of the included part.
+%  
+%   Notice that while a \code{\begin{document}}\lips\code{\end{document}} pair
+%   may not technically delimit a \LaTeX{} environment, you may nevertheless
+%   (because it looks exactly like an environment) set \meta{environment} to
+%   |document| to extract the contents of the \env{document} ``environment'' of
+%   \meta{filename}.
+%
+%   Consider the following issues when you are tempted to use this
+%   command.  Maybe the \cs\usepackage you are about to disregard is necessary
+%   to processing the part's contents.  Maybe it conflicts with a package
+%   already loaded at top level.  Maybe both!  The same holds of course for the
+%   defining commands like \cs\newcommand that one expects to find in a
+%   package.
+%  
+%   A deep problem with the design of a \LaTeX{} source file exists with
+%   respect to the function of the preamble.  The preamble contains
+%   declarations that determine how the document below will be formatted.
+%   Unfortunately, there is no way to make the distinction between:
+%   \begin{enumerate}
+%     \item 
+%      declarations that signal that certain markup will appear in the document
+%      that are either not defined in the \LaTeX{} kernel or are used with a
+%      different syntax
+%     \item declarations that describe how a certain instance
+%      of the document should be formatted
+%   \end{enumerate}
+%   Examples in the first category are \code{\usepackage{url}} and \code{FIX
+%   example}, and examples in the second are \code{\usepackage{times}} and
+%   \code{FIX}.  When you want to include the document or a part of it in
+%   another document, it is absolutely necessary to make this distinction so
+%   that declarations in category (1) can be processed and declarations in
+%   category (2) can be ignored.  ^^A FIX: \cat{} is a compsci command?
+%
+%   Adopting a convention on the use of the preamble can overcome this design
+%   problem, but it will not fix the problem for legacy files whose preambles
+%   do not obey the convention.  Legacy files that contain category (1)
+%   declarations in their preambles must either be altered or specifically
+%   accommodated with additional commands.
+%
+%   The convention I suggest is to |\usepackage{preamble}|.  \cs\beginmarkup
+%   \cs\endmarkup. FIX.  Can we arrange to load 
+%
+%   When \cs\includeenv encounters a \cs\usepackage command in the included
+%   part, it looks at the packages in the argument of \cs\usepackage and issues
+%   a warning if the package is not already loaded and does not appear on a
+%   list of packages known whose use falls entirely within category (2).  (See
+%   the \cs\DeclareFormattingPackage command below.)
+%
+%   The \cs\documentclass command is of course also a category (1) declaration.
+%   Presently, if \cs\includeenv detects that the arguments to an included
+%   \cs\documentclass command differ from the arguments of the
+%   \cs\documentclass command of the including document, it will issue a
+%   warning, and continue.  In the future, I hope to make this behavior smarter
+%   by having \cs\includeenv take specific actions for specific combinations of
+%   arguments.  For example, if the included document's class implies the use
+%   of markup not defined in the parent's class, an appropriate action would be
+%   to define the missing markup commands.  A document of class \class{report}
+%   and a document of class \class{article}, on the other hand, do not (I don't
+%   think) declare different markup, so that there should be no warning in this
+%   case.
+%
+% \DescribeMacro{\includeenv*}
+%   \cname{includeenv*} is analogous to \cname{include*}, that is, it surrounds
+%   the included part with \cs\IncludeSurround rather than \cs\clearpage.
+%
+% \DescribeMacro\includedoc
+% \DescribeMacro{\includedoc*}
+%   \cs\includedoc\oarg{prehook}\marg{file name}\oarg{posthook} is shorthand
+%   for
+%   \cs\includeenv\oarg{prehook}\marg{filename}\marg{|document|}\marg{}\oarg{posthook}.
+%
+%   \cname{includedoc*} is analogous to \cname{includeenv*}.
+%
+%   \section{Options}
+%
+%     \subsection{Simple}\label{opt:simple}
+%
+% If the \option{simple} option is given, the only new feature provided is the
+% hooks (features \ref{item:hooks} and~\ref{item:hooks:opt} above).  As
+% with standard \LaTeX{}, \cs\clearpage{}s surround an \cs\include and nesting
+% \cs\include{}s gives an error.  \package{Newclude} will only behave
+% differently than standard \LaTeX{}  command scans for
+% possible optional arguments will make a different.
+%
+
+%
+%     \subsection{Tag}\label{opt:tag}
+% The \option{tag} option causes \LaTeX{} to use just one \ext{aux} file.  
+% This option, which is the default, works well.  I am aware of the following
+% two differences from the kernel's including system:
+%
+% \begin{enumerate}
+%   \item 
+%    If the \LaTeX{} process is stopped during the processing of a part, all
+%    information normally stored in an \ext{aux} file from that point in the
+%    document forward is lost.  In the kernel's system, processing the document
+%    twice more would recover any \ext{aux} information previously generated for
+%    parts.
+%   
+%    If \LaTeX{} is always invoked in \cs\nonstopmode (e.g., by \auctex), then
+%    this difference is only going to occur when there are catastrophic errors
+%    that cause even \cs\nonstopmode to terminate processing.
+%   
+%  \item Other packages and classes that redefine kernel commands that write to
+%    \cname{@auxout} will cause problems.
+% \end{enumerate}
+%
+% The first difference must be accepted.  The second difference can be removed
+% on a case by case basis, by specifically coding compatibility with such
+% packages and classes.  I intend to do this.  Here is a list of such packages
+% and classes known to me:
+%
+% \begin{tabular}{l}
+%   \meta{none so far}
+% \end{tabular}
+% If you discover any more for this list, please write me!
+%
+% It's also very easy to revise the other package to be compatible with
+% \package{newclude} as it is now.  See section~\ref{adapt} below, which
+% includes a list of relevant kernel commands.
+%
+%     \subsection{Allocate}\label{opt:allocate}
+%
+% The second way (the \option{allocate} option) represents my first attempt at
+% a solution, and until I am sure it has no advantages over \option{tag} under
+% any circumstances, it will continue to be an option.
+%
+% The \option{allocate} option causes \LaTeX{} to dynamically allocate \TeX{}
+% output streams to each part as they are needed.  Streams are allocated when
+% processing of the part begins, and are reclaimed after the ejection of the
+% last page to which the part has contributed.  Like the old system, a separate
+% \ext{aux} file is created for each part.  The limitation of this
+% implementation is that \TeX{} only possesses 16 output streams.  Each of the
+% commands \cs\tableofcontents, \cs\listoffigures, \cs\listoftables,
+% \cs\makeglossary, and \cs\makeindex causes \LaTeX{} to use one output stream.
+% The remainder (minus any streams required by packages and classes) are
+% available for the including system.  If $n$ streams are available, the level
+% of nesting possible is $n - 1$ minus the maximum number of parts that occur
+% on the same page.  For example, if 10 streams are available and the parts
+% never appear on the same page (the old behavior required by the
+% \cs\clearpage{}s), then 8 levels of nesting are possible (which is 8, not 7
+% more than with the old system).  The maximum number of parts that may
+% contribute the to same page is calculated with the same equation.  Note:
+% \TeX's page-breaking algorithm looks ahead until it has more than enough
+% material to fill one page.  You must count all the new \ext{aux} files that
+% are opened during a look-ahead as contributing to the page in question, even
+% if some of the later ones do not actually contribute to the page after the
+% break is chosen.
+%
+% The \option{allocate} solution is itself implemented in two ways.  The system
+% either reserves a fixed number of output streams from the start, or will
+% dynamically claim and free them as needed.  The dynamic solution is the
+% default.  I do not see much use for the static solution at present.  If the
+% dynamic system claims streams that are later required, then it is simply a
+% question of whether \package{newclude} or the other feature is going to
+% signal an error about having no more streams to allocate.
+%
+%   \section{Programmers' interface}
+% 
+% \DescribeMacro\IfAllowed
+%   \cs\IfAllowed\marg{part name}\marg{true}\marg{false} executes \meta{true}
+%   if \meta{part-name} is on the list of files to be included and \meta{false}
+%   otherwise.  If there is no list, executes \meta{true}.
+%
+% \DescribeMacro\IncludeName
+%   \cs\IncludeName expands to the name of the part currently being processed.
+%   In the toplevel source file, it will expand to \cs\jobname.
+%
+% \DescribeMacro\ParentName
+%   \cs\ParentName expands to the name of the part that includes the part
+%   currently being processed.  In the toplevel source file, expanding
+%   \cs\ParentName will generate a warning and expand to \cs\jobname (which is
+%   also what \cs\IncludeName expands to).
+%
+% FIX: root source file?  toplevel?  master? principle source?  glossary!
+%
+% \DescribeMacro\DeclareFormattingPackage
+%   \cs\DeclareFormattingPackage\marg{package name} declares \meta{package
+%   name} to be a package that only makes formatting declarations, that is, the
+%   effect of using it falls entirely within category (2).  If a formatting
+%   package occurs in a \cs\usepackage declaration in the preamble of a part
+%   included by \cs\includeenv, no warning will be given.  An example of a
+%   formatting package is the \package{times} package.  No facility is provided
+%   to distinguish the case when a package is used with or without certain
+%   package options, so do not declare a package as a formatting package unless
+%   it is so regardless of the options it is passed.
+%
+%   If you send me the names of formatting packages, I will include them in the
+%   next release of \package{newclude}.  Meanwhile, you may declare them in
+%   \file{newclude.cfg}.  Do the same for your local formatting packages if you
+%   wish.  It does no harm to declare a package as a formatting package more
+%   than once.
+%
+% \DescribeMacro\ifSkipPreamble
+% \DescribeMacro\SkipPreambletrue
+% \DescribeMacro\SkipPreamblefalse
+%   
+% \DescribeMacro\Disable
+% \DescribeMacro\DisableAll
+%   \cs\Disable\marg{tokens} provides a way to ignore additional commands when
+%   using \cs\includeenv and friends.  If you want to cause the macro \cs\foo
+%   which takes no arguments to be entirely ignored in parts, issue the command
+%   \code{\Disable{\let\foo\relax}} any time before including the parts you
+%   want to affect.  If \cs\foo takes one mandatory argument, write
+%   \code{\let\foo\Gobble} instead.  If \cs\foo takes one optional and one
+%   mandatory, write \code{\let\foo\GobbleOM}.  And so on.  For other examples,
+%   see the gobbling commands in the \package{moredefs} package (which
+%   \package{newclude} requires), or write your own.
+%
+%   The arguments to \cs\Disable are accumulated and executed by the command
+%   \cs\DisableAll, which is executed inside a group that contains a part when
+%   it is included.
+%
+%   There is no way to undo the effect of issuing a \cs\Disable command.
+%
+%   \section{How to play nicely with \package{newclude}}\label{adapt}
+%
+% To adapt a package or class for use with the \option{tag} option of
+% \package{newclude}:
+% \begin{enumerate}
+% \item replace |\immediate\write\@auxout| with \cs{\@writeaux}
+% \item replace |\protected@write\@auxout| with \cs{\protected@writeaux}
+% \item add
+% \begin{codeexample}
+% \providecommand\@writeaux {%
+%   \immediate\write\@auxout
+% }
+% \providecommand\protected@writeaux {%
+%   \protected@write\@auxout
+% }
+% \end{codeexample}
+% \end{enumerate}
+%
+% \StopEventually{}
+%
+% \part{Implementation}
+%
+% \section{Version control}
+%
+%  \begin{macro}{\fileinfo}
+%  \begin{macro}{\DoXUsepackagE}
+%  \begin{macro}{\HaveECitationS}
+%  \begin{macro}{\fileversion}
+%  \begin{macro}{\filedate}
+%  \begin{macro}{\docdate}
+%  \begin{macro}{\PPOptArg}
+% These definitions must be the first ones in the file.
+%    \begin{macrocode}
+\def\fileinfo{A new system for including files (Frankenstein's backbone)}
+\def\DoXPackageS {}
+\def\fileversion{v2}
+\def\filedate{1999/11/02}
+\def\docdate{1999/11/02}
+\edef\PPOptArg {%
+  \filedate\space \fileversion\space \fileinfo
+}
+%    \end{macrocode}
+%  \end{macro}
+%  \end{macro}
+%  \end{macro}
+%  \end{macro}
+%  \end{macro}
+%  \end{macro}
+%  \end{macro}
+%
+% If we're loading this file from a \cs\ProcessDTXFile command (see the
+% \package{compsci} package), then \cs\JusTLoaDInformatioN will be defined;
+% othewise we assume it is not (that's why the FunkY NamE).
+% 
+% If we're loading from \cs\ProcessDTXFile, we want to load the packages listed
+% in \cs\DoXPackageS (needed to typeset the documentation for this file) and
+% then bail out.  Otherwise, we're using this file in a normal way as a
+% package, so do nothing.  \cs\DoXPackageS, if there are any, are declared in
+% the \ext{dtx} file, and, if you're reading the typeset documentation of this
+% package, would appear just above.  (It's OK to call \cs\usepackage with an
+% empty argument or \cs\relax, by the way.)
+%    \begin{macrocode}
+\makeatletter% A special comment to help create bst files.  Don't change!
+\@ifundefined{JusTLoaDInformatioN} {%
+  }{% ELSE (we know the compsci package is already loaded, too)
+  \UndefineCS\JusTLoaDInformatioN
+  \SaveDoXVarS
+  \eExpand\csname DoXPackageS\endcsname\In {%use \csname in case it's undefined
+    \usepackage{#1}%
+  }%
+  \RestoreDoXVarS
+  \makeatother
+  \endinput
+}% A special comment to help create bst files.  Don't change!
+%    \end{macrocode}
+%
+% Now we check for \LaTeX2e and declare the LaTeX package.
+%    \begin{macrocode}
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{newclude}[\PPOptArg]
+%    \end{macrocode}^^A special comment to help create bst files.  Don't change!
+%
+% ^^A NOTE: We have to compensate for the above backslashes, which are not
+% ^^A       actually in the .dtx file the author works on, by adding to the
+% ^^A       CheckSum.
+%%
+% \AddToCheckSum{17}^^A `dtx-update-checksum' automatically handles this.
+% \AddToCheckSum{7}^^A The half a macrocode env. at the top is missed, however...
+% \AddToCheckSum{10}^^A ... and so are the 5 \defs from the .dtx file 
+%                   ^^A     that precede it.
+% \IfCitations {%
+%   \AddToCheckSum{2}^^A When \initelyHavECitationS is defined in
+% }                  ^^A the .dtx file, we need 2 more in the CheckSum.
+%
+%
+%   \section{Review of the kernel's inclusion system}
+%
+% One \ext{aux} file is written to disk for the \term{principle source} and one
+% for each of the included \term{parts}.  The reason to have a separate ones
+% for the parts is so that information from the last time the part was included
+% is retained in subsequent runs even when the part is excluded by
+% \cs\includeonly.  Suppose a part is processed once, and on a subsequent run
+% its name is removed from the \cs\includeonly list.  This run will still read
+% in the part's \ext{aux} file, since the \ext{aux} file of any part that was
+% \cs\included during the last run is always read.  But the information therein
+% is not going to be regenerated in this run, since the part will not be
+% processed.  The main \ext{aux} file is created anew with each run, so this
+% information would be lost if it resided there.
+%
+% To handle writing these multiple \ext{aux} files, the kernel uses two of
+% \TeX's output streams.  When a routine writes to an auxiliary file, it writes
+% to \cname{@auxout}, which is \cs\let to either \cname{@mainaux}, the
+% \ext{aux} file for the principle source, or \cname{@partaux} the \ext{aux}
+% file for all the parts each in turn.
+%
+% When encountering an \cs\include command, but before deciding whether or not
+% to actually load the part, the kernel writes a command to \cname{@mainaux}
+% that will load the part's \ext{aux} file.  The main \ext{aux}
+% file is loaded by \cs\document, so that \emph{all} \ext{aux} files are read
+% in every time the principle source is processed.
+%
+% If a part is actually loaded, a \term{checkpoint} is written to the part's
+% \ext{aux} file consisting of a snapshot of the counters (a record of the
+% values of all \LaTeX{} counters).  On the next run, if the part is not
+% actually loaded, the information in its \ext{aux} file has nevertheless
+% already been processed by \cs\document.  Processing the checkpoint causes a
+% macro to be defined that when invoked restores the counter state.  When
+% \cs\include does not actually load a part it calls this checkpoint macro
+% instead to alter the present counter state.
+%
+% This system has pitfalls as well as benefits.  It is useful to keep the
+% bibliography, citations, cross references, and page numbers up to date in
+% certain situations, but the results can be confusing sometimes, because
+% checkpoints are not documented. (Perhaps this is remedied in the 2d edition
+% of the \LaTeX{} manual.)  How, besides reading the code, or finding out the
+% hard way, is anyone supposed to guess that rearranging two ``deactivated''
+% \cs\include statements in a principle source will bring havoc on the page
+% numbers?
+%
+%   \section{Discussion of \package{newclude}'s inclusion system}
+%
+% The simple removal of the \cs\clearpage{}s that surround an included part
+% would cause a problem involving the delayed action of \cs\write commands.
+% Suppose a part ending with a \cs\write command ends halfway down a page, and
+% another \cs\write occurs in the principle source immediately (or soon) after
+% the inclusion.  The first must be written to \cname{@partaux} and the second
+% to \cname{@mainaux}.  If we close \cname{@partaux} while the first \cs\write
+% is still pending, that is, before the current page has been shipped out, then
+% the \cs\write will be destined for a closed stream and therefore go to the
+% log file and terminal.  The \cs\clearpage{}s solve this by flushing all
+% pending \cs\writes.  Then we can close \cname{@partaux} immediately and
+% reopen \cname{@mainaux}.
+%
+% Successful removal of the \cs\clearpage{}s can be accomplished either by
+% having the entire document use just one auxiliary file, or by allocating
+% additional output streams so that it becomes possible to avoid closing
+% \cname{@partaux} until after the current page is shipped out when all the
+% \cs\write{}'s to it have been completed.
+%
+%   \section{Package initialization}
+%
+%    \begin{macrocode}
+\RequirePackage{moredefs}
+%    \end{macrocode}
+%
+%    \begin{macrocode}
+\InitCS\sc@t@a
+\DeclareOption{simple} {%
+  \input{simple.sto}
+  \let\sc@t@a\endinput
+}
+%^^A\DeclareOption{group} {%
+%^^A  \AtEndOfPackage {\input{group.sto}}
+%^^A}
+\DeclareOption{tag} {%
+  \AtEndOfPackage {\input{tag.sto}}
+}
+\DeclareOption{allocate} {%
+  \AtEndOfPackage {\input{allocate.sto}}
+}
+\DeclareBooleanOptions{dynamic}{static}
+\ExecuteOptions{tag}
+\ProcessOptions
+%    \end{macrocode}
+% If the \option{simple} option has been given, end right here.
+%    \begin{macrocode}
+\sc@t@a
+%    \end{macrocode}
+% 
+%   \section{Simple}
+%
+% The above option processing causes the file \file{simple.sto} to be loaded
+% when the \option{simple} is given.  After it is loaded, processing stops.
+% When the \option{simple} option is not given, \package{newclude} package code
+% continues in section~\ref{sec:common}.
+%
+% \input{simple.sto}
+%
+%   \section{Common}\label{sec:common}
+%
+% The code in this section is common to the \option{tag} and \option{allocate}
+% options.
+%
+% \begin{macro}{\nc@t@a}
+% \begin{macro}{\nc@t@b}
+% \begin{macro}{\nc@t@c}
+% \begin{macro}{\nc@toks@a}
+%     Scratch variables.
+%    \begin{macrocode}
+\ReserveCS\nc@t@a
+\ReserveCS\nc@t@b
+\ReserveCS\nc@t@c
+\newtokens\nc@toks@a
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+%
+% \begin{macro}{\IncludeSurround}
+% \begin{macro}{\DefaultIncludeSurround}
+%   \mbox{}
+%    \begin{macrocode}
+\newcommand\DefaultIncludeSurround {%
+  \par
+}
+\newlet\IncludeSurround\DefaultIncludeSurround
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+% \begin{macro}{\c@IncludeDepth}
+%   With nested \cs\include{}s, we need some way for the various ones to
+%   distinguish themselves, so we keep track of the nested depth with the
+%   |IncludeDepth| counter.
+%    \begin{macrocode}
+\newcounter{IncludeDepth} % starts at 0
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\IfAllowed}
+% \begin{macro}{\includeonly}
+% \begin{macro}{\includeall}
+%  I think it's more efficient to define a macro for each included part on the
+%  list than it is to search through the list possibly twice for each one.
+%  Other opinions on making this whole thing more efficient?
+%  
+%  We are using the usual \LaTeX{} trick of undefined control sequences
+%  comparing equally with \cs\relax.  Empty control sequences are \emph{not}
+%  the same.  Should be followed by \meta{true clause} then \meta{false
+%  clause}.
+%    \begin{macrocode}
+\newcommand\IfAllowed [1] {%
+  \@firstoftwo
+}
+\newcommand\includeall {%
+  \let\includeonly\Gobble
+}
+\defcommand\includeonly [1] {%
+  \@partswtrue
+%  \DTypeout{INCLUDEONLY}%
+  \edef\@partlist {\zap@space#1 \@empty}%
+  \@for\nc@t@a:=\@partlist \do {%
+    \InitName*{nc@part@\nc@t@a}%
+  }%
+  \defcommand\IfAllowed [1] {% args: part-name
+    \@ifundefined{nc@part@##1} {%
+%        \DTypeout{##1 NOTALLOWED}%
+        \let\nc@t@c\@secondoftwo
+      }{% ELSE
+%      \DTypeout{##1 ALLOWED}%
+      \let\nc@t@c\@firstoftwo
+    }%
+    \nc@t@c
+  }%
+%  \DTypeout{ENDINCLUDEONLY}%
+}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+%
+% \begin{macro}{\include}
+% \begin{macro}{\include*}
+%   This is the principle user command.  The scratch variable \cname{nc@t@b}
+%   contains what really surrounds the included file.
+%    \begin{macrocode}
+\def\include {%
+  \@ifstar {%
+      \let\nc@t@b\IncludeSurround
+      \nc@include
+    }{% ELSE
+    \let\nc@t@b\clearpage
+    \nc@include
+  }%
+}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+%
+%   \section{Experimental common}
+%
+% \begin{macro}{\Disable}
+% \begin{macro}{\DisableAll}
+% This allows the disabling hacks.
+%    \begin{macrocode}
+\ReserveCS\DisableAll
+\newcommand\Disable [1] {%
+  \g@addto@macro\DisableAll{#1}%
+}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+% We start with considering how to quit inputting a file.  The idea is to make
+% the \code{\end{document}} command of the part call \cs\endinput.  But there
+% is a hitch that characters on the line after the \code{\end{document}} get
+% inserted when you don't want them to.  To beat that limitation, we have to do
+% some work.
+%
+% \begin{macro}{\nc@radical@shutdown}
+% We will add a bunch of commands to this macro, with the idea of \cs\catcode{}ing
+% everything and its brother to a comment.   This would be a brute force
+% method! 
+%    \begin{macrocode}
+\ReserveCS\nc@radical@shutdown
+%    \end{macrocode}
+% First log a message that we're about to do some crazy things. In case
+% something goes wrong, this might help.
+%    \begin{macrocode}
+\addto@macro\nc@radical@shutdown {%
+  \MonsterInfo{newclude}
+    {\protect\nc@radical@shutdown\space beginning}}
+%    \end{macrocode}
+% Now we start adding \cs\catcode commands.  These first two should be
+% redundant; but just in case someone changed things\lips.
+%    \begin{macrocode}
+\addto@macro\nc@radical@shutdown{\catcode`\%=14}    % 14 = comment
+\addto@macro\nc@radical@shutdown{\catcode`\^=7}     % 7 = superscript
+%    \end{macrocode}
+% \begin{macro}{\nc@disable@char}
+% Next, we define a command we weill use in a loop in a moment.
+%    \begin{macrocode}
+\newcommand\nc@disable@char[1] {%
+  \addto@macro\nc@radical@shutdown
+    {\catcode`#1=14}}  % 14 = comment
+%    \end{macrocode}
+% The following list contains every keyboard char except these three, which are
+% treated specially: |%#|.  
+% The first is already a comment, and we handle the second in a moment.  Each
+% character in the following list is \cs\catcode{}d to a comment:
+%    \begin{macrocode}
+\@tfor\sc@t@a:=abcdefghijklmnopqrstuvwxyz%
+                ABCDEFGHIJKLMNOPQRSTUVWXYZ%
+                ~!@$&*()_+-=[]|/?.,<>%
+                1234567890%
+                `'";:%
+                \^\\\{\}\ % this is really the chars "^\{}" and space
+    \do {\expandafter\nc@disable@char\sc@t@a}
+%    \end{macrocode}
+% We add |#| separately, because it's tricky or impossible to put it into the
+% list we just used.
+%    \begin{macrocode}
+\nc@disable@char\#
+%    \end{macrocode}
+% \end{macro}
+% We end the macro with \cs\endinput.  This has to come after all the previous,
+% otherwise, \TeX{} goes ahead and reads to the end of the line immediately,
+% with regular catcodes.  This is a good theory, I'm not sure it's necessary.
+%    \begin{macrocode}
+\addto@macro\nc@radical@shutdown{\endinput}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\nc@radical@shutdown@aftergroup}
+% We need to use \cname{nc@radical@shutdown} this way.
+%    \begin{macrocode}
+\newcommand\nc@radical@shutdown@aftergroup {%
+  \aftergroup\nc@radical@shutdown
+}
+%    \end{macrocode}
+% \end{macro}
+%
+% \begin{macro}{\includedoc}
+% \begin{macro}{\includedoc*}
+%   \mbox{}
+%    \begin{macrocode}
+\newcommand\includedoc {%
+  \md@check@star
+  \Expand \sc@star@nothing\In {%
+    \IncludeEnv##1{document}{}%
+  }%
+}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+% \begin{macro}{\includedocskip}
+% \begin{macro}{\includedocskip*}
+%   \mbox{}
+%    \begin{macrocode}
+\newcommand\includedocskip {%
+  \md@check@star
+  \Expand \sc@star@nothing\In {%
+    \IncludeEnvSkip##1{document}{}%
+  }%
+}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+% \begin{macro}{\IncludeEnv}
+% \begin{macro}{\nc@includeenv}
+% \begin{macro}{\nc@@includeenv}
+%   \mbox{}
+%    \begin{macrocode}
+\newcommand\IncludeEnv [2] {% args: environment instance
+  \md@check@star
+  \@ifnextchar [ {%           ^^A for Emacs: ]
+      \nc@includeenv{#1}{#2}%
+    }{% ELSE
+    \nc@includeenv{#1}{#2}[]%
+  }%
+}
+\NewName{nc@includeenv} {#1#2[#3]} {% args: environment instance [prehook]
+  \@ifnextchar [ {%      ^^A for Emacs: ]
+      \nc@@includeenv {#1}{#2}{#3}%
+    }{% ELSE
+    \nc@@includeenv {#1}{#2}{#3}[]%
+  }%
+}
+\NewName{nc@@includeenv} {#1#2#3[#4]} {% args: environment instance prehook [posthook]
+  \begingroup
+    \DisableAll
+    \let\documentclass\GobbleOM  
+    \let\usepackage\GobbleOM
+    \expandafter\def\csname end#1\endcsname {%
+      \makeatletter
+      % POSTHOOK
+      \nc@radical@shutdown@aftergroup
+    }%
+    \expandafter\def\csname #1\endcsname {} % PREHOOK
+  \endgroup
+  \par
+  \Expand \sc@star@nothing\In {%
+    \include##1{#2}%
+  }%
+}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+% \end{macro}
+%
+%    \begin{macrocode}
+\NewName {nc@@includeenvskip} {#1#2#3[#4]} {% args: environment instance prehook [posthook]
+  \begingroup
+    \DisableAll
+    \expandafter\def\csname end#1\endcsname {%
+      \makeatletter
+      % POSTHOOK
+      \nc@radical@shutdown@aftergroup
+    }%
+    \expandafter\def\csname #1\endcsname {} % PREHOOK
+    \long\def\documentclass ##1\begin{document}{%
+      \begingroup
+      \def\@currenvir{document}%      
+    }
+  \endgroup
+  \par
+  #1%
+}
+%    \end{macrocode}
+%
+%   \section{Tag}
+%
+% The code in this section is processed when the \option{tag} package option is
+% given (or, because the \option{tag} option is the default, when no package
+% options are given.)
+%
+% \input{tag.sto}
+%
+%   \section{Allocate}
+%
+% The code in this section is processed when the \option{allocate} package
+% option is given.
+%
+% \input{allocate.sto}
+%
+%   \section{Benign packages}
+%
+% \begin{macro}{\DeclareFormattingPackage}
+% \begin{macro}{\nc@formatting@packages}
+%   \mbox{}
+%    \begin{macrocode}
+\newcommand\DeclareFormattingPackage [1] {%
+  \addto@macro\nc@formatting@packages{,#1}%
+}
+\newcommand\nc@formatting@packages {times,helvetic}
+%    \end{macrocode}
+% \end{macro}
+% \end{macro}
+%
+% \Finale

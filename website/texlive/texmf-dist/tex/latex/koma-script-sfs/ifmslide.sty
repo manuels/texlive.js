@@ -1,0 +1,1287 @@
+%%
+%%
+%% This is file `ifmslide.sty',
+%%
+%% File: ifmslide.sty Copyright (c) 2000-2010, Thomas Emmel
+%%       ifmslide.cfg Copyright (c) 2000-2010, Thomas Emmel
+%% <thomas@family-emmel.de>
+%%
+%% with ideas and parts from:
+%% File: pdfslide.dtx Copyright (c) 1999, C. V. Radhakrishnan
+%%       1999/10/10 v0.50
+%% <cvr@river-valley.com>
+%%
+% This package may be distributed and/or modified under the
+% conditions of the LaTeX Project Public License, either version 1.2
+% of this license or (at your option) any later version.
+% The latest version of this license is in
+%   http://www.latex-project.org/lppl.txt
+% and version 1.2 or later is part of all distributions of LaTeX 
+% version 1999/12/01 or later.
+%
+% This package consists of the files ifmslide.sty and ifmslide.cfg
+% Add-ons: buttons and tiles and a button-generator (perl-script)
+% Manual:  ifmman.tex
+%
+% Requires:
+%  1. a working (pdf)latex
+%  2. the texpower-package v0.0.8f or later
+%  3. the hyperref-package v6.70u or later is recommended
+%  4. a working .(e)ps to .pdf translator (distiller or epstopdf)
+%     is recommended too
+%  5. ifpdf which should be now default for all latex installations
+%
+%%
+% HISTORY:
+%
+%  v0.10-0.1x mostly the same as pdfslide with some 
+%             corrections for the maketitle and a first attempt to
+%             use texpower... 
+%
+%  v0.2       the version between 0.1 and 0.3 ;-)
+%  v0.30      rewritten in the main for use with texpower and seminar.
+%             now we can use latex and pdflatex!
+%             
+%  v0.40      and completely rewritten...
+%             panels on top, bottom, left or right side of the slide
+%             change panel and main frame from minipage to picture-environment.
+%             new button-style
+%             filename and date on the slide.
+%
+%  v0.41      fixed some bugs in the shipout of the slide
+%             and the hyperref anchors.
+%
+%  v0.42      panel outside of the printed slide !!!
+%             release the logo and the buttons from the panel...
+%
+%  v0.43      add a nice feature to put a wallpaper behind the panel
+%             half-automatically generated from a bitmap.
+%
+%  v0.44   2000/11/13 (never published)
+%             pass options to texpower and redefine \pagecolor
+%             in a simple way to enable colorhighlight etc.
+%             add \nobuttons to hide buttons for slides
+%             set a default button
+%             fixed bug with button-style and set default when
+%             no option is given
+%
+%  v0.45   2001/06/24
+%             provide some patches for the anchors of hyperref and
+%             fix a small bug with the powersem.cls 0.6 (prerelease)
+%             submitted by Hans Fredrik Nordhaug.
+%             changed the loading of the color-package (also from Hans)
+%
+%  v0.46   2001 (not released)
+%             Fixes and additions in ifmman.tex and ifmslide.sty
+%             submitted by David Cyganski and others.
+%             /markright?
+%             /marginpar?
+%             new commands \nodvipagenumbers and \nodvijobname
+%             to disable extra info at the bottom of every printed slide
+%             paragraph, subparagraph and subsubsection fixed
+%
+%  v0.47   2010/12/13
+%             Fix for the pdfoutput which doesn't work anymore
+%             use ifpdf instead
+%
+% NOTE: THIS IS THE FINAL RELEASE
+%       I will not add more features to this package, only small
+%       bugfixes if anyone is really asking for them
+%       Please use the beamer-class instead!
+%
+
+\ProvidesPackage{ifmslide}
+          [2010/12/13 v0.47 (FINAL, see NOTE) slides for printout AND screen (Thomas Emmel)]
+
+\newif\if@draft       \@draftfalse
+\DeclareOption{draft}{\@drafttrue}
+
+\newif\if@ams         
+\newif\if@cnav        
+\newif\if@cnavo
+\newif\if@stmo
+\newif\if@button      \@buttonfalse
+\newif\if@oneis       \@oneisfalse
+
+\def\@allfalse{\@amsfalse\@cnavfalse\@cnavofalse\@stmofalse}
+\@allfalse
+
+\DeclareOption{contnav}{\@allfalse\@cnavtrue\@oneistrue%
+          \typeout{\CurrentOption obsolete! Use cnav instead...}}
+\DeclareOption{amsnav}{\@allfalse\@amstrue\@oneistrue%
+          \typeout{\CurrentOption obsolete! Use ams instead...}}
+\DeclareOption{ams}{\@allfalse\@amstrue\@oneistrue}
+\DeclareOption{cnav}{\@allfalse\@cnavtrue\@oneistrue}
+\DeclareOption{cnavo}{\@allfalse\@cnavotrue\@oneistrue}
+\DeclareOption{stmo}{\@allfalse\@stmotrue\@oneistrue}
+
+\DeclareOption{button}{\@buttontrue}
+
+% we used that in an older version...
+\DeclareOption{colorinfo}{\typeout{obselete option ignored -> colorinfo}}
+
+\DeclareOption{display}{\PassOptionsToPackage{display}{texpower}}
+
+%\newif\if@nocfg       \@nocfgfalse
+%\DeclareOption{nocfg}{\@nocfgtrue}
+
+% pass all other options to texpower
+\DeclareOption*{\PassOptionsToPackage{\CurrentOption}{texpower}}
+
+\ProcessOptions
+
+% if the button-option is switched on without a style use ams
+\if@oneis\relax\else\@amstrue\fi
+
+\newif\if@dvi         \@dvifalse
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% check the class
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\@ifclassloaded{powersem}% Using posersem?
+      {}% Yes.
+      {%
+  \typeout{^^J%
+  ***************************************^^J%
+  ***** Class powersem not used !!! *****^^J%
+  *****  Output may be curious ...  *****^^J%
+  ***************************************}
+}% No.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% load hyperref, color, texpower and fixseminar
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%\RequirePackage[pdfpagemode=none,colorlinks,bookmarksopen,%
+%%             pdfmenubar=false,%
+%             pdfmenubar=true,%
+%             pdfhighlight=/I,%
+%             pdftoolbar=false,%
+%%             pdfpagemode=FullScreen,%
+%             pdffitwindow=true,pdfcenterwindow=false,%
+%             pdfwindowui=true,menucolor=menucolor,%
+%             pdfview=Fit,pdfstartview=Fit]{hyperref}
+
+\RequirePackage[bookmarksopen,colorlinks,urlcolor=url]{hyperref}
+
+% check for pdf or dvi output
+\RequirePackage{ifpdf}
+
+% need to redefine pagecolor from color.sty to enable colorhighlight from texpower
+% this first "rough" version disables \pagecolor after color.sty and before
+% texpower use it to set the pagecolor... 
+% the problem is that this puts a colored box over the complete ifmslide-environment! 
+% (should be evaluated...)
+\ifpdf\RequirePackage[pdftex]{color}\else\RequirePackage{color}\fi
+%\def\pagecolor#1{}% simple
+%\def\pagecolor{% original
+%  \begingroup
+%      \let\ignorespaces\endgroup
+%      \let\set@color\set@page@color
+%      \color}
+\def\pagecolor{%
+  \begingroup
+      \let\ignorespaces\endgroup
+      \color}
+
+\RequirePackage{texpower}
+\RequirePackage{fixseminar}
+\RequirePackage{ifthen}
+\RequirePackage{calc}
+   
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% global settings, colors etc.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% latex or pdflatex?
+  \ifpdf
+    \RequirePackage[pdftex]{graphicx}
+  \else
+     \@dvitrue
+     \def\hypersetup#1{}%
+     \@ifundefined{pdfpageheight}{\newlength\pdfpageheight}{}%
+     \RequirePackage{graphicx}
+  \fi
+%%%%
+
+%% put colored marks for \pause statements in draft-mode 
+  \if@draft
+     \definecolor{pause}{rgb}{1.0,0.5,0}
+     \def\pause{\vbox to 0pt{\vss\hbox to 0pt{%
+           {\color{pause}\vrule width .5ex height 1ex\hss}}}\par}
+  \fi
+%%%%
+
+%% use framed boxes in draft-mode
+  \if@draft
+     \def\@draftbox#1#2#3{{\color{#2}\fboxsep=-1truept\fboxrule=1truept%
+                        \fbox{#3}}}
+  \else
+     \def\@draftbox#1#2#3{{\fboxsep=-1truept\fboxrule=1truept\fcolorbox{#1}{#2}{#3}}}%
+  \fi
+%%%%
+
+%% dummy
+  \def\LastSlide{100}
+
+%% add extra info for dvi or not
+
+\newif\if@dvipagenumber \@dvipagenumbertrue
+\newif\if@dvijobname    \@dvijobnametrue
+
+\def\nodvipagenumbers{\@dvipagenumberfalse}
+\def\nodvijobname{\@dvijobnamefalse}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% sizes and format of the slides (see seminar.cls)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  \slidesmag{3}
+  \slideframe{none}
+%  \articlemag{1}
+  \raggedslides[0pt]
+
+%% we need a font with fixed size for the page-counter and the jobname etc
+%% and a font for the buttons, both independent from slidemag
+  \font\ifont=cmss12 at 12truept
+  \font\ibfont=cmssbx10 at 12truept
+  \font\bfont=cmss12 at 16truept
+
+% sizes for dvi and pdf
+  \def\@init@slide{
+    \if@dvi
+    \else
+       \paperheight=\@shoa%187mm
+       \paperwidth=\@swoa%270mm
+       \setslidelength{\pdfpageheight}{\@shoa}
+       \setslidelength{\pdfpagewidth}{\@swoa}
+    \fi
+  }
+
+%%% OK, we need a scheme to put text in a framed slide...
+%%
+% what you see and what is printed:
+  \def\SlideHeightOverAll#1{\gdef\@shoa{#1}}
+  \def\@shoa{270mm}% 
+  \def\SlideWidthOverAll#1{\gdef\@swoa{#1}}
+  \def\@swoa{187mm}% 
+  \newlength\sl@overallwidth  \newlength\sl@overallheight
+
+  \def\@init@soa{%
+  \setslidelength{\sl@overallwidth}{\@swoa}
+  \setslidelength{\sl@overallheight}{\@shoa}
+  }
+
+%% default: panel right (or left) -> vertical
+%% possible values: top, bottom, left, right, empty, outsidebottom
+  \def\panelposition#1{%
+     \gdef\pos@panel{#1}
+     \ifthenelse{\equal{\pos@panel}{top}%
+              \or\equal{\pos@panel}{bottom}%
+              \or\equal{\pos@panel}{left}%
+              \or\equal{\pos@panel}{right}%
+              \or\equal{\pos@panel}{empty}%
+              \or\equal{\pos@panel}{outsidebottom}}
+     {\@calcframe}
+     {\errhelp{possible values for panelposition^^J%
+               top, bottom, left, right, empty, outsidebottom}%
+      \errmessage{ifmslide err: Value for panelposition not defined! Type <h> for help...}}}
+
+  \def\pos@panel{right}
+  
+% panelwidth, panelheight,
+% slideframewidth and slideframeheight without panel is calculated
+% for every slide ...
+% panel
+  \newlength\@spw   \newlength\@sph 
+  \def\panelwidth#1{\gdef\@panelwidth{#1}}
+  \def\@panelwidth{26mm}% panelwidth for panel left or right
+  \def\panelheight#1{\gdef\@panelheight{#1}}
+  \def\@panelheight{12mm}% panelheight for panel top or bottom
+  
+% frame
+  \newlength\@sfw   \newlength\@sfh 
+% margins inside frame
+  \newlength\@slm   \newlength\@srm   \newlength\@stm   \newlength\@sbm 
+  \newcommand{\setInsideMargin}[4]{%
+  \setslidelength{\@slm}{#1}%
+  \setslidelength{\@srm}{#2}%
+  \setslidelength{\@stm}{#3}%
+  \setslidelength{\@sbm}{#4}\@calcframe}
+
+%  \setInsideMargin{6mm}{6mm}{4mm}{6mm}
+
+%%%%%%%%
+%
+% \@calcframe is the main processor for all sizes...
+%
+%%%%%%%%
+  \def\@calcframe{\@init@slide\@init@soa%
+       \def\pos@panel@x{0}%
+       \def\pos@panel@y{0}%
+       \def\pos@frame@x{0}%
+       \def\pos@frame@y{0}%
+%
+       \setboolean{@seepanel}{true}%
+       \ifthenelse{\equal{\pos@panel}{top}\or\equal{\pos@panel}{bottom}}%
+       {%true: top or bottom
+        \def\set@panel{\makebox(0,0)[bl]{\@hpanel}}%
+        \setlength{\@spw}{\sl@overallwidth}%
+        \setslidelength{\@sph}{\@panelheight}%
+        \setlength{\@sfw}{\sl@overallwidth}%
+        \setlength{\@sfh}{\sl@overallheight-\@sph}%
+        \renewcommand{\sliderightmargin}{0mm}%
+        \renewcommand{\slideleftmargin}{0mm}%
+        \ifthenelse{\equal{\pos@panel}{top}}%
+        {% top
+         \renewcommand{\slidetopmargin}{\@panelheight}%
+         \renewcommand{\slidebottommargin}{0mm}%
+        }%
+        {% bottom
+         \renewcommand{\slidetopmargin}{0mm}%
+         \renewcommand{\slidebottommargin}{\@panelheight}%
+        }%
+       }{}%false
+       \ifthenelse{\equal{\pos@panel}{left}\or\equal{\pos@panel}{right}}%
+       {%true: left or right
+        \def\set@panel{\makebox(0,0)[bl]{\@vpanel}}%
+        \setslidelength{\@spw}{\@panelwidth}%
+        \setlength{\@sph}{\sl@overallheight}%
+        \setlength{\@sfw}{\sl@overallwidth-\@spw}%
+        \setlength{\@sfh}{\sl@overallheight}%
+        \renewcommand{\slidebottommargin}{0mm}%
+        \renewcommand{\slidetopmargin}{0mm}%
+        \ifthenelse{\equal{\pos@panel}{right}}%
+        {% right
+        \renewcommand{\sliderightmargin}{\@panelwidth}%
+        \renewcommand{\slideleftmargin}{0mm}}%
+        {% left
+        \renewcommand{\sliderightmargin}{0mm}%
+        \renewcommand{\slideleftmargin}{\@panelwidth}%
+        }%
+       }{}%false: not l or r
+       \ifthenelse{\equal{\pos@panel}{empty}\or\equal{\pos@panel}{outsidebottom}}%
+       {%true: empty frame without panel...
+        \setboolean{@seepanel}{false}%
+        \def\set@panel{}%
+        \setlength{\@spw}{0pt}%
+        \setlength{\@sph}{0pt}%
+        \setlength{\@sfw}{\sl@overallwidth}%
+        \setlength{\@sfh}{\sl@overallheight}%
+        \renewcommand{\slidetopmargin}{0mm}%
+        \renewcommand{\slidebottommargin}{0mm}%
+        \renewcommand{\sliderightmargin}{0mm}%
+        \renewcommand{\slideleftmargin}{0mm}%
+       }{}%false
+       \ifthenelse{\equal{\pos@panel}{outsidebottom}}%
+       {%true: panel outside of the printed frame (no panel for printout!)
+        \setboolean{@seepanel}{false}%
+        \if@dvi\else%
+          \def\set@panel{\makebox(0,0)[tl]{%
+          {\fboxsep=-1truept\fboxrule=1truept\fcolorbox{black}{black}{%
+          \begin{picture}(\num@spw,4.2)%4mm
+          \end{picture}%
+          }}}\makebox(0,0)[tl]{%
+          \begin{picture}(0,0)(0,4)%
+            \put(0,0){\makebox(0,0)[tl]{\@hpanel}}%
+          \end{picture}%
+          }}%
+        \fi%
+        \setslidelength{\pdfpageheight}{\@shoa}%
+        \addtoslidelength{\pdfpageheight}{\@panelheight}%
+        \addtoslidelength{\pdfpageheight}{4mm}%
+        \setlength{\@spw}{\sl@overallwidth}%
+        \setslidelength{\@sph}{\@panelheight}%
+        \setlength{\@sfw}{\sl@overallwidth}%
+        \setlength{\@sfh}{\sl@overallheight}%
+        \renewcommand{\slidetopmargin}{0mm}%
+        \renewcommand{\slidebottommargin}{0mm}%
+        \renewcommand{\sliderightmargin}{0mm}%
+        \renewcommand{\slideleftmargin}{0mm}%
+       }{\setslidelength{\pdfpageheight}{\@shoa}}%
+%       
+        \setlength{\slidewidth}{((\@sfw-\@slm)-\@srm)*\ratio{1mm}{1truemm}}%
+        \setlength{\slideheight}{((\@sfh-\@stm)-\@sbm)*\ratio{1mm}{1truemm}}%
+%
+%% calculate numbers for picture
+        \setlength{\@tempsla}{1sp*\ratio{\@sfh}{1truemm}}%
+         \def\num@sfh{\number\@tempsla}%
+%
+        \setlength{\@tempslb}{1sp*\ratio{\@sfw}{1truemm}}%
+         \def\num@sfw{\number\@tempslb}%
+%
+        \setlength{\@tempslc}{1sp*\ratio{\@spw}{1truemm}}%
+         \pos@jobname@x=\number\@tempslc%
+         \num@spw=\number\@tempslc%
+%
+        \setlength{\@tempsld}{1sp*\ratio{\@sph}{1truemm}}%
+         \pos@jobname@y=\number\@tempsld%
+         \num@sph=\number\@tempsld%
+%
+%% put the panel, frame and the jobname to the correct places
+        \pos@jobname@y=-4%
+        \ifthenelse{\equal{\pos@panel}{right}}{% right
+          \def\pos@panel@x{\num@sfw}%
+          \advance\pos@jobname@x by \num@sfw%
+        }{}%
+        \ifthenelse{\equal{\pos@panel}{left}}{% left
+          \def\pos@frame@x{\num@spw}%
+          \advance\pos@jobname@x by \num@sfw%
+        }{}%
+        \ifthenelse{\equal{\pos@panel}{top}}{% top
+          \def\pos@panel@y{\num@sfh}%
+          \pos@jobname@x=\num@sfw%
+        }{}%
+        \ifthenelse{\equal{\pos@panel}{bottom}}{% bottom
+          \def\pos@frame@y{\num@sph}%
+          \pos@jobname@x=\num@sfw%
+        }{}%
+        \ifthenelse{\equal{\pos@panel}{empty}}{% empty
+          \pos@jobname@x=\num@sfw%
+        }{}%
+        \ifthenelse{\equal{\pos@panel}{outsidebottom}}{% outsidebottom
+          \def\pos@panel@y{0}%
+          \pos@jobname@x=\num@sfw%
+        }{}%
+    }%
+%
+
+% temporary and positions inside the frame and the panel
+  \newlength\@tempsla
+  \newlength\@tempslb
+  \newlength\@tempslc
+  \newlength\@tempsld
+  \newlength\@tempsle
+  \newlength\@tempslx
+  \newcount\pos@jobname@x
+  \newcount\pos@jobname@y
+  \newcount\num@spw
+  \newcount\num@sph
+  \newboolean{@seepanel}
+  \setboolean{@seepanel}{true}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%  Pagestyles ...............
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  \newboolean{@seebackground}
+  \setboolean{@seebackground}{false}
+  \def\showbackground{\setboolean{@seebackground}{true}}
+  \def\hidebackground{\setboolean{@seebackground}{false}}
+
+  \def\background#1{\setboolean{@seebackground}{true}\gdef\@background{#1}}
+  \def\@background{}
+
+  \def\ps@myheadings{\ps@sidebar}
+  \def\ps@headings{\ps@sidebar}
+  \def\ps@title{\ps@sidebar} % only for compatibility
+  \def\ps@plain{\ps@sidebar}
+  \def\ps@panel{\ps@sidebar}
+%  \def\ps@background{\ps@sidebar}  % deleted !!
+
+  \def\@frame{%
+    \setslidelength{\unitlength}{1mm}%
+    \begin{picture}(0,0)%
+      \put(0,0){%
+          \begin{picture}(0,0)(-\pos@frame@x,-\pos@frame@y)%
+           \put(0,0){\@draftbox{frame}{background}{%
+              \begin{picture}(\num@sfw,\num@sfh)%
+%            \put(0,0){\color{red}\line(1,0){\num@sfw}}%
+%            \put(0,0){\color{red}\line(0,1){\num@sfh}}%
+%            \put(\num@sfw,\num@sfh){\color{red}\line(-1,0){\num@sfw}}%
+%            \put(\num@sfw,\num@sfh){\color{red}\line(0,-1){\num@sfh}}%
+              \put(0,0){%
+                \ifx\@background\empty\relax\else%
+                \if@seebackground%
+                \includegraphics[width=\@sfw,height=\@sfh]%
+                {\@background}\fi\fi}%
+              \end{picture}}}%
+          \end{picture}}%
+      \put(\pos@panel@x,\pos@panel@y){\set@panel}%
+      \if@dvi%
+       \if@dvijobname%
+        \put(\pos@jobname@x,\pos@jobname@y){%
+             \makebox(0,0)[tr]{\ifont\jobname.tex -- \today}}% \the\time}}%
+       \fi%
+       \if@dvipagenumber%
+        \put(0,\pos@jobname@y){%
+             \makebox(0,0)[tl]{\ifont\theslide/\LastSlide}}%
+       \fi%
+      \fi%
+      \if@freelogo%
+        \@freelogo%
+      \fi%
+      \if@freebutton%
+        \@freebutton%
+      \fi%
+    \end{picture}%
+  }
+
+  \def\ps@sidebar{\ifthenelse{\boolean{@seepanel}}{\@calcframe}{\panelposition{right}}}%
+
+  \def\ps@empty{\ifthenelse{\boolean{@seepanel}}{\panelposition{empty}}{\@calcframe}}%
+
+    \def\@evenhead{%
+      \raisebox{\@stm}[0pt][0pt]{%
+      \raisebox{-\sl@overallheight}[0pt][0pt]{\@frame}}}%
+    \def\@oddhead{\@evenhead}%
+    \def\@evenfoot{\@empty}%
+    \def\@oddfoot{\@empty}%
+    \let\@mkboth\@gobbletwo%
+    \let\chaptermark\@gobble%
+    \let\sectionmark\@gobble%
+
+%% redefine the \slidepagestyle command!
+\def\slidepagestyle#1{%
+  \@ifgoodps{#1}%
+    {\ifslide%
+       \errhelp{In contrast to the seminar-package and older versions^^J%
+                of ifmslide you should use \slidepagestyle only^^J%
+                outside and in front of the slide-environment!}%
+       \errmessage{ifmslide err: Misplaced \string\slidepagestyle! Type <h> for help...}
+       \else\edef\slide@pagestyle{#1}\fi}%
+     \ifthenelse{\equal{#1}{sidebar}\or%
+                 \equal{#1}{plain}\or%
+                 \equal{#1}{panel}\or%
+                 \equal{#1}{title}\or%
+                 \equal{#1}{headings}\or%
+                 \equal{#1}{myheadings}}%
+        {\ifthenelse{\boolean{@seepanel}}{}% OK we see the panel and dont
+                                           % need to recalculate
+            {\panelposition{right}}% we come from emtpy and have to set
+                                   % a default panelposition
+        }{\ifthenelse{\boolean{@seepanel}}% we come from sidebar and need 
+            {\panelposition{empty}}%        to recalculate
+                                         {}% We cannot see the panel and dont
+                                           % need to recalculate
+        }}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%  The panel ...............
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\panellogo#1{\gdef\@panellogo{#1}}
+\def\@panellogo{ifmlogoc}
+
+\newboolean{@freelogo}
+\setboolean{@freelogo}{false}
+\def\releaselogo{\setboolean{@freelogo}{true}}
+\def\catchlogo{\setboolean{@freelogo}{false}}
+\def\freelogo(#1,#2)[#3]{\gdef\@freelogo{%
+    \put(#1,#2){\makebox(0,0)[bl]{%
+        \href{\@logourl}{%
+          \includegraphics[width=#3]%
+          {\@panellogo}}%
+        }}%
+}}
+%\freelogo(28,25)[2cm]
+
+\newboolean{@paneltile}
+\setboolean{@paneltile}{false}
+\def\paneltile[#1]{\ifthenelse{\equal{#1}{off}}%
+                        {\setboolean{@pagecount}{false}}%
+                        {\setboolean{@pagecount}{true}}}
+\def\paneltile[#1](#2,#3,#4,#5)#6{\ifthenelse{\equal{#1}{on}}
+                     {\setboolean{@paneltile}{true}\gdef\@paneltile{#6}%
+                      \edef\pt@llx{#2}\edef\pt@lly{#3}%
+                      \edef\pt@urx{#4}\edef\pt@ury{#5}}%
+                     {\setboolean{@paneltile}{false}}}%
+
+%\paneltile[off](,,,){}
+
+\def\logourl#1{\gdef\@logourl{#1}}
+\def\@logourl{index.html}
+\def\OnButton#1#2{\gdef\@onbutton@wide{#1}\gdef\@onbutton@small{#2}}
+\def\OffButton#1#2{\gdef\@offbutton@wide{#1}\gdef\@offbutton@small{#2}}
+\def\DraftButton#1#2{\gdef\@dftbutton@wide{#1}\gdef\@dftbutton@small{#2}}
+
+\def\reset@num@spw{\num@spw=\number\@tempslc}
+\def\reset@num@sph{\num@sph=\number\@tempsld}
+
+\def\@vpanel{\@draftbox{panelbackground}{panelbackground}{%
+  \begin{picture}(\num@spw,\num@sph)%
+%    \put(\num@spw,\num@sph){\circle{1}}%
+%    \put(0,\num@sph){\circle{1}}%
+%    \put(\num@spw,0){\circle{1}}%
+%    \put(0,0){\circle{1}}%
+    \num@sph=\num@spw%
+    \multiply\num@spw by 35\divide\num@spw by 100%
+    \divide\num@sph by 2%
+    \buttonsize(.8\@spw,.3\@spw)(\num@sph,\num@spw)
+    \reset@num@spw%
+    \reset@num@sph%
+    \if@draft\else%
+    \if@paneltile%
+      \whiledo{\num@sph>\num@spw}{%
+        \advance\num@sph by -\num@spw%
+        \put(0,\num@sph){\includegraphics[width=\@spw]{\@paneltile}}%
+        }%
+      \if@dvi
+      \put(0,\num@sph){%
+       \makebox(0,0)[tl]{%
+          \includegraphics[bblly=\pt@lly,bbllx=\pt@llx,%
+                bburx=\pt@urx,bbury=\pt@ury,width=\@spw,clip]{\@paneltile}
+         }}%
+      \else
+        \advance\num@sph by -\num@spw%
+        \put(0,\num@sph){\includegraphics[width=\@spw]{\@paneltile}}%
+      \fi
+      \reset@num@sph%
+    \fi\fi%
+    \divide\num@spw by 2%
+    \multiply\num@sph by 9\divide\num@sph by 10%
+%    \put(\num@spw,\num@sph){\circle{1}}%
+    \if@freelogo\else%
+    \put(\num@spw,\num@sph){\makebox(0,0)[cc]{%
+        \href{\@logourl}{%
+          \includegraphics[keepaspectratio,width=.8\@spw,height=1.4\@spw]%
+          {\@panellogo}}%
+        }}%
+    \fi%
+    \advance\num@sph by -\num@spw%
+    \put(\num@spw,\num@sph){\makebox(0,0)[tc]{\panel@pagecount}}%
+    \reset@num@sph%
+    \multiply\num@sph by 5\divide\num@sph by 100%
+%    \put(\num@spw,\num@sph){\circle{1}}%
+    \if@freebutton\else%
+      \@init@buttons%
+      \put(\num@spw,\num@sph){\if@showbutton\@buttoncolumn\fi}%
+    \fi%
+  \end{picture}}}%
+
+\def\@hpanel{\@draftbox{panelbackground}{panelbackground}{%
+  \begin{picture}(\num@spw,\num@sph)%
+%    \put(\num@spw,\num@sph){\circle{1}}%
+%    \put(0,\num@sph){\circle{1}}%
+%    \put(\num@spw,0){\circle{1}}%
+%    \put(0,0){\circle{1}}%
+    \buttonsize(.8\@spw,.8\@sph)(\num@sph,\num@spw)
+    \divide\num@sph by 2%
+    \multiply\num@spw by 5\divide\num@spw by 100%
+%    \put(\num@spw,\num@sph){\circle{1}}%
+    \if@freelogo\else
+    \put(\num@spw,\num@sph){\makebox(0,0)[cc]{%
+        \href{\@logourl}{%
+          \includegraphics[keepaspectratio,width=1.4\@sph,height=0.8\@sph]%
+          {\@panellogo}}%
+        }}%
+    \fi
+    \reset@num@spw%
+    \multiply\num@spw by 1\divide\num@spw by 10%
+    \put(\num@spw,\num@sph){\makebox(0,0)[cl]{\panel@pagecount}}%
+    \reset@num@spw%
+    \multiply\num@spw by 98\divide\num@spw by 100%
+%    \put(\num@spw,\num@sph){\circle{1}}%
+    \if@freebutton\else
+      \@init@buttons
+      \put(\num@spw,\num@sph){\makebox(0,0)[cr]{\if@showbutton\@buttonrow\fi}}%
+    \fi
+  \end{picture}}}
+
+%% pagecounter for the panel
+\newboolean{@pagecount}
+\setboolean{@pagecount}{true}
+\def\pagecounter[#1]{\ifthenelse{\equal{#1}{off}}%
+                        {\setboolean{@pagecount}{false}}%
+                        {\setboolean{@pagecount}{true}}}
+
+\def\panel@pagecount{\if@dvi\else\if@pagecount%
+  \Acrobatmenu{GoToPage}{{\color{pagecounter}\ibfont\theslide/\LastSlide}}\fi%
+%  \@singlebutton{\@offbutton@wide}{%
+%        \color{button}\ifont\theslide/\LastSlide}{GoToPage}
+%  \Acrobatmenu{GoToPage}{\fboxsep=0pt\fboxrule=1truept\if@draft%
+%    \fboxsep=1pt\fbox{%
+%      \textcolor{panelbackground}{\ifont\theslide/\LastSlide}}%
+%    \else%
+%    \color{button}\fbox{\fboxsep=1pt\fcolorbox{panelbackground}{button}{%
+%        \textcolor{panelbackground}{\ifont\theslide/\LastSlide}}}\fi}%
+  \fi%
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%  The buttons ...............
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% OK! We have had contnav and amsnav in older versions...
+%     Now there are: cnav, cnavo, ams, stmo with or without buttons
+%
+
+%\if@navigate
+%%%%%%
+% first of all: the various signs for the different options...
+
+%%% contnac closed
+\if@cnav
+  \font\CVxx=contnav at 15truept
+  \def\myfbox#1{\fboxrule1truept\fboxsep3truept\fbox{\hbox to .5truecm{#1}}}
+  \def\@prevsign{\hspace*{-1pt}\CVxx\char"01}
+  \def\@nextsign{\CVxx\char"02}
+  \def\@firstsign{\CVxx\char"03}
+  \def\@lastsign{\CVxx\char"04}
+  \def\@backsign{\CVxx\char"05}
+  \def\@forwsign{\CVxx\char"06}
+  \def\@closesign{\CVxx\char"09}
+  \def\@fullsign{\CVxx\char"07}
+  \def\@infosign{\bfont{i}}
+  \def\@findsign{\bfont{?}}
+  \def\@printsign{\bfont{P}}
+\fi
+
+%%% contnac open
+\if@cnavo
+  \font\CVxx=contnav at 15truept
+  \def\myfbox#1{\fboxrule1truept\fboxsep3truept\fbox{\hbox to .5truecm{#1}}}
+  \def\@prevsign{\hspace*{-1pt}\CVxx\char"C9}
+  \def\@nextsign{\CVxx\char"CA}
+  \def\@firstsign{\CVxx\char"CB}
+  \def\@lastsign{\CVxx\char"CC}
+  \def\@backsign{\CVxx\char"CD}
+  \def\@forwsign{\CVxx\char"CE}
+  \def\@closesign{\CVxx\char"D1}
+  \def\@fullsign{\CVxx\char"CF}
+  \def\@infosign{\bfont{i}}
+  \def\@findsign{\bfont{?}}
+  \def\@printsign{\bfont{P}}
+\fi
+
+%%% ams
+\if@ams
+  \RequirePackage{amssymb,amsbsy}
+  \def\myfbox#1{\fboxrule1truept\fboxsep3truept\fbox{\hbox to .7truecm{#1}}}
+  \def\@prevsign{$<$}
+  \def\@nextsign{$>$}
+  \def\@firstsign{$\lll$}%$\!\blacktriangleleft\!\blacktriangleleft$}
+  \def\@lastsign{$\ggg$}%$\blacktriangleright\!\blacktriangleright$}
+  \def\@backsign{$\circlearrowleft$}
+  \def\@forwsign{$\circlearrowright$}
+  \def\@closesign{$\circleddash$}%$\bullet$}
+  \def\@fullsign{$\square$}
+  \def\@infosign{\bfont{i}}
+  \def\@findsign{\bfont{?}}
+  \def\@printsign{\bfont{P}}
+\fi
+
+%%% stmary open
+\if@stmo
+% TODO:
+  \font\stmary=stmary10 at 20truept
+  \font\stmarys=stmary9 at 18truept
+  \def\myfbox#1{\fboxrule1truept\fboxsep3truept\fbox{\hbox to .7truecm{#1}}}
+  \def\@prevsign{\stmary\char"32}
+  \def\@nextsign{\stmary\char"33}
+  \def\@firstsign{\stmarys\char"4C\hspace*{-2truept}\stmary\char"32}
+  \def\@lastsign{\stmary\char"33\hspace*{-2truept}\stmarys\char"4D}
+  \def\@backsign{\stmary\char"32\hspace*{-10truept}\stmary\char"32}
+  \def\@forwsign{\stmary\char"33\hspace*{-10truept}\stmary\char"33}
+  \def\@closesign{\stmary\char"0A}
+  \def\@fullsign{\stmary\char"1E}
+  \def\@infosign{\bfont{i}}
+  \def\@findsign{\bfont{?}}
+  \def\@printsign{\bfont{P}}
+\fi
+
+%%%%%%%%%
+%%% combine the signs with the buttons or the frames
+\if@button
+  \def\@singlebutton#1#2#3{%
+      \begin{picture}(0,0)%
+        \put(0,0){\makebox(0,0)[cc]{%
+          \Acrobatmenu{#3}{%
+          \includegraphics[keepaspectratio,height=\button@size@y,%
+                                           width=\button@size@x]{#1}}}}%
+        \put(0,0){\makebox(0,0)[cc]{#2}}%
+      \end{picture}%
+      \normalcolor%
+      }
+\else
+  \def\@singlebutton#1#2#3{%
+      \begin{picture}(0,0)%
+        \put(0,0){\makebox(0,0)[cc]{%
+          \Acrobatmenu{#3}{%
+          \myfbox{\hfil\scalebox{.8}[1.2]{\phantom{X}}\hfil}}}}%
+        \put(0,0){\makebox(0,0)[cc]{#2}}%
+      \end{picture}%
+      \normalcolor%
+      }
+\fi
+
+%%%%%%%%%%%
+%% make real buttons
+\def\@offbutton@wide{buttonge}
+\def\@onbutton@smalldisable{buttongc}
+
+\def\@init@buttons{%
+\ifnum\theslide=1%
+  \def\button@fp{\@singlebutton{\@offbutton@wide}{\color{buttondisable}\@firstsign}{FirstPage}}
+  \def\button@pp{\@singlebutton{\@offbutton@wide}{\color{buttondisable}\@prevsign}{PrevPage}}
+\else
+  \def\button@pp{\@singlebutton{\@onbutton@wide}{\color{button}\@prevsign}{PrevPage}}
+  \def\button@fp{\@singlebutton{\@onbutton@wide}{\color{button}\@firstsign}{FirstPage}}
+\fi
+
+\ifnum\theslide=\number\LastSlide%
+  \def\button@lp{\@singlebutton{\@offbutton@wide}{\color{buttondisable}\@lastsign}{LastPage}}
+  \def\button@np{\@singlebutton{\@offbutton@wide}{\color{buttondisable}\@nextsign}{NextPage}}
+\else
+  \def\button@lp{\@singlebutton{\@onbutton@wide}{\color{button}\@lastsign}{LastPage}}
+  \def\button@np{\@singlebutton{\@onbutton@wide}{\color{button}\@nextsign}{NextPage}}
+\fi
+
+\def\button@gb{\@singlebutton{\@onbutton@wide}{\color{button}\@backsign}{GoBack}}
+\def\button@gf{\@singlebutton{\@onbutton@wide}{\color{button}\@forwsign}{GoForward}}
+\def\button@in{\@singlebutton{\@onbutton@small}{\color{button}\@infosign}{GeneralInfo}}
+\def\button@pr{\@singlebutton{\@onbutton@small}{\color{button}\@printsign}{Print}}
+\def\button@fi{\@singlebutton{\@onbutton@small}{\color{button}\@findsign}{Find}}
+\def\button@fl{\@singlebutton{\@onbutton@small}{\color{button}\@fullsign}{FullScreen}}
+\def\button@c{\@singlebutton{\@onbutton@wide}{\color{button}\@closesign}{Close}}
+}
+
+%%%%%%%%%%
+%% and glue them together 
+\newcount\button@shift@y
+\newcount\button@y
+
+\newcount\button@size@h
+\newcount\button@size@v
+\newdimen\button@size@x
+\newdimen\button@size@y
+
+\def\buttonsize(#1,#2)(#3,#4){%
+    \setlength\button@size@x{#1}% width
+    \setlength\button@size@y{#2}% height
+    \button@size@h=#3% hshift
+    \button@size@v=#4% vshift
+    }
+
+%%%%%%%%%%
+%% add a way to globaly remove all buttons e.g. for slides
+\newboolean{@showbutton}
+\setboolean{@showbutton}{true}
+\def\nobuttons{\setboolean{@showbutton}{false}}
+
+\newboolean{@freebutton}
+\setboolean{@freebutton}{false}
+\def\releasebutton{\setboolean{@freebutton}{true}}
+\def\catchbutton{\setboolean{@freebutton}{false}}
+\def\freebutton(#1,#2)[#3]{\gdef\@freebutton{%
+    \ifthenelse{\equal{#3}{h}}%
+      {\def\set@freebutton{\makebox(0,0)[br]{\if@showbutton\@buttonrow\fi}}}
+      {\def\set@freebutton{\makebox(0,0)[bl]{\if@showbutton\@buttoncolumn\fi}}}
+    \@init@buttons
+    \put(#1,#2){\makebox(0,0)[bl]{\set@freebutton}}}}%
+
+%% dummy values 
+%\buttonsize(13mm,4mm)(10,10)
+%\freebutton(28,26)[v]
+
+%\buttonsize(.8\@spw,.8\@sph)(\num@sph,\num@spw)
+
+\def\@buttoncolumn{%
+    \button@y=0%
+    \button@shift@y=\button@size@v%
+%    \multiply\button@shift@y by 8\divide\button@shift@y by 10%
+    \begin{picture}(0,0)%
+    \divide\button@size@h by 2%
+    \put(-\button@size@h,\button@y){\button@pr}%
+    \put( \button@size@h,\button@y){\button@fl}%
+    \advance\button@y by \button@shift@y%
+    \put(-\button@size@h,\button@y){\button@in}%
+    \put( \button@size@h,\button@y){\button@fi}%
+    \advance\button@y by \button@shift@y%
+    \put(0,\button@y){\button@c}%
+    \advance\button@y by \button@shift@y%
+    \put(0,\button@y){\button@gb}%
+    \advance\button@y by \button@shift@y%
+    \put(0,\button@y){\button@gf}%
+    \advance\button@y by \button@shift@y%
+    \put(0,\button@y){\button@lp}%
+    \advance\button@y by \button@shift@y%
+    \put(0,\button@y){\button@fp}%
+    \advance\button@y by \button@shift@y%
+    \put(0,\button@y){\button@np}%
+    \advance\button@y by \button@shift@y%
+    \put(0,\button@y){\button@pp}%
+    \end{picture}%
+  }%
+
+\def\@buttonrow{%
+  \let\@temponbutton=\@onbutton@wide%
+  \let\@tempoffbutton=\@offbutton@wide%
+  \let\@onbutton@wide=\@onbutton@small%
+  \let\@offbutton@wide=\@offbutton@small%
+  \button@y=0%
+  \button@shift@y=\button@size@h%
+  \begin{picture}(0,0)%
+    \put(\button@y,0){\button@pr}%
+    \advance\button@y by -\button@shift@y%
+    \put(\button@y,0){\button@fl}%
+    \advance\button@y by -\button@shift@y%
+    \put(\button@y,0){\button@in}%
+    \advance\button@y by -\button@shift@y%
+    \put(\button@y,0){\button@fi}%
+    \advance\button@y by -\button@shift@y%
+    \put(\button@y,0){\button@c}%
+    \advance\button@y by -\button@shift@y%
+    \put(\button@y,0){\button@gb}%
+    \advance\button@y by -\button@shift@y%
+    \put(\button@y,0){\button@gf}%
+    \advance\button@y by -\button@shift@y%
+    \put(\button@y,0){\button@lp}%
+    \advance\button@y by -\button@shift@y%
+    \put(\button@y,0){\button@fp}%
+    \advance\button@y by -\button@shift@y%
+    \put(\button@y,0){\button@np}%
+    \advance\button@y by -\button@shift@y%
+    \put(\button@y,0){\button@pp}%
+  \end{picture}%
+  \let\@onbutton@wide=\@temponbutton%
+  \let\@offbutton@wide=\@tempoffbutton}%
+%\fi
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%  ... end of the panel
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% define the titlepage
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  \def\titlefont{\LARGE\color{title}\bfseries}
+  \def\authorfont{\large\color{author}}
+  \def\addressfont{\footnotesize\color{address}}
+  \def\orgfont{\LARGE\color{org}}
+  \def\urlfont{\small\color{url}}
+  \def\notesfont{\tiny\color{notes}}
+  \def\slidemaketitle{\centerslidestrue%\ptsize{8}%
+        \def\footnoterule{}%
+        \noindent%
+        \begin{minipage}[t][\textheight][c]{\textwidth}%
+          \begin{flushleft}%
+            \null\vskip20truept%
+            \ifx\@orgname\@empty\relax\else%
+            {\orgfont\@orgname}\\[3truept]\fi%
+            \ifx\@orgurl\@empty\null\vskip60truept\else%
+            {\urlfont\href{\@orgurl}{\@orgurl}}\\[60truept]\fi%
+            {\titlefont\@title}\vfill%
+            {\authorfont\@author}\\[10truept]%
+            \begin{quote}%
+            {\addressfont\@address}%
+            \end{quote}%
+            {\ifx\@notes\@empty\relax\else%
+              \ \footnotetext{\notesfont\hspace*{-.6\semcm}\parbox[t]{\linewidth}{\@notes}}%
+            \fi}%
+%           {\ifx\@notes\@empty\relax\else\notesfont\@notes\fi}\\[10truept]\null%
+          \end{flushleft}%
+        \end{minipage}%
+%       \def\footnoterule{\@tmpfootnoterule}%
+        \clearpage%
+  }
+  \long\def\author#1{\long\gdef\@author{#1}}\let\@author\@empty
+  \long\def\address#1{\long\gdef\@address{#1}}\let\@address\@empty
+  \long\def\notes#1{\long\gdef\@notes{#1}}\let\@notes\@empty
+  \long\def\orgname#1{\long\gdef\@orgname{#1}}\let\@orgname\@empty
+  \long\def\orgurl#1{\long\gdef\@orgurl{#1}}\let\@orgurl\@empty
+  %
+  %
+%%%% end of titlepage
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%  misc stuff
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% bookmarks
+%% to be evaluated ...
+  \def\slidetitle#1{\gdef\@slidetitle{#1}}
+  \def\@slidetitle{}
+
+
+  \def\everyslide{%
+% set pagecounter to slide-counter to enable anchors from texpower and hyperref
+    \setcounter{page}{\value{slide}}
+  }
+
+%% sections
+
+  \def\@seccntformat#1{}
+
+  \renewcommand\section{\@startsection{section}{1}{\z@}%
+          {-\z@ \@plus -1ex \@minus -.2ex}%
+%          {0pt}%
+          {1.25ex \@plus.2ex \@minus .2ex}%
+          {\LARGE\bfseries\color{section1}}}
+
+  \renewcommand\subsection{\@startsection{subsection}{2}{\z@}%
+          {-3.25ex\@plus -1ex \@minus -.2ex}%
+          {1.25ex \@plus .2ex}%
+          {\Large\bfseries\color{section2}}}
+
+  \renewcommand\subsubsection{\@startsection{subsubsection}{3}{\z@}%
+          {-1.5ex\@plus -0.2ex \@minus -0.2ex}%
+          {1ex \@plus .1ex}%
+          {\large\bfseries\color{section3}}}
+%          {3ex \@plus 1ex \@minus 1ex}%
+%          {-1em}{\large\bfseries\color{section3}}}
+
+  \renewcommand\paragraph{\@startsection{paragraph}{4}{\z@}%
+          {-1ex\@plus -0.1ex \@minus -0.1ex}%
+          {-1ex \@plus -.1ex}%
+    {\large\itshape\color{section4}}}
+
+  \renewcommand\subparagraph{\@startsection{subparagraph}{5}{\z@}%
+          {-1ex\@plus -0.1ex \@minus -0.1ex}%
+          {-1ex \@plus -.1ex}%
+    {\normalsize\itshape\color{section5}}}
+
+  \let\scr@section\section 
+% headskip: only positive values allowed!
+  \newdimen\headskip \headskip=1\baselineskip
+  \def\section{\clearpage{\null\vspace*{-2\baselineskip}\par}\null\vskip\headskip\scr@section}
+
+
+%% read a local or the global configfile
+
+  \InputIfFileExists{ifmslide.cfg}
+  {\typeout{load ifmslide.cfg}}
+  {\typeout{ifmslide.cfg not found, use default values}
+   %% default values
+    \OnButton{button1e}{button1c}
+    \OffButton{buttonge}{buttongc}
+    \DraftButton{buttonee}{buttonec}
+    \SlideHeightOverAll{187mm}
+    \SlideWidthOverAll{270mm}
+    \setInsideMargin{6mm}{6mm}{4mm}{6mm}
+    \panelwidth{26mm}
+    \panelheight{12mm}
+    \catchbutton
+    \catchlogo
+    \buttonsize(13mm,4mm)(10,10)
+    \freebutton(28,26)[v]
+    \freelogo(28,25)[2cm]
+    \pagecounter[on]
+    \paneltile[off](,,,){}
+    \definecolor{panelbackground}{rgb}{0.1255,0.1608,0.4510}
+    \definecolor{frame}{rgb}{0.1255,0.1608,0.4510}
+    \if@button
+      \definecolor{button}{rgb}{0.1255,0.1608,.4510}
+      \definecolor{pagecounter}{rgb}{.3019,.7216,.7019}
+    \else  
+      \definecolor{pagecounter}{rgb}{0.1255,0.1608,.4510}
+      \definecolor{button}{rgb}{.3019,.7216,.7019}
+    \fi
+    \definecolor{buttondisable}{gray}{.7}
+    \definecolor{background}{gray}{.85}
+    \definecolor{section1}{rgb}{0,0,.9}
+    \definecolor{section2}{rgb}{0,0.2,.8}
+    \definecolor{section3}{rgb}{0,.5,.5}
+    \definecolor{section4}{rgb}{0,0,0}
+    \definecolor{section5}{rgb}{.5,.5,.3}
+    \definecolor{menucolor}{rgb}{1,.25,0}
+    \definecolor{paleblue}{rgb}{0,0,0.1}
+    \definecolor{org}{rgb}{0.1255,0.1608,.4510}
+    \definecolor{title}{rgb}{0,0,1}
+    \definecolor{author}{rgb}{0.1255,0.1608,.4510}
+    \definecolor{address}{rgb}{0.1255,0.1608,.4510}
+    \definecolor{notes}{rgb}{0.1255,0.1608,.4510}
+    \definecolor{url}{rgb}{.3019,.7216,.7019}
+  }
+
+  \if@draft
+    \let\@onbutton@wide\@dftbutton@wide
+    \let\@onbutton@small\@dftbutton@small
+    \let\@offbutton@wide\@dftbutton@wide
+    \let\@offbutton@small\@dftbutton@small
+  \fi
+
+%% close the document and get the right number of pages!
+  \AtEndDocument{%
+    \clearpage   \addtocounter{page}{-1}%
+    \immediate\write\@auxout{\string\gdef\string\LastSlide{\arabic{slide}}}%
+  }
+
+%% set the correct size and position for dvi (with margins) and pdf (fullsize)
+  \@init@soa
+%  \@init@slide
+  \@calcframe
+
+%% change the output of slides as defined in seminar
+\AtBeginDocument
+{%
+%\ifarticle
+%\else
+  \def\output@slide{%
+    \begingroup%
+      \hoffset=-\inverseslidesmag in%
+      \voffset=-\inverseslidesmag in%
+      \addtolength{\voffset}{1truemm}%
+%      \topmargin=0pt%
+      \setslidelength\@tempdima{%
+        \ifportrait\paperwidth\else\paperheight\fi}%
+      \setslidelength\@tempdimb{%
+        \ifportrait\paperheight\else\paperwidth\fi}%
+      \ifrotateheaders%
+        \@ifrotateslide{%
+          \dimen@=\@tempdima%
+          \@tempdima=\@tempdimb%
+          \@tempdimb=\dimen@}
+      \fi%
+      % \oddsidemargin, \evensidemargin, \headheight, \footheight
+      % used for scratch:
+      \setslidelength\oddsidemargin\slideleftmargin%
+      \setslidelength\evensidemargin\sliderightmargin%
+      \setslidelength\headheight\slidetopmargin%
+      \setslidelength\footheight\slidebottommargin%
+      % Some page styles like to know \textwidth:
+      \textwidth=\@tempdima%
+      \advance\textwidth-\oddsidemargin%
+      \advance\textwidth-\evensidemargin%
+\fboxsep=-1truept\fboxrule=1truept%
+      \setbox\@slidebox=\hbox to \@tempdima{%
+%        \kern\oddsidemargin%
+        \vbox to\@tempdimb{%
+%          \ifnum\fancyput@flag>-1%
+%            \hbox{\kern-\oddsidemargin\do@fancyput}%
+%          \fi%
+          \let\label\@gobble%
+          \let\index\@gobble%
+          \let\glossary\@gobble%
+          \vspace*{-1ex}%
+          \vfill%
+          \vbox to\headheight{%
+            \hbox{%
+              \slideheadfont%
+              \hbox to\@tempdima{\hss\hfill%
+               \hbox to \sl@overallwidth{\@oddhead\hss}\hfill\hss}\hss}\vss}%
+          \hbox{\hss\hbox to\@tempdima{\hbox to\oddsidemargin{}%
+                      \hss\box\@slidebox\hss\hbox to\evensidemargin{}}\hss}%
+          \vfill%
+          \vspace*{\footheight}%
+%          \vbox to 0pt{\vss}%
+%% NO FOOT!!!
+%          \vbox to\footheight{%
+%            \vss
+%            \fbox{\hbox{%
+%              \slidefootfont%
+%              \hbox to\textwidth{\@oddfoot}}}%
+%           }%
+         }%
+        \hss}%
+      \ifrotateheaders\@ifrotateslide\rotate@slide\fi%
+      \insert@specials%
+      \shipout\box\@slidebox%
+    \endgroup%
+    \let\firstmark\botmark}
+%\fi
+}
+
+%% redefine the anchors
+%% texpower >= 0.0.9 provides an bugfix for that, so only for older versions it is done here
+%% in hyperref 6.70u the bugfix is incorporated...
+\if@dvi\else
+  \@ifpackagelater{texpower}{2000/07/20}%  
+      {}{% No. Check hyperref...
+      \@ifpackagelater{hyperref}{2000/09/06}%  
+      {}{% No. Apply patch!
+
+\def\@hyperfixhead{%
+  \ifHy@hypertexnames
+    \ifHy@plainpages
+      \gdef\Hy@TempPageAnchor{\hyper@@anchor{page.\arabic{page}}}%
+    \else
+      \begingroup
+        \let\textlatin\@firstofone
+        \xdef\@the@H@page{\thepage}%
+      \endgroup
+      \gdef\Hy@TempPageAnchor{\hyper@@anchor{page.\@the@H@page}}%
+    \fi
+  \else
+    \Hy@GlobalStepCount\Hy@pagecounter
+    \gdef\Hy@TempPageAnchor{\hyper@@anchor{page.\the\Hy@pagecounter}}%
+  \fi
+  \let\H@old@thehead\@thehead
+  \if^\@thehead^%
+    \def\H@old@thehead{\hfil}%
+  \fi
+  \ifHy@texht
+    \def\@thehead{}%
+  \else
+    \ifHy@seminarslides
+      \begingroup
+        \let\leavevmode\relax
+        \Hy@TempPageAnchor\relax
+        \hyper@pagetransition
+        \hyper@pageduration
+        \hyper@pagehidden
+      \endgroup
+    \else
+      \def\@thehead{%
+        \Hy@TempPageAnchor\relax
+        \hyper@pagetransition
+        \hyper@pageduration
+        \hyper@pagehidden
+        \H@old@thehead
+      }%
+    \fi
+  \fi
+  \ifx\PDF@FinishDoc\@empty
+  \else
+    \PDF@FinishDoc
+    \gdef\PDF@FinishDoc{}%
+  \fi
+}
+
+      }}%
+%%%%%%%%%% end of bugfix
+
+%\def\@hyperfixhead{%
+%%  \HyPL@EveryPage
+%  \ifHy@hypertexnames
+%    \ifHy@plainpages
+%% old     \gdef\Hy@TempPageAnchor{\hyper@@anchor{page.\arabic{page}}}%
+%% new
+%        \gdef\Hy@TempPageAnchor{\hyper@@anchor{page.\arabic{slide}.step.\arabic{step}}}%
+%    \else
+%      \begingroup
+%        \let\textlatin\@firstofone
+%        \xdef\@the@H@page{\thepage}%
+%      \endgroup
+%      \gdef\Hy@TempPageAnchor{\hyper@@anchor{page.\@the@H@page.\arabic{slide}.step.\arabic{step}}}%
+%    \fi
+%  \else
+%    \Hy@GlobalStepCount\Hy@pagecounter
+%    \gdef\Hy@TempPageAnchor{\hyper@@anchor{page.\the\Hy@pagecounter.\arabic{slide}.step.\arabic{step}}}%
+%  \fi
+%  \let\H@old@thehead\@thehead
+%  \if^\@thehead^%
+%    \def\H@old@thehead{\hfil}%
+%  \fi
+%  \ifHy@texht
+%    \def\@thehead{}%
+%  \else
+%    \ifHy@seminarslides
+%      \Hy@TempPageAnchor\relax
+%      \hyper@pagetransition
+%      \hyper@pageduration
+%      \hyper@pagehidden
+%    \else
+%      \def\@thehead{%
+%        \Hy@TempPageAnchor\relax
+%        \hyper@pagetransition
+%        \hyper@pageduration
+%        \hyper@pagehidden
+%        \H@old@thehead
+%      }%
+%    \fi
+%  \fi
+%  \ifx\PDF@FinishDoc\@empty
+%  \else
+%    \PDF@FinishDoc
+%    \gdef\PDF@FinishDoc{}%
+%  \fi
+%}
+
+\fi
+
+
+
+\endinput
+%%%%%%%%
+
+

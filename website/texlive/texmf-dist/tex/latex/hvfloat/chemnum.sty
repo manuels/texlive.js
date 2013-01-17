@@ -1,0 +1,1659 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% - chemnum - chemnum.sty
+% - a comprehensive approach for the numbering of chemical compounds
+% -----------------------------------------------------------------------------
+% - Clemens NIEDERBERGER
+% - 2012/05/03
+% - contact@mychemistry.eu
+% -----------------------------------------------------------------------------
+% - If you have any ideas, questions, suggestions or bugs to report, please
+% - feel free to contact me.
+% -----------------------------------------------------------------------------
+% - Copyright 2011-2012 Clemens Niederberger
+% -
+% - This work may be distributed and/or modified under the
+% - conditions of the LaTeX Project Public License, either version 1.3
+% - of this license or (at your option) any later version.
+% - The latest version of this license is in
+% -   http://www.latex-project.org/lppl.txt
+% - and version 1.3 or later is part of all distributions of LaTeX
+% - version 2005/12/01 or later.
+% -
+% - This work has the LPPL maintenance status `maintained'.
+% -
+% - The Current Maintainer of this work is Clemens Niederberger.
+% -
+% - This work consists of the files chemnum.sty, chemnum_de.tex, chemnum_en.tex,
+% - chemnum-codehelper.tex, scheme-tmp.eps, scheme-bla.eps, README and the
+% - derived files chemnum_de.pdf and chemnum_en.pdf
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\RequirePackage { expl3 , xparse , l3keys2e , etoolbox , psfrag }
+
+\ProvidesExplPackage
+  {chemnum}
+  {2012/05/03}
+  {0.5a}
+  {An approach for the numbering of chemical compounds}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% CHECK FOR SUPPORT
+% this part of the code is based on the corresponding part of siunitx.sty
+% l3 support:
+\cs_if_exist:NTF \msg_set:nnnn
+  {
+    \msg_set:nnnn { chemnum } { support-outdated }
+      { Support~package~#1~too~old. }
+      {
+        Please~install~an~up~to~date~version~of~#1. \\
+        Best~would~be~to~update~both~l3kernel~and~l3packages~bundles. \\
+        Loading~chemnum~will~abort!
+      }
+  }
+  {
+    \PackageError { chemnum } { Support~bundle~l3kernel~too~old. }
+      {
+        Please~install~an~up~to~date~version~of~the~l3kernel~bundle. \\
+        Loading~chemnum~will~abort!
+      }
+    \tex_endinput:D
+  }
+\@ifpackagelater { expl3 } { 2011/09/17 }
+  { }
+  {
+    \msg_error:nnx { chemnum } { support-outdated } { expl3 }
+    \tex_endinput:D
+  }
+
+\@ifpackagelater { xparse } { 2011/09/17 }
+  { }
+  {
+    \msg_error:nnx { chemnum } { support-outdated } { xparse }
+    \tex_endinput:D
+  }
+
+% error for missing packages
+\msg_set:nnnn { chemnum } { support-missing }
+  { Support~package~#1~missing. }
+  {
+    Support~package~#1~seems~to~be~missing. \\
+    Please~install~an~up~to~date~version~of~#1. \\
+  }
+
+% warning, if textgreek has already been loaded AND option
+% "textgreek = <value>" is used
+\msg_set:nnnn { chemnum } { textgreek-loaded }
+  {
+    The~package~textgreek~has~already~been~loaded. \\
+    \tl_if_blank:nF { #1 } { Option~#1~will~not~be~used. }
+  }
+  {
+    The~package~textgreek~has~already~been~loaded. \\
+    \tl_if_blank:nF { #1 } { Option~#1~will~not~be~used. }
+  }
+
+% textgreek support and package options:
+\bool_new:N \l_chemnum_textgreek_bool
+\bool_set_false:N \l_chemnum_textgreek_bool
+
+\cs_new_nopar:Npn \chemnum_load_textgreek:n #1
+  {
+    \AtEndPreamble
+      {
+        \exp_args:No \file_if_exist:nTF { textgreek . sty }
+          {
+            \@ifpackageloaded { textgreek }
+              { \msg_warning:nnx { chemnum } { textgreek-loaded } { #1 } }
+              { \RequirePackage [ #1 ] { textgreek } }
+            \bool_set_true:N \l_chemnum_textgreek_bool
+          }
+          {
+            \msg_warning:nnx { chemnum } { support-missing } { textgreek }
+            \bool_set_false:N \l_chemnum_textgreek_bool
+          }
+      }
+  }
+
+\cs_new:Npn \chemnum_package_options:n #1
+  { \keys_set:nn { chemnum / package } { #1 } }
+
+\keys_define:nn { chemnum / package } {
+  textgreek .choice: ,
+  textgreek / artemisia .code:n     = \chemnum_load_textgreek:n { #1 } ,
+  textgreek / cbgreek   .code:n     = \chemnum_load_textgreek:n { #1 } ,
+  textgreek / euler     .code:n     = \chemnum_load_textgreek:n { #1 } ,
+  textgreek / false     .code:n     =
+    { \bool_set_false:N \l_chemnum_textgreek_bool } ,
+  textgreek             .default:n  = cbgreek
+}
+
+\ProcessKeysOptions { chemnum / package }
+
+\AtBeginDocument{
+\bool_if:NTF \l_chemnum_textgreek_bool
+  {
+    \cs_new_eq:NN \chemnum_alpha   \textalpha
+    \cs_new_eq:NN \chemnum_beta    \textbeta
+    \cs_new_eq:NN \chemnum_gamma   \textgamma
+    \cs_new_eq:NN \chemnum_delta   \textdelta
+    \cs_new_eq:NN \chemnum_epsilon \textepsilon
+    \cs_new_eq:NN \chemnum_zeta    \textzeta
+    \cs_new_eq:NN \chemnum_eta     \texteta
+    \cs_new_eq:NN \chemnum_theta   \texttheta
+    \cs_new_eq:NN \chemnum_iota    \textiota
+    \cs_new_eq:NN \chemnum_kappa   \textkappa
+    \cs_new_eq:NN \chemnum_lambda  \textlambda
+    \cs_new_eq:NN \chemnum_mu      \textmugreek
+    \cs_new_eq:NN \chemnum_nu      \textnu
+    \cs_new_eq:NN \chemnum_xi      \textxi
+    \cs_new_eq:NN \chemnum_omikron \textomikron
+    \cs_new_eq:NN \chemnum_pi      \textpi
+    \cs_new_eq:NN \chemnum_rho     \textrho
+    \cs_new_eq:NN \chemnum_sigma   \textsigma
+    \cs_new_eq:NN \chemnum_tau     \texttau
+    \cs_new_eq:NN \chemnum_upsilon \textupsilon
+    \cs_new_eq:NN \chemnum_phi     \textphi
+    \cs_new_eq:NN \chemnum_chi     \textchi
+    \cs_new_eq:NN \chemnum_psi     \textpsi
+    \cs_new_eq:NN \chemnum_omega   \textomega
+    \cs_new_eq:NN \chemnum_Alpha   \textAlpha
+    \cs_new_eq:NN \chemnum_Beta    \textBeta
+    \cs_new_eq:NN \chemnum_Gamma   \textGamma
+    \cs_new_eq:NN \chemnum_Delta   \textDelta
+    \cs_new_eq:NN \chemnum_Epsilon \textEpsilon
+    \cs_new_eq:NN \chemnum_Zeta    \textZeta
+    \cs_new_eq:NN \chemnum_Eta     \textEta
+    \cs_new_eq:NN \chemnum_Theta   \textTheta
+    \cs_new_eq:NN \chemnum_Iota    \textIota
+    \cs_new_eq:NN \chemnum_Kappa   \textKappa
+    \cs_new_eq:NN \chemnum_Lambda  \textLambda
+    \cs_new_eq:NN \chemnum_Mu      \textMugreek
+    \cs_new_eq:NN \chemnum_Nu      \textNu
+    \cs_new_eq:NN \chemnum_Xi      \textXi
+    \cs_new_eq:NN \chemnum_Omikron \textOmikron
+    \cs_new_eq:NN \chemnum_Pi      \textPi
+    \cs_new_eq:NN \chemnum_Rho     \textRho
+    \cs_new_eq:NN \chemnum_Sigma   \textSigma
+    \cs_new_eq:NN \chemnum_Tau     \textTau
+    \cs_new_eq:NN \chemnum_Upsilon \textUpsilon
+    \cs_new_eq:NN \chemnum_Phi     \textPhi
+    \cs_new_eq:NN \chemnum_Chi     \textChi
+    \cs_new_eq:NN \chemnum_Psi     \textPsi
+    \cs_new_eq:NN \chemnum_Omega   \textOmega
+  }
+  {
+    \RequirePackage { bm }% abhängig machen von textoption bold
+    \cs_new_nopar:Npn \chemnum_bm:n #1
+      {
+        \bool_if:NTF \l_chemnum_cmpd_bold_bool
+          { \bm { #1 } }
+          { #1 }
+      }
+    \cs_new_nopar:Npn \chemnum_alpha   { \ensuremath { \chemnum_bm:n { \mathrm { \alpha } } } }
+    \cs_new_nopar:Npn \chemnum_beta    { \ensuremath { \chemnum_bm:n { \mathrm { \beta } } } }
+    \cs_new_nopar:Npn \chemnum_gamma   { \ensuremath { \chemnum_bm:n { \mathrm { \gamma } } } }
+    \cs_new_nopar:Npn \chemnum_delta   { \ensuremath { \chemnum_bm:n { \mathrm { \delta } } } }
+    \cs_new_nopar:Npn \chemnum_epsilon { \ensuremath { \chemnum_bm:n { \mathrm { \varepsilon } } } }
+    \cs_new_nopar:Npn \chemnum_zeta    { \ensuremath { \chemnum_bm:n { \mathrm { \zeta } } } }
+    \cs_new_nopar:Npn \chemnum_eta     { \ensuremath { \chemnum_bm:n { \mathrm { \eta } } } }
+    \cs_new_nopar:Npn \chemnum_theta   { \ensuremath { \chemnum_bm:n { \mathrm { \theta } } } }
+    \cs_new_nopar:Npn \chemnum_iota    { \ensuremath { \chemnum_bm:n { \mathrm { \iota } } } }
+    \cs_new_nopar:Npn \chemnum_kappa   { \ensuremath { \chemnum_bm:n { \mathrm { \kappa } } } }
+    \cs_new_nopar:Npn \chemnum_lambda  { \ensuremath { \chemnum_bm:n { \mathrm { \lampda } } } }
+    \cs_new_nopar:Npn \chemnum_mu      { \ensuremath { \chemnum_bm:n { \mathrm { \mu } } } }
+    \cs_new_nopar:Npn \chemnum_nu      { \ensuremath { \chemnum_bm:n { \mathrm { \nu } } } }
+    \cs_new_nopar:Npn \chemnum_xi      { \ensuremath { \chemnum_bm:n { \mathrm { \xi } } } }
+    \cs_new_nopar:Npn \chemnum_omikron { \ensuremath { \chemnum_bm:n { \mathrm { o } } } }
+    \cs_new_nopar:Npn \chemnum_pi      { \ensuremath { \chemnum_bm:n { \mathrm { \pi } } } }
+    \cs_new_nopar:Npn \chemnum_rho     { \ensuremath { \chemnum_bm:n { \mathrm { \rho } } } }
+    \cs_new_nopar:Npn \chemnum_sigma   { \ensuremath { \chemnum_bm:n { \mathrm { \sigma } } } }
+    \cs_new_nopar:Npn \chemnum_tau     { \ensuremath { \chemnum_bm:n { \mathrm { \tau } } } }
+    \cs_new_nopar:Npn \chemnum_upsilon { \ensuremath { \chemnum_bm:n { \mathrm { \upsilon } } } }
+    \cs_new_nopar:Npn \chemnum_phi     { \ensuremath { \chemnum_bm:n { \mathrm { \varphi } } } }
+    \cs_new_nopar:Npn \chemnum_chi     { \ensuremath { \chemnum_bm:n { \mathrm { \chi } } } }
+    \cs_new_nopar:Npn \chemnum_psi     { \ensuremath { \chemnum_bm:n { \mathrm { \psi } } } }
+    \cs_new_nopar:Npn \chemnum_omega   { \ensuremath { \chemnum_bm:n { \mathrm { \omega } } } }
+    \cs_new_nopar:Npn \chemnum_Alpha   { \ensuremath { \chemnum_bm:n { \mathrm { A } } } }
+    \cs_new_nopar:Npn \chemnum_Beta    { \ensuremath { \chemnum_bm:n { \mathrm { B } } } }
+    \cs_new_nopar:Npn \chemnum_Gamma   { \ensuremath { \chemnum_bm:n { \mathrm { \Gamma } } } }
+    \cs_new_nopar:Npn \chemnum_Delta   { \ensuremath { \chemnum_bm:n { \mathrm { \Delta } } } }
+    \cs_new_nopar:Npn \chemnum_Epsilon { \ensuremath { \chemnum_bm:n { \mathrm { E } } } }
+    \cs_new_nopar:Npn \chemnum_Zeta    { \ensuremath { \chemnum_bm:n { \mathrm { Z } } } }
+    \cs_new_nopar:Npn \chemnum_Eta     { \ensuremath { \chemnum_bm:n { \mathrm { H } } } }
+    \cs_new_nopar:Npn \chemnum_Theta   { \ensuremath { \chemnum_bm:n { \mathrm { \Theta } } } }
+    \cs_new_nopar:Npn \chemnum_Iota    { \ensuremath { \chemnum_bm:n { \mathrm { I } } } }
+    \cs_new_nopar:Npn \chemnum_Kappa   { \ensuremath { \chemnum_bm:n { \mathrm { K } } } }
+    \cs_new_nopar:Npn \chemnum_Lambda  { \ensuremath { \chemnum_bm:n { \mathrm { \Lambda } } } }
+    \cs_new_nopar:Npn \chemnum_Mu      { \ensuremath { \chemnum_bm:n { \mathrm { M } } } }
+    \cs_new_nopar:Npn \chemnum_Nu      { \ensuremath { \chemnum_bm:n { \mathrm { N } } } }
+    \cs_new_nopar:Npn \chemnum_Xi      { \ensuremath { \chemnum_bm:n { \mathrm { \Xi } } } }
+    \cs_new_nopar:Npn \chemnum_Omikron { \ensuremath { \chemnum_bm:n { \mathrm { O } } } }
+    \cs_new_nopar:Npn \chemnum_Pi      { \ensuremath { \chemnum_bm:n { \mathrm { \Pi } } } }
+    \cs_new_nopar:Npn \chemnum_Rho     { \ensuremath { \chemnum_bm:n { \mathrm { P } } } }
+    \cs_new_nopar:Npn \chemnum_Sigma   { \ensuremath { \chemnum_bm:n { \mathrm { \Sigma } } } }
+    \cs_new_nopar:Npn \chemnum_Tau     { \ensuremath { \chemnum_bm:n { \mathrm { T } } } }
+    \cs_new_nopar:Npn \chemnum_Upsilon { \ensuremath { \chemnum_bm:n { \mathrm { \Upsilon } } } }
+    \cs_new_nopar:Npn \chemnum_Phi     { \ensuremath { \chemnum_bm:n { \mathrm { \Phi } } } }
+    \cs_new_nopar:Npn \chemnum_Chi     { \ensuremath { \chemnum_bm:n { \mathrm { X } } } }
+    \cs_new_nopar:Npn \chemnum_Psi     { \ensuremath { \chemnum_bm:n { \mathrm { \Psi } } } }
+    \cs_new_nopar:Npn \chemnum_Omega   { \ensuremath { \chemnum_bm:n { \mathrm { \Omega } } } }
+  }
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% TOOLS
+\int_new:N \g_chemnum_cmpd_main_int
+\prop_new:N \g_chemnum_label_prop
+\int_new:N \g_chemnum_cmpd_int
+\tl_new:N \l_chemnum_tmpa_tl
+\tl_new:N \l_chemnum_tmpb_tl
+\clist_new:N \g_chemnum_cmpd_save_clist
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% READ FROM PREVIOUS RUN, SAVE FOR NEXT RUN
+% save all labels in a clist
+\cs_new:Npn \chemnum_cmpd_save:n #1
+  { \clist_gput_right:Nn \g_chemnum_cmpd_save_clist { { #1 } } }
+
+\msg_set:nnn { chemnum } { missing-cmpd-file }
+  {
+    The~file~ \c_job_name_tl .cmpd~hasn't~been~available~yet. \\
+    Please~rerun~to~get~referencing~compound~labels~right.
+  }
+
+\file_if_exist:nTF { ./ \c_job_name_tl . cmpd }
+  { \file_input:n { ./ \c_job_name_tl . cmpd } }
+  { \msg_warning:nn { chemnum }{ missing-cmpd-file } }
+
+% write ref commands for all labels in <jobname>.cmpd file to make them
+% available at the next run
+\AtEndDocument
+  {
+    \iow_open:Nn \chemnum_aux_file { ./ \c_job_name_tl . cmpd }
+    \clist_map_inline:Nn \g_chemnum_cmpd_save_clist
+      {
+        \iow_now:Nx \chemnum_aux_file
+          {
+            \use:c { cs_new_nopar:cpn } { chemnum_cmpd_ #1 _ref: }
+              { \exp_not:f { \use:c { chemnum_cmpd_ #1 : } } }
+          }
+        \cs_if_exist:cT { chemnum_cmpd_ #1 _min: }
+          {
+            \iow_now:Nx \chemnum_aux_file
+              {
+                \use:c { cs_new_nopar:cpn } { chemnum_cmpd_ #1 _min_ref: }
+                  { \exp_not:f { \use:c { chemnum_cmpd_ #1 _min: } } }
+              }
+          }
+        \cs_if_exist:cT { chemnum_cmpd_ #1 _max: }
+          {
+            \iow_now:Nx \chemnum_aux_file
+              {
+                \use:c { cs_new_nopar:cpn } { chemnum_cmpd_ #1 _max_ref: }
+                  { \exp_not:f { \use:c { chemnum_cmpd_ #1 _max: } } }
+              }
+          }
+      }
+    \iow_close:N \chemnum_aux_file
+  }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% COMPOUND LABELS
+% STYLE OF COMPOUND LABEL
+\tl_new:N \l_chemnum_style_tmp_tl
+\bool_new:N \l_chemnum_cmpd_style_is_macro_bool
+
+% default style
+\cs_new_nopar:Npn \chemnum_cmpd_style_value:n {  }
+
+% error message
+\msg_set:nnn { chemnum } { cmpd-style }
+  {
+    The~value~of~"cmpd-style~=~<style>"~needs~to~be~a~(or~more)~macro~
+    \msg_line_context: .
+  }
+
+% set style %TODO
+\cs_new_nopar:Npn \chemnum_cmpd_set_style:n #1
+%   {
+%     \tl_clear:N \l_chemnum_style_tmp_tl
+%     \tl_map_variable:nNn { #1 } \l_chemnum_style_tmp_tl
+%       {
+%         \exp_args:No \token_if_cs:NTF \l_chemnum_style_tmp_tl
+%           { \bool_set_true:N \l_chemnum_cmpd_style_is_macro_bool }
+%           { \bool_set_false:N \l_chemnum_cmpd_style_is_macro_bool }
+%       }
+%     \bool_if:NTF \l_chemnum_cmpd_style_is_macro_bool
+      { \cs_set_nopar:Npn \chemnum_cmpd_style_value:n { #1 } }
+%       { \msg_error:nnx { chemnum } { cmpd-style } { #1 } }
+%   }
+
+% use style
+\bool_new:N \l_chemnum_cmpd_bold_bool
+\bool_set_true:N \l_chemnum_cmpd_bold_bool
+
+\cs_new_nopar:Npn \chemnum_cmpd_use_style:n #1
+  {
+    \group_begin:
+      \bool_if:NT \l_chemnum_cmpd_bold_bool
+        { \bfseries }
+      \chemnum_cmpd_style_value:n { #1 }
+    \group_end:
+  }
+
+%-----------------------------------------------------------------------------%
+% prefix, suffix, delimiters, format and separator of compound label
+\tl_new:N \l_chemnum_cmpd_prefix_tl
+\tl_new:N \l_chemnum_cmpd_suffix_tl
+
+\tl_new:N \l_chemnum_cmpd_space_tl
+\tl_set:Nn \l_chemnum_cmpd_space_tl { \penalty\@m\  }
+
+\tl_new:N \l_chemnum_cmpd_separator_tl
+
+\tl_new:N \l_chemnum_cmpd_odelim_tl
+\tl_new:N \l_chemnum_cmpd_cdelim_tl
+
+% error message for wrong argument length of delim-keys
+\msg_set:nnn { chemnum } { delimiters }
+  {
+    "#1-delim~=~<odelim><cdelim>"~needs~two~tokens~or~token~groups~as~a~value~
+    \msg_line_context: .
+  }
+
+% set compound delimiters
+\cs_new_nopar:Npn \chemnum_cmpd_delim:n #1
+  {
+    \tl_if_blank:nTF { #1 }
+      {
+        \tl_clear:N \l_chemnum_cmpd_odelim_tl
+        \tl_clear:N \l_chemnum_cmpd_cdelim_tl
+      }
+      {
+        \int_compare:nNnTF { \tl_length:n { #1 } } = 2
+          {
+            \tl_set:Nx \l_chemnum_cmpd_odelim_tl { \tl_head:n { #1 } }
+            \tl_set:Nx \l_chemnum_cmpd_cdelim_tl { \tl_tail:n { #1 } }
+          }
+          { \msg_error:nnx { chemnum } { delimiters } { cmpd } }
+      }
+  } 
+
+% format of numbering
+\cs_new_nopar:Npn \chemnum_cmpd_kind:nn #1#2
+  { \cs:w int_to_#1:n \cs_end: #2 }
+
+% default format
+\tl_new:N \l_chemnum_cmpd_kind_value_tl
+\tl_set:Nn \l_chemnum_cmpd_kind_value_tl { arabic }
+
+% format of sub-numbering
+\cs_new_nopar:Npn \chemnum_cmpd_sub_kind:nn #1#2
+  { \cs:w int_to_ #1 :n \cs_end: #2 }
+\cs_generate_variant:Nn \chemnum_cmpd_sub_kind:nn { Nc }
+
+% default format
+\tl_new:N \l_chemnum_cmpd_sub_kind_value_tl
+\tl_set:Nn \l_chemnum_cmpd_sub_kind_value_tl { alph }
+
+%-----------------------------------------------------------------------------%
+% add greek letters and symbols as numbering format
+% define \int_to_greek function
+\cs_new:Npn \int_to_greek:n { }
+% \bool_if:NTF \l_chemnum_textgreek_bool
+%   {
+    \cs_set:Npn \int_to_greek:n #1
+      {
+        \int_to_symbols:nnn {#1} { 24 }
+          {
+            {  1 } { \exp_not:o \chemnum_alpha }
+            {  2 } { \exp_not:o \chemnum_beta }
+            {  3 } { \exp_not:o \chemnum_gamma }
+            {  4 } { \exp_not:o \chemnum_delta }
+            {  5 } { \exp_not:o \chemnum_epsilon }
+            {  6 } { \exp_not:o \chemnum_zeta }
+            {  7 } { \exp_not:o \chemnum_eta }
+            {  8 } { \exp_not:o \chemnum_theta }
+            {  9 } { \exp_not:o \chemnum_iota }
+            { 10 } { \exp_not:o \chemnum_kappa }
+            { 11 } { \exp_not:o \chemnum_lambda }
+            { 12 } { \exp_not:o \chemnum_mu }
+            { 13 } { \exp_not:o \chemnum_nu }
+            { 14 } { \exp_not:o \chemnum_xi }
+            { 15 } { \exp_not:o \chemnum_omikron }
+            { 16 } { \exp_not:o \chemnum_pi }
+            { 17 } { \exp_not:o \chemnum_rho }
+            { 18 } { \exp_not:o \chemnum_sigma }
+            { 19 } { \exp_not:o \chemnum_tau }
+            { 20 } { \exp_not:o \chemnum_upsilon }
+            { 21 } { \exp_not:o \chemnum_phi }
+            { 22 } { \exp_not:o \chemnum_chi }
+            { 23 } { \exp_not:o \chemnum_psi }
+            { 24 } { \exp_not:o \chemnum_omega }
+          }
+      }
+%   }
+%   {
+%     \cs_set_eq:NN \int_to_greek:n \int_to_alph:n
+%   }
+
+% define \int_to_Greek function
+\cs_new:Npn \int_to_Greek:n { }
+\bool_if:NTF \l_chemnum_textgreek_bool
+  {
+    \cs_set:Npn \int_to_Greek:n #1
+      {
+        \int_to_symbols:nnn { #1 } { 24 }
+          {
+            {  1 } { \exp_not:o \chemnum_Alpha }
+            {  2 } { \exp_not:o \chemnum_Beta }
+            {  3 } { \exp_not:o \chemnum_Gamma }
+            {  4 } { \exp_not:o \chemnum_Delta }
+            {  5 } { \exp_not:o \chemnum_Epsilon }
+            {  6 } { \exp_not:o \chemnum_Zeta }
+            {  7 } { \exp_not:o \chemnum_Eta }
+            {  8 } { \exp_not:o \chemnum_Theta }
+            {  9 } { \exp_not:o \chemnum_Iota }
+            { 10 } { \exp_not:o \chemnum_Kappa }
+            { 11 } { \exp_not:o \chemnum_Lambda }
+            { 12 } { \exp_not:o \chemnum_Mu }
+            { 13 } { \exp_not:o \chemnum_Nu }
+            { 14 } { \exp_not:o \chemnum_Xi }
+            { 15 } { \exp_not:o \chemnum_Omikron }
+            { 16 } { \exp_not:o \chemnum_Pi }
+            { 17 } { \exp_not:o \chemnum_Rho }
+            { 18 } { \exp_not:o \chemnum_Sigma }
+            { 19 } { \exp_not:o \chemnum_Tau }
+            { 20 } { \exp_not:o \chemnum_Upsilon }
+            { 21 } { \exp_not:o \chemnum_Phi }
+            { 22 } { \exp_not:o \chemnum_Chi }
+            { 23 } { \exp_not:o \chemnum_Psi }
+            { 24 } { \exp_not:o \chemnum_Omega }
+          }
+      }
+  }
+  {
+    \cs_set_eq:NN \int_to_Greek:n \int_to_Alph:n
+  }
+
+% define \int_to_Symbol function
+\cs_new:Npn \int_to_Symbol:n #1
+  {
+    \int_to_symbols:nnn { #1 } { 9 }
+      {
+        { 1 } {\exp_not:o \textasteriskcentered }
+        { 2 } {\exp_not:o \textdagger}
+        { 3 } {\exp_not:o \textdaggerdbl}
+        { 4 } {\exp_not:o \textsection}
+        { 5 } {\exp_not:o \textparagraph}
+        { 6 } {\exp_not:o \textbardbl}
+        { 7 } {\exp_not:o \textasteriskcentered \textasteriskcentered}
+        { 8 } {\exp_not:o \textdagger \textdagger}
+        { 9 } {\exp_not:o \textdaggerdbl \textdaggerdbl}
+      }
+  }
+
+%-----------------------------------------------------------------------------%
+% lists of sublabels
+\clist_new:N \l_chemnum_sublabel_clist
+\tl_new:N \l_chemnum_sublabel_list_sep_tl
+\tl_set:Nn \l_chemnum_sublabel_list_sep_tl { , }
+\tl_new:N \l_chemnum_cmpd_sublabel_list_tl
+\int_new:N \l_chemnum_sublabel_list_current_int
+\int_new:N \l_chemnum_sublabel_list_length_int
+\bool_new:N \l_chemnum_sublabel_list_bool
+
+\cs_new_nopar:Npn \chemnum_cmpd_sublabel_list:nn #1#2
+  {
+    \clist_clear:N \l_chemnum_sublabel_clist
+    \clist_set_eq:NN \l_chemnum_sublabel_clist #2
+    \int_set:Nn \l_chemnum_sublabel_list_length_int
+      { \clist_length:N \l_chemnum_sublabel_clist }
+    \clist_map_variable:NNn \l_chemnum_sublabel_clist \l_chemnum_tmpb_tl
+      {
+        \int_incr:N \l_chemnum_sublabel_list_current_int
+        \exp_after:wN \chemnum_cmpd_sublabelsep:n \l_chemnum_tmpb_tl \q_stop
+        \use:c { chemnum_cmpd_#1_ \l_chemnum_cmpd_sub_one_label_tl _ref: }
+        \exp_args:No \tl_if_blank:nF { \l_chemnum_cmpd_sub_two_label_tl }
+          {
+            \tl_use:N \l_chemnum_sub_range_sep_tl
+            \use:c { chemnum_cmpd_#1_ \l_chemnum_cmpd_sub_two_label_tl _ref: }
+          }
+        \int_compare:nT
+          {
+            \l_chemnum_sublabel_list_current_int
+            <
+            \l_chemnum_sublabel_list_length_int
+          }
+          { \tl_use:N \l_chemnum_sublabel_list_sep_tl }
+      }
+  }
+
+%-----------------------------------------------------------------------------%
+% variables
+\tl_new:N \l_chemnum_cmpd_name_tl
+
+\bool_new:N \l_chemnum_cmpd_name_bool
+\bool_set_false:N \l_chemnum_cmpd_name_bool
+
+\bool_new:N \l_chemnum_cmpd_all_bool
+\bool_set_false:N \l_chemnum_cmpd_all_bool
+
+\bool_new:N \l_chemnum_cmpd_range_bool
+\bool_set_false:N \l_chemnum_cmpd_range_bool
+
+\tl_new:N \l_chemnum_cmpd_labelsep_tl
+\tl_set:Nn \l_chemnum_cmpd_labelsep_tl { . }
+
+\tl_new:N \l_chemnum_sublist_input_separator_tl
+\tl_set:Nn \l_chemnum_sublist_input_separator_tl { , }
+
+\tl_new:N \l_chemnum_sublist_output_separator_tl
+\tl_set:Nn \l_chemnum_sublist_output_separator_tl { , }
+
+\tl_new:N \l_chemnum_sublabel_range_marker_tl
+\tl_set:Nn \l_chemnum_sublabel_range_marker_tl { .. }
+
+\tl_new:N \l_chemnum_sub_range_sep_tl
+\tl_set:Nn \l_chemnum_sub_range_sep_tl { -- }
+
+\bool_new:N \l_chemnum_sub_label_only_bool
+\bool_set_false:N \l_chemnum_sub_label_only_bool
+
+%-----------------------------------------------------------------------------%
+% hyperref support
+\tl_new:N \l_chemnum_cmpd_hyper_name_tl
+
+\bool_new:N \l_chemnum_use_hyperref_bool
+\bool_new:N \l_chemnum_hypertarget_bool
+\bool_new:N \l_chemnum_hyperlink_bool
+
+\cs_new_eq:NN \chemnum_make_hyper:nn \use_ii:nn
+
+% #1: main label, #2: sub labels, #3: invisible
+\cs_new_nopar:Npn \chemnum_hyperref:nnn #1#2#3
+   {
+     \bool_if:nF { #3 || !\l_chemnum_use_hyperref_bool }
+       {
+         \bool_if:NT \l_chemnum_hypertarget_bool
+           {
+             \cs_set_nopar:Npn \chemnum_make_hyper:nn ##1##2
+               {
+                 \raisebox { 3ex } [ 0pt ]
+                   { \hypertarget { ##1 } { } } ##2
+               }
+           }
+         \bool_if:NT \l_chemnum_hyperlink_bool
+           { \cs_set_eq:NN \chemnum_make_hyper:nn \hyperlink }
+         \bool_if:nT
+           { !\l_chemnum_hypertarget_bool && !\l_chemnum_hyperlink_bool }
+           {
+             \tl_if_blank:nTF { #2 }
+               { % no sublabel
+                 \tl_set:Nn \l_chemnum_cmpd_hyper_name_tl
+                   { chemnum_cmpd_#1 }
+                 \cs_if_exist:cTF { chemnum_cmpd_#1_hyper: }
+                   {
+                     \bool_set_false:N \l_chemnum_hypertarget_bool
+                     \cs_set_eq:NN \chemnum_make_hyper:nn \hyperlink
+                   }
+                   {
+                     \bool_set_true:N \l_chemnum_hypertarget_bool
+                     \cs_set_nopar:Npn \chemnum_make_hyper:nn ##1##2
+                       {
+                         \raisebox { 3ex } [ 0pt ]
+                           { \hypertarget { ##1 } { } } ##2
+                       }
+                     \cs_new_nopar:cpn { chemnum_cmpd_#1_hyper: } { }
+                   }
+               }
+               {
+                 \chemnum_cmpd_sublist:n { #2 }
+                 \int_compare:nT { \l_chemnum_cmpd_sublist_length_int < 2 }
+                   { % no sublabel list
+                     \chemnum_cmpd_subrange_separate:n { #2 }
+                     \tl_if_blank:VT \l_tmpb_tl
+                       { % no sublabel range
+                         \tl_set:Nn \l_chemnum_cmpd_hyper_name_tl
+                           { chemnum_cmpd_#1_\l_tmpa_tl }
+                         \cs_if_exist:cTF
+                           { chemnum_cmpd_#1_ \l_tmpa_tl _hyper: }
+                           {
+                             \bool_set_false:N \l_chemnum_hypertarget_bool
+                             \cs_set_eq:NN \chemnum_make_hyper:nn \hyperlink
+                           }
+                           {
+                             \bool_set_true:N \l_chemnum_hypertarget_bool
+                             \cs_set_nopar:Npn \chemnum_make_hyper:nn ##1##2
+                               {
+                                 \raisebox { 3ex } [ 0pt ]
+                                   { \hypertarget { ##1 } { } } ##2
+                               }
+                             \cs_new_nopar:cpn
+                               { chemnum_cmpd_#1_ \l_tmpa_tl _hyper: } { }
+                           }
+                       }
+                   }
+               }
+           }
+       }
+   }
+
+%-----------------------------------------------------------------------------%
+% property keys for compounds
+\keys_define:nn { chemnum } {
+  cmpd-style           .code:n             = \chemnum_cmpd_set_style:n { #1 } ,
+  cmpd-weight          .choice: ,
+  cmpd-weight / bold   .code:n             =
+    \bool_set_true:N \l_chemnum_cmpd_bold_bool ,
+  cmpd-weight / normal .code:n             =
+    \bool_set_false:N \l_chemnum_cmpd_bold_bool ,
+  cmpd-label           .code:n             =
+    {
+      \bool_set_true:N \l_chemnum_cmpd_name_bool
+      \tl_set:Nn \l_chemnum_cmpd_name_tl { #1 }
+    } ,
+  cmpd-prefix          .tl_set:N           = \l_chemnum_cmpd_prefix_tl ,
+  cmpd-prefix          .default:n          = { } ,
+  cmpd-suffix          .tl_set:N           = \l_chemnum_cmpd_suffix_tl ,
+  cmpd-suffix          .default:n          = { } ,
+  cmpd-space           .tl_set:N           = \l_chemnum_cmpd_space_tl ,
+  cmpd-space           .default:n          = { \penalty\@m\  },
+  cmpd-delim           .code:n             = \chemnum_cmpd_delim:n { #1 },
+  cmpd-delim           .default:n          = { ( } { ) } ,
+  cmpd-odelim          .tl_set:N           = \l_chemnum_cmpd_odelim_tl ,
+  cmpd-odelim          .default:n          = { } ,
+  cmpd-cdelim          .tl_set:N           = \l_chemnum_cmpd_cdelim_tl ,
+  cmpd-cdelim          .default:n          = { } ,
+  cmpd-all             .bool_set:N         = \l_chemnum_cmpd_all_bool ,
+  cmpd-all             .default:n          = true ,
+  cmpd-counter         .choice: ,
+  cmpd-counter         .choice_code:n      =
+    \tl_set_eq:NN \l_chemnum_cmpd_kind_value_tl \l_keys_choice_tl ,
+  cmpd-counter         .generate_choices:n =
+    { arabic , alph , Alph , greek, Greek , roman , Roman , Symbol } ,
+  cmpd-counter         .default:n          = arabic ,
+  hyper-use            .choice: ,
+  hyper-use / true     .code:n             =
+    {
+      \bool_set_true:N \l_chemnum_use_hyperref_bool
+      \bool_set_false:N \l_chemnum_hypertarget_bool
+      \bool_set_false:N \l_chemnum_hyperlink_bool
+    } ,
+  hyper-use / false    .code:n             =
+    {
+      \bool_set_false:N \l_chemnum_use_hyperref_bool
+      \bool_set_false:N \l_chemnum_hypertarget_bool
+      \bool_set_false:N \l_chemnum_hyperlink_bool
+    } ,
+  hyper-use            .default:n          = true ,
+  hyper-target         .code:n             =
+    {
+      \tl_set:Nn \l_chemnum_cmpd_hyper_name_tl { #1 }
+      \bool_set_true:N \l_chemnum_use_hyperref_bool
+      \bool_set_true:N \l_chemnum_hypertarget_bool
+      \bool_set_false:N \l_chemnum_hyperlink_bool
+    } ,
+  hyper-link           .code:n             =
+    {
+      \tl_set:Nn \l_chemnum_cmpd_hyper_name_tl { #1 }
+      \bool_set_true:N \l_chemnum_use_hyperref_bool
+      \bool_set_false:N \l_chemnum_hypertarget_bool
+      \bool_set_true:N \l_chemnum_hyperlink_bool
+    } ,
+  sub-counter          .choice: ,
+  sub-counter          .choice_code:n      =
+    \tl_set_eq:NN \l_chemnum_cmpd_sub_kind_value_tl \l_keys_choice_tl ,
+  sub-counter          .generate_choices:n =
+    { arabic , alph , Alph , greek , Greek , roman , Roman , Symbol } ,
+  sub-counter          .default:n          = alph ,
+  sub-input-sep        .code:n             = \chemnum_subcmpdsep:n { #1 } ,
+  sub-input-sep        .default:n          = . ,
+  sub-output-sep       .tl_set:N           = \l_chemnum_cmpd_separator_tl ,
+  sub-output-sep       .default:n          = { } ,
+  sublist-input-sep    .tl_set:N           =
+    \l_chemnum_sublist_input_separator_tl ,
+  sublist-input-sep    .default:n          = { , } ,
+  sublist-output-sep   .tl_set:N           =
+    \l_chemnum_sublist_output_separator_tl ,
+  sublist-output-sep   .default:n          = { , } ,
+  sub-only             .bool_set:N         = \l_chemnum_sub_label_only_bool ,
+  sub-only             .default:n          = true ,
+  subrange-output-sep  .tl_set:N           = \l_chemnum_sub_range_sep_tl ,
+  subrange-output-sep  .default:n          = { -- } ,
+  subrange-input-sep   .code:n             =
+    \chemnum_sublabel_range_marker:n { #1 } ,
+  subrange-input-sep   .default:n          = { .. }
+}
+
+%-----------------------------------------------------------------------------%
+% list separators, delimiters, prefix and suffix
+\bool_new:N \l_chemnum_no_serial_comma_bool
+\bool_set_false:N \l_chemnum_no_serial_comma_bool
+
+\tl_new:N \l_chemnum_list_input_separator_tl
+\tl_set:Nn \l_chemnum_list_input_separator_tl { , }
+
+\tl_new:N \l_chemnum_list_separator_tl
+\tl_set:Nn \l_chemnum_list_separator_tl { , }
+
+\tl_new:N \l_chemunm_list_space_tl
+\tl_set:Nn \l_chemnum_list_space_tl { \penalty\@m\  }
+
+\tl_new:N \l_chemnum_list_last_separator_lang_tl
+\tl_set:Nn \l_chemnum_list_last_separator_lang_tl { and }
+
+\tl_new:N \l_chemnum_list_last_separator_tl
+\tl_set:Nn \l_chemnum_list_last_separator_tl
+  { \tl_use:N \l_chemnum_list_last_separator_lang_tl }
+
+\tl_new:N \l_chemnum_list_prefix_tl { }
+\tl_set:Nn \l_chemnum_list_prefix_tl { }
+
+\tl_new:N \l_chemnum_list_suffix_tl { }
+\tl_set:Nn \l_chemnum_list_suffix_tl { }
+
+\tl_new:N \l_chemnum_list_odelim_tl { }
+\tl_new:N \l_chemnum_list_cdelim_tl { }
+
+\cs_new_nopar:Npn \chemnum_list_delim:n #1 {
+  \tl_if_blank:nTF { #1 } {
+    \tl_clear:N \l_chemnum_list_odelim_tl
+    \tl_clear:N \l_chemnum_list_cdelim_tl
+  }{
+    \int_compare:nNnTF { \tl_length:n { #1 } } = 2 {
+      \tl_set:Nx \l_chemnum_list_odelim_tl { \tl_head:n { #1 } }
+      \tl_set:Nx \l_chemnum_list_cdelim_tl { \tl_tail:n { #1 } }
+    }{ \msg_error:nnx { chemnum } { delimiters } { list } }
+  }
+}
+
+%-----------------------------------------------------------------------------%
+% property keys for lists
+\keys_define:nn { chemnum } {
+  list-prefix        .tl_set:N   = \l_chemnum_list_prefix_tl ,
+  list-prefix        .default:n  = { } ,
+  list-suffix        .tl_set:N   = \l_chemnum_list_suffix_tl ,
+  list-suffix        .default:n  = { } ,
+  list-delim         .code:n     = \chemnum_list_delim:n { #1 } ,
+  list-delim         .default:n  = { ( } { ) } ,
+  list-odelim        .tl_set:N   = \l_chemnum_list_odelim_tl ,
+  list-odelim        .default:n  = { } ,
+  list-cdelim        .tl_set:N   = \l_chemnum_list_cdelim_tl ,
+  list-cdelim        .default:n  = { } ,
+  list-space         .tl_set:N   = \l_chemnum_list_space_tl ,
+  list-space         .default:n  = { \penalty\@m\  } ,
+  list-input-sep     .tl_set:N   = \l_chemnum_list_input_separator_tl ,
+  list-input-sep     .default:n  = { , } ,
+  list-output-sep    .tl_set:N   = \l_chemnum_list_separator_tl ,
+  list-output-sep    .default:n  = { , } ,
+  list-last-sep      .tl_set:N   = \l_chemnum_list_last_separator_tl ,
+  list-last-sep      .default:n  = \l_chemnum_list_last_separator_lang_tl ,
+  list-serial-comma  .choice: ,
+  list-serial-comma / true .code:n =
+    \bool_set_false:N \l_chemnum_no_serial_comma_bool ,
+  list-serial-comma / false .code:n =
+    \bool_set_true:N \l_chemnum_no_serial_comma_bool ,
+  list-serial-comma  .default:n  = true ,
+  list-lang          .choice: ,
+  list-lang / US     .code:n     =
+    {
+      \bool_set_false:N \l_chemnum_no_serial_comma_bool
+      \tl_set:Nn \l_chemnum_list_last_separator_lang_tl { and }
+    } ,
+  list-lang / GB     .code:n     =
+    {
+      \bool_set_true:N \l_chemnum_no_serial_comma_bool
+      \tl_set:Nn \l_chemnum_list_last_separator_lang_tl { and }
+    } ,
+  list-lang / DE     .code:n     =
+    {
+      \bool_set_true:N \l_chemnum_no_serial_comma_bool
+      \tl_set:Nn \l_chemnum_list_last_separator_lang_tl { und }
+    } ,
+  list-lang / FR     .code:n     =
+    {
+      \bool_set_true:N \l_chemnum_no_serial_comma_bool
+      \tl_set:Nn \l_chemnum_list_last_separator_lang_tl { et }
+    } ,
+  list-lang / IT     .code:n     =
+    {
+      \bool_set_true:N \l_chemnum_no_serial_comma_bool
+      \tl_set:Nn \l_chemnum_list_last_separator_lang_tl { e }
+    } ,
+  list-lang / ES     .code:n     =
+    {
+      \bool_set_true:N \l_chemnum_no_serial_comma_bool
+      \tl_set:Nn \l_chemnum_list_last_separator_lang_tl { y }
+    } ,
+  list-lang          .default:n  = US
+}
+
+%-----------------------------------------------------------------------------%
+% label and sublabel declaration
+\cs_new:Npn \chemnum_cmpd_declare:n #1
+  {
+    \cs_if_exist:cF { chemnum_cmpd_#1: }
+      {
+        \int_gincr:N \g_chemnum_cmpd_main_int
+        \prop_gput:Nnx \g_chemnum_label_prop
+          { #1 }
+          { \int_use:N \g_chemnum_cmpd_main_int }
+        \chemnum_cmpd_save:n { #1 }
+        \bool_if:NF \l_chemnum_cmpd_name_bool
+          { \int_gincr:N \g_chemnum_cmpd_int }
+        \cs_new_nopar:cpx { chemnum_cmpd_#1: } {
+          \bool_if:NTF \l_chemnum_cmpd_name_bool
+            { \l_chemnum_cmpd_name_tl }
+            {
+              \chemnum_cmpd_kind:nn
+                \l_chemnum_cmpd_kind_value_tl
+                \g_chemnum_cmpd_int
+            }
+        }
+      }
+  }
+
+\cs_new:Npn \chemnum_cmpd_sub_declare:nn #1#2
+  {
+    \cs_if_exist:cF { chemnum_cmpd_#1_#2: }
+      {
+        \chemnum_cmpd_save:n { #1 _ #2 }
+        \cs_new_nopar:cpx { chemnum_cmpd_#1_#2: } { }
+        \int_gincr:c { g_chemnum_cmpd_#1_int }
+        % why is the next line working when \cs_gset_nopar:cpx doesn't?
+        % (in case ":" is part of #1)
+        \exp_after:wN \cs_gset_nopar:Npx \cs:w chemnum_cmpd_#1_#2: \cs_end:
+          {
+            \chemnum_cmpd_sub_kind:Nc
+              \l_chemnum_cmpd_sub_kind_value_tl
+              { g_chemnum_cmpd_#1_int }
+          }
+        \int_compare:nT { \int_use:c { g_chemnum_cmpd_#1_int } = 1 }
+          {
+            \cs_gset_eq:cc { chemnum_cmpd_#1_min: } { chemnum_cmpd_#1_#2: }
+          }
+        \cs_gset_eq:cc { chemnum_cmpd_#1_max: } { chemnum_cmpd_#1_#2: }
+      }
+  }
+\cs_generate_variant:Nn \chemnum_cmpd_sub_declare:nn { no }
+
+\cs_new_nopar:Npn \chemnum_cmpd_sub_initiate:nn #1#2
+  {
+    \cs_if_exist:cF { chemnum_cmpd_ #1 _ #2 _init: }
+      {
+        \bool_if:NTF \l_chemnum_cmpd_init_strict_bool
+          {
+            \msg_error:nnx   { chemnum } { cmpd-init-sub }
+              { #1 \l_chemnum_cmpd_labelsep_tl #2 }
+          }
+          {
+            \msg_warning:nnx { chemnum } { cmpd-init-sub }
+               { #1 \l_chemnum_cmpd_labelsep_tl #2 }
+          }
+      }
+  }
+
+%-----------------------------------------------------------------------------%
+% label and sublabel initiation
+\cs_new:Npn \chemnum_cmpd_initiate:nn #1#2
+  {
+    \cs_if_exist:cTF { chemnum_cmpd_#1_init: }
+      {
+        \bool_if:NT \l_chemnum_cmpd_sub_init_bool
+          {
+            \tl_if_blank:nF { #2 }
+              {
+                \chemnum_cmpd_sublist:n { #2 }
+                \exp_args:No \tl_map_inline:nn  { \l_chemnum_cmpd_sublist_tl }
+                  {
+                    \chemnum_cmpd_subrange_separate:n { ##1 }
+                    \chemnum_cmpd_sub_initiate:nn { #1 } { \l_tmpa_tl }
+                    \tl_if_blank:VF \l_tmpb_tl
+                      { \chemnum_cmpd_sub_initiate:nn { #1 } { \l_tmpb_tl } }
+                  }
+              }
+          }
+      }
+      {
+        \bool_if:NTF \l_chemnum_cmpd_init_strict_bool
+          { \msg_error:nnx { chemnum } { cmpd-init } { #1 } }
+          { \msg_warning:nnx { chemnum } { cmpd-init } { #1 } }
+      }
+  }
+
+%-----------------------------------------------------------------------------%
+% sub label separator
+% error message if no separator is chosen
+\msg_set:nnnn { chemnum } { sub-label-separator }
+  {
+    Missing~separator~token~as~value~for~the~key~sub-cmpd-sep \c_space_tl
+    \msg_line_context: !
+  }
+  {
+    You~used~the~key~sub-cmpd-sep \c_space_tl \msg_line_context: ~but~left~the~
+    argument~empty.\\
+    This~can't~work.~Please~select~a~token~as~separator.
+  }
+
+%-----------------------------------------------------------------------------%
+% variables
+
+\tl_new:N \l_chemnum_cmpd_main_label_tl
+\tl_new:N \l_chemnum_cmpd_sub_label_tl
+
+\tl_new:N \l_chemnum_labelsep_tmp_tl
+
+% set sublabel-separator
+\cs_new_nopar:Npn \chemnum_subcmpdsep:n #1 {
+  \tl_if_blank:nTF { #1 }
+    { \msg_error:nn { chemnum } { sub-label-separator } }
+    { \tl_set:Nn \l_chemnum_cmpd_labelsep_tl { #1 } }
+}
+
+\cs_new_nopar:Npn \chemnum_sublabel_range_marker:n #1 {
+  \tl_if_blank:nTF { #1 }
+    { \msg_error:nn { chemnum } { sub-label-range_sep } }
+    { \tl_set:Nn \l_chemnum_sublabel_range_marker_tl { #1 } }
+}
+
+% actual separating
+\cs_new_nopar:Npn \chemnum_cmpd_labelsep:n #1 \q_stop {
+  \tl_clear:N \l_chemnum_labelsep_tmp_tl
+  \exp_args:Noo \tl_if_in:nnTF { #1 } { \l_chemnum_cmpd_labelsep_tl }
+    { 
+      \tl_set:Nn \l_chemnum_labelsep_tmp_tl { #1 }
+      \exp_args:NNo \tl_replace_once:Nnn \l_chemnum_labelsep_tmp_tl
+        { \l_chemnum_cmpd_labelsep_tl }
+        { \q_nil }
+      \exp_after:wN \chemnum_cmpd_labelsep_aux_ii:n
+        \l_chemnum_labelsep_tmp_tl \q_stop
+    }
+    { \chemnum_cmpd_labelsep_aux_i:n { #1 } }
+}
+
+\cs_new_nopar:Npn \chemnum_cmpd_labelsep_aux_i:n #1
+  {
+    \tl_set:Nn \l_chemnum_cmpd_main_label_tl { #1 }
+    \tl_clear:N \l_chemnum_cmpd_sub_label_tl
+  }
+
+\cs_new_nopar:Npn \chemnum_cmpd_labelsep_aux_ii:n #1 \q_nil #2 \q_stop
+  {
+    \tl_set:Nn \l_chemnum_cmpd_main_label_tl { #1 }
+    \tl_set:Nn \l_chemnum_cmpd_sub_label_tl { #2 }
+  }
+
+% sublabel separating to display a list and/or range
+\tl_new:N \l_chemnum_cmpd_sublist_tl
+\int_new:N \l_chemnum_cmpd_sublist_length_int
+
+\NewDocumentCommand \chemnum_cmpd_sublist:n
+  { > { \exp_args:No \SplitList { \l_chemnum_sublist_input_separator_tl } } m }
+  {
+    \tl_set:Nn \l_chemnum_cmpd_sublist_tl { #1 }
+    \int_zero:N \l_chemnum_cmpd_sublist_length_int
+    \exp_args:No \tl_map_inline:nn { \l_chemnum_cmpd_sublist_tl }
+      { \int_incr:N \l_chemnum_cmpd_sublist_length_int }
+  }
+
+\cs_new_nopar:Npn \chemnum_cmpd_subrange_separate:n #1
+  {
+    \tl_clear:N \l_tmpa_tl
+    \tl_clear:N \l_tmpb_tl
+    \tl_if_in:noTF { #1 } { \l_chemnum_sublabel_range_marker_tl }
+      {
+        \tl_set:Nn \l_tmpa_tl { #1 }
+        \exp_args:NNo \tl_replace_once:Nnn \l_tmpa_tl
+          { \l_chemnum_sublabel_range_marker_tl } { \q_nil }
+        \exp_after:wN \chemnum_cmpd_subrange_separate_aux:n \l_tmpa_tl \q_stop
+      }
+      { \tl_set:Nn \l_tmpa_tl { #1 } }
+  }
+
+\cs_new_nopar:Npn \chemnum_cmpd_subrange_separate_aux:n
+  #1 \q_nil #2 \q_stop
+  {
+    \tl_set:Nn \l_tmpa_tl { #1 }
+    \tl_set:Nn \l_tmpb_tl { #2 }
+  }
+
+%-----------------------------------------------------------------------------%
+% print compound label
+\cs_new_nopar:Npn \chemnum_cmpd_print:n #1
+  {
+    \tl_if_blank:VF \l_chemnum_cmpd_prefix_tl
+      {
+        \tl_use:N \l_chemnum_cmpd_prefix_tl
+        \tl_use:N \l_chemnum_cmpd_space_tl
+      }
+    \tl_use:N \l_chemnum_cmpd_odelim_tl
+    \chemnum_cmpd_use_style:n { #1 }
+    \tl_use:N \l_chemnum_cmpd_cdelim_tl
+    \tl_if_blank:VF \l_chemnum_cmpd_suffix_tl
+      {
+        \tl_use:N \l_chemnum_cmpd_space_tl
+        \tl_use:N \l_chemnum_cmpd_suffix_tl
+      }
+  }
+
+%-----------------------------------------------------------------------------%
+% main internal compound label command
+% #1: <main label> #2: <sub label> #3: <invisible> #4: <no delim>
+% #2 may be a list of sublabels
+\cs_new_nopar:Npn \chemnum_cmpd_aux_i:nnnn #1#2#3#4
+  {
+    \bool_if:NT \l_chemnum_cmpd_initiated_bool
+      { \chemnum_cmpd_initiate:nn { #1 } { #2 } }
+    \bool_if:NF \l_chemnum_cmpd_ref_bool
+      { \chemnum_cmpd_declare:n { #1 } }
+    \chemnum_hyperref:nnn { #1 } { #2 } { #3 }
+    \tl_if_blank:nF { #2 }
+      {
+        \cs_if_exist:cF { g_chemnum_cmpd_#1_int }
+          { \int_new:c { g_chemnum_cmpd_#1_int } }
+        \chemnum_cmpd_sublist:n { #2 }
+        \bool_if:NF \l_chemnum_cmpd_ref_bool
+          {
+            \exp_args:No \tl_map_inline:nn { \l_chemnum_cmpd_sublist_tl }
+              {
+                \chemnum_cmpd_subrange_separate:n { ##1 }
+                \chemnum_cmpd_sub_declare:no { #1 } { \l_tmpa_tl }
+                \tl_if_blank:VF \l_tmpb_tl
+                  { \chemnum_cmpd_sub_declare:no { #1 } { \l_tmpb_tl } }
+              }
+          }
+      }
+    \bool_if:NTF #3
+      { \mode_if_horizontal:T { \tex_unskip:D } }
+      { 
+        \bool_if:NT #4
+          {
+            \tl_clear:N \l_chemnum_cmpd_odelim_tl
+            \tl_clear:N \l_chemnum_cmpd_cdelim_tl
+          }
+        \chemnum_make_hyper:nn { \l_chemnum_cmpd_hyper_name_tl }
+        {
+        \chemnum_cmpd_print:n
+          {
+            \bool_if:NF \l_chemnum_sub_label_only_bool
+              {
+                \bool_if:NTF \l_chemnum_cmpd_ref_bool
+                  { \use:c { chemnum_cmpd_ #1 _ref: } }
+                  { \use:c { chemnum_cmpd_ #1 : } }
+              }
+            \bool_if:NTF \l_chemnum_cmpd_all_bool
+              {
+                \tl_use:N \l_chemnum_cmpd_separator_tl
+                \use:c { chemnum_cmpd_ #1 _min_ref: }
+                \cs_if_eq:ccF
+                  { chemnum_cmpd_ #1 _min_ref: }
+                  { chemnum_cmpd_ #1 _max_ref: }
+                  {
+                    \tl_use:N \l_chemnum_sub_range_sep_tl
+                    \use:c { chemnum_cmpd_ #1 _max_ref: }
+                  }
+              }
+              {
+                \bool_if:NTF \l_chemnum_sublabel_list_bool
+                  {
+                    \chemnum_cmpd_sublabel_list:nn { #1 }
+                      { \l_chemnum_cmpd_sublabel_list_tl }
+                  }
+                  {
+                    \tl_if_blank:nF { #2 }
+                      {
+                        \tl_use:N \l_chemnum_cmpd_separator_tl
+                        \int_zero:N \l_tmpa_int
+                        \exp_args:No \tl_map_inline:nn
+                          { \l_chemnum_cmpd_sublist_tl }
+                          {
+                            \int_incr:N \l_tmpa_int
+                            \chemnum_cmpd_subrange_separate:n { ##1 }
+                            \bool_if:NTF \l_chemnum_cmpd_ref_bool
+                              { \use:c { chemnum_cmpd_ #1 _ \l_tmpa_tl _ref: } }
+                              { \use:c { chemnum_cmpd_ #1 _ \l_tmpa_tl : } }
+                            \tl_if_blank:VF \l_tmpb_tl
+                              {
+                                \tl_use:N \l_chemnum_sub_range_sep_tl
+                                \bool_if:NTF \l_chemnum_cmpd_ref_bool
+                                  { \use:c { chemnum_cmpd_ #1 _ \l_tmpb_tl _ref: } }
+                                  { \use:c { chemnum_cmpd_ #1 _ \l_tmpb_tl : } }
+                              }
+                            \int_compare:nF
+                              { \l_tmpa_int = \l_chemnum_cmpd_sublist_length_int }
+                              { \l_chemnum_sublist_output_separator_tl }
+                          }
+                      }
+                  }
+              }
+          } }
+      }
+  }
+
+\cs_generate_variant:Nn \chemnum_cmpd_aux_i:nnnn { oonn }
+
+%-----------------------------------------------------------------------------%
+% create compound label
+% #1: label name #2: star (invisible) #3: minus (no delimiters)
+\cs_new_nopar:Npn \chemnum_cmpd:nnn #1#2#3 {
+  \group_begin:
+    \tl_clear:N \l_chemnum_cmpd_main_label_tl
+    \tl_clear:N \l_chemnum_cmpd_sub_label_tl
+    \chemnum_cmpd_labelsep:n #1 \q_stop
+    \tl_remove_all:Nn \l_chemnum_cmpd_sub_label_tl { ~ }
+    \chemnum_cmpd_aux_i:oonn
+      { \l_chemnum_cmpd_main_label_tl }
+      { \l_chemnum_cmpd_sub_label_tl }
+      { #2 }
+      { #3 }
+  \group_end:
+}
+
+\cs_generate_variant:Nn \chemnum_cmpd:nnn { onn }
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% DOCUMENT COMMANDS
+% variables:
+\int_new:N \l_chemnum_list_items_int
+\int_new:N \l_chemnum_list_separate_int
+
+\tl_new:N \l_chemnum_list_last_sep_empty_tl
+\tl_set:Nn \l_chemnum_list_last_sep_empty_tl { empty }
+
+\bool_new:N \l_chemnum_cmpd_ref_bool
+
+\msg_set:nnnn { chemnum } { fatal-combination }
+  {
+    You~can't~use \c_space_tl \token_to_str:N \cmpd \c_space_tl
+    with~star~and~#1 \c_space_tl \msg_line_context: .
+  }
+  {
+    You~used \c_space_tl \token_to_str:N \cmpd \c_space_tl
+    with~both~star~and~#1 \c_space_tl \msg_line_context: .\\
+    ~This~is~not~possible~since~it~doesn't~make~any~sense.
+  }
+
+%-----------------------------------------------------------------------------%
+% MAIN COMMAND
+% \cmpd*+-[<key-value-list>]{<(possibly comma separated list of) compound
+% label(s)>}
+\NewDocumentCommand \chemnum_input_separator:n
+  { > { \exp_args:No \SplitList { \l_chemnum_list_input_separator_tl } } m }
+  { \tl_set:Nn \l_tmpa_tl { #1 } }
+
+\NewDocumentCommand \cmpd_main_command:w { s t+ t- o m }
+  {
+    \IfBooleanT #2
+      {
+        \bool_set_true:N \l_chemnum_cmpd_ref_bool
+        \IfBooleanT #1
+          { \msg_error:nnx { chemnum } { fatal-combination } { plus } }
+      }
+    \tl_clear:N \l_chemnum_tmpa_tl
+    \group_begin:
+      \int_zero:N \l_chemnum_list_items_int
+      \int_zero:N \l_chemnum_list_separate_int
+      \IfNoValueF { #4 }
+        { \keys_set:nn { chemnum } { #4 } }
+      \chemnum_input_separator:n { #5 }
+      \tl_map_variable:NNn \l_tmpa_tl \l_chemnum_tmpa_tl
+        {
+          \tl_if_blank:VF \l_chemnum_tmpa_tl
+            { \int_incr:N \l_chemnum_list_items_int }
+        }
+      \tl_map_variable:NNn \l_tmpa_tl \l_chemnum_tmpa_tl
+        {
+          \tl_remove_all:Nn \l_chemnum_tmpa_tl { ~ }
+          \tl_if_blank:VF \l_chemnum_tmpa_tl
+            {
+              \int_incr:N \l_chemnum_list_separate_int
+              \IfBooleanF #1
+                {
+                  \if_int_compare:w \l_chemnum_list_separate_int = 1
+                    \if_int_compare:w \l_chemnum_list_items_int = 1
+                    \else:
+                      \tl_use:N \l_chemnum_list_prefix_tl
+                      \tl_if_blank:VF { \l_chemnum_list_prefix_tl }
+                        { \l_chemnum_list_space_tl }
+                      \tl_use:N \l_chemnum_list_odelim_tl
+                    \fi:
+                  \fi:
+                }
+              \IfBooleanTF #1
+                {
+                  \chemnum_cmpd:onn
+                    { \l_chemnum_tmpa_tl }
+                    { \BooleanTrue }
+                    { \BooleanFalse }
+                  \IfBooleanT #3
+                    {
+                      \msg_error:nnx { chemnum }
+                        { fatal-combination } { minus }
+                    }
+                }
+                { 
+                  \IfBooleanTF #3
+                    {
+                      \chemnum_cmpd:onn
+                        { \l_chemnum_tmpa_tl }
+                        { \BooleanFalse }
+                        { \BooleanTrue }
+                    }
+                    {
+                      \chemnum_cmpd:onn
+                        { \l_chemnum_tmpa_tl }
+                        { \BooleanFalse }
+                        { \BooleanFalse }
+                    }
+                  \int_compare:nTF
+                    { \l_chemnum_list_separate_int = \l_chemnum_list_items_int }
+                    {
+                      \int_compare:nNnF { \l_chemnum_list_items_int } = { 1 }
+                        {
+                          \tl_use:N \l_chemnum_list_cdelim_tl
+                          \tl_if_blank:VF
+                            { \l_chemnum_list_suffix_tl }
+                            { \l_chemnum_list_space_tl }
+                          \tl_use:N \l_chemnum_list_suffix_tl
+                        }
+                    }
+                    {
+                      \int_compare:nTF
+                        {
+                          \l_chemnum_list_separate_int
+                          =
+                          \int_eval:n { \l_chemnum_list_items_int - 1 }
+                        }
+                        {
+                          \tl_if_eq:NNTF
+                            \l_chemnum_list_last_separator_tl
+                            \l_chemnum_list_last_sep_empty_tl
+                            {
+                              \tl_use:N \l_chemnum_list_separator_tl
+                              \l_chemnum_list_space_tl
+                            }
+                            {
+                              \int_compare:nNnF
+                                { \l_chemnum_list_separate_int } = { 1 }
+                                {
+                                  \bool_if:NF \l_chemnum_no_serial_comma_bool
+                                    { \l_chemnum_list_separator_tl }
+                                }
+                              \tl_if_blank:VF \l_chemnum_list_last_separator_tl
+                                { \l_chemnum_list_space_tl }
+                              \tl_use:N \l_chemnum_list_last_separator_tl
+                              \l_chemnum_list_space_tl
+                            }
+                        }
+                        {
+                          \tl_use:N \l_chemnum_list_separator_tl
+                          \l_chemnum_list_space_tl
+                        }
+                  }
+                }
+            }
+        }
+    \group_end:
+    \bool_set_false:N \l_chemnum_cmpd_ref_bool
+  }
+
+\cs_set_eq:NN \cmpd \cmpd_main_command:w
+
+%-----------------------------------------------------------------------------%
+% INITIALISING LABELS
+\bool_new:N \l_chemnum_cmpd_initiated_bool
+\bool_new:N \l_chemnum_cmpd_init_strict_bool
+\bool_new:N \l_chemnum_cmpd_sub_init_bool
+\bool_new:N \l_chemnum_cmpd_init_declare_bool
+
+\tl_new:N \l_chemnum_cmpd_init_separator_tl
+\tl_set:Nn \l_chemnum_cmpd_init_separator_tl { , }
+
+% property keys for \cmpdinit command
+% strict=true will produce an error instead of a warning
+\keys_define:nn { chemnum } {
+  init-strict    .bool_set:N = \l_chemnum_cmpd_init_strict_bool ,
+  init-strict    .default:n  = true ,
+  init-sub       .bool_set:N = \l_chemnum_cmpd_sub_init_bool ,
+  init-sub       .default:n  = true ,
+  init-input-sep .tl_set:N   = \l_chemnum_cmpd_init_separator_tl ,
+  init-input-sep .default:n  = { , }
+}
+
+% warning/error messages
+\msg_set:nnn { chemnum } { cmpd-init }
+  {
+    You~used~\token_to_str:N \cmpdinit \c_space_tl but~didn't~initiate~
+    compound~"#1"~\msg_line_context: .
+  }
+
+\msg_set:nnn { chemnum } { cmpd-init-sub }
+  {
+    You~used~\token_to_str:N \cmpdinit \c_space_tl and~"init-sub~=~true"~
+    but~didn't~initiate~sub-compound~"#1"~\msg_line_context: .
+  }
+
+% initialize (and maybe declare) labels
+\cs_new_nopar:Npn \chemnum_cmpd_init:n #1
+  {
+    \tl_clear:N \l_chemnum_tmpa_tl
+    \tl_set:Nn \l_chemnum_tmpa_tl { #1 }
+    \tl_remove_all:Nn \l_chemnum_tmpa_tl { ~ }
+    \tl_clear:N \l_chemnum_cmpd_main_label_tl
+    \tl_clear:N \l_chemnum_cmpd_sub_label_tl
+    \exp_after:wN \chemnum_cmpd_labelsep:n \l_chemnum_tmpa_tl \q_stop
+    \cs_if_exist:cF { chemnum_cmpd_ \l_chemnum_cmpd_main_label_tl  _init: }
+      {
+        \cs_new_nopar:cpn
+          { chemnum_cmpd_ \l_chemnum_cmpd_main_label_tl _init: }
+          { }
+      }
+    \bool_if:NT \l_chemnum_cmpd_sub_init_bool
+      {
+        \tl_if_blank:VF \l_chemnum_cmpd_sub_label_tl
+          {
+            \exp_args:No \chemnum_cmpd_sublist:n
+              { \l_chemnum_cmpd_sub_label_tl }
+            \exp_args:No \tl_map_inline:nn { \l_chemnum_cmpd_sublist_tl }
+              {
+                \cs_if_exist:cF
+                  {
+                    chemnum_cmpd_ 
+                    \l_chemnum_cmpd_main_label_tl
+                    _
+                    ##1
+                    _init:
+                  }
+                  {
+                    \cs_new_nopar:cpn
+                      {
+                        chemnum_cmpd_
+                        \l_chemnum_cmpd_main_label_tl
+                        _
+                        ##1
+                        _init:
+                      }
+                      { }
+                  }
+              }
+          }
+      }
+    \bool_if:NT \l_chemnum_cmpd_init_declare_bool
+      {
+        \chemnum_cmpd:onn
+          { \l_chemnum_tmpa_tl }
+          { \BooleanTrue }
+          { \BooleanFalse }
+      }
+  }
+
+% \cmpdinit*[strict=<bool>]{<comma separated list of label names>}
+\NewDocumentCommand \cmpdinit { s o m }
+  {
+    \bool_set_false:N \l_chemnum_cmpd_init_strict_bool
+    \bool_set_true:N \l_chemnum_cmpd_initiated_bool
+    \IfBooleanTF #1
+      { \bool_set_false:N \l_chemnum_cmpd_init_declare_bool }
+      { \bool_set_true:N \l_chemnum_cmpd_init_declare_bool }
+    \IfNoValueF { #2 } { \keys_set:nn { chemnum } { #2 } }
+    \chemnum_input_separator:n { #3 }
+    \tl_map_function:NN \l_tmpa_tl \chemnum_cmpd_init:n
+  }
+
+%-----------------------------------------------------------------------------%
+% RESET LABEL NUMBERS
+% \cmpdreset[<number>]
+\NewDocumentCommand \cmpdreset { o }
+  {
+    \IfNoValueTF { #1 }
+      { \int_zero:N \g_chemnum_cmpd_int }
+      { \int_set:Nn \g_chemnum_cmpd_int { #1 - 1 } }
+  }
+
+%-----------------------------------------------------------------------------%
+% CHEMNUM SETUP COMMAND
+% \cmpdsetup{<key-value-list>}
+\NewDocumentCommand \cmpdsetup { m }
+  { \keys_set:nn { chemnum } { #1 } \tex_ignorespaces:D }
+
+%-----------------------------------------------------------------------------%
+% REPLACE TAG IN EPS PICTURE WITH LABEL
+% works similar to \schemeref command of the chemscheme package
+% \cmpdref-[<keyval>][<tag>]{<label name>}
+\tl_new:N \l_chemnum_cmpdref_tl
+\tl_new:N \l_chemnum_cmpdref_style_tl
+\tl_set:Nn \l_chemnum_cmpdref_style_tl { \sffamily }
+\tl_new:N \l_chemnum_cmpdref_marker_tl
+\tl_set:Nn \l_chemnum_cmpdref_marker_tl { TMP }
+\tl_new:N \l_chemnum_psfrag_texpos_tl
+\tl_new:N \l_chemnum_psfrag_texpos_current_tl
+\tl_set:Nn \l_chemnum_psfrag_texpos_tl { b }
+\tl_new:N \l_chemnum_psfrag_pspos_tl
+\tl_new:N \l_chemnum_psfrag_pspos_current_tl
+\tl_set:Nn \l_chemnum_psfrag_pspos_tl { b }
+
+\int_new:N \l_chemnum_cmpdref_int
+
+\cs_new_nopar:Npn \chemnum_set_psfrag_pos:nn #1#2
+  {
+    \tl_set:Nn \l_chemnum_psfrag_texpos_tl { #1 }
+    \tl_set:Nn \l_chemnum_psfrag_pspos_tl { #2 }
+  }
+
+\cs_new_nopar:Npn \chemnum_psfrag:nnnn #1#2#3#4
+  { \psfrag { #1 } [ #2 ] [ #3 ] { #4 } }
+\cs_generate_variant:Nn \chemnum_psfrag:nnnn { VVVn }
+
+\cs_new:Npn \chemnum_set_psfrag_pos_local:w #1 ref-pos = #2#3 , #4 \q_stop
+  {
+    \tl_set_eq:NN \l_chemnum_psfrag_texpos_current_tl \l_chemnum_psfrag_texpos_tl
+    \tl_set_eq:NN \l_chemnum_psfrag_pspos_current_tl \l_chemnum_psfrag_pspos_tl
+    \tl_set:Nn \l_chemnum_psfrag_texpos_tl { #2 }
+    \tl_set:Nn \l_chemnum_psfrag_pspos_tl { #3 }
+  }
+
+\keys_define:nn { chemnum }
+  {
+    ref-tag   .tl_set:N  = \l_chemnum_cmpdref_marker_tl ,
+    ref-tag   .default:n = { TMP } ,
+    ref-style .tl_set:N  = \l_chemnum_cmpdref_style_tl ,
+    ref-style .default:n = { } ,
+    ref-pos   .code:n    = \chemnum_set_psfrag_pos:nn #1 ,
+    ref-pos   .default:n = bb
+  }
+
+\NewDocumentCommand \cmpdref { t- o o m }
+  {
+      \IfBooleanT { #1 }
+        { \keys_set:nn { chemnum } { cmpd-delim = } }
+      \IfNoValueTF { #2 }
+        {
+          \int_incr:N \l_chemnum_cmpdref_int
+          \tl_set:No \l_chemnum_cmpdref_tl
+            {
+              \tl_use:N \l_chemnum_cmpdref_marker_tl
+              \int_use:N \l_chemnum_cmpdref_int
+            }
+        }
+        { \tl_set:Nn \l_chemnum_cmpdref_tl { #2 } }
+    \IfNoValueTF { #3 }
+        {
+          % need to call it once invisible in case it's the first time the label
+          % is called. Somehow it otherwise “vanishes” inside \psfrag
+          \cmpd_main_command:w * { #4 }
+          \chemnum_psfrag:VVVn
+            \l_chemnum_cmpdref_tl
+            \l_chemnum_psfrag_texpos_tl
+            \l_chemnum_psfrag_pspos_tl
+            {
+              \group_begin:
+                \keys_set:nn { chemnum }
+                  { cmpd-style = \l_chemnum_cmpdref_style_tl }
+                \cmpd_main_command:w { #4 }
+              \group_end:
+            }
+        }
+        {
+          % TODO: set psfrag positions before \chemnum_psfrag is called
+          \cmpd_main_command:w * [ #3 ] { #4 }
+          \tl_if_in:nnT { #3 } { ref-pos }
+            { \chemnum_set_psfrag_pos_local:w #3 , \q_stop }
+          \chemnum_psfrag:VVVn
+            \l_chemnum_cmpdref_tl
+            \l_chemnum_psfrag_texpos_tl
+            \l_chemnum_psfrag_pspos_tl
+            {
+              \group_begin:
+                \keys_set:nn { chemnum }
+                  { cmpd-style = \l_chemnum_cmpdref_style_tl }
+                \cmpd_main_command:w [ #3 ] { #4 }
+              \group_end:
+            }
+          \tl_if_in:nnT { #3 } { ref-pos }
+            {
+              \tl_set_eq:NN
+                \l_chemnum_psfrag_texpos_tl \l_chemnum_psfrag_texpos_current_tl
+              \tl_set_eq:NN
+                \l_chemnum_psfrag_pspos_tl \l_chemnum_psfrag_pspos_current_tl
+            }
+        }
+  }
+
+\file_if_exist:nT { translator.sty }
+  {
+    \RequirePackage { translator }
+    \usedictionary { translator-basic-dictionary }
+    % german
+    \languagealias { ngerman } { German }
+    \languagealias { german } { German}
+    \languagealias { austrian } { German }
+    \languagealias { naustrian } { German }
+    % french
+    \languagealias { french } { French }
+    \languagealias { canadien } { French }
+    % italian
+    \languagealias { italian } { Italian }
+    % spanish
+    \languagealias { spanish } { Spanish }
+    \providetranslation [ to = English ]
+      { and~(list~seperator) } { and }
+    \providetranslation [ to = BritishEnglish ]
+      { and~(list~seperator) } { and }
+    \providetranslation [ to = AmericanEnglish ]
+      { and~(list~seperator) } { and }
+    \providetranslation [ to = French ]
+      { and~(list~seperator) } { et }
+    \providetranslation [ to = German ]
+      { and~(list~seperator) } { und }
+    \providetranslation [ to = Italian ]
+      { and~(list~seperator) } { e }
+    \providetranslation [ to = Spanish ]
+      { and~(list~seperator) } { y }
+    \tl_set:Nn \l_chemnum_list_last_separator_lang_tl
+      { \translate { and~(list~seperator) } }
+  }
+
+\AtBeginDocument
+  {
+    \@ifpackageloaded { babel }
+      {
+        \iflanguage { american }
+          { \bool_set_false:N \l_chemnum_no_serial_comma_bool }
+          { \bool_set_true:N \l_chemnum_no_serial_comma_bool }
+        \cs_new_eq:NN \chemnum_selectlanguage:n \selectlanguage
+        \cs_set_nopar:Npn \selectlanguage #1
+          {
+            \chemnum_selectlanguage:n { #1 }
+            \iflanguage { american }
+              { \bool_set_false:N \l_chemnum_no_serial_comma_bool }
+              { \bool_set_true:N \l_chemnum_no_serial_comma_bool }
+          }
+      }
+      {}
+  }
+
+\tex_endinput:D
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+HISTORY:
+ 2011/06/27 version 0.1
+ 2011/06/29 version 0.1a - bugfixes
+ 2011/07/17 version 0.2  - instead of two commands (\cmpd and \cmpdlist ) only 
+                         one (\cmpd) for both tasks
+                         - setup with a keyval system
+                         - possibility to initiate sublabels
+                         - choices "greek" and "Greek" for the cmpd-counter
+                         keys, choice "symbol" changed to "Symbol"
+                         - package option "textgreek = <value>" to control
+                         usage of the `textgreek' package
+                         - former \cmpd+ is now \cmpd-
+                         - new \cmpd+ added which reads label from
+                         <jobname>.cmpd
+                         - bugfix: wrong declaration in \cmpdinit and \cmpd
+                         when used with line break fixed
+                         - bugfix: error when \cmpd was used in vertical mode
+                         fixed
+                         - bugfix: corrected up to date support test
+                         - bugfix: wrong output in \cmpd* list removed
+                         - commented and cleaned up code
+ 2011/08/02 version 0.3  - keys "cmpd-all", "sub-list", "sub-range-sep" and
+                         "sub-range-marker" added, key "cmpd-sub-counter"
+                         renamed into "sub-counter", key "sub-cmpd-sep"
+                         renamed into "sub-marker"
+                         - \cmpdref-[<keyval>][<tag>]{<label name>} added
+                         - key "ref-tag" added
+                         - cleaned up code
+ 2011/09/03 version 0.3a - it is now impossible to use the (conflicting or 
+                         better: senseless) \cmpd*+ and \cmpd*- command
+                         versions. An error message is produced.
+                         - made sure code has no more than 80 tokens per line
+                         to improve readability on small screens
+                         - bug (unwanted whitespace) in \cmpdsetup fixed
+ 2011/11/03 version 0.3b - key "sub-only" added, see schema 23 at
+                         http://www.arkat-usa.org/get-file/29257/ or scheme 4
+                         at http://www.arkat-usa.org/get-file/27301/ for
+                         reasons, why
+ 2011/11/08 version 0.3c - localization via `babel' is now supported with the
+                         help of the `translator' package
+                         - key "list-serial-comma" added
+ 2011/12/01 version 0.3d - greek letters without `textgreek' package
+                         - new key cmpd-weight = bold/normal
+                         - bugfix: sublabels are now possible, when main label
+                         name contains a colon
+                         - it is now possible to change the list input
+                         separator; this means the comma may be part of the
+                         label name
+ 2011/12/01 version 0.3e - bugfix: labels have been saved in a wrong way, when
+                         "list-input-sep" had been changed. this is fixed
+ 2011/12/09 version 0.4  - new input of sublabel lists and ranges
+                         - new key: "sublist-input-sep"
+                         - new key: "sublist-output-sep"
+                         - new key: "init-input-sep"
+                         - "sub-marker"       => "sub-input-sep"
+                         - "cmpd-sep"         => "sub-output-sep"
+                         - "sub-range-sep"    => "subrange-output-sep"
+                         - "sub-range-marker" => "subrange-input-sep"
+                         - "strict"           => "init-strict"
+                         - "sub-init"         => "init-sub"
+                         - key removed: "sub-list"
+                         - it is now possible, to mark the labels with
+                         \hypertarget and \hyperlink if `hyperref' is loaded
+                         - new key: "hyper-use"
+                         - new key: "hyper-target"
+                         - new key: "hyper-link"
+                         - new key: "ref-style"
+                         - documentation got an index
+ 2012/02/22 version 0.4a - corrected outdated expl3 function
+ 2012/04/15 version 0.4b - bugfix in \cmpdref
+ 2012/04/20 version 0.5  - new option "ref-pos"
+                         - switched order of optional arguments of \cmpdref
+ 2012/05/03 version 0.5a - corrected stupid typos in documentation
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% TODO:
+ - add a possibility to \ref{} the compounds
+ - (rudimentäre) Unterstützung für hyperref und pdfstrings
+ - polyglossia: localization of us-variant of english
+ - Bug: Key "cmpd-style" wenn zB \color{<farbe>} eingegeben: Fehler beim Test
+   auf Makro; Test entfernen?
+ - provide expandable makro which gives the label and/or sublabel without any
+   formatting

@@ -1,0 +1,223 @@
+%%
+%% This is file `randomwalk.sty',
+%% generated with the docstrip utility.
+%%
+%% The original source files were:
+%%
+%% randomwalk.dtx  (with options: `package')
+%% 
+%% Do not distribute a modified version of this file.
+%% 
+%% Communicate any suggestions for changing this package
+%% to Bruno Le Floch (first@su.rname.fr, replaced by the
+%% relevant parts of my name).
+%% 
+%% File: randomwalk.dtx Copyright (C) 2011 Bruno Le Floch
+%%
+%% It may be distributed and/or modified under the conditions of the
+%% LaTeX Project Public License (LPPL), either version 1.3c of this
+%% license or (at your option) any later version.  The latest version
+%% of this license is in the file
+%%
+%%    http://www.latex-project.org/lppl.txt
+%%
+%% -----------------------------------------------------------------------
+\RequirePackage{l3names}
+\GetIdInfo$Id: randomwalk.dtx 0.2 2011-09-09 10:15:31Z blefloch $
+       {Customizable Random Walks using TikZ}%
+\ProvidesExplPackage
+  {\ExplFileName}{\ExplFileDate}{\ExplFileVersion}{\ExplFileDescription}
+\RequirePackage{expl3}
+\RequirePackage{xparse}
+\RequirePackage{tikz}
+\int_const:Nn \c_rw_lcg_first_int {0}
+\int_const:Nn \c_rw_lcg_last_int  {536870911}
+\int_const:Nn \c_rw_lcg_range_int
+  { \c_rw_lcg_last_int - \c_rw_lcg_first_int }
+\RequirePackage
+  [
+    first= \c_rw_lcg_first_int,
+    last = \c_rw_lcg_last_int,
+    counter = lcg@rand
+  ]
+  { lcg }
+\rand % This \rand avoids some very odd bug.
+\fp_const:Nn \c_rw_one_degree_fp {+1.74532925e-2}
+\DeclareDocumentCommand \RandomWalk { m }
+  {
+    \rw_set_defaults:
+    \keys_set:nn { randomwalk } { #1 }
+    \rw_walk:
+  }
+\tl_new:N \g_rw_Ado_tl
+\tl_new:N \g_rw_Ldo_tl
+\bool_new:N \l_rw_A_relative_bool
+\bool_new:N \l_rw_revert_random_bool
+\cs_new:Npn \rw_set_defaults:
+  {
+    \fp_set:Nn \l_rw_step_length_fp {10}
+    \int_set:Nn \l_rw_step_number_int {10}
+    \tl_gset:Nn \g_rw_Ado_tl { \rw_Ainterval:nn {-\c_pi_fp} {\c_pi_fp} }
+    \tl_gset:Nn \g_rw_Ldo_tl { \rw_Lfixed:n \l_rw_step_length_fp } %^^A bug?
+    \bool_set_false:N \l_rw_revert_random_bool
+    \bool_set_false:N \l_rw_A_relative_bool
+  }
+\keys_define:nn { randomwalk }
+  {
+    number .value_required:,
+    length .value_required:,
+    angles .value_required:,
+    number .code:n = {\int_set:Nn \l_rw_step_number_int {#1}},
+    length .code:n =
+      {
+        \clist_set:Nn \l_rw_lengths_clist {#1}
+        \rw_clist_fp_from_dim:N \l_rw_lengths_clist
+        \int_compare:nNnTF { \clist_length:N \l_rw_lengths_clist } = {1}
+          { \tl_gset:Nn \g_rw_Ldo_tl { \rw_Lfixed:n \l_rw_lengths_clist } }
+          { \tl_gset:Nn \g_rw_Ldo_tl { \rw_Llist:N \l_rw_lengths_clist } }
+      },
+    angles .code:n  =
+      {
+        \clist_set:Nn \l_rw_angles_clist {#1}
+        \tl_gset:Nn \g_rw_Ado_tl { \rw_Alist:N \l_rw_angles_clist }
+      },
+    degree .code:n  = { \rw_radians_from_degrees:N \l_rw_angles_clist },
+    degrees .code:n = { \rw_radians_from_degrees:N \l_rw_angles_clist },
+    angles-relative .code:n   = { \bool_set_true:N \l_rw_A_relative_bool },
+    revert-random .bool_set:N = \l_rw_revert_random_bool,
+  }
+\cs_new:Npn \rw_walk:
+  {
+    \fp_zero:N \l_rw_old_x_fp
+    \fp_zero:N \l_rw_old_y_fp
+    \fp_zero:N \l_rw_new_x_fp
+    \fp_zero:N \l_rw_new_y_fp
+    \begin{tikzpicture}
+      \prg_replicate:nn { \l_rw_step_number_int } { \rw_step_draw: }
+      \bool_if:NF \l_rw_revert_random_bool
+        { \int_gset_eq:NN \cr@nd \cr@nd }
+    \end{tikzpicture}
+  }
+\cs_new:Npn \rw_step_draw:
+  {
+    \g_rw_Ldo_tl
+    \g_rw_Ado_tl
+    \rw_cartesian_from_polar:NNNN
+      \l_rw_step_x_fp \l_rw_step_y_fp
+      \l_rw_radius_fp \l_rw_angle_fp
+    \fp_add:Nn \l_rw_new_x_fp { \l_rw_step_x_fp }
+    \fp_add:Nn \l_rw_new_y_fp { \l_rw_step_y_fp }
+    \draw ( \fp_to_dim:N \l_rw_old_x_fp, \fp_to_dim:N \l_rw_old_y_fp )
+       -- ( \fp_to_dim:N \l_rw_new_x_fp, \fp_to_dim:N \l_rw_new_y_fp );
+    \fp_set_eq:NN \l_rw_old_x_fp \l_rw_new_x_fp
+    \fp_set_eq:NN \l_rw_old_y_fp \l_rw_new_y_fp
+  }
+\cs_new:Npn \rw_Lfixed:n #1
+  { \fp_set:Nn \l_rw_radius_fp {#1} }
+\cs_new:Npn \rw_Llist:N #1
+  { \rw_set_to_random_clist_element:NN \l_rw_radius_fp #1 }
+\cs_new:Npn \rw_Linterval:nn #1#2
+  { \rw_set_to_random_fp:Nnn \l_rw_radius_fp {#1} {#2} }
+\cs_new:Npn \rw_Ainterval:nn #1#2
+  {
+    \bool_if:NTF \l_rw_A_relative_bool
+      { \rw_add_to_random_fp:Nnn }
+      { \rw_set_to_random_fp:Nnn }
+      \l_rw_angle_fp {#1} {#2}
+  }
+\cs_new:Npn \rw_Alist:N #1
+  {
+    \bool_if:NTF \l_rw_A_relative_bool
+      { \rw_add_to_random_clist_element:NN }
+      { \rw_set_to_random_clist_element:NN }
+      \l_rw_angle_fp #1
+  }
+\cs_new_protected:Npn \rw_cartesian_from_polar:NNNN #1#2#3#4
+  {
+    \fp_cos:Nn #1 {\fp_use:N #4}
+    \fp_sin:Nn #2 {\fp_use:N #4}
+    \fp_mul:Nn #1 {\fp_use:N #3}
+    \fp_mul:Nn #2 {\fp_use:N #3}
+  }
+\cs_new_protected:Npn \rw_gcartesian_from_polar:NNNN #1#2#3#4
+  {
+    \fp_gcos:Nn #1 {\fp_use:N #4}
+    \fp_gsin:Nn #2 {\fp_use:N #4}
+    \fp_gmul:Nn #1 {\fp_use:N #3}
+    \fp_gmul:Nn #2 {\fp_use:N #3}
+  }
+\cs_new:Npn \rw_set_to_random_int:Nnn #1#2#3
+  {
+    \rand
+    \int_set:Nn #1 { \int_mod:nn {\c@lcg@rand} { #3 - (#2) } }
+  }
+\cs_new:Npn \rw_set_to_random_fp:Nnn #1#2#3
+  {
+    \fp_set:Nn \l_rw_tmpa_fp {#3}
+    \fp_sub:Nn \l_rw_tmpa_fp {#2}
+    \rand
+    \fp_set:Nn \l_rw_tmpb_fp { \int_use:N \c@lcg@rand }
+    \fp_div:Nn \l_rw_tmpb_fp { \int_use:N \c_rw_lcg_range_int }
+    \fp_mul:Nn \l_rw_tmpa_fp { \l_rw_tmpb_fp }
+    \fp_add:Nn \l_rw_tmpa_fp {#2}
+    \fp_set:Nn #1 { \l_rw_tmpa_fp }
+  }
+\cs_new:Npn \rw_add_to_random_fp:Nnn #1#2#3
+  {
+    \fp_set:Nn \l_rw_tmpa_fp {#3}
+    \fp_sub:Nn \l_rw_tmpa_fp {#2}
+    \rand
+    \fp_set:Nn \l_rw_tmpb_fp { \int_use:N \c@lcg@rand }
+    \fp_div:Nn \l_rw_tmpb_fp { \int_use:N \c_rw_lcg_range_int }
+    \fp_mul:Nn \l_rw_tmpa_fp { \l_rw_tmpb_fp }
+    \fp_add:Nn \l_rw_tmpa_fp {#2}
+    \fp_add:Nn #1 { \l_rw_tmpa_fp } %here: mod?
+  }
+\cs_new:Npn \rw_set_to_random_clist_element:NN #1#2
+  {
+    \rw_set_to_random_int:Nnn \l_rw_tmpb_int {0} { \clist_length:N #2 }
+    \fp_set:Nn #1 { \clist_item:Nn #2 { \l_rw_tmpb_int } }
+  }
+\cs_new:Npn \rw_add_to_random_clist_element:NN #1#2
+  {
+    \rw_set_to_random_int:Nnn \l_rw_tmpb_int {0} { \clist_length:N #2 }
+    \fp_add:Nn #1 { \clist_item:Nn #2 { \l_rw_tmpb_int } }
+  }
+\cs_new:Npn \rw_radians_from_degrees:N #1
+  {
+    \clist_clear:N \l_rw_tmpa_clist
+    \clist_map_inline:Nn #1
+      {
+        \fp_set:Nn \l_rw_tmpa_fp {##1}
+        \fp_mul:Nn \l_rw_tmpa_fp { \c_rw_one_degree_fp }
+        \clist_push:NV \l_rw_tmpa_clist \l_rw_tmpa_fp
+      }
+    \clist_set_eq:NN #1 \l_rw_tmpa_clist
+  }
+\cs_new:Npn \rw_clist_fp_from_dim:N #1
+  {
+    \clist_clear:N \l_rw_tmpa_clist
+    \clist_map_inline:Nn #1
+      {
+        \fp_set_from_dim:Nn \l_rw_tmpa_fp {##1}
+        \clist_push:NV \l_rw_tmpa_clist \l_rw_tmpa_fp
+      }
+    \clist_set_eq:NN #1 \l_rw_tmpa_clist
+  }
+\fp_new:N \l_rw_old_x_fp
+\fp_new:N \l_rw_old_y_fp
+\fp_new:N \l_rw_step_x_fp
+\fp_new:N \l_rw_step_y_fp
+\fp_new:N \l_rw_new_x_fp
+\fp_new:N \l_rw_new_y_fp
+\fp_new:N \l_rw_angle_fp
+\int_new:N \l_rw_step_number_int
+\clist_new:N \l_rw_angles_clist
+\clist_new:N \l_rw_lengths_clist
+\fp_new:N \l_rw_tmpa_fp
+\fp_new:N \l_rw_tmpb_fp
+\clist_new:N \l_rw_tmpa_clist
+\int_new:N \l_rw_tmpb_int
+%% 
+%%
+%% End of file `randomwalk.sty'.

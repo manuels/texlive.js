@@ -1,0 +1,615 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% This is a helper package with an elementary list datastructure.
+% In contrast to \pgfplotslist, this one features fast append and fast
+% copy-to-macro.
+%
+% The 'pgfplotsapplist' is a list which has ONLY the features
+%
+%  \pgfplotsapplistnewempty 
+%  \pgfplotsapplistpushback O(1)
+%  \pgfplotsapplistedefcontenttomacro (N)
+%  \pgfplotsapplistxdefcontenttomacro (N)
+%
+% It has been designed to accumulate macro content in O(N) (in
+% contrast to TeX's macro append routines which lead to O(N^2)
+% runtime).
+%
+% Furthermore, there is the 
+%
+%  \pgfplotsapplistXnewempty 
+%  \pgfplotsapplistXpushback
+%  \pgfplotsapplistXedefcontenttomacro (N)
+%  \pgfplotsapplistXxdefcontenttomacro (N)
+%  \pgfplotsapplistXlet (N)
+%
+% structure which features **preasymptotical** constant runtime for
+% pushback. That means, as long as N < 80000, the runtime is linear.
+% It is only slightly slower than \pgfplotsapplist, and that only due
+% to its generality. It could easily be adopted to be FASTER than
+% \pgfplotsapplist.
+%
+% Credits for \pgfplotsapplist go to Till Tantau: he developped it for
+% the PGF kernel.
+%
+%
+% Copyright 2007/2008 by Christian Feuersänger.
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+% 
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+% 
+% You should have received a copy of the GNU General Public License
+% along with this program.  If not, see <http://www.gnu.org/licenses/>.
+%
+%
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% the applist defines one macro for each element, like
+% 
+% \def\element<i>{<content>\element<i+1>}
+% \def\element<i+1>{<content>\element<i+2>}
+% \def\element<i+2>{}
+%
+% The '<i>' value belongs to the private interface and is part of the
+% macro name.
+%
+% It features:
+% - real O(1) pushback
+% - O(N) edef to macro
+% - O(N) execute
+% - it requires O(N) different macros.
+% - it ***can't*** be copied outside of the current TeX group!
+%
+% I have never used it (besides early tests)
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+% Time: O(1), number of macros: 3
+\def\pgfplotsapplistnewempty#1{%
+	\expandafter\def\csname\string#1@endno\endcsname{0}%
+	\edef#1{\expandafter\noexpand\csname\string#1@0\endcsname}%
+	\expandafter\def\csname\string#1@0\endcsname{}%
+}%
+
+% Time: O(1), number of macros per list: about N
+% #1: the item to append
+% #2: the list as macro name
+\long\def\pgfplotsapplistpushback#1\to#2{%
+	\expandafter\let\expandafter\pgfplots@loc@TMPa\csname\string#2@endno\endcsname
+	\begingroup
+	\c@pgf@counta=\pgfplots@loc@TMPa\relax
+	\advance\c@pgf@counta by1
+	\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+	\endgroup
+	\expandafter\let\csname\string#2@endno\endcsname=\pgfplots@glob@TMPa%
+	\t@pgfplots@toka={#1}%
+	\t@pgfplots@tokb=\expandafter{\csname\string#2@\pgfplots@glob@TMPa\endcsname}%
+	\expandafter\edef\csname\string#2@\pgfplots@loc@TMPa\endcsname{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+	\expandafter\let\the\t@pgfplots@tokb=\pgfutil@empty
+}%
+	
+% time O(N)
+% Expands the complete content of list #1 as-is into the macro #2.
+\def\pgfplotsapplistedefcontenttomacro#1\to#2{\edef#2{#1}}
+\def\pgfplotsapplistxdefcontenttomacro#1\to#2{\xdef#2{#1}}
+
+% Foreach list element, the stored value will simply be processed by
+% TeX. Characters will be printed and commands will be executed.
+% time O(N)
+\def\pgfplotsapplistexecute#1{#1}%
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
+%
+% This list here is a general re-implementation of the list used in
+% the PGF system layer.
+% It employs two collect-buffers to reduce the runtime.
+%
+% - It has preasymptotical runtime O(N), but is O(N^2) asymptotically.
+% - It requires only 5 macros per list.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Usage: 
+% \pgfplotsapplistXnewempty\macro
+% \pgfplotsapplistXnewempty[to global]\macro
+%
+% The 'to global' flag will configure the list such that all
+% assignments to \macro are global. The list accumulation is
+% LOCAL, however: 'to global' is to be used inside of a local
+% group such that the final result, when all buffers are flushed,
+% is assigned globally.
+%
+% ATTENTION: maybe that [to global] thing is useless.
+% Consider using the \pgfplotsapplistXglobal list (see below)
+\def\pgfplotsapplistXnewempty{%
+	\pgfutil@ifnextchar[{%
+		\pgfplotsapplistXnewempty@opt
+	}{%
+		\pgfplotsapplistXnewempty@opt[]%
+	}%
+}
+
+\def\pgfplotsapplistXnewempty@opt@TOGLOBAL{to global}
+
+\def\pgfplotsapplistXnewempty@opt[#1]#2{%
+	\def\pgfplots@loc@TMPa{#1}%
+	\ifx\pgfplots@loc@TMPa\pgfutil@empty
+		\expandafter\let\csname\string#2@let\endcsname=\let%
+		\expandafter\let\csname\string#2@edef\endcsname=\edef
+	\else
+		\ifx\pgfplots@loc@TMPa\pgfplotsapplistXnewempty@opt@TOGLOBAL
+			\expandafter\def\csname\string#2@let\endcsname{\global\let}%
+			\expandafter\let\csname\string#2@edef\endcsname=\xdef
+		\else
+			\pgfplots@error{Sorry, the argument '#1' to \string\pgfplotsapplistXnewempty\ is unknown. Accepted is 'to global' or empty.}%
+		\fi
+	\fi
+	\pgfplotsapplistXnewempty@{#2}%
+}%
+
+\def\pgfplotsapplistXnewempty@#1{%
+	\csname\string#1@let\endcsname#1=\pgfutil@empty
+	\expandafter\let\csname\string#1@smallbuf\endcsname=\pgfutil@empty
+	\expandafter\let\csname\string#1@bigbuf\endcsname=\pgfutil@empty
+	\expandafter\def\csname\string#1@smallbuf@c\endcsname{0}%
+	\expandafter\def\csname\string#1@bigbuf@c\endcsname{0}%
+}%
+
+% #1: the item to append
+% #2: the list as macro name
+\long\def\pgfplotsapplistXpushback#1\to#2{%
+	\begingroup
+		\c@pgf@counta=\csname\string#2@smallbuf@c\endcsname\relax
+		\advance\c@pgf@counta by1
+		\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+	\endgroup
+	\expandafter\let\csname\string#2@smallbuf@c\endcsname=\pgfplots@glob@TMPa
+	\ifnum\csname\string#2@smallbuf@c\endcsname<40
+		\t@pgfplots@toka=\expandafter\expandafter\expandafter{\csname\string#2@smallbuf\endcsname#1}%
+		\expandafter\edef\csname\string#2@smallbuf\endcsname{\the\t@pgfplots@toka}%
+	\else
+		\pgfplotsapplistXpushback@smallbufoverfl{#1}{#2}%
+	\fi
+}%
+\long\def\pgfplotsapplistXpushback@smallbufoverfl#1#2{%
+	\begingroup
+		\c@pgf@counta=\csname\string#2@bigbuf@c\endcsname\relax
+		\advance\c@pgf@counta by1
+		\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+	\endgroup
+	\expandafter\let\csname\string#2@bigbuf@c\endcsname=\pgfplots@glob@TMPa
+	%
+	\ifnum\csname\string#2@bigbuf@c\endcsname<30
+		\t@pgfplots@toka=\expandafter\expandafter\expandafter{\csname\string#2@bigbuf\endcsname}%
+		\t@pgfplots@tokb=\expandafter\expandafter\expandafter{\csname\string#2@smallbuf\endcsname#1}%
+		\expandafter\edef\csname\string#2@bigbuf\endcsname{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+		\expandafter\let\csname\string#2@smallbuf\endcsname=\pgfutil@empty
+		\expandafter\def\csname\string#2@smallbuf@c\endcsname{0}%
+	\else%
+		\t@pgfplots@toka=\expandafter{#2}%
+		\t@pgfplots@tokb=\expandafter\expandafter\expandafter{\csname\string#2@bigbuf\endcsname}%
+		\t@pgfplots@tokc=\expandafter\expandafter\expandafter{\csname\string#2@smallbuf\endcsname#1}%
+		\csname\string#2@edef\endcsname#2{\the\t@pgfplots@toka\the\t@pgfplots@tokb\the\t@pgfplots@tokc}%
+		\expandafter\let\csname\string#2@smallbuf\endcsname=\pgfutil@empty
+		\expandafter\def\csname\string#2@smallbuf@c\endcsname{0}%
+		\expandafter\let\csname\string#2@bigbuf\endcsname=\pgfutil@empty
+		\expandafter\def\csname\string#2@bigbuf@c\endcsname{0}%
+	\fi%
+}%
+\def\pgfplotsapplistXflushbuffers#1{%
+	\t@pgfplots@toka=\expandafter{#1}%
+	\t@pgfplots@tokb=\expandafter\expandafter\expandafter{\csname\string#1@bigbuf\endcsname}%
+	\t@pgfplots@tokc=\expandafter\expandafter\expandafter{\csname\string#1@smallbuf\endcsname}%
+	\csname\string#1@edef\endcsname#1{\the\t@pgfplots@toka\the\t@pgfplots@tokb\the\t@pgfplots@tokc}%
+	\expandafter\let\csname\string#1@smallbuf\endcsname=\pgfutil@empty
+	\expandafter\def\csname\string#1@smallbuf@c\endcsname{0}%
+	\expandafter\let\csname\string#1@bigbuf\endcsname=\pgfutil@empty
+	\expandafter\def\csname\string#1@bigbuf@c\endcsname{0}%
+}%
+
+	
+% Expands the complete content of list #1 as-is into the macro #2.
+\def\pgfplotsapplistXedefcontenttomacro#1\to#2{%
+	\pgfplotsapplistXflushbuffers#1%
+	\edef#2{#1}}
+\def\pgfplotsapplistXxdefcontenttomacro#1\to#2{%
+	\pgfplotsapplistXflushbuffers#1%
+	\xdef#2{#1}}
+\def\pgfplotsapplistXlet#1=#2{%
+	\pgfplotsapplistXflushbuffers#2%
+	\let#1=#2}
+
+% Foreach list element, the stored value will simply be processed by
+% TeX. Characters will be printed and commands will be executed.
+\def\pgfplotsapplistXexecute#1{%
+	\pgfplotsapplistXflushbuffers#1%
+	#1}%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% 
+% A variant of applist which has the same runtime requirements, but
+% does PUSH FRONT only.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+% Usage: 
+% \pgfplotsprependlistXnewempty{liste}
+\def\pgfplotsprependlistXnewempty#1{%
+	\expandafter\let\csname pgfpPRP@#1\endcsname=\pgfutil@empty
+	\expandafter\let\csname pgfpPRP@#1@smallbuf\endcsname=\pgfutil@empty
+	\expandafter\let\csname pgfpPRP@#1@bigbuf\endcsname=\pgfutil@empty
+	\expandafter\def\csname pgfpPRP@#1@smallbuf@c\endcsname{0}%
+	\expandafter\def\csname pgfpPRP@#1@bigbuf@c\endcsname{0}%
+}%
+
+% #1: the item to append
+% #2: the list as macro name
+\long\def\pgfplotsprependlistXpushfront#1\to#2{%
+	\begingroup
+		\c@pgf@counta=\csname pgfpPRP@#2@smallbuf@c\endcsname\relax
+		\advance\c@pgf@counta by1
+		\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+	\endgroup
+	\expandafter\let\csname pgfpPRP@#2@smallbuf@c\endcsname=\pgfplots@glob@TMPa
+	\ifnum\csname pgfpPRP@#2@smallbuf@c\endcsname<40
+		\t@pgfplots@toka=\expandafter\expandafter\expandafter{\csname pgfpPRP@#2@smallbuf\endcsname}%
+		\t@pgfplots@tokb={#1}%
+		\expandafter\edef\csname pgfpPRP@#2@smallbuf\endcsname{\the\t@pgfplots@tokb\the\t@pgfplots@toka}%
+	\else
+		\pgfplotsprependlistXpushfront@smallbufoverfl{#1}{#2}%
+	\fi
+}%
+\long\def\pgfplotsprependlistXpushfront@smallbufoverfl#1#2{%
+	\begingroup
+		\c@pgf@counta=\csname pgfpPRP@#2@bigbuf@c\endcsname\relax
+		\advance\c@pgf@counta by1
+		\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+	\endgroup
+	\expandafter\let\csname pgfpPRP@#2@bigbuf@c\endcsname=\pgfplots@glob@TMPa
+	%
+	\ifnum\csname pgfpPRP@#2@bigbuf@c\endcsname<30
+		\t@pgfplots@toka=\expandafter\expandafter\expandafter{\csname pgfpPRP@#2@bigbuf\endcsname}%
+		\t@pgfplots@tokb=\expandafter\expandafter\expandafter{\csname pgfpPRP@#2@smallbuf\endcsname}%
+		\t@pgfplots@tokc={#1}%
+		\expandafter\edef\csname pgfpPRP@#2@bigbuf\endcsname{\the\t@pgfplots@tokc\the\t@pgfplots@tokb\the\t@pgfplots@toka}%
+		\expandafter\let\csname pgfpPRP@#2@smallbuf\endcsname=\pgfutil@empty
+		\expandafter\def\csname pgfpPRP@#2@smallbuf@c\endcsname{0}%
+	\else%
+		\pgfplotsprependlistXflushbuffers{#2}%
+		\t@pgfplots@toka=\expandafter\expandafter\expandafter{\csname pgfpPRP@#2\endcsname}%
+		\t@pgfplots@tokb={#1}%
+		\expandafter\edef\csname pgfpPRP@#2\endcsname{\the\t@pgfplots@tokb\the\t@pgfplots@toka}%
+	\fi%
+}%
+\def\pgfplotsprependlistXflushbuffers#1{%
+	\t@pgfplots@toka=\expandafter\expandafter\expandafter{\csname pgfpPRP@#1\endcsname}%
+	\t@pgfplots@tokb=\expandafter\expandafter\expandafter{\csname pgfpPRP@#1@bigbuf\endcsname}%
+	\t@pgfplots@tokc=\expandafter\expandafter\expandafter{\csname pgfpPRP@#1@smallbuf\endcsname}%
+	\expandafter\edef\csname pgfpPRP@#1\endcsname{\the\t@pgfplots@tokc\the\t@pgfplots@tokb\the\t@pgfplots@toka}%
+	\expandafter\let\csname pgfpPRP@#1@smallbuf\endcsname=\pgfutil@empty
+	\expandafter\def\csname pgfpPRP@#1@smallbuf@c\endcsname{0}%
+	\expandafter\let\csname pgfpPRP@#1@bigbuf\endcsname=\pgfutil@empty
+	\expandafter\def\csname pgfpPRP@#1@bigbuf@c\endcsname{0}%
+}%
+
+\def\pgfplotsprependlistXlet#1=#2{%
+	\pgfplotsprependlistXflushbuffers{#2}%
+	\expandafter\let\expandafter#1\csname pgfpPRP@#2\endcsname}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
+% 
+% This list \pgfplotsapplistXX here is essentially the SAME as \pgfplotslistX.
+%
+% But there can only be one such list at a time, so it is faster than
+% \pgfplotslistX.
+%
+% This here is probably the fastest list.
+%
+% It is nothing else but a copy of Till Tantau's pgf kernel list.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
+
+
+
+% WARNING: call \pgfplotsapplistclear if there is another list active.
+\def\pgfplotsapplistXXnewempty{%
+	\pgfutil@ifundefined{pgfplotsapplistXX}{}{%
+		\ifx\pgfplotsapplistXX\pgfutil@empty
+		\else
+			\pgfplots@error{\string\pgfplotsapplistXXnewempty: there is already another list which is *not* empty. It currently contains '\meaning\pgfplotsapplistXX'. Please call '\string\pgfplotsapplistXXclear' before using a new list to ensure clean separations.}%
+		\fi
+	}%
+	\let\pgfplotsapplistXX=\pgfutil@empty
+	\let\pgfplotsapplistXX@smallbuf=\pgfutil@empty
+	\let\pgfplotsapplistXX@bigbuf=\pgfutil@empty
+	\def\pgfplotsapplistXX@smallbuf@c{0}%
+	\def\pgfplotsapplistXX@bigbuf@c{0}%
+}%
+
+
+\def\pgfplotsapplistXXclear{%
+	\pgfutil@ifundefined{pgfplotsapplistXX}{}{%
+		\let\pgfplotsapplistXX=\pgfutil@empty
+		\let\pgfplotsapplistXX@smallbuf=\pgfutil@empty
+		\let\pgfplotsapplistXX@bigbuf=\pgfutil@empty
+		\def\pgfplotsapplistXX@smallbuf@c{0}%
+		\def\pgfplotsapplistXX@bigbuf@c{0}%
+	}%
+}%
+
+% #1: the item to append
+% #2: the list as macro name
+\long\def\pgfplotsapplistXXpushback#1{%
+	\begingroup
+		\c@pgf@counta=\pgfplotsapplistXX@smallbuf@c\relax
+		\advance\c@pgf@counta by1
+		\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+	\endgroup
+	\let\pgfplotsapplistXX@smallbuf@c=\pgfplots@glob@TMPa
+	\ifnum\pgfplotsapplistXX@smallbuf@c<40
+		\t@pgfplots@toka=\expandafter{\pgfplotsapplistXX@smallbuf#1}%
+		\edef\pgfplotsapplistXX@smallbuf{\the\t@pgfplots@toka}%
+	\else
+		\pgfplotsapplistXXpushback@smallbufoverfl{#1}%
+	\fi
+}%
+\long\def\pgfplotsapplistXXpushback@smallbufoverfl#1{%
+	\begingroup
+		\c@pgf@counta=\pgfplotsapplistXX@bigbuf@c\relax
+		\advance\c@pgf@counta by1
+		\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+	\endgroup
+	\let\pgfplotsapplistXX@bigbuf@c=\pgfplots@glob@TMPa
+	%
+	\ifnum\pgfplotsapplistXX@bigbuf@c<30
+		\t@pgfplots@toka=\expandafter{\pgfplotsapplistXX@bigbuf}%
+		\t@pgfplots@tokb=\expandafter{\pgfplotsapplistXX@smallbuf#1}%
+		\edef\pgfplotsapplistXX@bigbuf{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+		\let\pgfplotsapplistXX@smallbuf=\pgfutil@empty
+		\def\pgfplotsapplistXX@smallbuf@c{0}%
+	\else%
+		\t@pgfplots@toka=\expandafter{\pgfplotsapplistXX}%
+		\t@pgfplots@tokb=\expandafter{\pgfplotsapplistXX@bigbuf}%
+		\t@pgfplots@tokc=\expandafter{\pgfplotsapplistXX@smallbuf#1}%
+		\edef\pgfplotsapplistXX{\the\t@pgfplots@toka\the\t@pgfplots@tokb\the\t@pgfplots@tokc}%
+		\let\pgfplotsapplistXX@smallbuf=\pgfutil@empty
+		\def\pgfplotsapplistXX@smallbuf@c{0}%
+		\let\pgfplotsapplistXX@bigbuf=\pgfutil@empty
+		\def\pgfplotsapplistXX@bigbuf@c{0}%
+	\fi%
+}%
+\def\pgfplotsapplistXXflushbuffers{%
+	\t@pgfplots@toka=\expandafter{\pgfplotsapplistXX}%
+	\t@pgfplots@tokb=\expandafter{\pgfplotsapplistXX@bigbuf}%
+	\t@pgfplots@tokc=\expandafter{\pgfplotsapplistXX@smallbuf}%
+	\edef\pgfplotsapplistXX{\the\t@pgfplots@toka\the\t@pgfplots@tokb\the\t@pgfplots@tokc}%
+	\let\pgfplotsapplistXX@smallbuf=\pgfutil@empty
+	\def\pgfplotsapplistXX@smallbuf@c{0}%
+	\let\pgfplotsapplistXX@bigbuf=\pgfutil@empty
+	\def\pgfplotsapplistXX@bigbuf@c{0}%
+}%
+
+	
+% Expands the complete content of list #1 as-is into the macro #2.
+\def\pgfplotsapplistXXedefcontenttomacro#1{%
+	\pgfplotsapplistXXflushbuffers
+	\edef#1{\pgfplotsapplistXX}}
+\def\pgfplotsapplistXXxdefcontenttomacro#1{%
+	\pgfplotsapplistXXflushbuffers%
+	\xdef#1{\pgfplotsapplistXX}}
+\def\pgfplotsapplistXXlet#1{%
+	\pgfplotsapplistXXflushbuffers%
+	\let#1=\pgfplotsapplistXX}
+
+% Foreach list element, the stored value will simply be processed by
+% TeX. Characters will be printed and commands will be executed.
+\def\pgfplotsapplistXXexecute#1{%
+	\pgfplotsapplistXXflushbuffers
+	#1}%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
+% 
+% \pgfplotslistXXglobal  assigns to a global list.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%5
+\def\pgfplotsapplistXXglobalnewempty{%
+	\pgfutil@ifundefined{pgfplotsapplistXXglobal}{}{%
+		\ifx\pgfplotsapplistXXglobal\pgfutil@empty
+		\else
+			\pgfplots@error{\string\pgfplotsapplistXXglobalnewempty: there is already another list which is *not* empty. It currently contains '\meaning\pgfplotsapplistXXglobal'. Please call '\string\pgfplotsapplistXXglobalclear' before using a new list to ensure clean separations.}%
+		\fi
+	}%
+	\global\let\pgfplotsapplistXXglobal=\pgfutil@empty
+	\global\let\pgfplotsapplistXXglobal@smallbuf=\pgfutil@empty
+	\global\let\pgfplotsapplistXXglobal@bigbuf=\pgfutil@empty
+	\gdef\pgfplotsapplistXXglobal@smallbuf@c{0}%
+	\gdef\pgfplotsapplistXXglobal@bigbuf@c{0}%
+}%
+
+
+\def\pgfplotsapplistXXglobalclear{%
+	\pgfutil@ifundefined{pgfplotsapplistXXglobal}{}{%
+		\global\let\pgfplotsapplistXXglobal=\pgfutil@empty
+		\global\let\pgfplotsapplistXXglobal@smallbuf=\pgfutil@empty
+		\global\let\pgfplotsapplistXXglobal@bigbuf=\pgfutil@empty
+		\gdef\pgfplotsapplistXXglobal@smallbuf@c{0}%
+		\gdef\pgfplotsapplistXXglobal@bigbuf@c{0}%
+	}%
+}%
+
+% #1: the item to append
+% #2: the list as macro name
+\long\def\pgfplotsapplistXXglobalpushback#1{%
+	\begingroup
+		\c@pgf@counta=\pgfplotsapplistXXglobal@smallbuf@c\relax
+		\advance\c@pgf@counta by1
+		\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+	\endgroup
+	\global\let\pgfplotsapplistXXglobal@smallbuf@c=\pgfplots@glob@TMPa
+	\ifnum\pgfplotsapplistXXglobal@smallbuf@c<40
+		\t@pgfplots@toka=\expandafter{\pgfplotsapplistXXglobal@smallbuf#1}%
+		\xdef\pgfplotsapplistXXglobal@smallbuf{\the\t@pgfplots@toka}%
+	\else
+		\pgfplotsapplistXXglobalpushback@smallbufoverfl{#1}%
+	\fi
+}%
+\long\def\pgfplotsapplistXXglobalpushback@smallbufoverfl#1{%
+	\begingroup
+		\c@pgf@counta=\pgfplotsapplistXXglobal@bigbuf@c\relax
+		\advance\c@pgf@counta by1
+		\xdef\pgfplots@glob@TMPa{\the\c@pgf@counta}%
+	\endgroup
+	\global\let\pgfplotsapplistXXglobal@bigbuf@c=\pgfplots@glob@TMPa
+	%
+	\ifnum\pgfplotsapplistXXglobal@bigbuf@c<30
+		\t@pgfplots@toka=\expandafter{\pgfplotsapplistXXglobal@bigbuf}%
+		\t@pgfplots@tokb=\expandafter{\pgfplotsapplistXXglobal@smallbuf#1}%
+		\xdef\pgfplotsapplistXXglobal@bigbuf{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+		\global\let\pgfplotsapplistXXglobal@smallbuf=\pgfutil@empty
+		\gdef\pgfplotsapplistXXglobal@smallbuf@c{0}%
+	\else%
+		\t@pgfplots@toka=\expandafter{\pgfplotsapplistXXglobal}%
+		\t@pgfplots@tokb=\expandafter{\pgfplotsapplistXXglobal@bigbuf}%
+		\t@pgfplots@tokc=\expandafter{\pgfplotsapplistXXglobal@smallbuf#1}%
+		\xdef\pgfplotsapplistXXglobal{\the\t@pgfplots@toka\the\t@pgfplots@tokb\the\t@pgfplots@tokc}%
+		\global\let\pgfplotsapplistXXglobal@smallbuf=\pgfutil@empty
+		\gdef\pgfplotsapplistXXglobal@smallbuf@c{0}%
+		\global\let\pgfplotsapplistXXglobal@bigbuf=\pgfutil@empty
+		\gdef\pgfplotsapplistXXglobal@bigbuf@c{0}%
+	\fi%
+}%
+\def\pgfplotsapplistXXglobalflushbuffers{%
+	\t@pgfplots@toka=\expandafter{\pgfplotsapplistXXglobal}%
+	\t@pgfplots@tokb=\expandafter{\pgfplotsapplistXXglobal@bigbuf}%
+	\t@pgfplots@tokc=\expandafter{\pgfplotsapplistXXglobal@smallbuf}%
+	\xdef\pgfplotsapplistXXglobal{\the\t@pgfplots@toka\the\t@pgfplots@tokb\the\t@pgfplots@tokc}%
+	\global\let\pgfplotsapplistXXglobal@smallbuf=\pgfutil@empty
+	\gdef\pgfplotsapplistXXglobal@smallbuf@c{0}%
+	\global\let\pgfplotsapplistXXglobal@bigbuf=\pgfutil@empty
+	\gdef\pgfplotsapplistXXglobal@bigbuf@c{0}%
+}%
+
+	
+% Expands the complete content of list #1 as-is into the macro #2.
+%
+% this assigns locally into #1.
+\def\pgfplotsapplistXXglobaledefcontenttomacro#1{%
+	\pgfplotsapplistXXglobalflushbuffers
+	\edef#1{\pgfplotsapplistXXglobal}}
+% this assigns locally into #1.
+\def\pgfplotsapplistXXglobalxdefcontenttomacro#1{%
+	\pgfplotsapplistXXglobalflushbuffers%
+	\xdef#1{\pgfplotsapplistXXglobal}}
+% this assigns locally into #1.
+\def\pgfplotsapplistXXgloballet#1{%
+	\pgfplotsapplistXXglobalflushbuffers%
+	\let#1=\pgfplotsapplistXXglobal}
+
+% Foreach list element, the stored value will simply be processed by
+% TeX. Characters will be printed and commands will be executed.
+% this assigns locally into #1.
+\def\pgfplotsapplistXXglobalexecute#1{%
+	\pgfplotsapplistXXglobalflushbuffers
+	#1}%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  \pgfplotsapplistXglobalnewempty --> same as \pgfplotsapplistX, but
+%  it always assigns everything *globally*.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\def\pgfplotsgloballet{\global\let}%
+
+% Usage: 
+% \pgfplotsapplistXglobalnewempty\macro
+% \pgfplotsapplistXglobalnewempty[to global]\macro
+%
+% The 'to global' flag will configure the list such that all
+% assignments to \macro are global. The list accumulation is
+% LOCAL, however: 'to global' is to be used inside of a local
+% group such that the final result, when all buffers are flushed,
+% is assigned globally.
+\def\pgfplotsapplistXglobalnewempty#1{%
+	\pgfplotsgloballet#1=\pgfutil@empty
+	\expandafter\pgfplotsgloballet\csname\string#1@smallbuf\endcsname=\pgfutil@empty
+	\expandafter\pgfplotsgloballet\csname\string#1@bigbuf\endcsname=\pgfutil@empty
+	\expandafter\gdef\csname\string#1@smallbuf@c\endcsname{0}%
+	\expandafter\gdef\csname\string#1@bigbuf@c\endcsname{0}%
+}%
+
+% #1: the item to append
+% #2: the list as macro name
+\long\def\pgfplotsapplistXglobalpushback#1\to#2{%
+	\begingroup
+		\c@pgf@counta=\csname\string#2@smallbuf@c\endcsname\relax
+		\advance\c@pgf@counta by1
+		\expandafter\xdef\csname\string#2@smallbuf@c\endcsname{\the\c@pgf@counta}%
+	\endgroup
+	\ifnum\csname\string#2@smallbuf@c\endcsname<40
+		\t@pgfplots@toka=\expandafter\expandafter\expandafter{\csname\string#2@smallbuf\endcsname#1}%
+		\expandafter\xdef\csname\string#2@smallbuf\endcsname{\the\t@pgfplots@toka}%
+	\else
+		\pgfplotsapplistXglobalpushback@smallbufoverfl{#1}{#2}%
+	\fi
+}%
+\long\def\pgfplotsapplistXglobalpushback@smallbufoverfl#1#2{%
+	\begingroup
+		\c@pgf@counta=\csname\string#2@bigbuf@c\endcsname\relax
+		\advance\c@pgf@counta by1
+		\expandafter\xdef\csname\string#2@bigbuf@c\endcsname{\the\c@pgf@counta}%
+	\endgroup
+	%
+	\ifnum\csname\string#2@bigbuf@c\endcsname<30
+		\t@pgfplots@toka=\expandafter\expandafter\expandafter{\csname\string#2@bigbuf\endcsname}%
+		\t@pgfplots@tokb=\expandafter\expandafter\expandafter{\csname\string#2@smallbuf\endcsname#1}%
+		\expandafter\xdef\csname\string#2@bigbuf\endcsname{\the\t@pgfplots@toka\the\t@pgfplots@tokb}%
+		\expandafter\pgfplotsgloballet\csname\string#2@smallbuf\endcsname=\pgfutil@empty
+		\expandafter\gdef\csname\string#2@smallbuf@c\endcsname{0}%
+	\else%
+		\t@pgfplots@toka=\expandafter{#2}%
+		\t@pgfplots@tokb=\expandafter\expandafter\expandafter{\csname\string#2@bigbuf\endcsname}%
+		\t@pgfplots@tokc=\expandafter\expandafter\expandafter{\csname\string#2@smallbuf\endcsname#1}%
+		\xdef#2{\the\t@pgfplots@toka\the\t@pgfplots@tokb\the\t@pgfplots@tokc}%
+		\expandafter\pgfplotsgloballet\csname\string#2@smallbuf\endcsname=\pgfutil@empty
+		\expandafter\gdef\csname\string#2@smallbuf@c\endcsname{0}%
+		\expandafter\pgfplotsgloballet\csname\string#2@bigbuf\endcsname=\pgfutil@empty
+		\expandafter\gdef\csname\string#2@bigbuf@c\endcsname{0}%
+	\fi%
+}%
+\def\pgfplotsapplistXglobalflushbuffers#1{%
+	\t@pgfplots@toka=\expandafter{#1}%
+	\t@pgfplots@tokb=\expandafter\expandafter\expandafter{\csname\string#1@bigbuf\endcsname}%
+	\t@pgfplots@tokc=\expandafter\expandafter\expandafter{\csname\string#1@smallbuf\endcsname}%
+	\xdef#1{\the\t@pgfplots@toka\the\t@pgfplots@tokb\the\t@pgfplots@tokc}%
+	\expandafter\pgfplotsgloballet\csname\string#1@smallbuf\endcsname=\pgfutil@empty
+	\expandafter\gdef\csname\string#1@smallbuf@c\endcsname{0}%
+	\expandafter\pgfplotsgloballet\csname\string#1@bigbuf\endcsname=\pgfutil@empty
+	\expandafter\gdef\csname\string#1@bigbuf@c\endcsname{0}%
+}%
+
+	
+\def\pgfplotsapplistXgloballet#1=#2{%
+	\pgfplotsapplistXglobalflushbuffers#2%
+	\let#1=#2}

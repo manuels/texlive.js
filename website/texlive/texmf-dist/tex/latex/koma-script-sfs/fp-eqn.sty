@@ -1,0 +1,382 @@
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{fp-eqn}[1995/04/03]
+
+%version information
+\def\FP@eqnversion{0.4}
+\message{%
+  `Fixed Point Equation Solver',%
+  \space\space\space%
+  Version \FP@eqnversion\space%
+  \space(C) Michael Mehlich%
+  \space\space\space\space\space\space\space%
+  \space\space\space\space\space\space\space%
+}
+
+%resolve dependencies
+\RequirePackage{fp}
+
+%%%public area (macros which may be used)%%%
+
+\def\FPlsolve#1#2#3{\FP@lsolve#1{#2}{#3}}           % #1 := x with #2*x+#3=0
+\def\FPqsolve#1#2#3#4#5{\FP@qsolve#1#2{#3}{#4}{#5}} % #1,#2 := x with #3*x^2+#4*x+#5 = 0
+\def\FPcsolve#1#2#3#4#5#6#7{\FP@csolve#1#2#3{#4}{#5}{#6}{#7}}
+						    % #1,#2,#3 := x with #4*x^3+#5*x^2+#6*x+#7 = 0
+\def\FPqqsolve#1#2#3#4#5#6#7#8#9{\FP@qqsolve#1#2#3#4{#5}{#6}{#7}{#8}{#9}}
+						    % #1,#2,#3,#4 := x with #5*x^4+#6*x^3+#7*x^2+#8*x+#9 = 0
+
+%%%private fp-area (don't use these macros)%%%
+
+%compute the solution of a*x + b = 0
+\def\FP@lsolve@warn#1{%
+  %value determining warning
+  \FPifzero{#1}%
+    \FP@warnmessage{Linear equation has infinitely many solutions, choosing 0}%
+    \edef\FP@tmp{0}%
+  \else%
+    \FP@errmessage{Linear equation does not have a solution}%
+  \fi%
+}
+
+\def\FP@@lsolve#1#2{%
+  \FPdiv\FP@tmp{#2}{#1}%
+  \FPneg\FP@tmp\FP@tmp%
+}
+
+\def\FP@lsolve#1#2#3{%
+  % #1 macro, which gets the result
+  % #2 value a
+  % #3 value b
+  %
+  \FP@beginmessage{LSOLVE}%
+  %
+  {\def\FP@beginmessage##1{}%
+   \def\FP@endmessage##1{}%
+   %
+   \FPifzero{#2}%
+     \FP@lsolve@warn{#3}%
+   \else%
+     \FP@@lsolve{#2}{#3}%
+   \fi%
+   %
+   \global\let\FP@tmp\FP@tmp%
+  }%
+  %
+  \let#1\FP@tmp%
+  %
+  \FP@endmessage{}%
+}
+
+%compute the solutions of a*x^2 + b*x + c = 0
+\def\FP@@qsolve#1#2#3{%
+  % \FP@tmpc := 2*a
+  \FPadd\FP@tmpc{#1}{#1}%
+  %
+  % \FP@tmpb := b*b
+  \FPmul\FP@tmpd{#2}{#2}%
+  %
+  % \FP@tmpc := 4*a*c
+  \FPmul\FP@tmpe\FP@tmpc{#3}%
+  \FPadd\FP@tmpe\FP@tmpe\FP@tmpe%
+  %
+  % \FP@tmpf := b^2 - 4*a*c
+  \FPsub\FP@tmpf\FP@tmpd\FP@tmpe%
+  %
+  \FPifneg\FP@tmpf%
+    \FP@errmessage{Quadratic equation does not have a solution}%
+  \else%
+    % \FP@tmpd := sqrt(b^2 - 4*a*c)
+    \FProot\FP@tmpd\FP@tmpf{2}%
+    %
+    % solution 1: x = (-b + sqrt(b^2 - 4*a*c))/(2*a)
+    \FPsub\FP@tmp\FP@tmpd{#2}%
+    \FPdiv\FP@tmpe\FP@tmp\FP@tmpc%
+    %
+    % solution 2: x = (-b + sqrt(b^2 - 4*a*c))/(2*a)
+    \FPadd\FP@tmp\FP@tmpd{#2}%
+    \FPdiv\FP@tmpd\FP@tmp\FP@tmpc%
+    \FPneg\FP@tmpd\FP@tmpd%
+  \fi%
+}
+
+\def\FP@qsolve#1#2#3#4#5{%
+  % #1 macro, which gets the 1st result
+  % #2 macro, which gets the 2nd result
+  % #3 value a
+  % #4 value b
+  % #5 value c
+  %
+  \FP@beginmessage{QSOLVE}%
+  %
+  {\def\FP@beginmessage##1{}%
+   \def\FP@endmessage##1{}%
+   %
+   \FPifzero{#3}%
+     \FP@warnmessage{Quadratic equation is linear}%
+     \FP@lsolve\FP@tmpe{#4}{#5}%
+     \let\FP@tmpd\FP@tmpe%
+   \else%
+     \FP@@qsolve{#3}{#4}{#5}%
+   \fi%
+    %
+    \global\let\FP@tmpa\FP@tmpe%
+    \global\let\FP@tmpb\FP@tmpd%
+  }%
+  %
+  \let#1\FP@tmpa%
+  \let#2\FP@tmpb%
+  %
+  \FP@endmessage{}%
+}
+
+%compute the solutions of a*x^3 + b*x^2 + c*x + d = 0
+\def\FP@@csolve#1#2#3#4{%
+  %reducation of cubic equation
+  %\FPeval\FP@tmpp{(#3)/(3*(#1)) - mul(copy((#2)/(3*(#1))))}%
+  \FPupn\FP@tmpp{#3 3 #1 mul div #2 3 #1 mul div copy mul sub}%
+  %\FPeval\FP@tmpq{mul(mul(copy(copy((#2)/(3*(#1)))))) - (#2)*(#3)/(6*(#1)*(#1)) + (#4)/(2*(#1))}%
+  \FPupn\FP@tmpq{#2 3 #1 mul div copy copy mul mul #2 #3 mul 6 #1 mul #1 mul div sub #4 2 #1 mul div add}%
+  %
+  %check whether solution is trivial
+  \FPifzero\FP@tmpp%
+    %\FPeval\FP@tmpf{root(3,abs(2*\FP@tmpq)) * sgn(\FP@tmpq)}%
+    \FPupn\FP@tmpf{3 2 \FP@tmpq{} mul abs root \FP@tmpq{} sgn mul}%
+    \let\FP@tmpe\FP@tmpf%
+    \let\FP@tmpd\FP@tmpf%
+  \else%
+    %compute D
+    %\FPeval\FP@tmpD{mul(copy(\FP@tmpq)) + mul(mul(copy(copy(\FP@tmpp))))}%
+    \FPupn\FP@tmpD{\FP@tmpq{} copy mul \FP@tmpp{} copy copy mul mul add}%
+    \FPsgn\FP@tmp\FP@tmpD%
+    \expandafter\ifnum\FP@tmp=1\relax%
+      %only one real valued solution, compute it
+      \FProot\FP@tmpD\FP@tmpD{2}%
+      \FPsub\FP@tmpf\FP@tmpD\FP@tmpq%
+      \FPadd\FP@tmpe\FP@tmpD\FP@tmpq%
+      \FPneg\FP@tmpe\FP@tmpe%
+      %\FPeval\FP@tmpf{root(3,abs(\FP@tmpf)) * sgn(\FP@tmpf) + root(3,abs(\FP@tmpe)) * sgn(\FP@tmpe)}%
+      \FPupn\FP@tmpf{3 \FP@tmpf{} abs root \FP@tmpf{} sgn mul 3 \FP@tmpe{} abs root \FP@tmpe{} sgn mul add}%
+      \FP@warnmessage{Cubic equation has only one real valued solution}%
+      \let\FP@tmpe\FP@tmpf%
+      \let\FP@tmpd\FP@tmpf%
+    \else%
+      %compute r and phi/3
+      %\FPeval\FP@tmpr{root(2,abs(\FP@tmpp)) * sgn(\FP@tmpq) * 2}%
+      \FPupn\FP@tmpr{2 \FP@tmpp{} abs root \FP@tmpq{} sgn mul}%
+      %\FPeval\FP@tmpp{arccos(\FP@tmpq/\FP@tmpr/\FP@tmpr/\FP@tmpr)/3}%
+      \FPupn\FP@tmpp{\FP@tmpq{} \FP@tmpr{} div \FP@tmpr{} div \FP@tmpr{} div arccos 3 div}%
+      %compute the three solutions
+      \FPmul\FP@tmpr{2}\FP@tmpr%
+      \FPeval\FP@tmpf{neg(\FP@tmpr) * cos(\FP@tmpp)}%
+      \FPeval\FP@tmpe{(\FP@tmpr) * cos(1.047197551196597746-(\FP@tmpp))}%
+      \FPeval\FP@tmpd{(\FP@tmpr) * cos(1.047197551196597746+(\FP@tmpp))}%
+    \fi%
+  \fi%
+  %
+  \FPeval\FP@tmpf{(\FP@tmpf)-(#2)/(3*(#1))}%
+  \FPeval\FP@tmpe{(\FP@tmpe)-(#2)/(3*(#1))}%
+  \FPeval\FP@tmpd{(\FP@tmpd)-(#2)/(3*(#1))}%
+}
+
+\def\FP@csolve#1#2#3#4#5#6#7{%
+  % #1 macro, which gets the 1st result
+  % #2 macro, which gets the 2nd result
+  % #3 macro, which gets the 3nd result
+  % #4 value a
+  % #5 value b
+  % #6 value c
+  % #7 value d
+  %
+  \FP@beginmessage{CSOLVE}%
+  %
+  {\def\FP@beginmessage##1{}%
+   \def\FP@endmessage##1{}%
+   %
+   \FPifzero{#4}%
+     \FP@warnmessage{Cubic equation is quadratic}%
+     \FP@qsolve\FP@tmpe\FP@tmpf{#5}{#6}{#7}%
+     \let\FP@tmpd\FP@tmpe%
+   \else%
+     \FP@@csolve{#4}{#5}{#6}{#7}%
+   \fi%
+   %
+   \global\let\FP@tmpa\FP@tmpf%
+   \global\let\FP@tmpb\FP@tmpe%
+   \global\let\FP@tmpc\FP@tmpd%
+  }%
+  %
+  \let#1\FP@tmpa%
+  \let#2\FP@tmpb%
+  \let#3\FP@tmpc%
+  %
+  \FP@endmessage{}%
+}
+
+%compute the solutions of a*x^4 + b*x^3 + c*x^2 + d*x + e = 0
+\def\FP@qqsolveAy#1#2#3{%
+  \FPeval\FP@tmpA{8*(\FP@tmpyc)+((#2)*(#2)/(#1)-4*(#3))/(#1)}%
+  \FPsgn\FP@tmp\FP@tmpA%
+  \expandafter\ifnum\FP@tmp>0\relax%
+    \let\FP@tmpy\FP@tmpyc%
+  \else%
+    \FPeval\FP@tmpA{8*(\FP@tmpyb)+((#2)*(#2)/(#1)-4*(#3))/(#1)}%
+    \FPsgn\FP@tmp\FP@tmpA%
+    \expandafter\ifnum\FP@tmp>0\relax%
+      \let\FP@tmpy\FP@tmpyb%
+    \else%
+      \FPeval\FP@tmpA{8*(\FP@tmpya)+((#2)*(#2)/(#1)-4*(#3))/(#1)}%
+      \FPsgn\FP@tmp\FP@tmpA%
+      \expandafter\ifnum\FP@tmp>0\relax%
+        \let\FP@tmpy\FP@tmpya%
+      \else%
+        \FP@errmessage{Equation of 4-th degree has no solution}%
+      \fi%
+    \fi%
+  \fi%
+  \FProot\FP@tmpA\FP@tmpA{2}%
+}
+
+\def\FP@@qqsolve#1#2#3#4#5{%
+  %compute cubic equation
+  \FPeval\FP@tmpyb{neg(4*(#3)/(#1))}%
+  \FPeval\FP@tmpyc{2*(#2)*(#4)/(#1)/(#1) - 8*(#5)/(#1)}%
+  \FPeval\FP@tmpyd{(#5)/(#1)*(4*(#3)/(#1) - (#2)*(#2)/(#1)/(#1)) - (#4)*(#4)/(#1)/(#1)}%
+  %solve cubic equation
+  \FP@@csolve{8}\FP@tmpyb\FP@tmpyc\FP@tmpyd%
+  %hold an arbitrary solution
+  \let\FP@tmpya\FP@tmpd%
+  \let\FP@tmpyb\FP@tmpe%
+  \let\FP@tmpyc\FP@tmpf%
+  %compute A and y from these solutions
+  \FP@qqsolveAy{#1}{#2}{#3}%
+  %compute first quadratic equation
+  \FPeval\FP@tmpp{((#2)/(#1)+(\FP@tmpA))/2}%
+  \FPeval\FP@tmpq{(\FP@tmpy)+((#2)*(\FP@tmpy)-(#4))/(#1)/(\FP@tmpA)}%
+  \FP@qsolve\FP@tmpg\FP@tmpf{1}\FP@tmpp\FP@tmpq%
+  %compute second quadratic equation
+  \FPeval\FP@tmpp{((#2)/(#1)-(\FP@tmpA))/2}%
+  \FPeval\FP@tmpq{(\FP@tmpy)-((#2)*(\FP@tmpy)-(#4))/(#1)/(\FP@tmpA)}%
+  \FP@qsolve\FP@tmpe\FP@tmpd{1}\FP@tmpp\FP@tmpq%
+}
+
+%subsolve a*x^4 + c*x^2 + e = 0
+\def\FP@qsolve@zero#1#2#3{%
+  \FPeval\FP@tmpy{(#2)*(#2) - 4*(#1)*(#3)}%
+  \FPsgn\FP@tmp\FP@tmpy%
+  \expandafter\ifnum\FP@tmp<0\relax%
+    \FP@errmessage{Equation of 4-th degree has no solution}%
+  \else%
+    %compute solutions
+    \FPeval\FP@tmpya{neg(root(2,\FP@tmpy)+(#2))/(2*(#1))}%
+    \FPeval\FP@tmpyb{(root(2,\FP@tmpy)-(#2))/(2*(#1))}%
+    \FPsgn\FP@tmpf\FP@tmpya%
+    \FPsgn\FP@tmpg\FP@tmpyb%
+    \ifnum\expandafter\ifnum\FP@tmpf<0 0\else1\fi\expandafter\ifnum\FP@tmpg<0 0\else1\fi=0\relax%
+      \FP@errmessage{Equation of 4-th degree has no solution}%
+    \else%
+      \expandafter\ifnum\FP@tmpf<0\relax%
+        \FP@warnmessage{Equation of 4-th degree only has two solutions}%
+	\let\FP@tmpya\FP@tmpyb%
+      \else%
+        \expandafter\ifnum\FP@tmpg<0\relax%
+          \FP@warnmessage{Equation of 4-th degree only has two solutions}%
+	  \let\FP@tmpyb\FP@tmpya%
+        \fi%
+      \fi%
+      %compute solutions
+      \FProot\FP@tmpg\FP@tmpya{2}%
+      \FPneg\FP@tmpf\FP@tmpg%
+      \FProot\FP@tmpe\FP@tmpyb{2}%
+      \FPneg\FP@tmpd\FP@tmpe%
+    \fi%
+  \fi%
+}
+
+%subsolve a*x^4 + b*x^3 + c*x^2 + b*x + a = 0
+\def\FP@qsolve@eq#1#2#3{%
+  \FPeval\FP@tmpy{(#2)*(#2) - 4*(#1)*(#3) + 8*(#1)*(#1)}%
+  \FPsgn\FP@tmp\FP@tmpy%
+  \expandafter\ifnum\FP@tmp<0\relax%
+    \FP@errmessage{Equation of 4-th degree has no solution}%
+  \else%
+    %compute solutions
+    \FPeval\FP@tmpya{neg(root(2,\FP@tmpy)+(#2))/(2*(#1))}%
+    \FPeval\FP@tmpyb{(root(2,\FP@tmpy)-(#2))/(2*(#1))}%
+    \FPeval\FP@tmpyc{(\FP@tmpya)*(\FP@tmpya)-4}%
+    \FPeval\FP@tmpyd{(\FP@tmpyb)*(\FP@tmpyb)-4}%
+    \FPsgn\FP@tmpf\FP@tmpyc%
+    \FPsgn\FP@tmpg\FP@tmpyd%
+    \ifnum\expandafter\ifnum\FP@tmpf<0 0\else1\fi\expandafter\ifnum\FP@tmpg<0 0\else1\fi=0\relax%
+      \FP@errmessage{Equation of 4-th degree has no solution}%
+    \else%
+      \expandafter\ifnum\FP@tmpf<0\relax%
+        \FP@warnmessage{Equation of 4-th degree only has two solutions}%
+	\let\FP@tmpya\FP@tmpyb%
+	\let\FP@tmpyc\FP@tmpyd%
+      \else%
+        \expandafter\ifnum\FP@tmpg<0\relax%
+          \FP@warnmessage{Equation of 4-th degree only has two solutions}%
+	  \let\FP@tmpyb\FP@tmpya%
+	  \let\FP@tmpyd\FP@tmpyc%
+        \fi%
+      \fi%
+      %compute solutions
+      \FPeval\FP@tmpg{((\FP@tmpya)+root(2,(\FP@tmpyc)))/2}%
+      \FPeval\FP@tmpf{((\FP@tmpya)-root(2,(\FP@tmpyc)))/2}%
+      \FPeval\FP@tmpe{((\FP@tmpyb)+root(2,(\FP@tmpyd)))/2}%
+      \FPeval\FP@tmpd{((\FP@tmpyb)-root(2,(\FP@tmpyd)))/2}%
+    \fi%
+  \fi%
+}
+
+%complete solve of equation of 4-th degree
+\def\FP@qqsolve#1#2#3#4#5#6#7#8#9{%
+  % #1 macro, which gets the 1st result
+  % #2 macro, which gets the 2nd result
+  % #3 macro, which gets the 3nd result
+  % #4 macro, which gets the 4th result
+  % #5 value a
+  % #6 value b
+  % #7 value c
+  % #8 value d
+  % #9 value e
+  %
+  \FP@beginmessage{QQSOLVE}%
+  %
+  {\def\FP@beginmessage##1{}%
+   \def\FP@endmessage##1{}%
+   %
+   \FPifzero{#5}%
+     \FP@warnmessage{Equation of 4-th degree is cubic}%
+     \FP@csolve\FP@tmpd\FP@tmpe\FP@tmpf{#6}{#7}{#8}{#9}%
+     \let\FP@tmpg\FP@tmpd%
+   \else%
+     \FPsgn\FP@tmpg{#6}%
+     \FPsgn\FP@tmpf{#8}%
+     \ifnum\expandafter\ifnum\FP@tmpg=0 0\else1\fi\expandafter\ifnum\FP@tmpf=0 0\else1\fi=0\relax%
+        %case b=d=0
+	\FP@qsolve@zero{#5}{#7}{#9}%
+     \else%
+       \FPupn\FP@tmpg{#5 #9 sub sgn}%
+       \FPupn\FP@tmpf{#6 #8 sub sgn}%
+       \ifnum\expandafter\ifnum\FP@tmpg=0 0\else1\fi\expandafter\ifnum\FP@tmpf=0 0\else1\fi=0\relax%
+          %case a=e, b=d
+	  \FP@qsolve@eq{#5}{#6}{#7}%
+       \else%
+         \FP@@qqsolve{#5}{#6}{#7}{#8}{#9}%
+       \fi%
+     \fi%
+   \fi%
+   %
+   \global\let\FP@tmpa\FP@tmpg%
+   \global\let\FP@tmpb\FP@tmpf%
+   \global\let\FP@tmpc\FP@tmpe%
+   \global\let\FP@tmpd\FP@tmpd%
+  }%
+  %
+  \let#1\FP@tmpa%
+  \let#2\FP@tmpb%
+  \let#3\FP@tmpc%
+  \let#4\FP@tmpd%
+  %
+  \FP@endmessage{}%
+}

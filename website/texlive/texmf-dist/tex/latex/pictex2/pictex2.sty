@@ -1,0 +1,463 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% pictex2.sty -- extension to PiCTeX
+%
+% William Park <opengeometry@yahoo.ca>
+% Dec 1997, Aug 1998, May 1999
+%
+%
+% Introduction:
+% -------------
+% 
+% PiCTeX's \putrule requires you to calculate the absolute coordinates,
+% and connects between only 2 points at a time.  I found this very
+% inconvenient to calculate the coordinates repeatedly for something
+% like
+%     \putrule from x0 y0 to x1 y1
+%     \putrule from x1 y1 to x2 y2
+%     ...
+%     \putrule from .. .. to xn yn
+% but I didn't want to use
+%     \setlinear
+%     \plot x0 y0 x1 y1 x2 y2 ... xn yn /
+% because it consumes too much memory, using dots where rules can be
+% used.  Also, I wanted to draw boxes, circles, and other LaTeX and
+% PiCTeX figures at the current position whose coordinate can be pain to
+% calculate manually.  
+% 
+% This file defines 2 user commands:
+%     \putanyline, \setanyline
+% Everything else is internal macros.
+% 
+% 
+% Extension 1:  \putanyline
+% -------------------------
+% 
+% Therefore, I wrote \putanyline which connects points using \putrule
+% (rules) or \plot (dots) depending whether the line segment is
+% horizontal, vertical, or sloped.  It automatically calculates the
+% current position, so that you can use relative coordinate when
+% specifying the next point to go to.  Furthermore, you can insert
+% boxes, circles, and vectors at the current position.  In effect,
+% \putanyline allows you to draw without "lifting pen from paper".  
+% 
+% Its usage is
+%     \putanyline from x y <command> <arguments> <command> <arguments> ... /
+% where command/arguments are any permutation of 
+%     from x y	-- starting point
+%     to x y	-- draw line to (x,y), using \plot if necessary
+%     slope dx dy	-- draw line to (dx,dy), using \plot if necessary
+%     jump dx dy	-- jump by <dx,dy> without drawing
+%     right s	-- draw horizontal rule to right by s unit
+%     left s	-- draw horizontal rule to left by s unit
+%     up s	-- draw vertical rule up by s unit
+%     down s	-- draw vertical rule down by s unit
+%     x a	-- draw horizontal rule to x=a
+%     y b	-- draw vertical rule to y=b
+%     RIGHT s	-- draw horizontal LaTeX vector to right by s unit
+%     LEFT s	-- draw horizontal LaTeX vector to left by s unit
+%     UP s	-- draw vertical LaTeX vector up by s unit
+%     DOWN s	-- draw vertical LaTeX vector down by s unit
+%     X a	-- draw horizontal LaTeX vector to x=a
+%     Y b	-- draw vertical LaTeX vector to y=b
+%     box width height	-- put corner of box at current point
+%     circle dia	-- put center of circle at current point
+%     arc dx dy deg	-- draw arc from (dx,dy) about current point
+%     BOX (x,y) [Blrbt]	-- put LaTeX \framebox(x,y){} with [] orientation
+%     CIRCLE dia	-- put LaTeX \circle{d} at current point
+%     VECTOR (x,y) s	-- put LaTeX \vector(x,y){s} at current point
+%     SLOPE (x,y) s	-- put LaTeX \line(x,y){s} at current point
+% 
+% For example, the repeated \putrule above can be replaced by
+%     \putanyline from x0 y0  to x1 y1  to x2 y2 ... to xn yn /
+% But, if it will be using horizontal or vertical rules anyway, it is
+% more convenient to use relative coordinate and write 
+%     \putanyline from x0 y0  right a  up b  left c  down d ... /
+% where each direction implies starting from current position which is
+% calculated and updated automatically.  However, the following commands
+%     box, circle, arc, BOX, CIRCLE 
+% do not update the current position, since there is no clear "end"
+% point to go to.
+% 
+% When using LaTeX objects, PiCTeX's horizontal and vertical scales
+% should be same as LaTeX's \unitlength.  I usually do something like
+%     \usepackage{pictex2}
+%     ...
+%     $$\beginpicture \unitlength=1cm
+%     \setcoordinatesystem units <\unitlength,\unitlength>
+%     ...
+%     \endpicture$$
+% 
+% 
+% Extension 2:  \setanyline
+% -------------------------
+% 
+% I also wrote \setanyline mode for \plot to use rules if a line segment
+% is horizontal or vertical.  Its usage is similar to \setlinear,
+%     \setanyline
+%     \plot x0 y0 x1 y1 x2 y2 ... xn yn /
+% With this command, the points must be specified using absolute
+% coordinate as usual; you cannot use relative coordinates.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{pictex2}	% this package
+\RequirePackage{pictex}		% standard part of teTeX
+
+\catcode`!=11
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \putanyline from x y  to x y  slope dx dy  jump dx dy
+%     right s  left s  up s  down s  x a  y a
+%     RIGHT s  LEFT s  UP s  DOWN s  X a  Y b
+%     box w h  circle d  arc dx dy deg
+%     BOX (x,y) [Blrtb]  CIRCLE d  VECTOR (x,y) s  SLOPE (x,y) s
+% /
+%
+\def\putanyline{\!putanyline}%	changed from \multiput
+\def\!putanyline{\futurelet\!nextchar\!!putanyline}
+\def\!!putanyline{%
+        \if f\!nextchar \def\!!!putanyline{\!putanylinefrom}%
+  \else \if t\!nextchar \def\!!!putanyline{\!putanylineto}%
+  \else \if s\!nextchar \def\!!!putanyline{\!putanylineslope}%
+  \else \if j\!nextchar \def\!!!putanyline{\!putanylinejump}%
+%
+  \else \if r\!nextchar \def\!!!putanyline{\!putanylineright}%
+  \else \if l\!nextchar \def\!!!putanyline{\!putanylineleft}%
+  \else \if u\!nextchar \def\!!!putanyline{\!putanylineup}%
+  \else \if d\!nextchar \def\!!!putanyline{\!putanylinedown}%
+  \else \if x\!nextchar	\def\!!!putanyline{\!putanylinex}%
+  \else \if y\!nextchar \def\!!!putanyline{\!putanyliney}%
+%
+  \else \if R\!nextchar \def\!!!putanyline{\!putanylineRIGHT}%
+  \else \if L\!nextchar \def\!!!putanyline{\!putanylineLEFT}%
+  \else \if U\!nextchar \def\!!!putanyline{\!putanylineUP}%
+  \else \if D\!nextchar \def\!!!putanyline{\!putanylineDOWN}%
+  \else \if X\!nextchar	\def\!!!putanyline{\!putanylineX}%
+  \else \if Y\!nextchar \def\!!!putanyline{\!putanylineY}%
+%
+  \else \if b\!nextchar \def\!!!putanyline{\!putanylinebox}%
+  \else \if c\!nextchar \def\!!!putanyline{\!putanylinecircle}%
+  \else \if a\!nextchar \def\!!!putanyline{\!putanylinearc}%
+%
+  \else \if B\!nextchar \def\!!!putanyline{\!putanylineBOX}%
+  \else \if C\!nextchar \def\!!!putanyline{\!putanylineCIRCLE}%
+  \else \if V\!nextchar \def\!!!putanyline{\!putanylineVECTOR}%
+  \else \if S\!nextchar \def\!!!putanyline{\!putanylineSLOPE}%
+%
+  \fi \fi \fi \fi
+  \fi \fi \fi \fi \fi \fi
+  \fi \fi \fi \fi \fi \fi
+  \fi \fi \fi
+  \fi \fi \fi \fi
+  \!!!putanyline}
+
+% from x y	-- starting point
+% to x y	-- draw line to (x,y), using \plot if necessary
+% slope dx dy	-- draw line to (dx,dy), using \plot if necessary
+% jump dx dy	-- jump by <dx,dy> without drawing
+%
+\def\!putanylinefrom from #1 #2 {%
+  \!xS=\!M{#1}\!xunit
+  \!yS=\!M{#2}\!yunit
+  \!ifnextchar/{\!finish}{\!putanyline}}
+\def\!putanylineto to #1 #2 {%
+  \!xE=\!M{#1}\!xunit
+  \!yE=\!M{#2}\!yunit
+  \!drawputanyline}
+\def\!putanylineslope slope #1 #2 {%
+  \!xE=\!xS  \!xdiff=\!M{#1}\!xunit  \advance\!xE by \!xdiff
+  \!yE=\!yS  \!ydiff=\!M{#2}\!yunit  \advance\!yE by \!ydiff  
+  \!drawputanyline}
+\def\!putanylinejump jump #1 #2 {%
+  \!xdiff=\!M{#1}\!xunit  \advance\!xS by \!xdiff
+  \!ydiff=\!M{#2}\!yunit  \advance\!yS by \!ydiff  
+  \!ifnextchar/{\!finish}{\!putanyline}}
+
+\def\!drawputanyline{%
+  \!xM=\!xE
+  \!yM=\!yE
+  \!xdiff=\!xE	\advance\!xdiff by -\!xS
+  \!ydiff=\!yE	\advance\!ydiff by -\!yS
+  \ifdim \!xdiff=\!zpt% 	vertical rule
+    \ifdim \!ydiff<\!zpt% 	adjusted for line thickness
+      \!ydiff=-0.5\linethickness
+    \else
+      \!ydiff=0.5\linethickness
+    \fi
+    \advance\!yE by \!ydiff
+    \advance\!yS by -\!ydiff
+    \setdimensionmode
+    \putrule from {\!xS} {\!yS} to {\!xE} {\!yE}
+    \setcoordinatemode
+  \else \ifdim \!ydiff=\!zpt% 	horizontal rule
+    \ifdim \!xdiff<\!zpt% 	adjusted for line thickness
+      \!xdiff=-0.5\linethickness
+    \else
+      \!xdiff=0.5\linethickness
+    \fi
+    \advance\!xE by \!xdiff
+    \advance\!xS by -\!xdiff
+    \setdimensionmode
+    \putrule from {\!xS} {\!yS} to {\!xE} {\!yE}
+    \setcoordinatemode
+  \else%	line using \plot
+    {\setdimensionmode
+     \setlinear
+     \plot {\!xS} {\!yS} {\!xE} {\!yE} /
+     \setcoordinatemode}%
+  \fi \fi
+  \!xS=\!xM
+  \!yS=\!yM
+  \!ifnextchar/{\!finish}{\!putanyline}}
+
+% right s	-- draw horizontal rule to right by s unit
+% left s	-- draw horizontal rule to left by s unit
+% up s		-- draw vertical rule up by s unit
+% down s	-- draw vertical rule down by s unit
+% x a		-- draw horizontal rule to x=a
+% y b		-- draw vertical rule to y=b
+%
+\def\!putanylineright right #1 {%
+  \!xE=\!xS  \!xdiff=\!M{#1}\!xunit  \advance\!xE by \!xdiff
+  \!yE=\!yS
+  \!drawputanyline} 
+\def\!putanylineleft left #1 {%
+  \!xE=\!xS  \!xdiff=\!M{#1}\!xunit  \advance\!xE by -\!xdiff
+  \!yE=\!yS
+  \!drawputanyline}
+\def\!putanylineup up #1 {%
+  \!xE=\!xS
+  \!yE=\!yS  \!ydiff=\!M{#1}\!yunit  \advance\!yE by \!ydiff
+  \!drawputanyline}
+\def\!putanylinedown down #1 {%
+  \!xE=\!xS
+  \!yE=\!yS  \!ydiff=\!M{#1}\!yunit  \advance\!yE by -\!ydiff
+  \!drawputanyline}
+\def\!putanylinex x #1 {%
+  \!xE=\!M{#1}\!xunit
+  \!yE=\!yS
+  \!drawputanyline} 
+\def\!putanyliney y #1 {%
+  \!xE=\!xS
+  \!yE=\!M{#1}\!yunit
+  \!drawputanyline}
+
+% RIGHT s	-- draw horizontal LaTeX vector to right by s unit
+% LEFT s	-- draw horizontal LaTeX vector to left by s unit
+% UP s		-- draw vertical LaTeX vector up by s unit
+% DOWN s	-- draw vertical LaTeX vector down by s unit
+% X a		-- draw horizontal LaTeX vector to x=a
+% Y b		-- draw vertical LaTeX vector to y=b
+%
+\def\!putanylineRIGHT RIGHT #1 {%
+  \setdimensionmode
+  \put {\vector(1,0){#1}} [Bl] at {\!xS} {\!yS}
+  \setcoordinatemode
+  \!xdiff=\!M{#1}\!xunit  \advance\!xS by \!xdiff
+  \!ifnextchar/{\!finish}{\!putanyline}}
+\def\!putanylineLEFT LEFT #1 {%
+  \setdimensionmode
+  \put {\vector(-1,0){#1}} [Bl] at {\!xS} {\!yS}
+  \setcoordinatemode
+  \!xdiff=\!M{#1}\!xunit  \advance\!xS by -\!xdiff
+  \!ifnextchar/{\!finish}{\!putanyline}}
+\def\!putanylineUP UP #1 {%
+  \setdimensionmode
+  \put {\vector(0,1){#1}} [Bl] at {\!xS} {\!yS}
+  \setcoordinatemode
+  \!ydiff=\!M{#1}\!yunit  \advance\!yS by \!ydiff
+  \!ifnextchar/{\!finish}{\!putanyline}}
+\def\!putanylineDOWN DOWN #1 {%
+  \setdimensionmode
+  \put {\vector(0,-1){#1}} [Bl] at {\!xS} {\!yS}
+  \setcoordinatemode
+  \!ydiff=\!M{#1}\!yunit  \advance\!yS by -\!ydiff
+  \!ifnextchar/{\!finish}{\!putanyline}}
+\def\!putanylineX X #1 {%
+  \!xdiff=\!M{#1}\!xunit
+  \advance\!xdiff by -\!xS
+  \Divide <\!xdiff> by <\unitlength> forming <\!xE>
+  \placevalueinpts of <\!xE> in {\!putanylinescale}
+  \setdimensionmode
+  \ifdim \!xdiff<\!zpt
+    \put {\vector(-1,0){-\!putanylinescale}} [Bl] at {\!xS} {\!yS}
+  \else
+    \put {\vector(1,0){\!putanylinescale}} [Bl] at {\!xS} {\!yS}
+  \fi
+  \setcoordinatemode
+  \advance\!xS by \!xdiff
+  \!ifnextchar/{\!finish}{\!putanyline}}
+\def\!putanylineY Y #1 {%
+  \!ydiff=\!M{#1}\!yunit
+  \advance\!ydiff by -\!yS
+  \Divide <\!ydiff> by <\unitlength> forming <\!yE>
+  \placevalueinpts of <\!yE> in {\!putanylinescale}
+  \setdimensionmode
+  \ifdim \!ydiff<\!zpt
+    \put {\vector(0,-1){-\!putanylinescale}} [Bl] at {\!xS} {\!yS}
+  \else
+    \put {\vector(0,1){\!putanylinescale}} [Bl] at {\!xS} {\!yS}
+  \fi
+  \setcoordinatemode
+  \advance\!yS by \!ydiff
+  \!ifnextchar/{\!finish}{\!putanyline}}
+
+% box width height	-- put corner of box at current point
+% circle dia		-- put center of circle at current point
+% arc dx dy deg		-- draw arc from <dx,dy> about current point
+%
+\def\!putanylinebox box #1 #2 {%
+  \!xE=\!xS  \!xdiff=\!M{#1}\!xunit  \advance\!xE by \!xdiff
+  \!yE=\!yS  \!ydiff=\!M{#2}\!yunit  \advance\!yE by \!ydiff  
+  \setdimensionmode
+  \putrectangle corners at {\!xS} {\!yS} and {\!xE} {\!yE}
+  \setcoordinatemode
+  \!ifnextchar/{\!finish}{\!putanyline}}
+\def\!putanylinecircle circle #1 {%
+  \!xE=\!xS  \!xdiff=\!M{#1}\!xunit  \advance\!xE by 0.5\!xdiff
+  \!yE=\!yS
+  {\setdimensionmode
+   \circulararc 360 degrees from {\!xE} {\!yE} center at {\!xS} {\!yS}
+   \setcoordinatemode}%
+  \!ifnextchar/{\!finish}{\!putanyline}}
+\def\!putanylinearc arc #1 #2 #3 {%
+  \!xE=\!xS  \!xdiff=\!M{#1}\!xunit  \advance\!xE by \!xdiff
+  \!yE=\!yS  \!ydiff=\!M{#2}\!yunit  \advance\!yE by \!ydiff
+  {\setdimensionmode
+   \circulararc {#3} degrees from {\!xE} {\!yE} center at {\!xS} {\!yS}
+   \setcoordinatemode}%
+  \!ifnextchar/{\!finish}{\!putanyline}}
+
+% BOX (x,y) [Blrbt]	-- put LaTeX \framebox(x,y){} with [] orientation
+% CIRCLE dia		-- put LaTeX \circle{d} at current point
+% VECTOR (x,y) s	-- put LaTeX \vector(x,y){s} at current point
+% SLOPE (x,y) s		-- put LaTeX \line(x,y){s} at current point
+%
+\def\!putanylineBOX BOX (#1,#2) [#3] {%
+    \setdimensionmode
+    \put {\begin{picture}(#1,#2)
+	  \put(0,0){\framebox(#1,#2){}}
+	  \end{picture}} [#3] at {\!xS} {\!yS}
+    \setcoordinatemode
+    \!ifnextchar/{\!finish}{\!plotrule}}
+\def\!putanylineCIRCLE CIRCLE #1 {%
+  \setdimensionmode
+  \put {\circle{#1}} [Bl] at {\!xS} {\!yS}
+  \setcoordinatemode
+  \!ifnextchar/{\!finish}{\!putanyline}}
+\def\!putanylineVECTOR VECTOR (#1,#2) #3 {%
+  \setdimensionmode
+  \put {\vector(#1,#2){#3}} [Bl] at {\!xS} {\!yS}
+  \setcoordinatemode
+  \!xE=#1\unitlength
+  \!yE=#2\unitlength
+  \ifdim \!xE=\!zpt%	vertical
+    \!xdiff=\!zpt
+    \!ydiff=#3\unitlength
+    \ifdim \!yE<\!zpt
+      \!ydiff=-\!ydiff
+    \fi
+  \else
+    \!xdiff=#3\unitlength
+    \ifdim \!xE<\!zpt 
+      \!xdiff=-\!xdiff
+    \fi
+    \Divide <\!yE> by <\!xE> forming <\!ydiff>
+    \placevalueinpts of <\!ydiff> in {\!putanylinescale}
+    \!ydiff=\!putanylinescale\!xdiff
+  \fi
+  \advance\!xS by \!xdiff
+  \advance\!yS by \!ydiff
+  \!ifnextchar/{\!finish}{\!putanyline}}
+\def\!putanylineSLOPE SLOPE (#1,#2) #3 {%
+  \setdimensionmode
+  \put {\line(#1,#2){#3}} [Bl] at {\!xS} {\!yS}
+  \setcoordinatemode
+  \!xE=#1\unitlength
+  \!yE=#2\unitlength
+  \ifdim \!xE=\!zpt%	vertical
+    \!xdiff=\!zpt
+    \!ydiff=#3\unitlength
+    \ifdim \!yE<\!zpt
+      \!ydiff=-\!ydiff
+    \fi
+  \else
+    \!xdiff=#3\unitlength
+    \ifdim \!xE<\!zpt 
+      \!xdiff=-\!xdiff
+    \fi
+    \Divide <\!yE> by <\!xE> forming <\!ydiff>
+    \placevalueinpts of <\!ydiff> in {\!putanylinescale}
+    \!ydiff=\!putanylinescale\!xdiff
+  \fi
+  \advance\!xS by \!xdiff
+  \advance\!yS by \!ydiff
+  \!ifnextchar/{\!finish}{\!putanyline}}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \setanyline
+% \plot x0 y0 x1 y1 x2 y2 ... /
+%
+\def\setanyline{%	changed from \setlinear
+  \let\!drawcurve=\!lcurverule
+  \let\!!Shade=\!!lShade
+  \let\!!!Shade=\!!!lShade}
+  
+\def\!lcurverule #1 #2 {%	changed from \!lcurve
+  \!start (#1,#2)
+  \!Ljoinrule}
+
+\def\!Ljoinrule #1 #2 {%	changed from \!Ljoin
+  \!ljoinrule (#1,#2)
+  \!ifnextchar/{\!finish}{\!Ljoinrule}}
+
+\def\!ljoinrule (#1,#2){%	changed from \!ljoin
+  \advance\!intervalno by 1
+  \!xE=\!M{#1}\!xunit
+  \!yE=\!M{#2}\!yunit
+  \!rotateaboutpivot\!xE\!yE
+  \!xdiff=\!xE	\advance \!xdiff by -\!xS
+  \!ydiff=\!yE	\advance \!ydiff by -\!yS
+  \!Pythag\!xdiff\!ydiff\!arclength%    **  arclength = sqrt(xdiff**2+ydiff**2) 
+  \global\advance \totalarclength by \!arclength%
+  \ifdim \!xdiff=\!zpt% 	vertical rule
+    \!xM=\!xE
+    \!yM=\!yE
+    \ifdim \!ydiff<\!zpt% 	adjusted for line thickness
+      \!ydiff=-0.5\linethickness
+    \else
+      \!ydiff=0.5\linethickness
+    \fi
+    \advance\!yE by \!ydiff
+    \advance\!yS by -\!ydiff
+    \setdimensionmode
+    \putrule from {\!xS} {\!yS} to {\!xE} {\!yE}
+    \setcoordinatemode
+    \!xS=\!xM
+    \!yS=\!yM
+  \else \ifdim \!ydiff=\!zpt% 	horizontal rule
+    \!xM=\!xE
+    \!yM=\!yE
+    \ifdim \!xdiff<\!zpt% 	adjusted for line thickness
+      \!xdiff=-0.5\linethickness
+    \else
+      \!xdiff=0.5\linethickness
+    \fi
+    \advance\!xE by \!xdiff
+    \advance\!xS by -\!xdiff
+    \setdimensionmode
+    \putrule from {\!xS} {\!yS} to {\!xE} {\!yE}
+    \setcoordinatemode
+    \!xS=\!xM
+    \!yS=\!yM
+  \else 
+    \!drawlinearsegment% set by dashpat to \!linearsolid or \!lineardashed
+    \!xS=\!xE
+    \!yS=\!yE
+  \fi \fi
+  \ignorespaces}
+
+\catcode`!=12
+
+% End of pictex2.sty

@@ -1,0 +1,262 @@
+%%
+%% This is file `dottex.sty',
+%% generated with the docstrip utility.
+%%
+%% The original source files were:
+%%
+%% dottex.dtx  (with options: `package')
+%% 
+%% Copyright (c) 2005, Lars Kotthoff <metalhead@metalhead.ws>
+%% 
+%% Large portions copied from pdftex,
+%% Copyright (c) 2001-3, Radhakrishnan CV <cvr@river-valley.com>
+%%                       Rajagopal CV <cvr3@river-valley.com>
+%%                       http://www.river-valley.com
+%% 
+%% River Valley Technologies, Floor III, SJP Buildings, Cotton Hills
+%% Trivandrum, India 695014
+%% 
+%% Tel: +91 471 233 7501
+%% 
+%%                     Antoine Chambert-Loir
+%%                     <chambert@math.polytechnique.fr>
+%%                     http://www.math.polytechnique.fr/\protect \unhbox \voidb@x \penalty \@M \ {}chambert
+%% 
+%% Ecole polytechnique, Palaiseau Cedex, France
+%% 
+%% This program is free software; you can redistribute it and/or
+%% modify it under the terms of the GNU General Public License
+%% as published by the Free Software Foundation; either version 2
+%% of the License, or (at your option) any later version.
+%% 
+%% This program is distributed in the hope that it will be useful,
+%% but WITHOUT ANY WARRANTY; without even the implied warranty of
+%% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%% GNU General Public License for more details.
+%% 
+%% You should have received a copy of the GNU General Public License
+%% along with this program (gpl.txt); if not, write to the Free
+%% Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
+%% MA  02111-1307, USA.
+%% 
+ \NeedsTeXFormat{LaTeX2e}[1999/12/01]
+ \ProvidesPackage{dottex}
+    [2007/08/22 v0.6 dot/neato graphs in LaTeX]
+\RequirePackage{graphicx,moreverb,keyval}
+\newif\ifShellEscape
+\newif\ifmiktex \miktexfalse
+\newif\ifpdf \pdffalse
+
+\DeclareOption{shell}{\ShellEscapetrue}
+\DeclareOption{noshell}{\ShellEscapefalse}
+\DeclareOption{miktex}{\global\miktextrue}
+\DeclareOption{pdf}{\pdftrue}
+
+\ExecuteOptions{shell}
+\ProcessOptions\relax
+%% test if shell escape really works
+\ifShellEscape
+    \def\tmpfile{/tmp/w18-test-\the\year\the\month\the\day\the\time}
+\ifmiktex
+\def\tmpfile{w18-test-\the\year\the\month\the\day\the\time}
+\immediate\write18{echo t > "\tmpfile"}
+\else
+\immediate\write18{touch \tmpfile}
+\fi
+\ifmiktex
+\IfFileExists{\tmpfile.}{\ShellEscapetrue}{\ShellEscapefalse}
+\immediate\write18{del "\tmpfile"}
+\else
+\IfFileExists{\tmpfile}{\ShellEscapetrue}{\ShellEscapefalse}
+\immediate\write18{rm -f \tmpfile}
+\fi
+\fi
+
+\ifShellEscape
+    \PackageInfo{dottex}
+    {Automatically converting dot/neato files}
+\else
+    \PackageWarningNoLine{dottex}
+        {Shell escape not enabled.\MessageBreak
+        You'll need to convert the graphs yourself.}
+\fi
+\newcounter{fignum}
+\def\figname{\jobname-dottex-fig\thefignum}
+
+\def\dotverbatimwrite#1{%
+    \def\BeforeStream
+    {\message{Opening Dot stream=\figname.dot}%
+        \immediate\write\verbatim@out{\string digraph\space G\space {/*}*/}
+    }
+    \@bsphack
+    \immediate\openout \verbatim@out #1
+    \BeforeStream%
+    \let\do\@makeother\dospecials
+    \catcode`\^^M\active
+    \def\verbatim@processline{%
+        \immediate\write\verbatim@out
+        {\the\verbatim@line}}%
+    \verbatim@start}
+\def\enddotverbatimwrite{%
+    \immediate\write\verbatim@out{/*{*/}}
+    \immediate\closeout\verbatim@out
+    \@esphack}
+
+\def\neatoverbatimwrite#1{%
+    \def\BeforeStream
+    {\message{Opening Neato stream=\figname.neato}%
+        \immediate\write\verbatim@out{\string graph\space G\space {/*}*/}
+    }
+    \@bsphack
+    \immediate\openout \verbatim@out #1
+    \BeforeStream%
+    \let\do\@makeother\dospecials
+    \catcode`\^^M\active
+    \def\verbatim@processline{%
+        \immediate\write\verbatim@out
+        {\the\verbatim@line}}%
+    \verbatim@start}
+\def\endneatoverbatimwrite{%
+    \immediate\write\verbatim@out{/*{*/}}
+    \immediate\closeout\verbatim@out
+    \@esphack}
+\define@key{pic}{width}{\def\dotwidth{#1}}
+\define@key{pic}{height}{\def\dotheight{#1}}
+\newenvironment{dotpic}[1][]{\stepcounter{fignum}%
+\let\dotwidth\undefined
+\let\dotheight\undefined
+\setkeys{pic}{#1}
+    \xdef\dotCutFile{\figname.dot}
+    \dotverbatimwrite{\dotCutFile}}
+    {\enddotverbatimwrite%
+    \dotgraphicsinclude}
+
+\newenvironment{neatopic}[1][]{\stepcounter{fignum}%
+\let\dotwidth\undefined
+\let\dotheight\undefined
+\setkeys{pic}{#1}
+    \xdef\neatoCutFile{\figname.neato}
+    \neatoverbatimwrite{\neatoCutFile}}
+    {\endneatoverbatimwrite%
+    \neatographicsinclude}
+\long\gdef\dotgraphicsprocess{%
+    \ifShellEscape
+\IfFileExists{\figname.dot}{%
+\immediate\write18{dot -Tps2 -o \figname.ps \figname.dot}
+\IfFileExists{\figname.ps}{%
+\ifpdf
+\immediate\write18{ps2pdf \figname.ps \figname.pdf}
+\IfFileExists{\figname.pdf}{%
+\PackageInfo{dottex}
+{\figname.dot converted}}
+{\PackageWarningNoLine{dottex}
+{Conversion of \figname.dot failed.}}
+\else
+\PackageInfo{dottex}
+{\figname.dot converted}
+\fi}
+{\PackageWarningNoLine{dottex}
+{Conversion of \figname.dot failed.}}}{}
+\fi}
+
+\long\gdef\neatographicsprocess{%
+    \ifShellEscape
+        \IfFileExists{\figname.neato}{%
+            \immediate\write18{neato -Tps2 -o \figname.ps \figname.neato}
+            \IfFileExists{\figname.ps}{%
+\ifpdf
+\immediate\write18{ps2pdf \figname.ps \figname.pdf}
+\IfFileExists{\figname.pdf}{%
+\PackageInfo{dottex}
+{\figname.dot converted}}
+{\PackageWarningNoLine{dottex}
+{Conversion of \figname.dot failed.}}
+\else
+\PackageInfo{dottex}
+{\figname.neato converted}
+\fi}
+                {\PackageWarningNoLine{dottex}
+                    {Conversion of \figname.neato failed.}}}{}
+\fi}
+\long\gdef\dotgraphicsinclude{\dotgraphicsprocess%
+\ifpdf
+\IfFileExists{\figname.pdf}{%
+\ifx\dotwidth\undefined
+\ifx\dotheight\undefined
+\includegraphics{\figname}
+\else
+\includegraphics[height=\dotheight]{\figname}
+\fi
+\else
+\ifx\dotheight\undefined
+\includegraphics[width=\dotwidth]{\figname}
+\else
+\includegraphics[width=\dotwidth,height=\dotheight]{\figname}
+\fi
+\fi
+}
+{\PackageWarningNoLine{dottex}
+{Please convert \figname.dot manually}}
+\else
+\IfFileExists{\figname.ps}{%
+\ifx\dotwidth\undefined
+\ifx\dotheight\undefined
+\includegraphics{\figname}
+\else
+\includegraphics[height=\dotheight]{\figname}
+\fi
+\else
+\ifx\dotheight\undefined
+\includegraphics[width=\dotwidth]{\figname}
+\else
+\includegraphics[width=\dotwidth,height=\dotheight]{\figname}
+\fi
+\fi
+}
+{\PackageWarningNoLine{dottex}
+{Please convert \figname.dot manually}}
+\fi
+}
+
+\long\gdef\neatographicsinclude{\neatographicsprocess%
+\ifpdf
+\IfFileExists{\figname.pdf}{%
+\ifx\dotwidth\undefined
+\ifx\dotheight\undefined
+\includegraphics{\figname}
+\else
+\includegraphics[height=\dotheight]{\figname}
+\fi
+\else
+\ifx\dotheight\undefined
+\includegraphics[width=\dotwidth]{\figname}
+\else
+\includegraphics[width=\dotwidth,height=\dotheight]{\figname}
+\fi
+\fi
+}
+{\PackageWarningNoLine{dottex}
+{Please convert \figname.neato manually}}
+\else
+\IfFileExists{\figname.ps}{%
+\ifx\dotwidth\undefined
+\ifx\dotheight\undefined
+\includegraphics{\figname}
+\else
+\includegraphics[height=\dotheight]{\figname}
+\fi
+\else
+\ifx\dotheight\undefined
+\includegraphics[width=\dotwidth]{\figname}
+\else
+\includegraphics[width=\dotwidth,height=\dotheight]{\figname}
+\fi
+\fi
+}
+{\PackageWarningNoLine{dottex}
+{Please convert \figname.neato manually}}
+\fi
+}
+\endinput
+%%
+%% End of file `dottex.sty'.

@@ -1,0 +1,522 @@
+%%
+%% This is file `regexpatch.sty',
+%% generated with the docstrip utility.
+%%
+%% The original source files were:
+%%
+%% regexpatch.dtx  (with options: `package')
+%% 
+%% Do not distribute this file without also distributing the
+%% source files specified above.
+%% 
+%% File: regexpatch.dtx (C) Copyright 2012 Enrico Gregorio
+%%
+%% It may be distributed and/or modified under the conditions of the
+%% LaTeX Project Public License (LPPL), either version 1.3c of this
+%% license or (at your option) any later version.  The latest version
+%% of this license is in the file
+%%
+%%    http://www.latex-project.org/lppl.txt
+%%
+%% This file is part of the "regexpatch bundle" (The Work in LPPL)
+%% and all files in that bundle must be distributed together.
+%%
+%% The released version of this bundle is available from CTAN.
+%%
+\RequirePackage{expl3}
+\GetIdInfo$Id: regexpatch.dtx 0.1dev 2012-04-15 12:00:00Z Enrico $
+          {Extending etoolbox patching commands}
+\ProvidesExplPackage
+  {\ExplFileName}{\ExplFileDate}{\ExplFileVersion}{\ExplFileDescription}
+\@ifpackagelater { expl3 } { 2012/01/19 }
+  { }
+  {
+    \PackageError { regexpatch } { Support~package~l3kernel~too~old. }
+      {
+        Please~install~an~up~to~date~version~of~l3kernel~
+        using~your~TeX~package~manager~or~from~CTAN.\\ \\
+        Loading~regexpatch~will~abort!
+      }
+    \tex_endinput:D
+  }
+\RequirePackage{xparse,l3regex,etoolbox}
+\bool_new:N \l_xpatch_protect_bool
+\bool_new:N \l_xpatch_optional_bool
+\bool_new:N \l_xpatch_patchable_bool
+\bool_new:N \l_xpatch_tracing_bool
+\tl_new:N \l_xpatch_name_tl
+\tl_new:N \l_xpatch_repl_tl
+\tl_new:N \l_xpatch_prefix_tl
+\tl_new:N \l_xpatch_arg_tl
+\tl_new:N \l_xpatch_replacement_tl
+\tl_new:N \l_xpatch_type_tl % for debugging messages
+\cs_generate_variant:Nn \regex_match:nnT {nVT}
+\cs_new:Npn \xpatch_main_check:N #1
+  {
+   \bool_set_false:N \l_xpatch_protect_bool
+   \bool_set_false:N \l_xpatch_optional_bool
+   \tl_set:Nx \l_xpatch_name_tl { \cs_to_str:N #1  }
+   \tl_set:Nx \l_xpatch_repl_tl { \token_get_replacement_spec:N #1 }
+   \tl_clear:N \l_xpatch_type_tl
+   \regex_match:nVT % \DeclareRobustCommand<control word>
+     {^\\protect\ \\\u{l_xpatch_name_tl}\ \ }
+     \l_xpatch_repl_tl
+     {
+      \bool_set_true:N \l_xpatch_protect_bool
+      \tl_put_right:Nx \l_xpatch_name_tl { \c_space_tl }
+      \tl_set:Nn \l_xpatch_type_tl { DRCw }
+     }
+   \regex_match:nVT % \DeclareRobustCommand<control symbol>
+     {^\\x@protect\ \\\u{l_xpatch_name_tl}\\}
+     \l_xpatch_repl_tl
+     {
+      \bool_set_true:N \l_xpatch_protect_bool
+      \tl_put_right:Nx \l_xpatch_name_tl { \c_space_tl }
+      \tl_set:Nn \l_xpatch_type_tl { DRCs }
+     }
+   \regex_match:nVT % \newcommand<control word> with opt arg
+     {^\\@protected@testopt\ \\\u{l_xpatch_name_tl}\ \\\\}
+     \l_xpatch_repl_tl
+     {
+      \bool_set_true:N \l_xpatch_optional_bool
+      \tl_put_left:Nx \l_xpatch_name_tl { \c_backslash_str }
+      \tl_set:Nn \l_xpatch_type_tl { ncw+o }
+     }
+   \regex_match:nVT % \newcommand<control symbol> with opt arg
+     {^\\@protected@testopt\ \\\u{l_xpatch_name_tl}\\\\}
+     \l_xpatch_repl_tl
+     {
+      \bool_set_true:N \l_xpatch_optional_bool
+      \tl_put_left:Nx \l_xpatch_name_tl { \c_backslash_str }
+      \tl_set:Nn \l_xpatch_type_tl { ncs+o }
+     }
+   \regex_match:nVT % \newrobustcmd<any cs> with opt arg
+     {^\\@testopt\ \\\\\u{l_xpatch_name_tl}}
+     \l_xpatch_repl_tl
+     {
+      \bool_set_true:N \l_xpatch_optional_bool
+      \tl_put_left:Nx \l_xpatch_name_tl { \c_backslash_str }
+      \tl_set:Nn \l_xpatch_type_tl { nrc+o }
+     }
+   \bool_if:NT \l_xpatch_protect_bool
+     {
+      \tl_set:Nx \l_xpatch_repl_tl
+        { \exp_after:wN \token_get_replacement_spec:N
+            \cs:w \l_xpatch_name_tl \cs_end: }
+      \regex_match:nVT % \DeclareRobustCommand<any cs> with opt arg
+        {^\\@protected@testopt\ \\\u{l_xpatch_name_tl}\ \\\\}
+        \l_xpatch_repl_tl
+        {
+         \bool_set_true:N \l_xpatch_optional_bool
+         \tl_put_left:Nx \l_xpatch_name_tl { \c_backslash_str }
+         \tl_put_right:Nn \l_xpatch_type_tl { +o }
+        }
+     }
+   \bool_if:NT \l_xpatch_optional_bool
+     {
+      \regex_replace_once:nnN { .*? \{ (.*) \} \Z } { \1 }
+        \l_xpatch_repl_tl
+     }
+  }
+\cs_new:Npn \xpatch_main:NNN #1 #2 #3
+  {
+   \cs_if_exist:NTF #3
+     {
+      \xpatch_main_check:N #3
+      \bool_if:NT \l_xpatch_tracing_bool
+        { \xpatch_message_cstype:n #3 }
+      \exp_after:wN #1 \cs:w \l_xpatch_name_tl \cs_end:
+     }
+     {
+      \msg_term:x
+        {
+         xpatch~message \\
+        `\token_to_str:N #3'~is~undefined;~
+        I'll~ignore~the~request.
+        }
+      #2
+     }
+  }
+\cs_new:Npn \xpatch_get_all:N #1
+  {
+   \exp_args:NNf \tl_set:Nn \l_xpatch_prefix_tl
+      {\token_get_prefix_spec:N #1 }
+   \exp_args:NNnx \tl_set_rescan:Nnn
+     \l_xpatch_prefix_tl { } \l_xpatch_prefix_tl
+   \exp_args:NNf \tl_set:Nn \l_xpatch_arg_tl
+      {\token_get_arg_spec:N #1 }
+   \exp_args:NNnx \tl_set_rescan:Nnn
+     \l_xpatch_arg_tl { } \l_xpatch_arg_tl
+   \exp_args:NNf \tl_set:Nn \l_xpatch_replacement_tl
+      {\token_get_replacement_spec:N #1 }
+   \exp_args:NNnx \tl_set_rescan:Nnn
+     \l_xpatch_replacement_tl { } \l_xpatch_replacement_tl
+  }
+\cs_new:Npn \xpatch_rebuild:N #1
+  {
+   \tl_clear:N \l_tmpa_tl
+   \tl_put_right:NV \l_tmpa_tl \l_xpatch_prefix_tl
+   \tl_put_right:Nn \l_tmpa_tl { \tex_def:D #1 }
+   \tl_put_right:NV \l_tmpa_tl \l_xpatch_arg_tl
+   \tl_put_right:No \l_tmpa_tl { \exp_after:wN {\l_xpatch_replacement_tl} }
+   \tl_use:N \l_tmpa_tl
+  }
+\cs_new:Npn \xpatch_check_patchable:N #1
+  {
+   \cs_if_exist:NTF #1
+     {
+      \xpatch_get_all:N #1
+      \xpatch_rebuild:N \xpatch_tmpa:w
+      \cs_if_eq:NNTF #1 \xpatch_tmpa:w
+        {
+         \bool_set_true:N \l_xpatch_patchable_bool
+         \xpatch_message:n
+           {
+            Macro `\token_to_str:N #1'~is~patchable
+           }
+        }
+        {
+         \bool_set_false:N \l_xpatch_patchable_bool
+         \xpatch_message:n
+           {
+            Macro `\token_to_str:N #1'~is~NOT~patchable\\
+            (Check~if~it~contains~`@'~commands)
+           }
+        }
+     }
+     {
+      \bool_set_false:N \l_xpatch_patchable_bool
+      \xpatch_message:n
+        {
+         Macro `\token_to_str:N #1'~doesn't~exist.
+        }
+     }
+  }
+\cs_new:Npn \xpatch_pretocmd:Nnnn #1 #2 #3 #4
+  {
+   \xpatch_check_patchable:N #1
+   \bool_if:NTF \l_xpatch_patchable_bool
+      {
+       \tl_put_left:Nn \l_xpatch_replacement_tl { #2 }
+       \xpatch_rebuild:N #1
+       #3
+      }
+      {
+       #4
+      }
+  }
+\cs_new:Npn \xpatch_apptocmd:Nnnn #1 #2 #3 #4
+  {
+   \xpatch_check_patchable:N #1
+   \bool_if:NTF \l_xpatch_patchable_bool
+      {
+       \tl_put_right:Nn \l_xpatch_replacement_tl { #2 }
+       \xpatch_rebuild:N #1
+       #3
+      }
+      {
+       #4
+      }
+  }
+\cs_new:Npn \xpatch_regexpatchcmd_all:Nnnnn #1 #2 #3 #4 #5
+  {
+   \xpatch_check_patchable:N #1
+   \bool_if:NTF \l_xpatch_patchable_bool
+      {
+       \regex_replace_all:nnN { #2 } { #3 } \l_xpatch_replacement_tl
+       \xpatch_rebuild:N #1
+       #4
+      }
+      {
+       #5
+      }
+  }
+\cs_new:Npn \xpatch_regexpatchcmd_once:Nnnnn #1 #2 #3 #4 #5
+  {
+   \xpatch_check_patchable:N #1
+   \bool_if:NTF \l_xpatch_patchable_bool
+      {
+       \regex_replace_once:nnN { #2 } { #3 } \l_xpatch_replacement_tl
+       \xpatch_rebuild:N #1
+       #4
+      }
+      {
+       #5
+      }
+  }
+\cs_new:Npn \xpatch_patchcmd_once:Nnnnn #1 #2 #3 #4 #5
+  {
+   \xpatch_check_patchable:N #1
+   \bool_if:NTF \l_xpatch_patchable_bool
+      {
+       \tl_set:Nn \l_tmpa_tl { #2 }
+       \tl_set:Nn \l_tmpb_tl { #3 }
+       \regex_replace_once:nnN
+         { \u{l_tmpa_tl} }
+         { \u{l_tmpb_tl} }
+         \l_xpatch_replacement_tl
+       \xpatch_rebuild:N #1
+       #4
+      }
+      {
+       #5
+      }
+  }
+\cs_new:Npn \xpatch_patchcmd_all:Nnnnn #1 #2 #3 #4 #5
+  {
+   \xpatch_check_patchable:N #1
+   \bool_if:NTF \l_xpatch_patchable_bool
+      {
+       \tl_set:Nn \l_tmpa_tl { #2 }
+       \tl_set:Nn \l_tmpb_tl { #3 }
+       \regex_replace_all:nnN
+         { \u{l_tmpa_tl} }
+         { \u{l_tmpb_tl} }
+         \l_xpatch_replacement_tl
+       \xpatch_rebuild:N #1
+       #4
+      }
+      {
+       #5
+      }
+  }
+\cs_new:Npn \xpatch_message:n #1
+  {
+   \bool_if:NT \l_xpatch_tracing_bool
+     {
+      \msg_term:x { xpatch~message \\ #1 }
+     }
+  }
+\cs_new:Npn \xpatch_message_cstype:n #1
+  {
+   \prg_case_str:onn { \l_xpatch_type_tl }
+     {
+      { DRCw }   {
+                  \xpatch_message:n
+                    {
+                     `\token_to_str:N #1'~is~a~control~word~defined~
+                     with~\token_to_str:N \DeclareRobustCommand
+                    }
+                 }
+      { DRCw+o } {
+                  \xpatch_message:n
+                    {
+                     `\token_to_str:N #1'~is~a~control~word~defined~
+                     with~`\token_to_str:N \DeclareRobustCommand'~
+                     and~a~default~optional~argument~`\l_xpatch_repl_tl'
+                    }
+                 }
+      { DRCs }   {
+                  \xpatch_message:n
+                    {
+                     `\token_to_str:N #1'~is~a~control~symbol~defined~
+                     with~`\token_to_str:N \DeclareRobustCommand'
+                    }
+                 }
+      { DRCs+o } {
+                  \xpatch_message:n
+                    {
+                     `\token_to_str:N #1'~is~a~control~symbol~defined~
+                     with~`\token_to_str:N \DeclareRobustCommand'~
+                     and~a~default~optional~argument~`\l_xpatch_repl_tl'
+                    }
+                 }
+      { ncw+o }  {
+                  \xpatch_message:n
+                    {
+                     `\token_to_str:N #1'~is~a~control~word~defined~
+                     with~`\token_to_str:N \newcommand'~
+                     and~a~default~optional~argument~`\l_xpatch_repl_tl'
+                    }
+                 }
+      { ncs+o }  {
+                  \xpatch_message:n
+                    {
+                     `\token_to_str:N #1'~is~a~control~symbol~defined~
+                     with~`\token_to_str:N \newcommand'~
+                     and~a~default~optional~argument~`\l_xpatch_repl_tl'
+                    }
+                 }
+      { nrc+o }  {
+                  \xpatch_message:n
+                    {
+                     `\token_to_str:N #1'~is~a~control~sequence~defined~
+                     with~`\token_to_str:N \newrobustcmd'~
+                     and~a~default~optional~argument~`\l_xpatch_repl_tl'
+                    }
+                 }
+      }
+      {
+       \xpatch_message:n
+         {
+          `\token_to_str:N #1'~is~not~especially~defined
+         }
+      }
+  }
+\NewDocumentCommand{\xshowcmd} { s m }
+  {
+   \IfBooleanT{#1}
+     {
+      \group_begin:
+      \bool_set_true:N \l_xpatch_tracing_bool
+     }
+   \xpatch_main:NNN \cs_show:N \prg_do_nothing: #2
+   \IfBooleanT{#1}
+     {
+      \group_end:
+     }
+  }
+\NewDocumentCommand{\xpretocmd}{ }
+  { \xpatch_main:NNN \xpatch_pretocmd:Nnnn \use_none:nn }
+\NewDocumentCommand{\xapptocmd}{ }
+  { \xpatch_main:NNN \xpatch_apptocmd:Nnnn \use_none:nn }
+\NewDocumentCommand{\regexpatchcmd}{ s }
+  {
+   \IfBooleanTF{#1}
+     { \xpatch_main:NNN \xpatch_regexpatchcmd_all:Nnnnn \use_none:nnn }
+     { \xpatch_main:NNN \xpatch_regexpatchcmd_once:Nnnnn \use_none:nnn }
+  }
+\NewDocumentCommand{\xpatchcmd}{ s }
+  {
+   \IfBooleanTF{#1}
+     { \xpatch_main:NNN \xpatch_patchcmd_all:Nnnnn \use_none:nn }
+     { \xpatch_main:NNN \xpatch_patchcmd_once:Nnnnn \use_none:nn }
+  }
+\cs_generate_variant:Nn \xpatch_main:NNN {NNc}
+\NewDocumentCommand{\xshowbibmacro} { s m }
+  {
+   \IfBooleanT{#1}
+     {
+      \group_begin:
+      \bool_set_true:N \l_xpatch_tracing_bool
+     }
+   \xpatch_main:NNc \cs_show:N \prg_do_nothing: { abx@macro@ \tl_to_str:n {#2} }
+   \IfBooleanT{#1}
+     {
+      \group_end:
+     }
+  }
+\NewDocumentCommand{\xpretobibmacro} { m m m }
+  {
+   \xpatch_main:NNc \xpatch_pretocmd:Nnnn \use_none:nn
+     { abx@macro@ \tl_to_str:n {#1} }
+  }
+\NewDocumentCommand{\xapptobibmacro} { m m m }
+  {
+   \xpatch_main:NNc \xpatch_apptocmd:Nnnn \use_none:nn
+     { abx@macro@ \tl_to_str:n {#1} }
+  }
+\NewDocumentCommand{\xpatchbibmacro} { s m m m }
+  {
+   \IfBooleanTF{#1}
+     {
+      \xpatch_main:NcN \xpatch_patchcmd_all:Nnnnn \use_none:nnn
+        { abx@macro@ \tl_to_str:n {#2} }
+     }
+     {
+      \xpatch_main:NcN \xpatch_patchcmd_once:Nnnnn \use_none:nnn
+       { abx@macro@ \tl_to_str:n {#2} }
+     }
+  }
+\NewDocumentCommand{\regexpatchbibmacro} { s m m m }
+  {
+   \IfBooleanTF{#1}
+     {
+      \xpatch_main:NcN \xpatch_regexpatchcmd_all:Nnnnn \use_none:nnn
+        { abx@macro@ \tl_to_str:n {#2} }
+     }
+     {
+      \xpatch_main:NcN \xpatch_regexpatchcmd_once:Nnnnn \use_none:nnn
+        { abx@macro@ \tl_to_str:n {#2} }
+     }
+  }
+\NewDocumentCommand{\xshowbibdriver} { s m }
+  {
+   \IfBooleanT{#1}
+     {
+      \group_begin:
+      \bool_set_true:N \l_xpatch_tracing_bool
+     }
+   \xpatch_main:NNc \cs_show:N \prg_do_nothing: { blx@bbx@#2 }
+   \IfBooleanT{#1}
+     {
+      \group_end:
+     }
+  }
+\NewDocumentCommand{\xpretobibdriver} { m }
+  { \exp_args:Nc \xpatch_pretocmd:Nnnn {blx@bbx@#1} }
+\NewDocumentCommand{\xapptobibdriver} { m }
+  { \exp_args:Nc \xpatch_apptocmd:Nnnn {blx@bbx@#1} }
+\NewDocumentCommand{\xpatchbibdriver} { s m }
+  {
+   \IfBooleanTF{#1}
+     { \exp_args:Nc \xpatch_patchcmd_all:Nnnnn {blx@bbx@#2} }
+     { \exp_args:Nc \xpatch_patchcmd_once:Nnnnn {blx@bbx@#2} }
+  }
+\NewDocumentCommand{\regexpatchbibdriver} { s m }
+  {
+   \IfBooleanTF{#1}
+     { \exp_args:Nc \xpatch_regexpatchcmd_all:Nnnnn {blx@bbx@#2} }
+     { \exp_args:Nc \xpatch_regexpatchcmd_once:Nnnnn {blx@bbx@#2} }
+  }
+\NewDocumentCommand{\checkpatchable}{ m }
+  {
+   \group_begin:
+   \bool_set_true:N \l_xpatch_tracing_bool
+   \xpatch_check_patchable:N #1
+   \group_end:
+  }
+\cs_generate_variant:Nn \xpatch_get_all:N {c}
+\cs_generate_variant:Nn \xpatch_rebuild:N {c}
+\NewDocumentCommand{\xpatchoptarg}{ m m }
+  {
+   \xpatch_main_check:N #1
+   \bool_if:NTF \l_xpatch_optional_bool
+     {
+      \tl_set:Nx \l_xpatch_name_tl { \tl_tail:V \l_xpatch_name_tl }
+      \exp_args:NNf \tl_set:Nn \l_xpatch_prefix_tl
+        {\token_get_prefix_spec:N #1 }
+      \tl_clear:N \l_xpatch_prefix_tl
+      \exp_args:NNnx \tl_set_rescan:Nnn
+         \l_xpatch_prefix_tl { } \l_xpatch_prefix_tl
+      \exp_args:NNV \tl_set_eq:Nc \l_xpatch_replacement_tl
+        { \l_xpatch_name_tl }
+      \tl_set:Nn \l_tmpa_tl { { #2 } }
+      \regex_replace_once:nnN { \cB. .* \cE. \Z} { \u{l_tmpa_tl} }
+        \l_xpatch_replacement_tl
+      \xpatch_rebuild:c { \l_xpatch_name_tl }
+      }
+     {
+      \group_begin:
+      \bool_set_true:N \l_xpatch_tracing_bool
+      \xpatch_message:n
+        {
+         Macro~`\token_to_str:N #1'~ has~no~optional~argument~
+         or~it~has~been~defined~with~`xparse'~and~operating~
+         on~such~commands~is~(still)~not~supported
+        }
+      \group_end:
+     }
+  }
+\NewDocumentCommand{\tracingxpatches}{ O{1} }
+  {
+   \int_compare:nTF { #1 > 0 }
+     { \bool_set_true:N \l_xpatch_tracing_bool }
+     { \bool_set_false:N \l_xpatch_tracing_bool }
+  }
+\NewDocumentCommand{\xpatchparametertext}{m m m m m}
+  {
+   \xpatch_check_patchable:N #1
+   \bool_if:NTF \l_xpatch_patchable_bool
+      {
+       \regex_replace_once:nnN { #2 } { #3 } \l_xpatch_arg_tl
+       \xpatch_rebuild:N #1
+       #4
+      }
+      {
+       #5
+      }
+  }
+%% 
+%%
+%% End of file `regexpatch.sty'.
