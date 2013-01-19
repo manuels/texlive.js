@@ -1,3 +1,16 @@
+var detectPackages = function(code) {
+  var rx = /\\usepackage(\[[^\]]+\])?{([^}]+)}/g;
+
+  var res = rx.exec(code);
+  var packages = [];
+  while(res !== null) {
+    packages.push(res[2]);
+    res = rx.exec(rx);
+  }
+  return packages;
+};
+
+
 $(document).ready(function() {
   var button = $('button#compile');
 
@@ -15,7 +28,8 @@ $(document).ready(function() {
 
     var code = $('#editor').val();
 
-    var packages = ['_basic_'];
+    var packages = detectPackages(code).concat(['_basic_']);
+    console.log(packages);
     
     downloadPackages(pdftex, packages, function() {
       button.text('Compiling…');
@@ -75,7 +89,14 @@ $(document).ready(function() {
       [root+'texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb', '/', 'cmex10.pfb'],
       [root+'texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb', '/', 'cmmi10.pfb'],
       [root+'texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb', '/', 'cmmi7.pfb'],
+    ],
 
+    geometry: [
+      [root+'texlive/texmf-dist/tex/latex/geometry/geometry.sty', '/', 'geometry.sty'],
+      [root+'texlive/texmf-dist/tex/latex/graphics/keyval.sty', '/', 'keyval.sty'],
+      [root+'texlive/texmf-dist/tex/generic/oberdiek/ifpdf.sty', '/', 'ifpdf.sty'],
+      [root+'texlive/texmf-dist/tex/generic/oberdiek/ifvtex.sty', '/', 'ifvtex.sty'],
+      [root+'texlive/texmf-dist/tex/generic/ifxetex/ifxetex.sty', '/', 'ifxetex.sty'],
     ]
   };
 
