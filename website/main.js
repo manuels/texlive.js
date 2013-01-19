@@ -5,7 +5,7 @@ var detectPackages = function(code) {
   var packages = [];
   while(res !== null) {
     packages.push(res[2]);
-    res = rx.exec(rx);
+    res = rx.exec(code);
   }
   return packages;
 };
@@ -29,26 +29,31 @@ $(document).ready(function() {
     var code = $('#editor').val();
 
     var packages = detectPackages(code).concat(['_basic_']);
-    console.log(packages);
     
-    downloadPackages(pdftex, packages, function() {
-      button.text('Compiling…');
-      pdftex.compile(code).then(function() {
-        button.text('Opening PDF…');
+    downloadFiles(pdftex, document_files, function() {
+      downloadPackages(pdftex, packages, function() {
+        button.text('Compiling…');
+        pdftex.compile(code).then(function() {
+          button.text('Opening PDF…');
 
-        pdftex.getFile('/', 'pdftex-input-file.pdf').then(function(pdf) {
-          button.text('Compile');
-          button.removeAttr('disabled');
-          button.removeClass('disabled');
-
-         $('#buttons #open_pdf').remove();
-         $('#buttons').append('<button id="open_pdf" class="btn">Open PDF</button>').click(function() { window.open('data:application/pdf;base64,'+window.btoa(pdf)); });
+          pdftex.getFile('/', 'pdftex-input-file.pdf').then(function(pdf) {
+            button.text('Compile');
+            button.removeAttr('disabled');
+            button.removeClass('disabled');
+ 
+           $('#buttons #open_pdf').remove();
+           $('#buttons').append('<button id="open_pdf" class="btn">Open PDF</button>').find('#open_pdf').click(function() { window.open('data:application/pdf;base64,'+window.btoa(pdf)); });
+          });
         });
       });
     });
   });
 
   var root = "../../";
+  var document_files = [
+      [root+'test.jpg', '/', 'test.jpg']
+  ];
+
   var supported_packages = {
     "_basic_": [
       [root+'texlive/latex.fmt', '/', 'latex.fmt'],
@@ -97,7 +102,27 @@ $(document).ready(function() {
       [root+'texlive/texmf-dist/tex/generic/oberdiek/ifpdf.sty', '/', 'ifpdf.sty'],
       [root+'texlive/texmf-dist/tex/generic/oberdiek/ifvtex.sty', '/', 'ifvtex.sty'],
       [root+'texlive/texmf-dist/tex/generic/ifxetex/ifxetex.sty', '/', 'ifxetex.sty'],
-    ]
+    ],
+
+    graphicx: [
+      [root+'texlive/texmf-dist/tex/latex/graphics/graphicx.sty', '/', 'graphicx.sty'],
+      [root+'texlive/texmf-dist/tex/latex/graphics/graphics.sty', '/', 'graphics.sty'],
+      [root+'texlive/texmf-dist/tex/latex/graphics/trig.sty', '/', 'trig.sty'],
+      [root+'texlive/texmf-dist/tex/latex/latexconfig/graphics.cfg', '/', 'graphics.cfg'],
+      [root+'texlive/texmf-dist/tex/latex/pdftex-def/pdftex.def', '/', 'pdftex.def'],
+      [root+'texlive/texmf-dist/tex/generic/oberdiek/infwarerr.sty', '/', 'infwarerr.sty'],
+      [root+'texlive/texmf-dist/tex/generic/oberdiek/ltxcmds.sty', '/', 'ltxcmds.sty'],
+      [root+'texlive/texmf-dist/tex/generic/oberdiek/pdftexcmds.sty', '/', 'pdftexcmds.sty' ],
+      [root+'texlive/texmf-dist/tex/generic/oberdiek/ifluatex.sty', '/', 'ifluatex.sty' ],
+      [root+'texlive/texmf-dist/tex/latex/oberdiek/epstopdf-base.sty', '/', 'epstopdf-base.sty' ],
+      [root+'texlive/texmf-dist/tex/latex/oberdiek/grfext.sty', '/', 'grfext.sty' ],
+      [root+'texlive/texmf-dist/tex/generic/oberdiek/kvdefinekeys.sty', '/', 'kvdefinekeys.sty' ],
+      [root+'texlive/texmf-dist/tex/latex/oberdiek/kvoptions.sty', '/', 'kvoptions.sty' ],
+      [root+'texlive/texmf-dist/tex/generic/oberdiek/kvsetkeys.sty', '/', 'kvsetkeys.sty' ],
+      [root+'texlive/texmf-dist/tex/generic/oberdiek/etexcmds.sty', '/', 'etexcmds.sty' ],
+      [root+'texlive/texmf-dist/tex/latex/latexconfig/epstopdf-sys.cfg', '/', 'epstopdf-sys.cfg'],
+
+    ],
   };
 
 

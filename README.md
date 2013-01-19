@@ -14,3 +14,4 @@ For adding support for new packages, find out which files are required by this p
 Currently supported packages:
 
  * geometry
+ * graphicx
