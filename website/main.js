@@ -27,7 +27,8 @@ $(document).ready(function() {
           button.removeAttr('disabled');
           button.removeClass('disabled');
 
-          window.open('data:application/pdf;base64,'+window.btoa(pdf))
+         $('#buttons #open_pdf').remove();
+         $('#buttons').append('<button id="open_pdf" class="btn">Open PDF</button>').click(function() { window.open('data:application/pdf;base64,'+window.btoa(pdf)); });
         });
       });
     });
