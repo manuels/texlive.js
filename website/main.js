@@ -4,7 +4,7 @@ $(document).ready(function() {
   var button = $('button#compile');
 
   button.click(function(ev) {
-    button.text('Downloading…');
+    button.text('Downloading and compiling…');
     button.attr('disabled', 'disabled');
     button.addClass('disabled');
 
@@ -22,8 +22,6 @@ $(document).ready(function() {
       var texlive = new TeXLive(pdftex);
 
       texlive.compile(code, root, function(pdf) {
-        button.text('Opening PDF…');
-
         button.text('Compile');
         button.removeAttr('disabled');
         button.removeClass('disabled');
