@@ -15,3 +15,5 @@ Currently supported packages:
 
  * geometry
  * graphicx
+ * begriff
+
