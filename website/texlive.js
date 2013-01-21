@@ -77,8 +77,12 @@ var supported_packages = {
     ['texlive/texmf-dist/tex/generic/oberdiek/kvsetkeys.sty', '/', 'kvsetkeys.sty' ],
     ['texlive/texmf-dist/tex/generic/oberdiek/etexcmds.sty', '/', 'etexcmds.sty' ],
     ['texlive/texmf-dist/tex/latex/latexconfig/epstopdf-sys.cfg', '/', 'epstopdf-sys.cfg'],
-
   ],
+
+  begriff: [
+    ['texlive/texmf-dist/tex/latex/begriff/begriff.sty', '/', 'begriff.sty']
+  ],
+
 };
 
 
