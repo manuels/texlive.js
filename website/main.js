@@ -8,7 +8,7 @@ $(document).ready(function() {
     button.attr('disabled', 'disabled');
     button.addClass('disabled');
 
-    var pdftex = new PDFTeX();
+    var pdftex = new PDFTeX('./');
     window.pdftex = pdftex;
 
     var log = $('#log').text('');
