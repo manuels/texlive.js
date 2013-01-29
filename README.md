@@ -17,3 +17,7 @@ Currently supported packages:
  * graphicx
  * begriff
 
+Related Projects
+----------------
+[bibtex.js](https://github.com/brianmingus/bibtex.js/) - bibtex ported to javascript
+[ep_latex](https://github.com/manuels/ep_latex) - etherpad-lite plugin for texlive.js
