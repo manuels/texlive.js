@@ -23,7 +23,7 @@ filelist:
 	find texlive -type f | sed 's/^texlive//g' >>texlive.lst
 
 create_binary_pdftex:
-	mkdir binary
+	mkdir -p binary
 	cd binary && wget $(PDFTEX_URL)
 	cd binary && unzip pdftex-1.40.11.zip
 	cd binary && cd $(SOURCE_DIR) && ./build-pdftex.sh -C \
