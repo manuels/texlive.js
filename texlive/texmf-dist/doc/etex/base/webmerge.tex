@@ -1,0 +1,392 @@
+% This is webmerge.tex
+% Copyright (C) 1995,96 by the NTS team; all rights are reserved.
+%
+\def\fileversion{V 1.1}
+\def\filedate{29 Mar 96}
+%
+% In order to generate e-TeX several change files have to be applied
+% (one after the other) to tex.web.  This can be done efficiently with
+% programs such as PATCHWEB or TIE.  If neither of these is available
+% the present program WEBMERGE can be used to merge several change
+% files into one change file that can then be used with TANGLE.
+%
+% If the web file or one of the change files contains tab of form feed
+% characters there is, however, a problem that can't be solved in a
+% satisfactory way.  This should not be a real problem since the
+% original tex.web and etex.ch don't contain these characters and there
+% is no real good reason why the system-dependent change files should
+% (except may be that some editors insist on converting sequences of
+% space characters into tabs).
+%
+% The problem is due to the fact that (an unmodified) TeX cannot write
+% tabs or form feeds to the output file.  Therefore WEBMERGE offers two
+% alternatives: if \ifallowtabs is false (by default) then tab and form
+% feed characters are invalid and lead to error messages; if this
+% happens one may use the command
+%    \allowtabstrue
+% to allow tab and form feed as valid input characters.  If they are
+% written to the output file they will appear as '^^I' and '^^L'.  This
+% must then be changed manually with a suitable editor before the output
+% from WEBMERGE can be used as input for TANGLE.
+%
+% Typically three change files are required to generate e-TeX, e.g.,
+%    1. etex.ch    (system independent changes for e-TeX)
+%    2. tex.ch     (system dependent changes for TeX)
+%    3. tex.ech    (additional system dependent changes for e-TeX)
+% The sequence commands (to be used with plain TeX)
+%    \input webmerge
+%    \webfile{tex.web}       % web file
+%    \changefile{etex.ch}    % 1. change file
+%    \changefile{tex.ch}     % 2. change file
+%    \changefile{tex.ech}    % 3. change file
+%    \outfile{etex.ch}       % output file, start processing
+% creates a combined change file `etex.ch'.
+% Webmerge uses a temporary file with default name `tmp.tmp',
+% the command
+%    \tempfile{<temp name>}
+% can be used to change that name.
+%
+% Webmerge is slow, therefore PATCHWEB or TIE should be used whenever
+% possible. The program checks for correct change files and gives error
+% messages similar to those of TANGLE and WEAVE.  The error recovery is,
+% however, rather limited.
+%
+% In case of problems please contact:
+%     Peter Breitenlohner peb@mppmu.mpg.de
+
+% We make @ signs act like letters, temporarily.
+\catcode`\@=11
+
+\newif\ifallowtabs % initially false
+\def\allowtabs{\catcode`\^^I=12 \catcode`\^^L=12 }
+\def\forbidtabs{\catcode`\^^I=15 \catcode`\^^L=15 }
+
+\toksdef\toks@ii=2
+
+% First we redefine plain.tex's \loop to allow the construction
+%     \loop ... \if... \else ... \repeat
+%
+\def\@iterate{\@body \expandafter\@iterate\fi}
+%
+% and to allow nested loops such as
+%     \loop{... \loop ... \if... \repeat ... \if...}\repeat
+% where the braces do not imply grouping
+%
+\def\loop#1\repeat{%
+  \toks@\expandafter{\@body}%
+  \toks@ii\expandafter{\@@body}%
+  \edef\@@body{\def\noexpand\@body{\the\toks@}%
+              \def\noexpand\@@body{\the\toks@ii}}%
+  \def\@body{#1}\@iterate \@@body}
+\let\@body=\empty
+\let\@@body=\empty
+
+%
+\def\@msg{\immediate\write\sixt@@n}
+\@msg{*** webmerge \fileversion\space <\filedate> ***}
+%
+% Conceptually the web file (web_0) is combined with the first change
+% file, ch_1, in order to produce a ficticious web file web_1. Then
+% web_1 is combined with ch_2 in order to produce web_2 etc.
+
+% The logic of merging is that of TANGLE and WEAVE.
+% With several change files there may, however, be changes on top of
+% changes, i.e., a line changed by one change file may be changed again
+% by another change file.
+
+% The program below uses quite a few control sequences, many of them
+% constructed dynamically.
+% The most important ones are \<i>read (<i>=0,1,...) used to obtain the
+% next line from web_<i>.  For reasons of efficiency they are \let to
+% either \<i>w (changing=false), \<i>c (changing=true), of \<i>e (file
+% has ended).
+% \<i>g is used to obtain the next line from ch_<i> and test for
+% @x/@y/@z,
+% \<i>prime (prime the change buffer) scans for the next @x from ch_<i>,
+% and \<i>match discards matching lines from web_<i-1> and ch_<i> until
+% an @y is found.
+
+\def\tempfile#1{\def\t@n{#1}}
+\def\t@n{tmp.tmp} % default tempfile name
+\newread\t@r      % read tempfile
+\newwrite\t@w     % write tempfile
+\def\t@o{\immediate\write\t@w} % write to tempfile
+\newwrite\o@w     % write output file
+\def\o@o{\immediate\write\o@w} % write to outfile
+
+\newcount\@nch    % number of change files
+\newcount\@num    % number of active changes
+\newcount\@res    % result from @x/@y/@z test
+\begingroup       % \@pct expands to `% '
+  \lccode`\1=`\%
+  \lowercase{\endgroup \def\@pct{1 }}
+%
+
+% We need macros to define read streams, count registers, and control
+% sequences dynamically (inside \edef)
+
+\def\@nrd#1{\ifx#1\relax \csname newread\endcsname#1\fi}
+\def\@nct#1{\ifx#1\relax \csname newcount\endcsname#1\else #1\z@ \fi}
+\def\@cs#1{\csname#1\endcsname}
+\def\@csi#1{\csname\@i#1\endcsname}
+\def\@dcs#1{\expandafter\def\csname#1\endcsname}
+\def\@ecsi#1{\expandafter\edef\csname\@i#1\endcsname}
+\def\@ncsi#1{\expandafter\noexpand\csname\@i#1\endcsname}
+\def\@read{\expandafter\noexpand\csname\@ii read\endcsname}
+\def\@ifx{\noexpand\ifx}
+\def\@ifnum{\noexpand\ifnum}
+\def\@ifeof{\noexpand\ifeof\@csi r}
+\def\@else{\noexpand\else}
+\def\@fi{\noexpand\fi}
+\def\@loop{\noexpand\loop}
+\def\@repeat{\noexpand\repeat}
+\def\@expa{\noexpand\expandafter\noexpand}
+\def\@expai#1{\expandafter\@expa\csname\@i#1\endcsname}
+
+\def\webfile#1{% define webfile
+   \ifnum\@nch=\m@ne \@nch\z@ \@dcs{0n}{#1}%
+   \else \@msg{\string\webfile{#1} ignored (out of order)}%
+   \fi}
+\def\changefile#1{% define a changefile
+   \ifnum\@nch<\z@
+      \@msg{\string\changefile{#1} ignored (missing \string\webfile)}%
+   \else \ifnum\@nch>8 \@msg{\string\changefile{#1} ignored (too many)}%
+   \else \advance\@nch\@ne \@dcs{\number\@nch n}{#1}%
+   \fi \fi}
+\def\outfile#1{% define outfile and process
+   \ifnum\@nch<\@ne
+      \@msg{\string\outfile{#1} ignored (missing \string\changefile)}%
+   \else \def\o@n{#1}\@init \@merge \@done
+   \fi}
+\def\@init{% initialize
+   \@msg{}\@msg{webmerge \fileversion\space <\filedate>}%
+   \immediate\openout\o@w=\o@n
+   \o@o{\@pct This is \o@n, a WEB change file produced by webmerge.tex}%
+   \begingroup
+   \def\do##1{\catcode`##1=12 }\dospecials
+   \ifallowtabs \allowtabs \else \forbidtabs \fi
+   \endlinechar=\m@ne
+   \count@\z@
+   \loop \edef\@i{\number\count@}\@@init
+   \ifnum\count@<\@nch \advance\count@\@ne \let\@ii\@i
+   \repeat
+   \o@o{}%
+   \@msg{out=\o@n, merging ...}}
+%
+% Here now is the quite complicated macro \@@init
+% its main purpose is to dynamically construct
+% the macro \<i>read that returns the next line of web_<i> in \@web
+% as well as various auxiliary macros \<i>...
+%
+\def\@@init{% initialize input file <i>
+   \edef\x{% define \read streams and \count registers
+      \noexpand\@nrd\@ncsi r% \newread\<i>r
+      \noexpand\@nct\@ncsi l% \newcount\<i>l (line number)
+      \noexpand\@nct\@ncsi s% \newcount\<i>s (status)
+   }\x \@csi l\z@ \@csi s\z@  % \<i>l=0 \<i>s=0
+   \openin\@csi r\@csi n % \openin\<i>r=\<i>n
+   \@msg{\ifeof\@csi runable to open input file
+      \else \ifnum\@i=\z@ web\else change \@i\fi =\fi \@csi n}%
+   \ifnum\count@=\z@ % <i>=0 for web file
+      \let\@web\relax
+%%
+%%    \def\0w{% return web_0 line (file not yet ended)
+%%       \read\0r to\@web \0s=0 % read from web_0, mark as unchanged
+%%       \ifeof\0r \0e \else \advance\0l by 1 \fi}
+%%
+      \@ecsi w{% return web_0 line (file not yet ended)
+         \read\@csi rto\@web \@csi s\z@
+         \@ifeof \@ncsi e\@else \advance\@csi l\@ne \@fi}%
+%%
+%%    \def\0e{% return web_0 line (file has ended)
+%%       \let\0read=\0e \let\@web=\relax}
+%%
+      \@ecsi e{% return web_0 line (file has ended)
+         \let\@ncsi{read}\@ncsi e\let\@web\relax}%
+%%
+%%    \ifeof\0r \0e \else \let\0read=\0w
+%%
+      \ifeof\@csi r\@csi e%
+      \else \edef\x{\let\@ncsi{read}\@ncsi w}\x
+      \fi
+      \o@o{\@pct to be applied to \@csi n}%
+      \o@o{\@pct combining the changes (one after the other) from}%
+   \else % <i>=1,2,3,... for change files
+      \o@o{\@pct \@i. \@csi n}%
+%%
+%%    \def\<i>g#1{% read change file and test for @x/@y/@z
+%%       \ifeof\<i>r \let\<i>x=\relax \@res=#1
+%%       \else \@res=0 \read\<i>r to\<i>x
+%%         \advance\<i>l by 1 \expandafter\@test\<i>x ab\@#1<i>
+%%       \fi}
+%%
+      \@ecsi g##1{% read change file and test for @x/@y/@z
+         \@ifeof \let\@ncsi x\relax \@res##1%
+         \@else \@res\z@ \read\@csi rto\@ncsi x%
+            \advance\@csi l\@ne \@expa\@test\@ncsi xab\noexpand\@##1\@i
+         \@fi}%
+%%
+%%    \def\<i>w{% return web_i line (changing is false)
+%%       \<i-1>read % get web_<i-1> line
+%%       \ifx\@web\<i>x % test for match
+%%         \expandafter\<i>match % match lines from web_i-i and ch_i
+%%       \fi} % else return web_<i-1> line
+%%
+      \@ecsi w{% return web_i line (changing is false)
+         \@read \@ifx\@web\@ncsi x\@expai{match}\@fi}%
+%%
+%%    \def\<i>c{% return web_i line (changing is true)
+%%       \<i>g 3 % get ch_i line and test for @z
+%%       \ifnum\@res=3 % @z found
+%%          \@echg <i> % deactivate a change
+%%          \<i>prime % prime the change buffer
+%%          \expandafter\<i>read % read again, now from web_<i-1>
+%%       \else \@mod\<i>x % return ch_i line, mark as changed (\0s=1)
+%%       \fi}
+%%
+      \@ecsi c{% return web_i line (changing is true)
+         \@ncsi g\thr@@
+         \@ifnum\@res=\thr@@
+            \noexpand\@echg\@i \@ncsi{prime}\@expai{read}%
+         \@else \noexpand\@mod\@ncsi x%
+         \@fi}%
+%%
+%%    \def\<i>e{% return web_i line (change file has ended)
+%%       \<i-1>read} % return web_<i-1> line
+%%
+      \@ecsi e{% return web_i line (change file has ended)
+         \@read}%
+%%
+%%    \def\<i>prime{% prime the change buffer
+%%       \loop
+%%          \<i>g 1 % get ch_i line and test for @x
+%%          \ifnum\@res=1 \else \repeat % repeat until found
+%%       \loop
+%%          \<i>g 0 % get ch_i line
+%%          \ifx\<i>x\empty \repeat % repeat until not blank line
+%%       \ifx\<x>\relax \let\<i>read=\<i>e % change file has ended
+%%       \else \let\<i>read=\<i>w %
+%%
+      \@ecsi{prime}{% prime the change buffer
+         \@loop \@ncsi g\@ne \@ifnum\@res=\@ne \@else \@repeat
+         \@loop \@ncsi g\z@ \@ifx\@ncsi x\noexpand\empty \@repeat
+         \@ifx\@ncsi x\relax \let\@ncsi{read}\@ncsi e%
+         \@else \let\@ncsi{read}\@ncsi w%
+         \@fi}%
+%%
+%%    \def\<i>match{% match lines from web_<i-1> and ch_<i>
+%%       \ifx\@web\relax % web_<i-1> and ch_<i> have ended
+%%          \let\<i>read=\<i>e \<i> % indicate web_<i> has ended
+%%       \else \@bchg % activate a change
+%%          \loop \@chg % write a matching line to output (maybe)
+%%             \<i>g 2 % get ch_i line and test for @y
+%%          \ifnum\@res=2 \@endm <i> % end of match found
+%%          \else \<i-1>read % get web_<i-1> line
+%%             \ifx\@web\relax % test for end of web file
+%%                \@err <i>{Web file ended during change}
+%%             \fi
+%%             \ifx\@web\<i>x % test for matching lines
+%%             \else \advance\<i>s by 1 \fi % count mismatches
+%%          \repeat
+%%          \let\<i>read=\<i>c % now changing is true
+%%       \fi
+%%       \<i>read} % get next web_<i> line again
+%%
+      \@ecsi{match}{% match lines from web_<i-1> and ch_<i>
+         \@ifx\@web\relax
+            \let\@ncsi{read}\@ncsi e%
+         \@else \noexpand\@bchg
+            \@loop \noexpand\@chg \@ncsi g\tw@
+            \@ifnum\@res=\tw@ \noexpand\@endm\@i%
+            \@else \@read
+               \@ifx\@web\relax
+                  \noexpand\@err\@i{Web file ended during change}%
+               \@fi
+               \@ifx\@web\@ncsi x\@else \advance\@csi s\@ne \@fi
+            \@repeat
+            \let\@ncsi{read}\@ncsi c%
+         \@fi
+         \@ncsi{read}}%
+%%
+%%    \<i>prime % prime the change buffer
+%%
+      \@csi{prime}% prime the change buffer
+   \fi}
+\def\@done{%terminate
+   \count@\z@
+   \loop \edef\@i{\number\count@}%
+      \ifnum\count@=\z@ \else % change file
+         \ifeof\@csi r\else \@@err{Change file entry didn't match}\fi
+      \fi
+      \closein\@csi r% close input file <i>
+   \ifnum\count@<\@nch \advance\count@\@ne
+   \repeat
+   \endgroup
+   \immediate\closeout\o@w
+   \@nch\m@ne % prepare for next \webfile
+   \@msg{... done}\@msg{}}
+
+\catcode`\0=11 % for \0s
+\def\@merge{% process
+   \@num\z@
+   \expandafter\loop\csname\number\@nch read\endcsname % read web_<n>
+      \ifnum\0s=\@ne \t@o{\@web}\fi
+   \ifx\@web\relax
+   \else
+   \repeat}
+\def\@chg{\ifnum\0s=\z@ \o@o{\@web}\fi}
+\def\@mod{\0s\@ne \let\@web}
+\catcode`\0=12
+
+\def\@err#1{\def\@i{#1}\@@err}
+\def\@@err#1{\@msg{! #1}%
+   \@msg{ ... change file \@i\space (\@csi n) line \the\@csi l}}
+
+\def\@test#1#2#3\@{\if#1@ \csname set@#2\endcsname \fi \@eat}
+\def\@eat#1#2{}
+\def\set@x{\@res\@ne \expandafter\@xyz}
+\def\set@y{\@res\tw@ \expandafter\@xyz}
+\def\set@z{\@res\thr@@ \expandafter\@xyz}
+\let\set@X=\set@x
+\let\set@Y=\set@y
+\let\set@Z=\set@z
+\def\@xyz\@eat#1#2{%
+   \ifnum#1=\@res
+   \else \@err#2{Extra \@@xyz{\@res} ignored (expecting \@@xyz#1)}%
+      \@res\z@
+   \fi}
+\def\@@xyz#1{@\ifcase#1\or x\or y\or z\fi}
+
+\def\@endm#1{%
+   \ifnum\csname#1s\endcsname>\z@
+      \@err#1{Hmm... \the\@csi s of the preceding lines failed to match}%
+   \fi
+   \csname#1s\endcsname\z@}
+
+\def\@bchg{% activate a change
+   \ifnum\@num=\z@ % first change activated, start writing to temp
+      \immediate\openout\t@w=\t@n\space
+      \o@o{@x l.\number\csname 0l\endcsname}
+   \fi
+   \advance\@num\@ne}
+\def\@echg#1{% deactivate a change
+   \expandafter\ifx\csname#1x\endcsname\relax
+      \@err#1{Change file ended during change}%
+   \fi
+   \advance\@num\m@ne
+   \ifnum\@num=\z@ % last change deactivated
+      \t@o{@z}%
+      \immediate\closeout\t@w % close temp file
+      \openin\t@r=\t@n\space
+      \o@o{@y}
+      \loop \read\t@r to\t@x \o@o{\t@x}% copy temp to output
+         \ifeof\t@r \closein\t@r
+         \else
+      \repeat
+   \fi}
+
+\@nch=\m@ne
+
+\catcode`\@=12 % at signs are no longer letters
+
+\endinput

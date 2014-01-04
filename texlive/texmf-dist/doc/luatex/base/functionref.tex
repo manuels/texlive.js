@@ -1,0 +1,1100 @@
+% $Id$
+\pdfcompresslevel=0
+\pdfobjcompresslevel=0
+
+\nonknuthmode
+\catcode`\|=12
+
+\setuplayout[backspace=1cm,edge=0pt,topspace=1cm,
+  margin=0pt,location=middle,height=fit,footer=0pt,width=middle,
+  header=24pt]
+
+\setuptabulate[before=]
+\setuppagenumbering[location=,alternative=doublesided]
+\setupheadertexts[Luatex 0.66 short reference][pagenumber]
+\setupheader[style=\ssbf]
+
+\setupalign[flushleft]
+
+\setuphead[section][number=no,style=\ssbfb,after=,before=\blank]
+\setuphead[subsection][number=no,after=,style=\ssbf]
+
+\switchtobodyfont[times,9pt]
+\usemodule[abr-01]
+\def\DPI{DPI}
+
+\setuptype[style=\ss]
+\setuptyping[style=\ss]
+
+\def\afunction#1{{\ss\bf #1}}
+\def\aliteral#1{{\ss "#1"}}
+
+\def\showitemnoret#1#2#3#4#5#6%
+  {\hangafter=1\hangindent=12pt
+   \noindent {\ss \afunction{#1#6#2}#3}%
+   \hskip 12pt plus .5\hsize\penalty0 \hskip 0pt plus -.5\hsize
+   #5\par}
+
+\def\showitemret#1#2#3#4#5#6%
+  {\hangafter=1\hangindent=12pt
+   \noindent {\ss #4 = \afunction{#1#6#2}#3}%
+   \hskip 12pt plus .5\hsize\penalty0\hskip 0pt plus -.5\hsize
+   #5\par}
+
+\def\luafunction#1#2#3#4#5%
+  {\doifemptyelse{#4}
+    {\showitemnoret{#1}{#2}{#3}{#4}{#5}{.}}
+    {\showitemret{#1}{#2}{#3}{#4}{#5}{.}}\par}
+
+\def\luamethod#1#2#3#4#5%
+  {\doifemptyelse{#4}
+    {\showitemnoret{#1}{#2}{#3}{#4}{#5}{:}}
+    {\showitemret{#1}{#2}{#3}{#4}{#5}{:}}\par}
+
+\def\luacallback#1#2#3#4#5%
+  {\doifemptyelse{#4}
+    {\showitemnoret{}{#2}{#3}{#4}{#5}{}}
+    {\showitemret{}{#2}{#3}{#4}{#5}{}}\par}
+
+\startluacode
+local fdata = dofile('fdata.lua')
+function showfunction (t,o,f)
+         local val
+         local method
+         if o == nil then
+            val = fdata[t]["functions"][f]
+            method = false
+         else
+            val = fdata[t]["methods"][o][f]
+            method = true
+         end
+         local r = {}
+         local a = {}
+         if #val.returnvalues > 0 then
+            for i,v in ipairs (val.returnvalues) do
+               if v.optional then
+                  r[#r+1] = '[' .. v.type .. ']'
+               else
+                  r[#r+1] = v.type
+               end
+            end
+         end
+         if #val.arguments > 0 then
+            for i,v in ipairs (val.arguments) do
+               if (method == false) or (i > 1) then
+                  if v.optional then
+                     a[#a+1] = '[' ..  v.type .. ']'
+                  else
+                     a[#a+1] = v.type
+                  end
+               end
+            end
+         end
+         if method == false then
+            tex.sprint(string.format('\\lua%s{%s}{%s}{(%s)}{%s}{%s}', val.type, t, f,
+                               table.concat(a,', '),table.concat(r,', '), val.shortdesc))
+         else
+            tex.sprint(string.format('\\lua%s{%s}{%s}{(%s)}{%s}{%s}', "method", o, f,
+                               table.concat(a,', '),table.concat(r,', '), val.shortdesc))
+         end
+end
+
+\stopluacode
+
+\def\presentfunction#1#2{\directlua{showfunction("#1",nil,"#2")}}
+\def\presentmethod#1#2#3{\directlua{showfunction("#1","#2","#3")}}
+
+\starttext
+
+
+\startcolumns
+
+\section{Getting started}
+
+\type{luatex} is a typesetter; \type{texlua} and \type{luatex --luaonly} are lua interpreters.
+In lua interpreter mode, the lua tables \type{tex}, \type{token}, \type{node}, and \type{pdf}
+are unavailable.
+
+\blank
+
+\tex{directlua}\type{} expands immediately, \tex{latelua}\type{}
+is processed during \tex{shipout}.
+
+\blank
+
+\starttabulate[|l|p|]
+\NC \tex{luatexversion}:   \NC {\bf\the\luatexversion} \NC\NR
+\NC \tex{luatexrevision}: \NC {\bf\luatexrevision}    \NC\NR
+\NC \tex{luatexdatestamp}: \NC {\bf\luatexdatestamp}  \NC\NR
+\stoptabulate
+
+\subsection{Attributes}
+
+There are 65536 attribute registers, each of which obeys grouping
+and can have any integer value other than the most negative number
+(which indicates the value is unset).
+
+\subsection{Catcode tables}
+
+There are 65536 category code tables, each of which can hold the full range
+of Unicode. Category table manipulation:
+
+\starttabulate[|l|p|]
+\NC \tex{initcatcodetable} $N$ \NC initialize an \quote{initex} table in $N$ \NC\NR
+\NC \tex{savecatcodetable} $N$\NC save the current category codes to table $N$ globally\NC\NR
+\NC \tex{catcodetable} $N$ \NC  switch to predefined table $N$\NC\NR
+\stoptabulate
+
+\subsection{Filenames}
+
+\tex{input}, \tex{openin}, and \tex{font} accept braced file names to allow embedded spaces.
+
+\subsection{Images and forms}
+
+\type{\pdfrefximage} and \type{\pdfrefxform} accept optional dimension parameters
+in the same format as \type{\pdfximage}.
+
+\section{Preloaded lua modules}
+
+\starttabulate[|l|l|]
+\NC\type{slnunicode}\NC\hyphenatedurl{http://luaforge.net/projects/sln}\NC\NR
+\NC\type{luazip}    \NC\hyphenatedurl{http://www.keplerproject.org/luazip/}\NC\NR
+\NC\type{luafilesystem} \NC\hyphenatedurl{http://www.keplerproject.org/luafilesystem/}\NC\NR
+\NC\type{lpeg}      \NC\hyphenatedurl{http://www.inf.puc-rio.br/~roberto/lpeg.html}\NC\NR
+\NC\type{lzlib}     \NC\hyphenatedurl{http://luaforge.net/projects/lzlib/}\NC\NR
+\NC\type{md5}       \NC\hyphenatedurl{http://www.inf.puc-rio.br/~roberto/md5/md5-5/md5.html}\NC\NR
+\NC\type{luasocket} \NC \kern -12pt\hyphenatedurl{http://www.tecgraf.puc-rio.br/~diego/professional/luasocket/}\NC\NR
+\stoptabulate
+
+\section{String extensions}
+
+\presentfunction{string}{explode}
+\presentfunction{string}{utfvalues}
+\presentfunction{string}{utfcharacters}
+\presentfunction{string}{characters}
+\presentfunction{string}{characterpairs}
+\presentfunction{string}{bytes}
+\presentfunction{string}{bytepairs}
+
+\section{Operating system extensions}
+
+\presentfunction{os}{exec}
+\presentfunction{os}{spawn}
+\presentfunction{os}{setenv}
+\presentfunction{os}{gettimeofday}
+\presentfunction{os}{times}
+\presentfunction{os}{tmpdir}
+\presentfunction{os}{uname}
+\presentfunction{os}{selfdir}
+
+\section{Lua file system extensions}
+
+\presentfunction{lfs}{isdir}
+\presentfunction{lfs}{isfile}
+\presentfunction{lfs}{shortname}
+\presentfunction{lfs}{readlink}
+
+\section{Callback table}
+\presentfunction{callback}{register}
+\presentfunction{callback}{list}
+\presentfunction{callback}{find}
+
+\subsection{File discovery callbacks}
+
+\presentfunction{callback}{find_read_file}
+\presentfunction{callback}{find_write_file}
+\presentfunction{callback}{find_font_file}
+\presentfunction{callback}{find_output_file}
+\presentfunction{callback}{find_format_file}
+\presentfunction{callback}{find_vf_file}
+\presentfunction{callback}{find_map_file}
+\presentfunction{callback}{find_enc_file}
+\presentfunction{callback}{find_subfont_file}
+\presentfunction{callback}{find_pk_file}
+\presentfunction{callback}{find_data_file}
+\presentfunction{callback}{find_opentype_file}
+\presentfunction{callback}{find_truetype_file}
+\presentfunction{callback}{find_type1_file}
+\presentfunction{callback}{find_image_file}
+
+\subsection{File reading  callbacks}
+
+\presentfunction{callback}{open_read_file}
+\presentfunction{callback}{reader}
+\presentfunction{callback}{close}
+
+\blank
+
+\presentfunction{callback}{read_font_file}
+\presentfunction{callback}{read_vf_file}
+\presentfunction{callback}{read_map_file}
+\presentfunction{callback}{read_enc_file}
+\presentfunction{callback}{read_sfd_file}
+\presentfunction{callback}{read_pk_file}
+\presentfunction{callback}{read_data_file}
+\presentfunction{callback}{read_truetype_file}
+\presentfunction{callback}{read_type1_file}
+\presentfunction{callback}{read_opentype_file}
+
+\subsection{Tokenisation changes  callbacks}
+
+\presentfunction{callback}{process_input_buffer}
+\presentfunction{callback}{process_output_buffer}
+\presentfunction{callback}{token_filter}
+
+\subsection{Node list  callbacks}
+
+\presentfunction{callback}{buildpage_filter}
+
+\afunction{buildpage_filter} context information:
+\starttabulate[|lf\ss|p|]
+\NC \ssbf value     \NC \bf explanation                        \NC\NR
+\NC alignment       \NC a (partial) alignment is being added   \NC\NR
+\NC after_output    \NC an output routine has just finished    \NC\NR
+\NC box             \NC a typeset box is being added           \NC\NR
+\NC new_graf        \NC the beginning of a new paragraph       \NC\NR
+\NC vmode_par       \NC \tex{par} was found in vertical mode   \NC\NR
+\NC hmode_par       \NC \tex{par} was found in horizontal mode \NC\NR
+\NC insert          \NC an insert is added                     \NC\NR
+\NC penalty         \NC a penalty (in vertical mode)           \NC\NR
+\NC before_display  \NC immediately before a display starts    \NC\NR
+\NC after_display   \NC a display is finished                  \NC\NR
+\NC end             \NC \LUATEX\ is terminating (it's all over)\NC\NR
+\stoptabulate
+
+\presentfunction{callback}{pre_linebreak_filter}
+
+\afunction{pre_linebreak_filter} context information:
+\starttabulate[|lf\ss|p|]
+\NC \ssbf value        \NC \bf explanation                     \NC\NR
+\NC <empty>      \NC main vertical list                        \NC\NR
+\NC hbox         \NC \tex{hbox} in horizontal mode             \NC\NR
+\NC adjusted_hbox\NC \tex{hbox} in vertical mode               \NC\NR
+\NC vbox         \NC \tex{vbox}                                \NC\NR
+\NC vtop         \NC \tex{vtop}                                \NC\NR
+\NC align        \NC \tex{halign} or \tex{valign}              \NC\NR
+\NC disc         \NC discretionaries                           \NC\NR
+\NC insert       \NC packaging an insert                       \NC\NR
+\NC vcenter      \NC \tex{vcenter}                             \NC\NR
+\NC local_box    \NC \tex{localleftbox} or \tex{localrightbox} \NC\NR
+\NC split_off    \NC top of a \tex{vsplit}                     \NC\NR
+\NC split_keep   \NC remainder of a \tex{vsplit}               \NC\NR
+\NC align_set    \NC alignment cell                            \NC\NR
+\NC fin_row      \NC alignment row                             \NC\NR
+\stoptabulate
+
+\presentfunction{callback}{linebreak_filter}
+\presentfunction{callback}{post_linebreak_filter}
+\presentfunction{callback}{hpack_filter}
+\presentfunction{callback}{vpack_filter}
+\presentfunction{callback}{pre_output_filter}
+\presentfunction{callback}{hyphenate}
+\presentfunction{callback}{ligaturing}
+\presentfunction{callback}{kerning}
+\presentfunction{callback}{mlist_to_hlist}
+
+\subsection{Font definition  callback}
+\presentfunction{callback}{define_font}
+
+\subsection{Event  callbacks}
+
+\presentfunction{callback}{pre_dump}
+\presentfunction{callback}{stop_run}
+\presentfunction{callback}{start_run}
+\presentfunction{callback}{start_page_number}
+\presentfunction{callback}{stop_page_number}
+\presentfunction{callback}{show_error_hook}
+\presentfunction{callback}{finish_pdffile}
+
+%***********************************************************************
+
+\section{Epdf table}
+
+--- All constructors:
+
+\presentfunction{epdf}{open}
+\presentfunction{epdf}{Annot}
+\presentfunction{epdf}{Annots}
+\presentfunction{epdf}{Array}
+\presentfunction{epdf}{Dict}
+\presentfunction{epdf}{Object}
+\presentfunction{epdf}{PDFRectangle}
+
+--- Annot methods:
+
+\presentmethod{epdf}{Annot}{isOK}
+\presentmethod{epdf}{Annot}{getAppearance}
+\presentmethod{epdf}{Annot}{getBorder}
+\presentmethod{epdf}{Annot}{match}
+
+--- AnnotBorderStyle methods:
+
+\presentmethod{epdf}{AnnotBorderStyle}{getWidth}
+
+--- Annots methods:
+
+\presentmethod{epdf}{Annots}{getNumAnnots}
+\presentmethod{epdf}{Annots}{getAnnot}
+
+--- Array methods:
+
+\presentmethod{epdf}{Array}{incRef}
+\presentmethod{epdf}{Array}{decRef}
+\presentmethod{epdf}{Array}{getLength}
+\presentmethod{epdf}{Array}{add}
+\presentmethod{epdf}{Array}{get}
+\presentmethod{epdf}{Array}{getNF}
+\presentmethod{epdf}{Array}{getString}
+
+--- Catalog methods:
+
+\presentmethod{epdf}{Catalog}{isOK}
+\presentmethod{epdf}{Catalog}{getNumPages}
+\presentmethod{epdf}{Catalog}{getPage}
+\presentmethod{epdf}{Catalog}{getPageRef}
+\presentmethod{epdf}{Catalog}{getBaseURI}
+\presentmethod{epdf}{Catalog}{readMetadata}
+\presentmethod{epdf}{Catalog}{getStructTreeRoot}
+\presentmethod{epdf}{Catalog}{findPage}
+\presentmethod{epdf}{Catalog}{findDest}
+\presentmethod{epdf}{Catalog}{getDests}
+\presentmethod{epdf}{Catalog}{numEmbeddedFiles}
+\presentmethod{epdf}{Catalog}{embeddedFile}
+\presentmethod{epdf}{Catalog}{numJS}
+\presentmethod{epdf}{Catalog}{getJS}
+\presentmethod{epdf}{Catalog}{getOutline}
+\presentmethod{epdf}{Catalog}{getAcroForm}
+
+--- EmbFile methods:
+
+\presentmethod{epdf}{EmbFile}{name}
+\presentmethod{epdf}{EmbFile}{description}
+\presentmethod{epdf}{EmbFile}{size}
+\presentmethod{epdf}{EmbFile}{modDate}
+\presentmethod{epdf}{EmbFile}{createDate}
+\presentmethod{epdf}{EmbFile}{checksum}
+\presentmethod{epdf}{EmbFile}{mimeType}
+\presentmethod{epdf}{EmbFile}{streamObject}
+\presentmethod{epdf}{EmbFile}{isOk}
+
+--- Dict methods:
+
+\presentmethod{epdf}{Dict}{incRef}
+\presentmethod{epdf}{Dict}{decRef}
+\presentmethod{epdf}{Dict}{getLength}
+\presentmethod{epdf}{Dict}{add}
+\presentmethod{epdf}{Dict}{set}
+\presentmethod{epdf}{Dict}{remove}
+\presentmethod{epdf}{Dict}{is}
+\presentmethod{epdf}{Dict}{lookup}
+\presentmethod{epdf}{Dict}{lookupNF}
+\presentmethod{epdf}{Dict}{lookupInt}
+\presentmethod{epdf}{Dict}{getKey}
+\presentmethod{epdf}{Dict}{getVal}
+\presentmethod{epdf}{Dict}{getValNF}
+
+--- Link methods:
+
+\presentmethod{epdf}{Link}{isOK}
+\presentmethod{epdf}{Link}{inRect}
+
+--- LinkDest methods:
+
+\presentmethod{epdf}{LinkDest}{isOK}
+\presentmethod{epdf}{LinkDest}{getKind}
+\presentmethod{epdf}{LinkDest}{getKindName}
+\presentmethod{epdf}{LinkDest}{isPageRef}
+\presentmethod{epdf}{LinkDest}{getPageNum}
+\presentmethod{epdf}{LinkDest}{getPageRef}
+\presentmethod{epdf}{LinkDest}{getLeft}
+\presentmethod{epdf}{LinkDest}{getBottom}
+\presentmethod{epdf}{LinkDest}{getRight}
+\presentmethod{epdf}{LinkDest}{getTop}
+\presentmethod{epdf}{LinkDest}{getZoom}
+\presentmethod{epdf}{LinkDest}{getChangeLeft}
+\presentmethod{epdf}{LinkDest}{getChangeTop}
+\presentmethod{epdf}{LinkDest}{getChangeZoom}
+
+--- Links methods:
+
+\presentmethod{epdf}{Links}{getNumLinks}
+\presentmethod{epdf}{Links}{getLink}
+
+--- Object methods:
+
+\presentmethod{epdf}{Object}{initBool}
+\presentmethod{epdf}{Object}{initInt}
+\presentmethod{epdf}{Object}{initReal}
+\presentmethod{epdf}{Object}{initString}
+\presentmethod{epdf}{Object}{initName}
+\presentmethod{epdf}{Object}{initNull}
+\presentmethod{epdf}{Object}{initArray}
+\presentmethod{epdf}{Object}{initDict}
+\presentmethod{epdf}{Object}{initStream}
+\presentmethod{epdf}{Object}{initRef}
+\presentmethod{epdf}{Object}{initCmd}
+\presentmethod{epdf}{Object}{initError}
+\presentmethod{epdf}{Object}{initEOF}
+\presentmethod{epdf}{Object}{fetch}
+\presentmethod{epdf}{Object}{getType}
+\presentmethod{epdf}{Object}{getTypeName}
+\presentmethod{epdf}{Object}{isBool}
+\presentmethod{epdf}{Object}{isInt}
+\presentmethod{epdf}{Object}{isReal}
+\presentmethod{epdf}{Object}{isNum}
+\presentmethod{epdf}{Object}{isString}
+\presentmethod{epdf}{Object}{isName}
+\presentmethod{epdf}{Object}{isNull}
+\presentmethod{epdf}{Object}{isArray}
+\presentmethod{epdf}{Object}{isDict}
+\presentmethod{epdf}{Object}{isStream}
+\presentmethod{epdf}{Object}{isRef}
+\presentmethod{epdf}{Object}{isCmd}
+\presentmethod{epdf}{Object}{isError}
+\presentmethod{epdf}{Object}{isEOF}
+\presentmethod{epdf}{Object}{isNone}
+\presentmethod{epdf}{Object}{getBool}
+\presentmethod{epdf}{Object}{getInt}
+\presentmethod{epdf}{Object}{getReal}
+\presentmethod{epdf}{Object}{getNum}
+\presentmethod{epdf}{Object}{getString}
+\presentmethod{epdf}{Object}{getName}
+\presentmethod{epdf}{Object}{getArray}
+\presentmethod{epdf}{Object}{getDict}
+\presentmethod{epdf}{Object}{getStream}
+\presentmethod{epdf}{Object}{getRef}
+\presentmethod{epdf}{Object}{getRefNum}
+\presentmethod{epdf}{Object}{getRefGen}
+\presentmethod{epdf}{Object}{getCmd}
+\presentmethod{epdf}{Object}{arrayGetLength}
+\presentmethod{epdf}{Object}{arrayAdd}
+\presentmethod{epdf}{Object}{arrayGet}
+\presentmethod{epdf}{Object}{arrayGetNF}
+\presentmethod{epdf}{Object}{dictGetLength}
+\presentmethod{epdf}{Object}{dictAdd}
+\presentmethod{epdf}{Object}{dictSet}
+\presentmethod{epdf}{Object}{dictLookup}
+\presentmethod{epdf}{Object}{dictLookupNF}
+\presentmethod{epdf}{Object}{dictGetKey}
+\presentmethod{epdf}{Object}{dictGetVal}
+\presentmethod{epdf}{Object}{dictGetValNF}
+\presentmethod{epdf}{Object}{streamIs}
+\presentmethod{epdf}{Object}{streamReset}
+\presentmethod{epdf}{Object}{streamGetChar}
+\presentmethod{epdf}{Object}{streamLookChar}
+\presentmethod{epdf}{Object}{streamGetPos}
+\presentmethod{epdf}{Object}{streamSetPos}
+\presentmethod{epdf}{Object}{streamGetDict}
+
+--- Page methods:
+
+\presentmethod{epdf}{Page}{isOK}
+\presentmethod{epdf}{Page}{getNum}
+\presentmethod{epdf}{Page}{getMediaBox}
+\presentmethod{epdf}{Page}{getCropBox}
+\presentmethod{epdf}{Page}{isCropped}
+\presentmethod{epdf}{Page}{getMediaWidth}
+\presentmethod{epdf}{Page}{getMediaHeight}
+\presentmethod{epdf}{Page}{getCropWidth}
+\presentmethod{epdf}{Page}{getCropHeight}
+\presentmethod{epdf}{Page}{getBleedBox}
+\presentmethod{epdf}{Page}{getTrimBox}
+\presentmethod{epdf}{Page}{getArtBox}
+\presentmethod{epdf}{Page}{getRotate}
+\presentmethod{epdf}{Page}{getLastModified}
+\presentmethod{epdf}{Page}{getBoxColorInfo}
+\presentmethod{epdf}{Page}{getGroup}
+\presentmethod{epdf}{Page}{getMetadata}
+\presentmethod{epdf}{Page}{getPieceInfo}
+\presentmethod{epdf}{Page}{getSeparationInfo}
+\presentmethod{epdf}{Page}{getResourceDict}
+\presentmethod{epdf}{Page}{getAnnots}
+\presentmethod{epdf}{Page}{getLinks}
+\presentmethod{epdf}{Page}{getContents}
+
+--- PDFDoc methods:
+
+\presentmethod{epdf}{PDFDoc}{isOK}
+\presentmethod{epdf}{PDFDoc}{getErrorCode}
+\presentmethod{epdf}{PDFDoc}{getErrorCodeName}
+\presentmethod{epdf}{PDFDoc}{getFileName}
+\presentmethod{epdf}{PDFDoc}{getXRef}
+\presentmethod{epdf}{PDFDoc}{getCatalog}
+\presentmethod{epdf}{PDFDoc}{getPageMediaWidth}
+\presentmethod{epdf}{PDFDoc}{getPageMediaHeight}
+\presentmethod{epdf}{PDFDoc}{getPageCropWidth}
+\presentmethod{epdf}{PDFDoc}{getPageCropHeight}
+\presentmethod{epdf}{PDFDoc}{getNumPages}
+\presentmethod{epdf}{PDFDoc}{readMetadata}
+\presentmethod{epdf}{PDFDoc}{getStructTreeRoot}
+\presentmethod{epdf}{PDFDoc}{findPage}
+\presentmethod{epdf}{PDFDoc}{getLinks}
+\presentmethod{epdf}{PDFDoc}{findDest}
+\presentmethod{epdf}{PDFDoc}{isEncrypted}
+\presentmethod{epdf}{PDFDoc}{okToPrint}
+\presentmethod{epdf}{PDFDoc}{okToChange}
+\presentmethod{epdf}{PDFDoc}{okToCopy}
+\presentmethod{epdf}{PDFDoc}{okToAddNotes}
+\presentmethod{epdf}{PDFDoc}{isLinearized}
+\presentmethod{epdf}{PDFDoc}{getDocInfo}
+\presentmethod{epdf}{PDFDoc}{getDocInfoNF}
+\presentmethod{epdf}{PDFDoc}{getPDFMajorVersion}
+\presentmethod{epdf}{PDFDoc}{getPDFMinorVersion}
+
+--- PDFRectangle methods:
+
+\presentmethod{epdf}{PDFRectangle}{isValid}
+
+--- Stream methods:
+
+\presentmethod{epdf}{Stream}{getKind}
+\presentmethod{epdf}{Stream}{getKindName}
+\presentmethod{epdf}{Stream}{reset}
+\presentmethod{epdf}{Stream}{close}
+\presentmethod{epdf}{Stream}{getChar}
+\presentmethod{epdf}{Stream}{lookChar}
+\presentmethod{epdf}{Stream}{getRawChar}
+\presentmethod{epdf}{Stream}{getUnfilteredChar}
+\presentmethod{epdf}{Stream}{unfilteredReset}
+\presentmethod{epdf}{Stream}{getPos}
+\presentmethod{epdf}{Stream}{isBinary}
+\presentmethod{epdf}{Stream}{getUndecodedStream}
+\presentmethod{epdf}{Stream}{getDict}
+
+--- XRef methods:
+
+\presentmethod{epdf}{XRef}{isOK}
+\presentmethod{epdf}{XRef}{getErrorCode}
+\presentmethod{epdf}{XRef}{isEncrypted}
+\presentmethod{epdf}{XRef}{okToPrint}
+\presentmethod{epdf}{XRef}{okToPrintHighRes}
+\presentmethod{epdf}{XRef}{okToChange}
+\presentmethod{epdf}{XRef}{okToCopy}
+\presentmethod{epdf}{XRef}{okToAddNotes}
+\presentmethod{epdf}{XRef}{okToFillForm}
+\presentmethod{epdf}{XRef}{okToAccessibility}
+\presentmethod{epdf}{XRef}{okToAssemble}
+\presentmethod{epdf}{XRef}{getCatalog}
+\presentmethod{epdf}{XRef}{fetch}
+\presentmethod{epdf}{XRef}{getDocInfo}
+\presentmethod{epdf}{XRef}{getDocInfoNF}
+\presentmethod{epdf}{XRef}{getNumObjects}
+\presentmethod{epdf}{XRef}{getRootNum}
+\presentmethod{epdf}{XRef}{getRootGen}
+\presentmethod{epdf}{XRef}{getSize}
+\presentmethod{epdf}{XRef}{getTrailerDict}
+
+%***********************************************************************
+
+\section{Font table}
+
+\presentfunction{font}{read_tfm}
+\presentfunction{font}{read_vf}
+\presentfunction{font}{getfont}
+\presentfunction{font}{setfont}
+\presentfunction{font}{frozen}
+\presentfunction{font}{define}
+\presentfunction{font}{nextid}
+\presentfunction{font}{id}
+\presentfunction{font}{current}
+\presentfunction{font}{max}
+\presentfunction{font}{each}
+
+\section{Font loader table}
+
+\presentfunction{fontloader}{info}
+
+\afunction{fontloader.info} returned information:
+\starttabulate[|lf\ss|lf\ss|p|]
+\NC \ssbf key                      \NC \bf type \NC \bf explanation \NC\NR
+\NC fontname                     \NC string   \NC the \POSTSCRIPT\ name of the font\NC\NR
+\NC fullname                     \NC string   \NC the formal name of the font\NC\NR
+\NC familyname                   \NC string   \NC the family name this font belongs to\NC\NR
+\NC weight                       \NC string   \NC a string indicating the color value of the font\NC\NR
+\NC version                      \NC string   \NC the internal font version\NC\NR
+\NC italicangle                  \NC float    \NC the slant angle\NC\NR
+\stoptabulate
+
+\presentfunction{fontloader}{open}
+
+Listing all of the substructure returned from
+\afunction{fontloader.open} would take too much room, see the big
+reference manual.
+
+\presentfunction{fontloader}{apply_featurefile}
+\presentfunction{fontloader}{apply_afmfile}
+
+
+\section{Image table}
+
+Full list of \type{<image>} object fields:
+\starttabulate[|lf\ss|lf\ss|p|]
+\NC \bf field name\NC \bf type \NC description \NC \NR
+\NC depth         \NC number   \NC the image depth for \LUATEX\ (in scaled points)\NC \NR
+\NC height        \NC number   \NC the image height for \LUATEX\ (in scaled points)\NC \NR
+\NC width         \NC number   \NC the image width for \LUATEX\  (in scaled points)\NC \NR
+\NC transform     \NC number   \NC the image transform, integer number 0..7\NC \NR
+\NC attr          \NC string   \NC the image attributes for \LUATEX \NC \NR
+\NC filename      \NC string   \NC the image file name \NC \NR
+\NC stream        \NC string   \NC the raw stream data for an \type{/Xobject} \type{/Form} object\NC \NR
+\NC page          \NC ??       \NC the identifier for the requested image
+                                   page (type is number or string,
+                                   default is the number 1)\NC \NR
+\NC pagebox       \NC string   \NC the requested bounding box,
+                                   one of \type {none}, \type {media}, \type {crop}, \type {bleed}, \type {trim}, \type {art} \NC \NR
+\NC bbox          \NC table    \NC table with 4 boundingbox dimensions \type{llx}, \type{lly},
+                                   \type{urx}, and \type{ury} overruling the \type{pagebox} entry\NC \NR
+\NC filepath      \NC string   \NC the full (expanded) file name of the image \NC \NR
+\NC colordepth    \NC number   \NC the number of bits used by the color space \NC \NR
+\NC colorspace    \NC number   \NC the color space object number \NC \NR
+\NC imagetype     \NC string   \NC one of \type {pdf}, \type {png}, \type {jpg}, \type {jbig2}, or \type{nil} \NC \NR
+\NC objnum        \NC number   \NC the \PDF\ image object number \NC \NR
+\NC index         \NC number   \NC the \PDF\ image name suffix \NC \NR
+\NC pages         \NC number   \NC the total number of available pages \NC \NR
+\NC xsize         \NC number   \NC the natural image width \NC \NR
+\NC ysize         \NC number   \NC the natural image height \NC \NR
+\NC xres          \NC number   \NC the horizontal natural image resolution (in \DPI) \NC \NR
+\NC yres          \NC number   \NC the vertical natural image resolution (in \DPI) \NC \NR
+\stoptabulate
+
+\presentfunction{img}{new}
+\presentfunction{img}{keys}
+\presentfunction{img}{scan}
+\presentfunction{img}{copy}
+\presentfunction{img}{write}
+\presentfunction{img}{immediatewrite}
+\presentfunction{img}{node}
+\presentfunction{img}{types}
+\presentfunction{img}{boxes}
+
+\section{Kpathsea table}
+
+\presentfunction{kpse}{set_program_name}
+\presentfunction{kpse}{new}
+\presentfunction{kpse}{find_file}
+\presentfunction{kpse}{lookup}
+
+The \afunction{kpse.lookup} options match commandline arguments from
+\type{kpsewhich}:
+
+\starttabulate[|lf\ss|lf\ss|p|]
+\NC \ssbf key \NC \ssbf type \NC \ssbf description \NC \NR
+\NC debug     \NC number     \NC set debugging flags for this lookup\NC     \NR
+\NC format    \NC string     \NC use specific file type (see list above)\NC \NR
+\NC dpi       \NC number     \NC use this resolution for this lookup; default 600\NC \NR
+\NC path      \NC string     \NC search in the given path\NC \NR
+\NC all       \NC boolean    \NC output all matches, not just the first\NC \NR
+\NC must-exist\NC boolean    \NC search the disk as well as ls-R if necessary\NC \NR
+\NC mktexpk   \NC boolean    \NC disable/enable mktexpk generation for this lookup\NC \NR
+\NC mktextex  \NC boolean    \NC disable/enable mktextex generation for this lookup\NC \NR
+\NC mktexmf   \NC boolean    \NC disable/enable mktexmf generation for this lookup\NC \NR
+\NC mktextfm  \NC boolean    \NC disable/enable mktextfm generation for this lookup\NC \NR
+\NC subdir    \NC string
+                  or table   \NC only output matches whose directory part
+                                 ends with the given string(s) \NC \NR
+\stoptabulate
+
+\presentfunction{kpse}{init_prog}
+\presentfunction{kpse}{readable_file}
+\presentfunction{kpse}{expand_path}
+\presentfunction{kpse}{expand_var}
+\presentfunction{kpse}{expand_braces}
+\presentfunction{kpse}{show_path}
+\presentfunction{kpse}{var_value}
+\presentfunction{kpse}{version}
+
+\section{Language table}
+\presentfunction{lang}{new}
+\presentfunction{lang}{id}
+\presentfunction{lang}{hyphenation}
+\presentfunction{lang}{clear_hyphenation}
+\presentfunction{lang}{clean}
+\presentfunction{lang}{patterns}
+\presentfunction{lang}{clear_patterns}
+\presentfunction{lang}{prehyphenchar}
+\presentfunction{lang}{posthyphenchar}
+\presentfunction{lang}{preexhyphenchar}
+\presentfunction{lang}{postexhyphenchar}
+\presentfunction{lang}{hyphenate}
+
+\section{Lua table}
+
+There are 65536 bytecode registers, that are saved in the format file.
+Assignments are always global.
+
+\presentfunction{lua}{getbytecode}
+\presentfunction{lua}{setbytecode}
+
+They also be accessed via the virtual array \type{lua.bytecode[]}.
+
+The virtual array \type{lua.name[]} can be used to give names to lua
+chunks.  To use \type{lua.name[1]}, set \type{lua.name[1] = 'testname'} and \type{\directlua1{rubbish}}.
+
+\section{Metapost table}
+
+\presentfunction{mplib}{version}
+
+\presentfunction{mplib}{new}
+\presentfunction{mp}{execute}
+\presentfunction{mp}{finish}
+
+The return value of \type{mp:execute} and \type{mp:finish} is a table
+with a few possible keys (only \type {status} is always guaranteed to be present).
+
+\starttabulate[|lf\ss|lf\ss|p|]
+\NC log    \NC string \NC output to the \quote {log} stream \NC \NR
+\NC term   \NC string \NC output to the \quote {term} stream \NC \NR
+\NC error  \NC string \NC output to the \quote {error} stream (only used for \quote {out of memory})\NC \NR
+\NC status \NC number \NC the return value: 0=good, 1=warning, 2=errors, 3=fatal error \NC \NR
+\NC fig    \NC table \NC an array of generated figures (if any)\NC \NR
+\stoptabulate
+
+Handling of \type{fig} objects would take too much room here, please
+see the big reference manual.
+
+\presentfunction{mp}{statistics}
+\presentfunction{mp}{char_width}
+\presentfunction{mp}{char_height}
+\presentfunction{mp}{char_depth}
+
+\section{Node table}
+
+\presentfunction{node}{types}
+\presentfunction{node}{whatsits}
+\presentfunction{node}{is_node}
+\presentfunction{node}{id}
+\presentfunction{node}{subtype}
+\presentfunction{node}{type}
+\presentfunction{node}{fields}
+\presentfunction{node}{has_field}
+\presentfunction{node}{new}
+\presentfunction{node}{free}
+\presentfunction{node}{flush_list}
+\presentfunction{node}{copy}
+\presentfunction{node}{copy_list}
+\presentfunction{node}{hpack}
+\presentfunction{node}{vpack}
+\presentfunction{node}{dimensions}
+\presentfunction{node}{mlist_to_hlist}
+\presentfunction{node}{slide}
+\presentfunction{node}{tail}
+\presentfunction{node}{length}
+\presentfunction{node}{count}
+\presentfunction{node}{traverse}
+\presentfunction{node}{traverse_id}
+\presentfunction{node}{remove}
+\presentfunction{node}{insert_before}
+\presentfunction{node}{insert_after}
+\presentfunction{node}{first_glyph}
+\presentfunction{node}{ligaturing}
+\presentfunction{node}{kerning}
+\presentfunction{node}{unprotect_glyphs}
+\presentfunction{node}{protect_glyphs}
+\presentfunction{node}{last_node}
+\presentfunction{node}{write}
+\presentfunction{node}{protrusion_skippable}
+\presentfunction{node}{next}
+\presentfunction{node}{prev}
+
+\presentfunction{node}{has_attribute}
+\presentfunction{node}{set_attribute}
+\presentfunction{node}{unset_attribute}
+
+\section{Pdf table}
+\presentfunction{pdf}{immediateobj}
+\presentfunction{pdf}{mapfile}
+\presentfunction{pdf}{mapline}
+\presentfunction{pdf}{obj}
+\presentfunction{pdf}{refobj}
+\presentfunction{pdf}{pageref}
+\presentfunction{pdf}{print}
+\presentfunction{pdf}{reserveobj}
+\presentfunction{pdf}{registerannot}
+
+\section{Status table}
+\presentfunction{status}{list}
+
+The current list is:
+\starttabulate[|lf\ss|p|]
+\NC \ssbf key    \NC  \bf explanation \NC\NR
+\NC pdf_gone\NC                  written \PDF\ bytes      \NC \NR
+\NC pdf_ptr\NC                   not yet written \PDF\ bytes      \NC \NR
+\NC dvi_gone\NC                  written \DVI\ bytes      \NC \NR
+\NC dvi_ptr\NC                   not yet written \DVI\ bytes      \NC \NR
+\NC total_pages\NC               number of written pages      \NC \NR
+\NC output_file_name\NC          name of the \PDF\ or \DVI\ file      \NC \NR
+\NC log_name\NC                  name of the log file      \NC \NR
+\NC banner\NC                    terminal display banner      \NC \NR
+\NC var_used\NC                  variable (one|-|word) memory in use \NC \NR
+\NC dyn_used\NC                  token (multi|-|word) memory in use  \NC \NR
+\NC str_ptr\NC                   number of strings      \NC \NR
+\NC init_str_ptr\NC              number of \INITEX\ strings      \NC \NR
+\NC max_strings\NC               maximum allowed strings      \NC \NR
+\NC pool_ptr\NC                  string pool index      \NC \NR
+\NC init_pool_ptr\NC             \INITEX\ string pool index      \NC \NR
+\NC pool_size\NC                 current size allocated for string characters \NC \NR
+\NC node_mem_usage\NC            a string giving insight into currently used nodes\NC\NR
+\NC var_mem_max\NC               number of allocated words for nodes\NC \NR
+\NC fix_mem_max\NC               number of allocated words for tokens\NC \NR
+\NC fix_mem_end\NC               maximum number of used tokens\NC \NR
+\NC cs_count\NC                  number of control sequences      \NC \NR
+\NC hash_size\NC                 size of hash       \NC \NR
+\NC hash_extra\NC                extra allowed hash  \NC \NR
+\NC font_ptr\NC                  number of active fonts      \NC \NR
+\NC max_in_stack\NC              max used input stack entries      \NC \NR
+\NC max_nest_stack\NC            max used nesting stack entries     \NC \NR
+\NC max_param_stack\NC           max used parameter stack entries     \NC \NR
+\NC max_buf_stack\NC             max used buffer position      \NC \NR
+\NC max_save_stack\NC            max used save stack entries      \NC \NR
+\NC stack_size\NC                input stack size      \NC \NR
+\NC nest_size\NC                 nesting stack size      \NC \NR
+\NC param_size\NC                parameter stack size      \NC \NR
+\NC buf_size\NC                  current allocated size of the line buffer \NC \NR
+\NC save_size\NC                 save stack size      \NC \NR
+\NC obj_ptr\NC                   max \PDF\ object pointer      \NC \NR
+\NC obj_tab_size\NC              \PDF\ object table size      \NC \NR
+\NC pdf_os_cntr\NC               max \PDF\ object stream pointer      \NC \NR
+\NC pdf_os_objidx\NC             \PDF\ object stream index \NC \NR
+\NC pdf_dest_names_ptr\NC        max \PDF\ destination pointer       \NC \NR
+\NC dest_names_size\NC           \PDF\ destination table size      \NC \NR
+\NC pdf_mem_ptr\NC               max \PDF\ memory used      \NC \NR
+\NC pdf_mem_size\NC              \PDF\ memory size      \NC \NR
+\NC largest_used_mark\NC         max referenced marks class        \NC \NR
+\NC filename\NC                  name of the current input file    \NC \NR
+\NC inputid\NC                   numeric id of the current input    \NC \NR
+\NC linenumber\NC                location in the current input file\NC \NR
+\NC lasterrorstring\NC           last error string\NC \NR
+\NC luabytecodes\NC              number of active \LUA\ bytecode registers\NC \NR
+\NC luabytecode_bytes\NC         number of bytes in \LUA\ bytecode registers\NC \NR
+\NC luastate_bytes\NC            number of bytes in use by \LUA\ interpreters\NC \NR
+\NC output_active\NC             \type{true} if the \tex{output} routine is active\NC \NR
+\NC callbacks\NC                 total number of executed callbacks so far\NC \NR
+\NC indirect_callbacks\NC        number of those that were themselves
+                                 a result of other callbacks (e.g. file readers)\NC \NR
+\NC luatex_svn\NC                the luatex repository id  (added in 0.51)\NC\NR
+\NC luatex_version\NC            the luatex version number (added in 0.38)\NC\NR
+\NC luatex_revision\NC           the luatex revision string (added in 0.38)\NC\NR
+\NC ini_version\NC               \type{true} if this is an \INITEX\ run (added in 0.38)\NC\NR
+\stoptabulate
+
+\section{Typesetting table}
+
+\presentfunction{tex}{set}
+\presentfunction{tex}{get}
+
+Many of \LUATEX's internal parameters can be queried and set this way,
+but not nearly all.  The big reference manual has an extensive list.
+
+\blank
+\presentfunction{tex}{setattribute}
+\presentfunction{tex}{getattribute}
+\presentfunction{tex}{setbox}
+\presentfunction{tex}{getbox}
+\presentfunction{tex}{setcount}
+\presentfunction{tex}{getcount}
+\presentfunction{tex}{setdimen}
+\presentfunction{tex}{getdimen}
+\presentfunction{tex}{setskip}
+\presentfunction{tex}{getskip}
+\presentfunction{tex}{settoks}
+\presentfunction{tex}{gettoks}
+\presentfunction{tex}{setcatcode}
+\presentfunction{tex}{getcatcode}
+\presentfunction{tex}{setlccode}
+\presentfunction{tex}{getlccode}
+\presentfunction{tex}{setsfcode}
+\presentfunction{tex}{getsfcode}
+\presentfunction{tex}{setuccode}
+\presentfunction{tex}{getuccode}
+\presentfunction{tex}{setmathcode}
+\presentfunction{tex}{getmathcode}
+\presentfunction{tex}{setdelcode}
+\presentfunction{tex}{getdelcode}
+
+In all the \afunction{tex.set...} functions above, the optional string is
+the literal \aliteral{global}. The items can also be accessed directly via virtual arrays:
+\type{tex.attributes[]}, \type{tex.box[]}, \type{tex.count[]}, \type{tex.dimen[]},
+\type{tex.skip[]}, \type{tex.toks[]}; \type{tex.catcode[]}, \type{tex.lccode[]},
+\type{tex.sfcode[]}, \type{tex.uccode[]}, \type{tex.mathcode[]}, \type{tex.delcode[]}.
+
+\blank
+
+\presentfunction{tex}{setmath}
+\presentfunction{tex}{getmath}
+
+\presentfunction{tex}{print}
+\presentfunction{tex}{sprint}
+\presentfunction{tex}{tprint}
+\presentfunction{tex}{write}
+\presentfunction{tex}{round}
+\presentfunction{tex}{scale}
+\presentfunction{tex}{sp}
+\presentfunction{tex}{definefont}
+\presentfunction{tex}{error}
+\presentfunction{tex}{enableprimitives}
+\presentfunction{tex}{extraprimitives}
+\presentfunction{tex}{primitives}
+\presentfunction{tex}{badness}
+\presentfunction{tex}{linebreak}
+
+The \afunction{tex.linebreak} parameters:
+
+\starttabulate[|lf\ss|lf\ss|p|]
+\NC \bf name                 \NC \bf type \NC \bf description \NC \NR
+\NC pardir                   \NC string   \NC \NC \NR
+\NC pretolerance             \NC number   \NC \NC \NR
+\NC tracingparagraphs        \NC number   \NC \NC \NR
+\NC tolerance                \NC number   \NC \NC \NR
+\NC looseness                \NC number   \NC \NC \NR
+\NC hyphenpenalty            \NC number   \NC \NC \NR
+\NC exhyphenpenalty          \NC number   \NC \NC \NR
+\NC pdfadjustspacing         \NC number   \NC \NC \NR
+\NC adjdemerits              \NC number   \NC \NC \NR
+\NC pdfprotrudechars         \NC number   \NC \NC \NR
+\NC linepenalty              \NC number   \NC \NC \NR
+\NC lastlinefit              \NC number   \NC \NC \NR
+\NC doublehyphendemerits     \NC number   \NC \NC \NR
+\NC finalhyphendemerits      \NC number   \NC \NC \NR
+\NC hangafter                \NC number   \NC \NC \NR
+\NC interlinepenalty         \NC number or table \NC if a table, then it is an array like \type{\interlinepenalties}\NC \NR
+\NC clubpenalty              \NC number or table \NC if a table, then it is an array like \type{\clubpenalties}\NC \NR
+\NC widowpenalty             \NC number or table \NC if a table, then it is an array like \type{\widowpenalties}\NC \NR
+\NC brokenpenalty            \NC number   \NC \NC \NR
+\NC emergencystretch         \NC number   \NC in scaled points \NC \NR
+\NC hangindent               \NC number   \NC in scaled points \NC \NR
+\NC hsize                    \NC number   \NC in scaled points \NC \NR
+\NC leftskip                 \NC glue_spec node   \NC \NC \NR
+\NC rightskip                \NC glue_spec node   \NC \NC \NR
+\NC pdfeachlineheight        \NC number   \NC in scaled points \NC \NR
+\NC pdfeachlinedepth         \NC number   \NC in scaled points \NC \NR
+\NC pdffirstlineheight       \NC number   \NC in scaled points \NC \NR
+\NC pdflastlinedepth         \NC number   \NC in scaled points \NC \NR
+\NC pdfignoreddimen          \NC number   \NC in scaled points \NC \NR
+\NC parshape                 \NC table   \NC \NC \NR
+\stoptabulate
+
+
+The \afunction{tex.linebreak} returned table data:
+
+\starttabulate[|lf\ss|p|]
+\NC prevdepth   \NC depth of the last line in the broken paragraph \NC \NR
+\NC prevgraf    \NC number of lines in the broken paragraph \NC \NR
+\NC looseness   \NC the actual looseness value in the broken paragraph \NC \NR
+\NC demerits    \NC the total demerits of the chosen solution  \NC \NR
+\stoptabulate
+
+\presentfunction{tex}{shipout}
+
+\blank
+The virtual table  \type{tex.lists} contains the set of internal
+registers that keep track of building page lists.
+
+\starttabulate[|lf\ss|p|]
+\NC \bf field          \NC \bf description \NC \NR
+\NC page_ins_head      \NC  circular list of pending insertions \NC \NR
+\NC contrib_head       \NC  the recent contributions \NC \NR
+\NC page_head          \NC  the page-so-far \NC \NR
+\NC hold_head          \NC used for held-over items for next page\NC \NR
+\NC adjust_head        \NC head of the current \tex{adjust} list \NC \NR
+\NC pre_adjust_head    \NC head of the current \tex{adjust pre} list\NC \NR
+\stoptabulate
+
+\blank
+The virtual table \type{tex.nest} contains the currently active
+semantic nesting state. It has two main parts: an zero-based array of
+userdata for the semantic nest itself, and the numerical value
+\type{tex.nest.ptr}. Known fields:
+
+\starttabulate[|lf\ss|lf\ss|l|p|]
+\NC \ssbf key   \NC \bf type  \NC \bf modes  \NC \bf explanation \NC\NR
+\NC mode        \NC number    \NC all        \NC The current mode.
+                                                 0 = no mode,
+                                                 1 = vertical,
+                                                 127 = horizontal,
+                                                 253 = display math.
+                                                 $-1$ = internal vertical,
+                                                 $-127$ = restricted horizontal,
+                                                 $-253$ = inline math.\NC\NR
+\NC modeline    \NC number    \NC all        \NC source input line where this mode was entered in,
+                                                 negative inside the output routine.\NC\NR
+\NC head        \NC node      \NC all        \NC the head of the current list\NC\NR
+\NC tail        \NC node      \NC all        \NC the tail of the current list\NC\NR
+\NC prevgraf    \NC number    \NC vmode      \NC number of lines in the previous paragraph\NC\NR
+\NC prevdepth   \NC number    \NC vmode      \NC depth of the previous paragraph\NC\NR
+\NC spacefactor \NC number    \NC hmode      \NC the current space factor\NC\NR
+\NC dirs        \NC node      \NC hmode      \NC internal use only\NC\NR
+\NC noad        \NC node      \NC mmode      \NC internal use only\NC\NR
+\NC delimptr    \NC node      \NC mmode      \NC internal use only\NC\NR
+\NC mathdir     \NC boolean   \NC mmode      \NC true when during math processing the \type{\mathdir} is not
+                                                 the same as the surrounding \type{\textdir}\NC\NR
+\NC mathstyle   \NC number    \NC mmode      \NC the current \type{\mathstyle} \NC\NR
+\stoptabulate
+
+
+\section{Texconfig table}
+
+This is a table that is created empty. A startup \LUA\ script could
+fill this table with a number of settings that are read out by
+the executable after loading and executing the startup file.
+
+\starttabulate[|lf\ss|lf\ss|l|p|]
+\NC \ssbf key      \NC \bf type     \NC \bf default \NC \bf explanation \NC\NR
+\NC kpse_init \NC boolean \NC true    \NC \type{false} totally disables \KPATHSEA\ initialisation\NC \NR
+\NC shell_escape    \NC    string\NC \NC cf.\ web2c docs \NC\NR
+\NC shell_escape_commands \NC string\NC \NC cf.\ web2c docs \NC\NR
+\NC string_vacancies \NC   number\NC  75000\NC cf.\ web2c docs \NC \NR
+\NC pool_free \NC               number\NC  5000\NC cf.\ web2c docs \NC \NR
+\NC max_strings \NC        number\NC  15000\NC cf.\ web2c docs \NC \NR
+\NC strings_free \NC       number\NC  100\NC cf.\ web2c docs \NC \NR
+\NC nest_size \NC               number\NC  50\NC cf.\ web2c docs \NC \NR
+\NC max_in_open \NC        number\NC  15\NC cf.\ web2c docs \NC \NR
+\NC param_size \NC         number\NC  60\NC cf.\ web2c docs \NC \NR
+\NC save_size \NC               number\NC  4000\NC cf.\ web2c docs \NC \NR
+\NC stack_size \NC         number\NC  300\NC cf.\ web2c docs \NC \NR
+\NC dvi_buf_size \NC       number\NC  16384\NC cf.\ web2c docs \NC \NR
+\NC error_line \NC         number\NC  79\NC cf.\ web2c docs \NC \NR
+\NC half_error_line \NC    number\NC  50\NC cf.\ web2c docs \NC \NR
+\NC max_print_line \NC     number\NC  79\NC cf.\ web2c docs \NC \NR
+\NC hash_extra \NC         number\NC  0\NC cf.\ web2c docs \NC \NR
+\NC pk_dpi \NC             number\NC  72\NC cf.\ web2c docs \NC \NR
+\NC trace_file_names \NC boolean \NC true \NC \type{false} disables \TEX's normal file feedback\NC \NR
+\NC file_line_error  \NC boolean \NC false \NC \type{file:line} style error messages\NC \NR
+\NC halt_on_error    \NC boolean \NC false \NC abort run on the first encountered error\NC \NR
+\NC formatname       \NC string \NC \NC if no format name was given
+                                             on the commandline, this will be used\NC \NR
+\NC jobname          \NC string \NC \NC as \type{formatname}.\NC \NR
+\stoptabulate
+
+
+\section{IO table}
+\presentfunction{texio}{write}
+\presentfunction{texio}{write_nl}
+
+\section{Token table}
+
+A token is represented in \LUA\ as a small table. For the moment, this
+table consists of three numeric entries:
+
+\starttabulate[|l|l|p|]
+\NC \bf index\NC \bf meaning         \NC \bf description \NC \NR
+\NC 1      \NC command code        \NC this is a value between~$0$ and~$130$\NC \NR
+\NC 2      \NC command modifier    \NC this is a value between~$0$ and~$2^{21}$ \NC \NR
+\NC 3      \NC control sequence id \NC for commands that are not the result of control
+                                       sequences, like letters and characters, it is zero,
+                                       otherwise, it is a number pointing into the \quote
+                                       {equivalence table} \NC \NR
+\stoptabulate
+
+\presentfunction{token}{get_next}
+\presentfunction{token}{is_expandable}
+\presentfunction{token}{expand}
+\presentfunction{token}{is_activechar}
+\presentfunction{token}{create}
+\presentfunction{token}{command_name}
+\presentfunction{token}{command_id}
+\presentfunction{token}{csname_name}
+\presentfunction{token}{csname_id}
+
+
+\stopcolumns
+\stoptext
