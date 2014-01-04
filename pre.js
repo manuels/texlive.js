@@ -1,17 +1,16 @@
 var Module = {};
+var is_browser = (typeof(self) !== "undefined" || typeof(window) !== "undefined");
 
-Module['print'] = function(msg) {
-  self['postMessage'](JSON.stringify({
-    'command': 'stdout',
-    'contents': msg
-  }));
-};
+if(is_browser) {
+  Module['print'] = function(a) { self['postMessage'](JSON.stringify({'command': 'stdout', 'contents': a})); }
+  Module['printErr'] = function(a) { self['postMessage'](JSON.stringify({'command': 'stderr', 'contents': a})); }
+}
 
-Module['printErr'] = function(msg) {
-  self['postMessage'](JSON.stringify({
-    'command': 'stderr',
-    'contents': msg
-  }));
+
+Module['preInit'] = function() {
+  Module['FS_root'] = function() {
+    return FS.root.contents;
+  }
 };
 
 var FS_createLazyFilesFromList = function(msg_id, parent, list, parent_url, canRead, canWrite) {
@@ -44,48 +43,72 @@ var FS_createLazyFilesFromList = function(msg_id, parent, list, parent_url, canR
   xhr.send();
 };
 
-Module['preInit'] = function() {};
-
-var FS_getFile = function(filename) {
-  var node = FS.analyzePath(filename);
-  return node.object.contents;
-}
-
-var FS_deleteFile = function(filename) {
-  return FS.deleteFile(filename);
+var preparePRNG = function (argument) {
+  if('egd-pool' in FS.root.contents['dev'].contents) {
+    var rand_count = 0;
+    var rand_contents = FS.root.contents['dev'].contents['egd-pool'].contents;
+    var rand = new Uint8Array(rand_contents);
+    FS.createDevice('/dev', 'urandom', function() { rand_count++; if(rand_count >= rand.length) { Module.print("Out of entropy!"); throw Error("Out of entropy"); } return rand[rand_count-1]; });
+    FS.createDevice('/dev', 'random', function() { rand_count++; if(rand_count >= rand.length) { Module.print("Out of entropy!"); throw Error("Out of entropy"); } return rand[rand_count-1]; });
+  }
 }
 
 self['onmessage'] = function(ev) {
   var data = JSON.parse(ev['data']);
   var args = data['arguments'];
+  args = [].concat(args);
   var res = undefined;
+  var fn;
 
-  switch(data['command']) {
+  var cmd = data['command'];
+  switch(cmd) {
     case 'run':
-      res = run(args);
-      break;
+      shouldRunNow = true;
+      preparePRNG();
+
+      try {
+        res = Module['run'](args);
+      }
+      catch(e) {
+        self['postMessage'](JSON.stringify({'msg_id': data['msg_id'], 'command': 'error', 'message': e.toString()}));
+        return;
+      }
+      self['postMessage'](JSON.stringify({'msg_id': data['msg_id'], 'command': 'success', 'result': res}));
+      res = undefined;
+    break;
+
     case 'FS_createLazyFilesFromList':
       args.unshift(data['msg_id']);
 
-      FS_createLazyFilesFromList.apply(this, args);
-      break;
+      res = FS_createLazyFilesFromList.apply(this, args);
     break;
-    case 'FS_getFile':
-      res = FS_getFile.apply(this, args);
-      break;
-    case 'FS_deleteFile':
-      FS_deleteFile.apply(this, args);
-      res = true;
-      break;
-    break;
+
+    case 'FS_readFile':
     case 'FS_createDataFile':
     case 'FS_createLazyFile':
     case 'FS_createFolder':
     case 'FS_createPath':
-      res = Module[data['command']].apply(Module, args);
-      break;
+    case 'FS_unlink':
+      try {
+        fn = cmd.substr(3);
+        res = FS[fn].apply(FS, args);
+
+        if(cmd === 'FS_readFile')
+          res = String.fromCharCode.apply(null, res);
+        else
+          res = true;
+      }
+      catch(e) {
+        res = false;
+      }
+    break;
+
+    case 'set_TOTAL_MEMORY':
+      Module.TOTAL_MEMORY = args[0];
+      res = Module.TOTAL_MEMORY;
+    break;
     case 'test':
-      break;
+    break;
   }
 
   if(typeof(res) !== 'undefined')
