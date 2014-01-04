@@ -1,0 +1,104 @@
+#! /bin/sh
+
+# mktextfm.ext: make mm instance and tfm 
+
+name=$1
+tfmdestdir=$2
+stdout=$3
+expansion=`expr $name : '.*\([+-][0-9]*\)$'`
+
+t1destdir=`echo "$tfmdestdir" | sed 's%/tfm/%/type1/%'`
+afmdestdir=`echo "$tfmdestdir" | sed 's%/tfm/%/afm/%'`
+vfdestdir=`echo "$tfmdestdir" | sed 's%/tfm/%/vf/%'`
+
+case "$expansion" in
++0) 
+    name=`echo $1 | sed 's/[+-]0$//'`
+    ;;
+esac
+
+psname=`echo $name | sed 's/8z/8a/'`
+if test "$expansion" = "+0"; then
+    base_name=$psname
+else
+    base_name=`expr $psname : '\(.*\)[+-][0-9]*$'`
+fi
+mm_map=$HOME/texmf/fontname/mminstance.map
+test -n "$mm_map" &&
+    line=`egrep \^$base_name'[	 ]' $mm_map`
+test -n "$line" && 
+    mmname=`expr "$line" : '[^	 ][^	 ]*[	 ][	 ]*\([^	 ][^	 ]*\).*$'`
+
+if test -n "$mmname"; then
+
+base_mmname=`expr "$mmname" : '\([^0-9_]*\)_[0-9]*_.*$'`
+width=`expr "$mmname" : '.*_\([0-9]*\)_wd.*$'`
+weight=`expr "$mmname" : '.*_\([0-9]*\)_wt.*$'`
+opt_size=`expr "$mmname" : '.*_\([0-9]*\)_op.*$'`
+
+if test -n "$width"; then
+    new_width=`echo "scale=2;($width*(1000 $expansion))/1000"|bc`
+    mm_flags="--width=$new_width"
+else
+    echo Font $base_mmname does not have width axis
+    exit 1
+fi
+if test -n "$weight"; then
+    mm_flags="$mm_flags --weight=$weight"
+fi
+if test -n "$opt_size"; then
+    mm_flags="$mm_flags --optical-size=$opt_size"
+fi
+
+mm=`kpsewhich $base_mmname.pfb`
+if test -z "$mm"; then
+    echo $base_mmname.pfb not found!
+    exit 1
+fi
+mmdir=`dirname $mm`
+wdir=`pwd`
+
+cd $mmdir
+cmd mmafm $mm_flags -o $wdir/$psname.afm $base_mmname.amfm
+cmd mmpfb $mm_flags -o $wdir/$psname.pfb $base_mmname.pfb
+
+cd $wdir
+
+cmd mktfm8z $name $psname 
+
+"$MT_MKTEXDIR" "$afmdestdir" && mv $psname.afm $afmdestdir && \
+"$MT_MKTEXUPD" "$afmdestdir" $psname.afm
+
+"$MT_MKTEXDIR" "$t1destdir" && mv $psname.pfb $t1destdir && \
+"$MT_MKTEXUPD" "$t1destdir" $psname.pfb
+
+else
+
+if test "$expansion" = "+0"; then
+    expansion=""
+fi
+
+afm=`kpsewhich $base_name.afm`
+if test -z "$afm"; then
+    echo $base_name.afm not found!
+    exit 1
+fi
+
+cp $afm ./
+
+cmd mktfm8z $name $base_name
+
+fi
+
+for f in *.tfm; do
+    mv $f $tfmdestdir
+    "$MT_MKTEXUPD" "$tfmdestdir" $f
+done
+
+"$MT_MKTEXDIR" "$vfdestdir"
+for f in *.vf; do
+    mv $f $vfdestdir
+    "$MT_MKTEXUPD" "$vfdestdir" $f
+done
+
+echo "$tfmdestdir/$name.tfm" >$stdout

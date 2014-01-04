@@ -1,0 +1,1150 @@
+%&latex % english hyphenation
+
+\documentclass{article}
+
+\usepackage{etex_man}
+
+\begin{document}
+
+\begin{center}
+%% {\LARGE Draft, \today}\\[6pt]
+{\huge\bf The \eTeX\ manual}\\[6pt]
+{\sl Version 2, February 1998\/}\\[18pt]
+by The \NTS\ Team\\[6pt]
+Peter Breitenlohner, Max-Planck-Institut f\"ur Physik, M\"unchen\\[18pt]
+\small\noindent
+The preparation of this report was supported in part by {\sc Dante},\\
+Deutschsprachige Anwendervereinigung \TeX\ e.V.\\
+`\TeX' is a trademark of the American Mathematical Society.
+\end{center}
+
+\section{Introduction}
+
+The \NTS\ project intends to develop an `New Typesetting System' (\NTS)
+that will eventually replace today's \TeX3.  The \NTS\ program will
+include many features missing in \TeX, but there will also exist a mode
+of operation that is 100\% compatible with \TeX3.  It will, necessarily,
+require quite some time to develop \NTS\ to maturity and make it widely
+available.
+
+Meanwhile \eTeX\ intends to fill the gap between \TeX3 and the future
+\NTS. It consists of a series of features extending the capabilities of
+\TeX3.%
+\footnote{The \TeX3 program; for the moment there are no plans to extend
+the software related to \TeX.}
+
+Since compatibility between \eTeX\ and \TeX3 has been a main concern,
+\eTeX\ has two modes of operation:\\
+(1)~In \TeX\ compatibility mode it fully deserves the name \TeX\ and
+there are neither extended features nor additional primitive commands.
+That means in particular that \eTeX\ passes the \|TRIP| test
+\cite{tripman} without any restriction.  There are, however, a few
+minor modifications that would be legitimate in any implementation of
+\TeX.\\
+(2)~In extended mode there are additional primitive commands and the
+extended features of \eTeX\ are available.
+
+We have tried to make \eTeX\ as compatible with \TeX\ as possible
+even in extended mode.  In a few cases there are, however, some subtle
+differences described in detail later on.  Therefore the \eTeX\ features
+available in extended mode are grouped into two categories:\\
+(1)~Most of them have no semantic effect as long as none of the
+additional primitives are executed; these `extensions' are permanently
+enabled.\\
+(2)~The remaining optional \eTeX\ features (`enhancements') can be
+individually enabled and disabled; initially they are all disabled.
+For each enhancement there is a state variable \|\...state|; an
+enhancement is enabled or disabled by assigning a positive or
+non-positive value respectively to that state variable.
+
+For \eTeX\ Versions~1 and~2 there is just one enhancement:  mixed
+direction typesetting (\TeXXeT) with the state variable \|\TeXXeTstate|.
+
+Version~1.1 of \eTeX\ was released in November 1996, Version~2.0 in
+February 1998.
+It is expected that there will be about one \eTeX\ version per year,
+where each later version adds new features.  It would be desirable if
+these \eTeX\ versions were incorporated into many of the existing
+implementations of \TeX3 without much delay.
+
+With each \eTeX\ version there will be an \|e-TRIP| test \cite{etripman}
+in order to help to verify that a particular implementation deserves the
+name \eTeX\ in the same way as the \|TRIP| test \cite{tripman} helps to
+verify that an implementation deserves the name \TeX.
+
+\section{Generating \eTeX}
+
+\subsection{Generating the \eTeX\ Program}
+
+An implementation of \TeX\ consists of a WEB change file \|tex.ch|
+containing all system-dependent changes for a particular system.  The
+WEB system program \|TANGLE| applies this change file to the
+system-independent file \|tex.web| defining the \TeX\ program in order to
+generate a \TeX\ Pascal file for that system \cite{webman}.  Similarly
+an implementation of \eTeX\ consists of a system-dependent change file
+\|etex.sys| to be applied to the system-independent file \|e-tex.web|
+defining the \eTeX\ program.  Since \eTeX\ differs from \TeX\ by a
+relatively small fraction of its code \|e-tex.web| does, however, not
+exist as a physical file; it is instead defined in terms of a
+system-independent change file \|e-tex.ch| to be applied to \|tex.web|.
+Similarly it should be possible to define the system-dependent change
+file \|etex.sys| for a particular system in terms of its deviations
+from the corresponding file \|tex.ch| \cite{etexgen}.
+
+\subsection{Generating Format Files for \eTeX}
+
+When (the INITEX or VIRTEX version of) the \TeX\ program is started, it
+analyzes the first non-blank input line from the command line or (with
+the \|**| prompt) from the terminal:  The first non-blank character of
+that input line may be an \|&| followed immediately by the name of the
+format to
+be loaded; otherwise VIRTEX uses a default format whereas INITEX starts
+without loading a format file.
+
+For eINITEX (the INITEX version of \eTeX) there is an additional
+possibility:  If the first non-blank input character is an \|*|
+(immediately followed what would be the first non-blank input character
+for INITEX), the program starts in extended mode without loading a
+format file.  If the first non-blank character is neither \|&| nor \|*|
+then eINITEX starts without loading a format but in compatibility mode.
+Whenever a format file is loaded by eINITEX or eVIRTEX the mode
+(compatibility or extended) is inherited from the format.
+
+It is recommended that the input file \|etex.src| be used instead of
+\|plain.tex| when generating an \eTeX\ format in extended mode.  That
+file will first read \|plain.tex| (without reading \|hyphen.tex|) and
+will then supply macro definitions supporting \eTeX\ features.
+
+\section{\eTeX\ Extensions}
+
+\subsection{Compatibility and Extended Mode}
+
+Once \eTeX\ has entered compatibility mode it behaves as any other
+implementation of \TeX.  All of \eTeX's additional commands are absent;
+it is therefore impossible to access any of the extensions or
+enhancements.  The ability of eINITEX to initially choose between
+compatibility and extended mode is, however, by itself a feature not
+present in any \TeX\ implementation.
+
+The remainder of this document is devoted to a detailed and mostly
+technical description of all aspects where \eTeX\ (in extended mode)
+behaves differently from \TeX. It will be assumed that the reader is
+familiar with \TeXbook\ \cite{texbook} describing \TeX's behaviour in
+quite some detail.
+
+All of \eTeX's extensions and enhancements available in extended mode are
+activated by either executing some new primitive command or by assigning
+a nonzero value to some new integer parameter or state variable. Since
+all these new variables are initially zero,%
+\footnote{To be precise all state variables are zero when eINITEX or eVIRTEX
+is started; integer parameters that are not state variables are zero when
+eINITEX is started without loading a format file or inherited from the
+format file otherwise.}
+\eTeX\ behaves as \TeX\ as long as none of \eTeX's new control sequences
+are used, with the following exceptions which should, however, have
+no effect on the typesetting of error-free \TeX\ documents (produced with
+error-free formats):\\
+(1) When \|\tracingcommands| has a value of~3 or more, or\\
+when \|\tracinglostchars| has a value of~2 or more, \eTeX\ will display
+additional information not available in \TeX.\\
+(2) When using a count, dimen, skip, muskip, box, or token register number
+in the range 256--32767, \eTeX\ will access one of its additional registers
+whereas \TeX\ will produce an error and use register number zero.
+
+\subsection{Optimization}
+
+When a value is assigned to an \<internal quantity> within a save group,
+the former value is restored when the group ends, provided the
+assignment was not global. This is achieved by saving the former value
+on \TeX's `save stack'. \eTeX\ refrains from creating such save stack
+entries when the old and new value are the same (`reassignments').
+
+\|\aftergroup| tokens are also kept on \TeX's save stack.  When the
+current group ends, \TeX\ converts each \|\aftergroup| token into a
+token list and inserts this list as new `input level' into the input stack.
+\eTeX\ collects all \|\aftergroup| tokens from one group into one token
+list and thus conserves input levels.
+
+When a completed page is written to the DVI file (shipped out), \TeX\
+multiplies the relevant stretch or shrink components of glue nodes in a
+box by the glue expansion factor of that box and converts the product to
+DVI units.  In order to avoid overflow each resulting value $x$ is
+artificially limited to the range $|x|\le10^9$.
+Consider the example:
+\begin{verbatim}
+   \shipout\vbox to100pt{
+     \hrule width10pt
+     \vskip 0pt plus1000fil
+     \vskip 0pt plus1000fil
+     \vskip 0pt plus-2000fil
+     \hrule
+     \vskip 0pt plus0.00005fil
+     }
+\end{verbatim}
+Here the three glues between the two rules add up to zero; when \TeX\
+converts each stretch component individually they will, however, add up
+to $10^9$ DVI units due to the truncation mentioned above. \eTeX, however,
+accumulates the relevant stretch or shrink components of consecutive
+glue nodes (possibly separated by insert, mark, adjust, kern, and
+penalty nodes) before converting them to DVI units.  During this process
+glue nodes may be converted into equivalent kern nodes and some glue
+specifications may be recycled; this may affect the memory usage
+statistics displayed after the page has been shipped out.
+
+\subsection{Tracing and Diagnostics}
+
+When \|\tracingcommands| has a value of~3 or more, the commands
+following a prefix (\|\global|, etc.) are shown as well, e.g.:
+\begin{verbatim}
+   \global\count0=0    =>    {\global}
+                             {\count}
+\end{verbatim}
+
+When \|\tracinglostchars| has a value of~2 or more, missing characters
+are displayed on the terminal even if the value of \|\tracingonline| is
+0~or less.
+
+When \|\tracingscantokens| has a value of~1 or more, the opening and
+closing of pseudo-files (generated by \|\scantokens|) is recorded as for
+any other file, with `\verb*| |' as filename.
+
+When the program is compiled with the code for collecting statistics and
+\|\tracingassigns| has a value of~1 or more, all assignments subject to
+\TeX's grouping mechanism are traced, e.g.:
+\begin{verbatim}
+   \def\foo{\relax}    =>    {changing \foo=undefined}
+                             {into \foo=macro:->\relax }
+   \global\count17=7   =>    {globally changing \count17=0}
+                             {into \count17=7}
+   \count17=7          =>    {reassigning \count17=7}
+\end{verbatim}
+
+When \|\tracingifs| has a value of~1 or more, all conditionals
+(including \|\unless|, \|\or|, \|\else|, and \|\fi|) are traced, together
+with the starting line and nesting level; the \|\showifs| command displays
+the state of all currently active conditionals. Thus the input
+\begin{verbatim}
+   \unless\iffalse
+      \iffalse
+      \else
+         \showifs
+      \fi
+   \fi
+\end{verbatim}
+might yield
+\begin{verbatim}
+   {\unless\iffalse: (level 1) entered on line 1}
+   {\iffalse: (level 2) entered on line 2}
+   {\else: \iffalse (level 2) entered on line 2}
+   ### level 2: \iffalse\else entered on line 2
+   ### level 1: \unless\iffalse entered on line 1
+   {\fi: \iffalse (level 2) entered on line 2}
+   {\fi: \unless\iffalse (level 1) entered on line 1}
+\end{verbatim}
+
+When \|\tracinggroups| has a value of~1 or more, the start and end of
+each save group is traced, together with the starting line and grouping
+level; the \|\showgroups| command displays the state of all currently
+active save groups. Thus the input
+\begin{verbatim}
+   \begingroup
+      {
+         \showgroups
+      }
+   \endgroup
+\end{verbatim}
+might yield
+\begin{verbatim}
+  {entering semi simple group (level 1) at line 1}
+  {entering simple group (level 2) at line 2}
+  ### simple group (level 2) entered at line 1 ({)
+  ### semi simple group (level 1) entered at line 1 (\begingroup)
+  ### bottom level
+  {leaving simple group (level 2) entered at line 2}
+  {leaving semi simple group (level 1) entered at line 1}
+\end{verbatim}
+
+Occasionally conditionals and/or save groups are not properly nested
+with respect to \|\input| files.  Although this might be perfectly
+legitimate, such anomalies are mostly unintentional and may cause quite
+obscure errors.  When \|\tracingnesting| has a value of~1 or more,
+these anomalies are shown; when \|\tracingnesting| has a value of~2 or more,
+the current context (traceback) is shown as well. Thus the input
+\begin{verbatim}
+   \newlinechar=`\^^J
+   \begingroup
+      \iftrue
+         \scantokens{%
+      \endgroup
+   ^^J\fi
+   ^^J\bgroup
+      ^^\tracingnesting=2
+      ^^J\iffalse
+      ^^J\else
+        }%
+     \egroup
+   \fi
+\end{verbatim}
+might yield%
+\footnote{The \cs{scantokens} command will be discussed later.}
+\begin{verbatim}
+Warning: end of semi simple group (level 1) entered at line 2 of
+ a different file
+Warning: end of \iftrue entered on line 3 of a different file
+Warning: end of file when simple group (level 1) entered at line
+ 3 is incomplete
+Warning: end of file when \iffalse\else entered on line 5 is inc
+omplete
+l.7 \else
+
+l.11      }
+           %
+\end{verbatim}
+
+The command \|\showtokens{|\<token list>\|}| displays the token list, and
+allows the display of quantities that cannot be displayed by \|\show| or
+\|\showthe|, e.g.:
+\begin{verbatim}
+  \showtokens\expandafter{\jobname}
+  \showtokens\expandafter{\topmarks 27}
+\end{verbatim}
+
+\subsection{Status Enquiries}
+
+A number of \TeX's internal quantities can be assigned values but
+these values cannot be retrieved in \TeX. \eTeX\ introduces several new
+primitives that allow the retrieval of information about its internal state.
+
+\noindent
+\|\eTeXversion| returns \eTeX's (major) version number;\\
+\|\eTeXrevision| expands into a list of character tokens representing
+the revision (minor version) number.  Thus
+\begin{verbatim}
+   \message{\number\eTeXversion\eTeXrevision}
+\end{verbatim}
+should write the complete version as shown when \eTeX\ is started.
+
+\noindent
+When used as number, \|\interactionmode| returns one of the
+values 0~(batchmode), 1~(nonstopmode), 2~(scrollmode),
+or~3~(errorstopmode).  Assigning one of these values to
+\|\interactionmode| changes the current interaction mode accordingly;
+such assignments are always global.
+
+\noindent
+\|\currentgrouplevel| returns the current save group level;\\
+\|\currentgrouptype| returns a number representing the type of the
+innermost group:
+\begin{multilist}{2}{\hfil\qquad#:&\quad#\qquad\hfil}
+\item 0&bottom level (no group)\cr
+\item 1&simple group\cr
+\item 2&hbox group\cr
+\item 3&adjusted hbox group\cr
+\item 4&vbox group\cr
+\item 5&vtop group\cr
+\item 6&align group\cr
+\item 7&no align group\cr
+\item 8&output group\cr
+\item 9&math group\cr
+\item 10&disc group\cr
+\item 11&insert group\cr
+\item 12&vcenter group\cr
+\item 13&math choice group\cr
+\item 14&semi simple group\cr
+\item 15&math shift group\cr
+\item 16&math left group\cr
+\end{multilist}
+
+\noindent
+\|\currentiflevel| returns the number of currently active
+conditionals;\\
+\|\currentifbranch| indicates which branch of the innermost conditional
+is taken: 1~`then branch', $-1$~`else branch', or 0~not yet decided;\\
+\|\currentiftype| returns 0~if there are no active conditionals, a
+positive number indicating the type of the innermost active conditional,
+or the negative of that number when the conditional was prefixed by
+\|\unless|:
+\begin{multilist}{3}{\hfil\qquad#:&\quad#\qquad\hfil}
+\item 1&\cs{if}\cr
+\item 2&\cs{ifcat}\cr
+\item 3&\cs{ifnum}\cr
+\item 4&\cs{ifdim}\cr
+\item 5&\cs{ifodd}\cr
+\item 6&\cs{ifvmode}\cr
+\item 7&\cs{ifhmode}\cr
+\item 8&\cs{ifmmode}\cr
+\item 9&\cs{ifinner}\cr
+\item 10&\cs{ifvoid}\cr
+\item 11&\cs{ifhbox}\cr
+\item 12&\cs{ifvbox}\cr
+\item 13&\cs{ifx}\cr
+\item 14&\cs{ifeof}\cr
+\item 15&\cs{iftrue}\cr
+\item 16&\cs{iffalse}\cr
+\item 17&\cs{ifcase}\cr
+\item 18&\cs{ifdefined}\cr
+\item 19&\cs{ifcsname}\cr
+\item 20&\cs{iffontchar}\cr
+\end{multilist}
+
+\noindent
+\|\lastnodetype| returns a number indicating the type of the last node,
+if any, on the current (vertical, horizontal, or math) list:
+\begin{multilist}{2}{\hfil\qquad#:&\quad#\qquad\hfil}
+\item -1&none (empty list)\cr
+\item 0&char node\cr
+\item 1&hlist node\cr
+\item 2&vlist node\cr
+\item 3&rule node\cr
+\item 4&ins node\cr
+\item 5&mark node\cr
+\item 6&adjust node\cr
+\item 7&ligature node\cr
+\item 8&disc node\cr
+\item 9&whatsit node\cr
+\item 10&math node\cr
+\item 11&glue node\cr
+\item 12&kern node\cr
+\item 13&penalty node\cr
+\item 14&unset node\cr
+\item 15&math mode nodes\cr
+\end{multilist}
+
+\noindent
+The commands \|\fontcharht|, \|\fontcharwd|, \|\fontchardp|, and
+\|\fontcharic| followed by a font specification and a character code,
+return a dimension: the height, width, depth, or italic correction of the
+character in the font, or \[0pt] if no such character exists;
+the conditional \|\iffontchar| tests the existence of that character.
+
+\noindent
+When used as number, \|\parshape| returns the number of lines of the current
+parshape specification (or zero).\\
+\eTeX's \|\parshapeindent|, \|\parshapelength|, and \|\parshapedimen|,
+followed by a number $n$ return the dimensions of the parshape
+specification:\\
+\[0pt] for $n\le0$ or when no parshape is currently active, otherwise\\
+\|\parshapeindent|$\,n$ and \|\parshapedimen|$\,2n-1$ both return the
+indentation of line $n$ (explicitly specified or implied by repeating the
+last specification),\\
+\|\parshapelength|$\,n$ and \|\parshapedimen|$\,2n$ both return the length
+of line $n$.
+
+\subsection{Expressions}
+
+\eTeX\ introduces the notion of expressions of type number, dimen, glue, or
+muglue, that can be used whenever a quantity of that type is needed. Such
+expressions are evaluated by \eTeX's scanning mechanism; they are initiated
+by one of the commands \|\numexpr|, \|\dimexpr|, \|\glueexpr|, or \|\muexpr|
+(determining the type~$t$) and optionally terminated by one \|\relax| (that
+will be absorbed by the scanning mechanism). An expression consists of one
+or more terms of the same type to be added or subtracted; a term of type~$t$
+consists of a factor of that type, optionally multiplied and\slash or
+divided by numeric factors; finally a factor of type~$t$ is either a
+parenthesized subexpression or a quantity (number, etc.) of that type.
+Thus, the conditional
+\begin{verbatim}
+  \ifdim\dimexpr (2pt-5pt)*\numexpr 3-3*13/5\relax + 34pt/2<\wd20
+\end{verbatim}
+is true if and only if the width of box~20 exceeds 32\[pt]. Note the use of
+\|\relax| to terminate the inner (numeric) expression, the outer (dimen)
+expression is terminated automatically by the token \|<|$_{12}$ that does
+not fit into the expression syntax.
+
+The arithmetic performed by \eTeX's expressions does not do much that could
+not be done by \TeX's arithmetic operations \|\advance|, \|\multiply|, and
+\|\divide|, although there are some notable differences: Each factor is
+checked to be in the allowed range, numbers must be less than $2^{31}$ in
+absolute value, dimensions or glue components must be less than
+$2^{14}$\[pt], \[mu], \[fil], etc.\ respectively. The arithmetic operations
+are performed individually, except for `scaling' operations (a
+multiplication immediately followed by a division) which are performed as
+one combined operation with a 64-bit product as intermediate value. The
+result of each operation is again checked to be in the allowed range.
+Finally the results of divisions and scalings are rounded, whereas \TeX's
+\|\divide| truncates.
+
+The important new feature is, however, that the evaluation of expressions
+does not involve assignments and can therefore be performed in
+circumstances where assignments are not allowed, e.g., inside an \|\edef| or
+\|\write|. This also allows the definition of purely expandable loop constructions:
+\begin{verbatim}
+  \def\foo#1#2{\number#1
+    \ifnum#1<#2,
+      \expandafter\foo
+      \expandafter{\number\numexpr#1+1\expandafter}%
+      \expandafter{\number#2\expandafter}%
+    \fi}
+\end{verbatim}
+such that, e.g., `\|\foo{7}{13}|' expands into `\|7, 8, 9, 10, 11, 12, 13|'.
+
+The commands \|\gluestretch| and \|\glueshrink| are to be followed by a glue
+specification and return the stretch or shrink component of that glue as
+dimensions (with \[fil] etc.\ replaced by \[pt]), the commands
+\|\gluestretchorder| and \|\glueshrinkorder| return the order of infinity:
+0~for \[pt], 1~for \[fil], 2~for \[fill], and 3~for \[filll].
+
+The commands \|\gluetomu| and \|\mutoglue| convert glue into muglue
+and vice versa by simply equating 1\[pt] with 1\[mu], precisely what \TeX\
+does (in addition to an error message) when the wrong kind of glue is used.
+
+\subsection{Additional Registers and Marks}
+
+\eTeX\ increases the number of \TeX's count, dimen, skip, muskip, box, and
+token registers from 256 to 32768. The additional registers, numbered
+256--32767, can be used exactly as the first 256, except that they can
+not be used for insertion classes.
+
+As in \TeX, the first 256 registers of each kind are realized as static
+arrays that are part of the `table of equivalents'; values to be restored
+when a save group ends are kept on the save stack. The additional registers
+are realized as sparse arrays built from \TeX's main memory and are
+therefore less efficient. They use a four-level index structure and
+individual registers are present only when needed. Values to be restored
+when a particular save group ends are kept in a linked list (again built
+from main memory) with one save stack entry pointing to that list.%
+\footnote{With the effect that the order of restoring (or discarding) saved
+values may be somewhat surprising.}
+
+\medskip
+\eTeX\ generalizes \TeX's mark concept to mark classes 0--32767, with mark
+class~0 used for \TeX's marks.\\
+The command \|\marks| followed by a mark class~$n$ and a mark text appends a
+mark node to the current list; \|\marks0| is synonymous with \|\mark|. The
+page builder and the \|\vsplit| command record information about the mark nodes
+found on the page or box produced, separately for each mark class. The
+information for mark class~0 is kept in a small static array as in \TeX, the
+information for the additional mark classes is again kept in a sparse array
+with entries present only when needed.\\
+The command \|\firstmarks|$\,n$ expands to the mark text for mark class~$n$
+first encountered on the most recent page, etc., and again \|\firstmarks0|
+is synonymous with \|\firstmark|.
+
+\subsection{Input Handling}
+
+The command \|\readline|\<number>\[to]\<control sequence> defines the
+control sequence as parameterless macro whose replacement text is the
+contents of the next line read from the designated file, as for \|\read|.
+The difference is that the current category codes are ignored and all
+characters on that line (including an endline character) are converted to
+character tokens with category 12 (`other'), except that the character
+code~32 gets category 10 (`space').
+
+The command \|\scantokens{...}| absorbs a list of unexpanded tokens,
+converts it into a character string that is treated as if it were an
+external file, and starts to read from this `pseudo-file'. A rather
+similar effect can be achieved by the commands
+\begin{verbatim}
+   \toks0={...}
+   \immediate\openout0=file
+   \immediate\write0{\the\toks0}
+   \immediate\closeout0
+   \input file
+\end{verbatim}
+In particular every occurrence of the current newline character is
+interpreted as start of a new line, and input characters will be converted
+into tokens as usual.
+The \|\scantokens| command is, however, expandable and does not use token
+registers, write streams, or external files. Furthermore the conversion from
+\TeX's internal ASCII codes to external characters and back to ASCII codes
+is skipped. Finally the current context (traceback) shown, e.g., as part
+of an error message continues beyond an input line from a pseudo-file until
+an input line from a real file (or the terminal) is found.
+
+When \eTeX's input mechanism attempts to read beyond the end of an \|\input|
+file or \|\scantokens| pseudo-file, and before checking for `runaway'
+conditions and closing the file, it will first read a list of tokens that
+has been predefined by the command \|\everyeof={|\<token list>\|}|.
+
+\subsection{Breaking Paragraphs into Lines}
+
+Traditional typesetting with lead type used to adjust (stretch or shrink)
+the interword spaces in the last line of a paragraph by the same amount as
+those in the preceding line. With \TeX\ the last line is, however, usually
+typeset at its natural width due to infinitely stretchable parfillskip glue.
+\eTeX\ allows interpolation between these two extremes by specifying a
+suitable value for \|\lastlinefit|. For a value of~0 or less, \eTeX\
+behaves as \TeX, values from~1 to 1000 indicate a glue adjustment fraction
+$f$ times 1000, values above 1000 are interpreted as $f=1$.
+
+The new algorithm is used only if\\
+1. \|\lastlinefit| is positive;\\
+2. \|\parfillskip| has infinite stretchability; and\\
+3. the stretchability of \|\leftskip| plus \|\rightskip| is finite.%
+\footnote{As usual for parameters influencing \TeX's line-breaking algorithm,
+the values current at the end of the (partial) paragraph are used.}\\
+Thus the last line of a paragraph would normally be typeset at its
+natural width and the stretchability of parfillskip glue would be used to
+achieve the desired line width. The algorithm proceeds as usual, considering
+all possible sequences of feasible break points and accumulating demerits for
+the stretching or shrinking of lines as well as for visually incompatible
+lines. When a candidate for the last line has been reached, the following
+conditions are tested:\\
+4. the previous line was not `infinitely bad' and was stretched with positive
+finite stretchability or was shrunk with positive shrinkability;\\
+5. the last line has infinite stretchability entirely due to parfillskip
+glue;\\
+6. if the previous line was stretched or shrunk the last line has
+positive finite stretchability or shrinkability respectively.\\
+If all three conditions are satisfied, a glue adjustment factor of $f$ times
+that of the preceding line will be applied to the relevant stretch or
+shrink components of all glue nodes in the last line, and the corresponding
+demerits are computed. (The last line will, however, not be stretched beyond
+the desired line width.)
+
+When all possible candidates for the last line of the paragraph have been
+examined, the one having fewest accumulated demerits is chosen. If \eTeX's
+modified algorithm was applied to that last line, the actual stretching or
+shrinking is achieved by suitably modifying the parfillskip glue node.
+
+All computations described so far are performed with machine-independent
+integer arithmetic. Note, however, that the actual stretching requires
+machine-dependent floating point arithmetic. Therefore, when a paragraph is
+interrupted by a displayed equation and the line preceding the display is
+subject to the adjustment just described, the display will in general be
+preceded by abovedisplayskip and not by abovedisplayshortskip glue.
+
+\medskip
+
+After breaking a paragraph into lines, \TeX\ computes the interline
+penalties by adding the values of:\\
+\|\interlinepenalty| between any two lines,\\
+\|\clubpenalty| after the first line of a (partial) paragraph,\\
+\|\widowpenalty| before the last line of the paragraph,\\
+\|\displaywidowpenalty| before the line immediately preceding a displayed
+equation, and\\
+\|\brokenpenalty| after lines ending with a discretionary break.\\
+\eTeX\ generalizes the concept of interline, club, widow, and display widow
+penalty by allowing their replacement by arrays of penalty values with the
+commands\\
+\|\interlinepenalties|,\\
+\|\clubpenalties|,\\
+\|\widowpenalties|, and\\
+\|\displaywidowpenalties|.\\
+Each of these commands is to be followed by an optional equal sign and a
+number $n$.  If $n\le0$ the respective array is reset and \TeX's
+corresponding single value is used as usual; a positive value $n$
+declares an array of length $n$ and must be followed by $n$ penalty
+values.  When one of these arrays has been set, its values are used
+instead of \TeX's corresponding single values as follows (repeating the
+last value when necessary):\\
+the $i^{\rm th}$ interline penalty value is used after line $i$ of the
+paragraph;\\
+the $i^{\rm th}$ club penalty value is used after line $i$ of a partial
+paragraph;\\
+the $i^{\rm th}$ widow penalty value is used after line $m-i$ of a
+paragraph without displayed equations or the last partial paragraph of
+length $m$;\\
+the $i^{\rm th}$ display widow penalty value is used after line $m-i$ of a
+partial paragraph of length $m$ that is followed by a displayed equation.
+
+When used after \|\the| or in situations where \TeX\ expects to see a
+number, the same four commands serve to retrieve the arrays of penalties.
+Specifying, e.g., \|\clubpenalties|\<number> with a number $n$, returns~0
+for $n<0$ or when the club penalty array has been reset, the length of the
+declared club penalty array for $n=0$, or the $n^{\rm th}$ club penalty
+value for $n>0$ (again repeating the last  value when necessary).
+
+\subsection{Math Formulas}
+
+\TeX's \|\left|\<delimiter>\|...\right|\<delimiter> produces two delimiters
+with a common size adjusted to the height and depth of the enclosed material.
+In \eTeX\ this can be generalized by occurrences of \|\middle|\<delimiter>
+dividing the enclosed material into segments resulting in a sequence
+of delimiters with a common size adjusted to the maximal height and depth of
+all enclosed segments. The spacing between a segment and the delimiter to
+its left or right is as for \TeX's left or right delimiter respectively.
+
+\subsection{Hyphenation}
+
+\TeX\ uses the \|\lccode| values for two quite unrelated purposes:\\
+(1) when \|\lowercase| converts character tokens to their lower-case
+equivalents (in the same way as \|\uppercase| uses the \|\uccode| values);
+and\\
+(2) when hyphenation patterns or exceptions are read, and when words are
+hyphenated during the line-breaking algorithm.
+
+\eTeX\ introduces the concept of (language-dependent) hyphenation codes that
+are used instead of the \|\lccode| values for hyphenation purposes. In order
+to explain the details of \eTeX's behaviour, we need some technical aspects
+of hyphenation patterns. When INITEX starts without reading a format file,
+the (initially empty) hyphenation patterns are in a form suitable for
+inserting new patterns specified by \|\patterns| commands; when INITEX
+attemps hyphenation or prepares to write a format file, they are compressed
+into a more compact form suitable for finding hyphens. Only these compressed
+patterns can be read from a format file (by INITEX or VIRTEX).
+
+In \eTeX\ the hyphenation patterns are supplemented by hyphenation codes.
+When eINITEX starts without reading a format file both are initially empty;
+when a \|\patterns| command is executed and \|\savinghyphcodes| has a positive
+value, the current \|\lccode| values are saved as hyphenation codes for the
+current language. These saved hyphenation codes are later compressed together
+with the patterns and written to or read from a format file. When the
+patterns have been compressed (always true for eVIRTEX) and hyphenation
+codes have been saved for the current language, they are used
+instead of the \|\lccode| values for hyphenation purposes (reading
+hyphenation exceptions and hyphenating words).
+
+\subsection{Discarded Items}
+
+When \TeX's page builder transfers (vertical mode) material from the `recent
+contributions' to the `page so far', it discards glue, kern, and penalty
+nodes (discardable items) preceding the first box or rule on the page under
+construction and inserts a topskip glue node immediately before that box or
+rule. Note, however, that this topskip glue need not be the first node on
+the page, it may be preceded by insertion, mark, and whatsit nodes.
+Similarly when the \|\vsplit| command has split the first part off a vbox,
+discardable items are discarded from the top of the remaining vbox and a
+splittopskip glue node is inserted immediately before the first box or rule.
+
+When \eTeX's parameter \|\savingvdiscards| has been assigned a positive
+value, these `discarded items' are saved in two lists and can
+be recovered by the commands \|\pagediscards| and \|\splitdiscards| that
+act like `unvboxing' hypothetical box registers containing a vbox with the
+discarded items.
+
+The list of items discarded by the page builder is emptied at the end of
+the output routine and by the \|\pagediscards| command; new items may
+be added as long as the new `page so far' contains no box or rule.
+
+The list of items discarded by the \|\vsplit| command is emptied at the
+start of a vsplit operation and by the \|\splitdiscards| command; new items
+are added at the end of a vsplit operation.
+
+\subsection{Expandable Commands}
+
+Chapter~20 of \TeXbook\ gives complete lists of all expandable \TeX\
+commands and of all cases where expandable tokens are not expanded.
+For \eTeX\ there are these additional conditionals:
+
+\begin{itemize}
+\item
+\|\ifdefined|\<token>\quad(test if token is defined)
+\end{itemize}
+\noindent
+True if \<token> is defined; creates no new hash table entry.
+
+\begin{itemize}
+\item
+\|\ifcsname...\endcsname|\quad(test if control sequence is defined)
+\end{itemize}
+\noindent
+True if the control sequence \|\csname...\endcsname| would be defined;
+creates no new hash table entry.
+
+\begin{itemize}
+\item
+\|\iffontchar|\<font>\<8-bit number>\quad(test if char exists)
+\end{itemize}
+\noindent
+True if \|\char|\<8-bit number> in \|\font|\<font> exists.
+
+These are \eTeX's additional expandable commands:
+
+\begin{itemize}
+\item\|\unless|.\\
+The next (unexpanded) token must be a boolean conditional
+(i.e., not \|\ifcase|); the truth value of that conditional is reversed.
+
+\item\|\eTeXrevision|.\\
+The expansion is a list of character tokens of category 12 (`other')
+representing \eTeX's revision (minor version) number, e.g., `.0' or
+`.1'.
+
+\item\|\topmarks|\<15-bit number>,
+\|\firstmarks|\<15-bit number>,\\
+\|\botmarks|\<15-bit number>,
+\|\splitfirstmarks|\<15-bit number>, and\\
+\|\splitbotmarks|\<15-bit number>.\\
+These commands generalize \TeX's \|\topmark| etc.\ to 32768 distinct
+mark classes; the special case \|\topmarks0| is synonymous with
+\|\topmark| etc.
+
+\item\|\unexpanded|\<general text>.\\
+The expansion is the token list \<balanced text>.
+
+\item\|\detokenize|\<general text>.\\
+The expansion is a list of character tokens representing the token list
+\<balanced text>. As with the lists of character tokens produced by \TeX's
+\|\the| and \eTeX's \|\readline|, these tokens have category 12 (`other'),
+except that the character code~32 gets category 10 (`space').
+
+\item\|\scantokens|\<general text>.\\
+The expansion is null; but \eTeX\ creates a pseudo-file containing the
+characters representing the token list \<balanced text> and prepares to
+read from this pseudo-file before looking at any more tokens from its
+current source.
+
+\end{itemize}
+
+These are the additional \eTeX\ cases when expandable tokens are not
+expanded:
+
+\begin{itemize}
+\item
+When \eTeX\ is reading the argument token for \|\ifdefined|.
+
+\item
+When \eTeX\ is absorbing the token list for \|\unexpanded|,
+\|\detokenize|, \|\scantokens|, or \|\showtokens|.
+
+\item
+Protected macros (defined with the \|\protected| prefix) are not
+expanded when building an expanded token list (for \|\edef|, \|\xdef|,
+\|\message|,\\
+\|\errmessage|, \|\special|, \|\mark|, \|\marks| or when writing the
+token list for \|\write| to a file) or when looking ahead in an
+alignment for \|\noalign| or \|\omit|.%
+\footnote{Whereas protected macros were introduced with \eTeX\ Version~1,
+suppression of their expansion in alignments was introduced with Version~2.}
+
+\item
+When building an expanded token list, the tokens resulting from the
+expansion of \|\unexpanded| are not expanded further (this is the same
+behaviour as is exhibited by the tokens resulting from the expansion of
+\|\the|\<token variable> in both \TeX\ and \eTeX).
+
+\end{itemize}
+
+\section{\eTeX\ Enhancements}
+
+The execution of most new primitives related to enhancements is
+disallowed when the corresponding enhancement is currently disabled and
+will lead to an `\|Improper...|' error message.  The offending command
+may nevertheless already have had some effect such as, e.g., bringing
+\eTeX\ into horizontal mode.
+
+\subsection{Mixed-Direction Typesetting}
+
+This feature supports mixed left-to-right and right-to-left typesetting
+and introduces the four text-direction primitives \|\beginL|, \|\endL|,
+\|\beginR|, and \|\endR|.  The code is inspired by but different from
+\TeXeT\ \cite{texet}.
+
+In order to avoid confusion with \TeXeT\ the present implementation of
+mixed-direction typesetting is called \TeXXeT.  It uses the same text-direction
+primitives, but differs from \TeXeT\ in several important aspects:\\
+(1)~Right-to-left text is reversed explicitly by \eTeX\ and is written
+to a normal DVI file without any \|begin_reflect| or \|end_reflect|
+commands;\\
+(2)~a math node is (ab)used instead of a whatsit node to record the text-direction
+primitives in order to minimize the influence on the line-breaking
+algorithm for pure left-to-right text;\\
+(3)~right-to-left text interrupted by a displayed equation is
+automatically resumed after that equation;\\
+(4)~display math material is always printed left-to-right, even in
+constructions such as:
+\begin{verbatim}
+   \hbox{\beginR\vbox{\noindent$$abc\eqno(123)$$}\endR}
+\end{verbatim}
+
+\TeXXeT\ is enabled or disabled by assigning a positive or non-positive
+value respectively to the \|\TeXXeTstate| state variable.  As long as
+\TeXXeT\ is disabled, \eTeX\ and \TeX3 build horizontal lists and
+paragraphs in exactly the same way.  Even \TeXXeT\ will, in general,
+produce the same results as \TeX3 for pure left-to-right text.  There
+are, however, circumstances where some differences may arise.  This is
+best illustrated by an example:
+\begin{verbatim}
+   \vbox{\noindent
+      $\hfil\break
+      \null\hfil\break
+      \null$\par
+\end{verbatim}
+Here \TeX\ will produce three lines containing the following nodes:\\
+1. mathon, hfil glue, break penalty, and rightskip glue;\\
+2. empty hbox, hfil glue, break penalty, and rightskip glue;\\
+3. empty hbox, mathoff, nobreak penalty, parfillskip glue, and rightskip
+   glue.\\
+These lines can be retrieved via:
+\begin{verbatim}
+      \setbox3=\lastbox
+      \unskip\unpenalty
+      \setbox2=\lastbox
+      \unskip\unpenalty
+      \setbox1=\lastbox
+\end{verbatim}
+Later on these lines can be `unhboxed' as part of a new paragraph and
+possibly their contents analyzed.  As a consequence in \TeX\ (and \eTeX\
+in compatibility mode) there may be horizontal lists where mathon
+and mathoff nodes are not properly paired.  Therefore \TeX\ might
+attempt hyphenation of `words' originating from math mode or prevent
+hyphenation of words originating from horizontal mode.
+
+Math-mode material is always typeset left-to-right by \TeXXeT, even when
+it is contained inside right-to-left text.  Therefore \TeXXeT\ will
+insert additional \|beginM| and \|endM| math nodes such that
+material originating from math mode is always enclosed between properly
+paired math nodes.  Consequently \TeXXeT\ will never attempt hyphenation
+of `words' originating from math mode nor prevent hyphenation of words
+originating from horizontal mode.
+
+The additional math nodes introduced by \TeXXeT\ are, however,
+transparent to operations such as \|\lastpenalty| that inspect or remove
+the last node of a horizontal list.%
+\footnote{This was not the case for some earlier \TeXXeT\ implementations.}
+
+When \TeXXeT\ is enabled or disabled during the construction of a box,
+that box may contain text-direction directives or math nodes that are
+not properly paired.  Such unpaired nodes may cause warning messages
+when the box is shipped out.  It is, therefore, advisable that \TeXXeT\
+be enabled or disabled only in vertical mode.
+
+\section{Syntax Extensions for \eTeX}
+
+\subsection{Mode-Independent Commands}
+
+The syntax for \TeX's mode-independent commands, as described in the
+first part of Chapter~24 of \TeXbook, is extended by modifications of
+existing commands as well as by new commands.
+
+First, \eTeX\ has 32768 \|\count|, \|\dimen|, \|\skip|, \|\muskip|,
+\|\box|, and \|\toks| registers instead of \TeX's 256.  Thus it allows
+a \<15-bit number> instead of an \<8-bit number> in almost all syntax
+constructions referring to these registers; the only exception to this is
+the \|\insert| command:  insertion classes are restricted to the range
+0--254 in \eTeX\ as they are in \TeX.
+
+Next, \eTeX\ extends the list of \TeX's internal quantities:
+\begin{syntax}
+<internal integer>\is\more  \alt|\eTeXversion|
+  \alt|\interactionmode|\alt<penalties><number>
+  \alt|\lastnodetype|\alt|\currentgrouplevel|\alt|\currentgrouptype|
+  \alt|\currentiflevel|\alt|\currentiftype|\alt|\currentifbranch|
+  \alt|\gluestretchorder|<glue>\alt|\glueshrinkorder|<glue>
+  \alt|\numexpr|<integer expr><optional spaces and |\relax|>
+<penalties>\is|\interlinepenalties|\alt|\clubpenalties|
+  \alt|\widowpenalties|\alt|\displaywidowpenalties|
+<internal dimen>\is\more
+  \alt|\parshapeindent|<number>\alt|\parshapelength|<number>
+  \alt|\parshapedimen|<number>
+  \alt|\gluestretch|<glue>\alt|\glueshrink|<glue>
+  \alt|\fontcharht|<font><8-bit number>%
+  \alt|\fontcharwd|<font><8-bit number>
+  \alt|\fontchardp|<font><8-bit number>%
+  \alt|\fontcharic|<font><8-bit number>
+  \alt|\dimexpr|<dimen expr><optional spaces and |\relax|>
+<internal glue>\is\more  \alt|\mutoglue|<muglue>
+  \alt|\glueexpr|<glue expr><optional spaces and |\relax|>
+<internal muglue>\is\more  \alt|\gluetomu|<glue>
+  \alt|\muexpr|<muglue expr><optional spaces and |\relax|>
+\end{syntax}
+
+The additional possibilities for \<integer parameter> are:
+\begin{paramlist}
+\|\TeXXeTstate|\quad(positive if mixed-direction typesetting is enabled)
+
+\|\tracingassigns|\quad(positive if showing assignments)
+
+\|\tracinggroups|\quad(positive if showing save groups)
+
+\|\tracingifs|\quad(positive if showing conditionals)
+
+\|\tracingscantokens|\quad(positive
+   if showing the opening and closing of \|\scantokens| pseudo-files)
+
+\|\tracingnesting|\quad(positive
+   if showing improper nesting of groups and conditionals within files)
+
+\|\predisplaydirection|\quad(text direction preceding a display)
+
+\|\lastlinefit|\quad(adjustment
+   ratio for last line of paragraph, times 1000)
+
+\|\savingvdiscards|\quad(positive
+   if saving items discarded from vertical lists)
+
+\|\savinghyphcodes|\quad(positive
+   if \|\patterns| saves \|\lccode| values as hyphenation codes)
+\end{paramlist}
+\noindent
+Note that the \eTeX\ state variable \|\TeXXeTstate| (the only one so
+far) is an \<integer parameter>.  That need not be the case for all
+future state variables; it might turn out that some future enhancements
+can be enabled and disabled only globally, not subject to grouping.
+
+The additional possibilities for \<token parameter> are:
+\begin{paramlist}
+\|\everyeof|\quad(tokens to insert when an \|\input| file ends)
+\end{paramlist}
+
+Here is the syntax for \eTeX's expressions:
+\begin{syntax}
+<integer expr>\is<integer term>
+  \alt<integer expr><add or sub><integer term>
+<integer term>\is<integer factor>
+  \alt<integer term><mul or div><integer factor>
+<integer factor>\is<number>
+  \alt<left paren><integer expr><right paren>
+<dimen expr>\is<dimen term>
+  \alt<dimen expr><add or sub><dimen term>
+<dimen term>\is<dimen factor>
+  \alt<dimen term><mul or div><integer factor>
+<dimen factor>\is<dimen>
+  \alt<left paren><dimen expr><right paren>
+<glue expr>\is<glue term>
+  \alt<glue expr><add or sub><glue term>
+<glue term>\is<glue factor>
+  \alt<glue term><mul or div><integer factor>
+<glue factor>\is<glue>
+  \alt<left paren><glue expr><right paren>
+<muglue expr>\is<muglue term>
+  \alt<muglue expr><add or sub><muglue term>
+<muglue term>\is<muglue factor>
+  \alt<muglue term><mul or div><integer factor>
+<muglue factor>\is<muglue>
+  \alt<left paren><muglue expr><right paren>
+<optional spaces and |\relax|>\is<optional spaces>
+  \alt<optional spaces>|\relax|
+<add or sub>\is<optional spaces>\ot+\alt<optional spaces>\ot-
+<div or mul>\is<optional spaces>\ot*\alt<optional spaces>\ot/
+<left paren>\is<optional spaces>\ot(
+<right paren>\is<optional spaces>\ot)
+\end{syntax}
+
+Next, \eTeX\ extends the syntax for assignments:
+\begin{syntax}
+<prefix>\is\more\alt|\protected|
+<simple assignment>\is\more
+  \alt<penalties assignment>
+  \alt|\readline|<number>[to]<control sequence>
+<penalties assignment>\is%
+  <penalties><equals><number><penalty values>
+<interaction mode assignment>\is\more
+  \alt|\interactionmode|<equals><2-bit number>
+\end{syntax}
+\noindent
+In a \<penalties assignment> for which the \<number> is $n$, the
+\<penalty values> are \<empty> if $n\le0$, otherwise they consist of $n$
+consecutive occurrences of \<number>.
+
+Finally, the remaining mode-independent \eTeX\ commands:
+
+\begin{itemize}
+\item
+\|\showgroups|, \|\showifs|, \|\showtokens|\<general text>.
+These commands are intended to help you figure out what \eTeX\ thinks it
+is doing.
+The \|\showtokens| command displays the token list \<balanced text>.
+
+\item
+\|\marks|\<15-bit number>\<general text>.  This command generalizes
+\TeX's \|\mark| command to 32768 distinct mark classes; the special case
+\|\marks0| is synonymous with \|\mark|.
+
+\end{itemize}
+
+\subsection{Vertical-Mode Commands}
+
+The syntax for \TeX's vertical-mode commands, as described in the second
+part of Chapter~24 of \TeXbook, is extended by \eTeX\ as follows:
+
+\begin{itemize}
+\item
+\|\pagediscards|, \|\splitdiscards|.
+These two commands are similar to \|\unvbox|.
+When \|\savingvdiscards| is positive, items discarded by the page
+builder and by the \|\vsplit| command are collected in two special
+lists.  One of these special lists is appended to the current vertical
+list (in the same way as \|\unvbox| appends the vertical list inside a
+vbox) and becomes empty.
+
+\item
+Here are the additional possibilities for \<horizontal command>:
+\begin{syntax}
+<horizontal command>\is\more
+  \alt|\beginL|\alt|\endL|\alt|\beginR|\alt|\endR|
+\end{syntax}
+
+\end{itemize}
+
+\subsection{Horizontal-Mode Commands}
+
+The syntax for \TeX's horizontal-mode commands, as described in
+Chapter~25 of \TeXbook, is extended by \eTeX\ as follows:
+
+\begin{itemize}
+\item
+Here are the additional possibilities for \<vertical command>:
+\begin{syntax}
+<vertical command>\is\more
+  \alt|\pagediscards|\alt|\splitdiscards|
+\end{syntax}
+
+\item
+\|\beginL|, \|\endL|, \|\beginR|, \|\endR| (text-direction commands).\\
+The use of these commands is illegal when the \TeXXeT\ enhancement is
+currently disabled; otherwise a \|beginL|, etc.\ text-direction node (a
+new kind of math node) is appended to the current horizontal list.
+These nodes delimit the beginning and end of hlist segments containing
+left-to-right~(L) or right-to-left~(R) text.  Before a paragraph is
+broken into lines, \|endL| and \|endR| nodes are added to terminate any
+unfinished L~or R~segments; when a paragraph is continued after display
+math mode, any such unfinished segments are automatically resumed,
+starting the new hlist with \|beginL| and \|beginR| nodes as necessary.
+
+\item
+\|\marks|\<15-bit number>\<general text>.  This command generalizes
+\TeX's \|\mark| command to 32768 distinct mark classes; the special case
+\|\marks0| is synonymous with \|\mark|.
+
+\end{itemize}
+
+\subsection{Math-Mode Commands}
+
+The syntax for \TeX's math-mode commands, as described in Chapter~26 of
+\TeXbook, is extended by \eTeX\ as follows:
+
+\begin{itemize}
+\item
+\|\left|\<delim>\<math mode material>\\
+\|\middle|\<delim>\<math mode material>\|...|\|\right|\<delim>\\
+(generalizing \TeX's
+\|\left|\<delim>\<math mode material>\|\right|\<delim>).\\
+For each \<math mode material> \eTeX\ begins a new group, starting out
+with a new math list (always in the same style) that begins with a left
+boundary item containing everything processed so far.  This group must
+be terminated with either `\|\middle|' or `\|right|', at which time the
+internal math list is completed with a new boundary item containing the
+new delimiter.  In the case of `\|\middle|', a new group is started
+again, in the case of `\|\right|', \eTeX\ appends an Inner atom to the
+current list; the nucleus of this atom contains the internal math list
+just completed.
+
+\end{itemize}
+
+\begin{thebibliography}{9}
+
+\bibitem{tripman}
+{\sl A torture test for \TeX\/},
+by Donald E.~Knuth, Stanford Computer Science Report~1027.
+
+\bibitem{etripman}
+{\sl A torture test for \eTeX\/},
+by The \NTS\ Team (Peter Breitenlohner and Bernd Raichle).
+Version~2, January 1998.
+
+\bibitem{webman}
+{\sl The WEB system of structured documentation\/},
+by Donald E.~Knuth,\hfil\break Stanford Computer Science Report~980.
+
+\bibitem{etexgen}
+{\sl How to generate \eTeX\/},
+by The \NTS\ Team (Peter Breitenlohner and Phil Taylor).
+Version~2, January 1998.
+
+\bibitem{texbook}
+\TeXbook\ (Computers and Typesetting, Vol.~A),
+by Donald E.~Knuth,
+Addison Wesley, Reading, Massachusetts, 1986.
+
+\bibitem{texet}
+
+{\sl Mixing right-to-left texts with left-to-right texts\/},
+by Donald~E. Knuth and Pierre MacKay,
+{\sl TUGboat\/} {\bf 8}, 14--25, 1987.
+
+\end{thebibliography}
+
+\end{document}
+
