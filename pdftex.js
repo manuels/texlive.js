@@ -152,7 +152,7 @@ var PDFTeX = function() {
         curry(self, 'FS_createLazyFile', ['/', 'latex.fmt', 'latex.fmt', true, true]),
         curry(self, 'FS_createFolder', ['/bin/', 'share', true, true]),
         curry(self, 'FS_createLazyFile', ['/bin/', 'texmf.cnf', './texlive/texmf-dist/web2c/texmf.cnf', true, true]),
-        curry(self, 'FS_createLazyFilesFromList', ['/', 'texlive.lst', './texlive/', true, true]),
+        curry(self, 'FS_createLazyFilesFromList', ['/', 'texlive.lst', './texlive', true, true]),
       ];
 
     var sendCompile = function() {
