@@ -77,12 +77,16 @@ self['onmessage'] = function(ev) {
       try {
         fn = cmd.substr(3);
         res = FS[fn].apply(FS, args);
-        if(cmd === 'FS_readFile')
-          res = String.fromCharCode.apply(null, res);
-        else
+        if(cmd === 'FS_readFile') {
+          var temp = "";
+          for(var i=0, l=res.length; i<l; i++)
+            temp += String.fromCharCode(res[i]);
+          res = temp;
+        } else
           res = true;
       }
       catch(e) {
+        console.log(e);
         res = false;
       }
     break;
