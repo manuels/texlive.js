@@ -1,5 +1,8 @@
-var PDFTeX = function() {
-  var worker = new Worker("pdftex-worker.js");
+var PDFTeX = function(opt_workerPath) {
+  if (!opt_workerPath) {
+    opt_workerPath = 'pdftex-worker.js';
+  }
+  var worker = new Worker(opt_workerPath);
   var self = this;
   var initialized = false;
 
