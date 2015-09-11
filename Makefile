@@ -1,5 +1,5 @@
 SOURCE_DIR=pdftex-1.40.11
-PDFTEX_URL=http://mirrors.ctan.org/systems/pdftex/pdftex-1.40.11.zip
+PDFTEX_URL=http://mirrors.ctan.org/obsolete/systems/pdftex/pdftex-1.40.11.zip
 BASE_TEXLIVE_URL=http://mirrors.ctan.org/macros/latex/base.zip
 #BASE_TEXLIVE_URL=ftp://ftp.ctan.org/pub/tex/macros/latex/base.zip
 
