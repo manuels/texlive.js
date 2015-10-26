@@ -47,7 +47,8 @@ install-tl-unx.tar.gz:
 	echo TEXMFVAR `pwd`/home/texmf-var >> texlive/profile.input
 
 	cd texlive && ./install-tl-*/install-tl -profile profile.input
-	rm -Rf texlive/install-tl-*
+	echo "Removing unnecessary files"
+	cd texlive && rm -rf bin readme* tlpkg install* *.html texmf-dist/doc texmf-var/web2c
 	echo ""
 	echo "Done! Please run 'make texlive.lst' now!"
 
