@@ -62,10 +62,10 @@ create_latex_format: ./latex_format/base.zip ./binary/${SOURCE_DIR}/build-pdftex
 	cd latex_format/base && ../../binary/${SOURCE_DIR}/build-pdftex/texk/web2c/pdftex -ini -etex unpack.ins
 	touch latex_format/base/hyphen.cfg
 	cd latex_format/base && ../../binary/${SOURCE_DIR}/build-pdftex/texk/web2c/pdftex -ini -etex latex.ltx
-	cp latex_format/base/latex.fmt .
+	mkdir -p ./texlive/texmf-var/web2c/pdftex/
+	cp latex_format/base/latex.fmt ./texlive/texmf-var/web2c/pdftex/
 
 compile_bc:	 ./binary/${SOURCE_DIR}/build-pdftex/texk/web2c/pdftex configure ./texlive
-
 	find texlive -mindepth 2 -name texmf.cnf -exec cp {} ./${SOURCE_DIR}/src/texk/kpathsea \;
 	cp ./binary/${SOURCE_DIR}/build-pdftex/texk/web2c/web2c/{fixwrites,web2c,splitup} ${SOURCE_DIR}/build-pdftex/texk/web2c/web2c/
 	chmod +x ${SOURCE_DIR}/build-pdftex/texk/web2c/web2c/fixwrites
