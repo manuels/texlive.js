@@ -2,7 +2,7 @@ SOURCE_DIR=pdftex-1.40.11
 PDFTEX_URL=http://mirrors.ctan.org/obsolete/systems/pdftex/pdftex-1.40.11.zip
 BASE_TEXLIVE_URL=http://mirrors.ctan.org/macros/latex/base.zip
 #BASE_TEXLIVE_URL=ftp://ftp.ctan.org/pub/tex/macros/latex/base.zip
-
+SHELL=bash
 all: pdftex-worker.js create_latex_format texlive.lst
 #all: unpack_pdftex create_binary_pdftex configure get_texlive unpack_texlive create_latex_format compile_bc compile_js
 
@@ -13,22 +13,22 @@ unpack_pdftex: pdftex-1.40.11.zip
 	unzip -o pdftex-1.40.11.zip
 
 configure: unpack_pdftex
-	-cd $(SOURCE_DIR) && \
-	emconfigure ./build-pdftex.sh -C \
+	-@cd ${SOURCE_DIR} && \
+	EMCONFIGURE_JS=0 emconfigure ./build-pdftex.sh -C \
 		--disable-all-pkgs \
 		--enable-pdftex \
 		--enable-static \
-		CC=emcc
+		CC=emcc CFLAGS=-DELIDE_CODE
 
 texlive.lst: ./texlive
 	find texlive -type d -exec echo {}/. \; | sed 's/^texlive//g' >texlive.lst
 	find texlive -type f | sed 's/^texlive//g' >>texlive.lst
 
-./binary/$(SOURCE_DIR)/build-pdftex/texk/web2c/pdftex:
+./binary/${SOURCE_DIR}/build-pdftex/texk/web2c/pdftex: pdftex-1.40.11.zip
 	mkdir -p binary
 	cd binary && wget $(PDFTEX_URL)
 	cd binary && unzip -o pdftex-1.40.11.zip
-	cd binary && cd $(SOURCE_DIR) && ./build-pdftex.sh -C \
+	cd binary && cd ${SOURCE_DIR} && ./build-pdftex.sh -C \
 		--disable-all-pkgs \
 		--enable-pdftex \
 		--enable-static
@@ -55,71 +55,54 @@ install-tl-unx.tar.gz:
 	mkdir -p latex_format
 	cd latex_format && wget ${BASE_TEXLIVE_URL} && unzip -o base.zip
 
-create_latex_format: ./latex_format/base.zip ./binary/$(SOURCE_DIR)/build-pdftex/texk/web2c/pdftex
+create_latex_format: ./latex_format/base.zip ./binary/${SOURCE_DIR}/build-pdftex/texk/web2c/pdftex ./texlive
 	mkdir -p latex_format
 	cd latex_format && unzip -o base.zip
-	cd latex_format/base && ../../binary/$(SOURCE_DIR)/build-pdftex/texk/web2c/pdftex -ini -etex unpack.ins
+	cd latex_format/base && ../../binary/${SOURCE_DIR}/build-pdftex/texk/web2c/pdftex -ini -etex unpack.ins
 	touch latex_format/base/hyphen.cfg
-	cd latex_format/base && ../../binary/$(SOURCE_DIR)/build-pdftex/texk/web2c/pdftex -ini -etex latex.ltx
+	cd latex_format/base && ../../binary/${SOURCE_DIR}/build-pdftex/texk/web2c/pdftex -ini -etex latex.ltx
 	cp latex_format/base/latex.fmt .
 
-compile_bc: configure
-	-cd ${SOURCE_DIR}/build-pdftex/texk/web2c/web2c && emmake make
+compile_bc:	 ./binary/${SOURCE_DIR}/build-pdftex/texk/web2c/pdftex configure ./texlive
 
-	cp fixwrites web2c ${SOURCE_DIR}/build-pdftex/texk/web2c/web2c
+	find texlive -mindepth 2 -name texmf.cnf -exec cp {} ./${SOURCE_DIR}/src/texk/kpathsea \;
+	cp ./binary/${SOURCE_DIR}/build-pdftex/texk/web2c/web2c/{fixwrites,web2c,splitup} ${SOURCE_DIR}/build-pdftex/texk/web2c/web2c/
 	chmod +x ${SOURCE_DIR}/build-pdftex/texk/web2c/web2c/fixwrites
 	chmod +x ${SOURCE_DIR}/build-pdftex/texk/web2c/web2c/web2c
-	-cd ${SOURCE_DIR}/build-pdftex/texk/web2c && emmake make pdftex
-
-	cp tangleboot ${SOURCE_DIR}/build-pdftex/texk/web2c/
-	chmod +x ${SOURCE_DIR}/build-pdftex/texk/web2c/tangleboot
-	-cd ${SOURCE_DIR}/build-pdftex/texk/web2c && emmake make pdftex
-
-	cp ctangleboot ${SOURCE_DIR}/build-pdftex/texk/web2c/
-	chmod +x ${SOURCE_DIR}/build-pdftex/texk/web2c/ctangleboot
-	-cd ${SOURCE_DIR}/build-pdftex/texk/web2c && emmake make pdftex
-
-	cp ctangle ${SOURCE_DIR}/build-pdftex/texk/web2c/
-	chmod +x ${SOURCE_DIR}/build-pdftex/texk/web2c/ctangle
-	-cd ${SOURCE_DIR}/build-pdftex/texk/web2c && emmake make pdftex
-
-	cp tie ${SOURCE_DIR}/build-pdftex/texk/web2c/
-	chmod +x ${SOURCE_DIR}/build-pdftex/texk/web2c/tie
-	-cd ${SOURCE_DIR}/build-pdftex/texk/web2c && emmake make pdftex
-
-	cp tangle ${SOURCE_DIR}/build-pdftex/texk/web2c/
-	chmod +x ${SOURCE_DIR}/build-pdftex/texk/web2c/tangle
-	-cd ${SOURCE_DIR}/build-pdftex/texk/web2c && emmake make pdftex
-
-	cp splitup ${SOURCE_DIR}/build-pdftex/texk/web2c/web2c
 	chmod +x ${SOURCE_DIR}/build-pdftex/texk/web2c/web2c/splitup
-	-cd ${SOURCE_DIR}/build-pdftex/texk/web2c && emmake make pdftex
 
-	cp pdftex-pool.c ${SOURCE_DIR}/build-pdftex/texk/web2c/
-	-cd ${SOURCE_DIR}/build-pdftex/texk/web2c && emmake make pdftex
+	cp ./binary/${SOURCE_DIR}/build-pdftex/texk/web2c/{ctangle,tangle,tie,pdftex-pool.c} ${SOURCE_DIR}/build-pdftex/texk/web2c/
+	chmod +x ${SOURCE_DIR}/build-pdftex/texk/web2c/ctangle
+	chmod +x ${SOURCE_DIR}/build-pdftex/texk/web2c/tie
+	chmod +x ${SOURCE_DIR}/build-pdftex/texk/web2c/tangle
 
-compile_kpathsea:
+	-cd ${SOURCE_DIR}/build-pdftex/texk/web2c && emmake make pdftex  -o tangle -o tie -o web2c -o pdftex-pool.c
+
+
+compile_kpathsea: configure
 	-cd ${SOURCE_DIR}/build-pdftex/texk/kpathsea && make clean
-	-cd ${SOURCE_DIR}/build-pdftex/texk/kpathsea && emmake make CC=emcc
+	-cd ${SOURCE_DIR}/build-pdftex/texk/kpathsea && emmake make CC=emcc CFLAGS=-DELIDE_CODE
 
-compile_lib:
+compile_lib: configure
 	-cd ${SOURCE_DIR}/build-pdftex/texk/web2c/lib && make clean
-	-cd ${SOURCE_DIR}/build-pdftex/texk/web2c/lib && emmake make CC=emcc
+	-cd ${SOURCE_DIR}/build-pdftex/texk/web2c/lib && emmake make CC=emcc CFLAGS=-DELIDE_CODE
 
 pdftex-worker.js: compile_bc compile_lib compile_kpathsea
 	opt -strip-debug ${SOURCE_DIR}/build-pdftex/texk/web2c/pdftex >pdftex.bc
-#	emcc -v --minify 0 -s FS_LOG=0 -s TOTAL_MEMORY=67108864 -O2 ${SOURCE_DIR}/build-pdftex/texk/web2c/lib/*.o ${SOURCE_DIR}/build-pdftex/texk/kpathsea/*.o pdftex.bc -s INVOKE_RUN=0 --pre-js pre.js --post-js post.js -o pdftex-worker.js
-	emcc -v -s FS_LOG=0 -s TOTAL_MEMORY=67108864 -O2 ${SOURCE_DIR}/build-pdftex/texk/web2c/lib/*.o ${SOURCE_DIR}/build-pdftex/texk/kpathsea/*.o pdftex.bc -s INVOKE_RUN=0 --pre-js pre.js --post-js post.js -o pdftex-worker.js
+	OBJFILES=$$(for i in `find ${SOURCE_DIR}/build-pdftex/texk/web2c/lib ${SOURCE_DIR}/build-pdftex/texk/kpathsea -name '*.o'` ; do llvm-nm $$i | grep main >/dev/null || echo $$i ; done) && \
+		emcc  --memory-init-file 0 -v --closure 1 -s TOTAL_MEMORY=67108864 -O3  $$OBJFILES pdftex.bc -s INVOKE_RUN=0 --pre-js pre.js --post-js post.js -o pdftex-worker.js
+#		emcc -v --minify 0 --closure 0 -s FS_LOG=1 -s TOTAL_MEMORY=67108864 -O2 -g3 $$OBJFILES pdftex.bc -s INVOKE_RUN=0 --pre-js pre.js --post-js post.js -o pdftex-worker.js
 
 clean:
 	rm -f pdftex-worker.js
 	rm -f latex.fmt
 	rm -f pdftex.bc
 	rm -f texlive.lst
-	rm -rf $(SOURCE_DIR) pdftex-1.40.11.zip
+	rm -rf ${SOURCE_DIR} pdftex-1.40.11.zip
 	rm -rf binary
 	rm -rf latex_format
 	rm -rf texlive
+	rm -f install-tl-unx.tar.gz
 
 ifeq ("x","y")
 --------------------------------
