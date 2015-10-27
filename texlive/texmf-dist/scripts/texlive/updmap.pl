@@ -1,53 +1,49 @@
 #!/usr/bin/env perl
-# $Id: updmap.pl 31853 2013-10-07 22:58:25Z karl $
+# $Id: updmap.pl 37866 2015-07-17 19:00:04Z preining $
 # updmap - maintain map files for outline fonts.
 # (Maintained in TeX Live:Master/texmf-dist/scripts/texlive.)
 # 
-# Copyright 2011, 2012, 2013 Norbert Preining
+# Copyright 2011-2015 Norbert Preining
 # This file is licensed under the GNU General Public License version 2
 # or any later version.
 #
 # History:
 # Original shell script (C) 2002 Thomas Esser
-# first perl variant (C) Fabrice Popineau
+# first perl variant by Fabrice Popineau
 # later adaptions by Reinhard Kotucha and Karl Berry
 # the original versions were licensed under the following agreement:
 # Anyone may freely use, modify, and/or distribute this file, without
-# limitation.
-#
-# TODO
-# - check all other invocations
-# - after TL2012? Maybe remove support for reading updmap-local.cfg
+
+my $svnid = '$Id: updmap.pl 37866 2015-07-17 19:00:04Z preining $';
 
 my $TEXMFROOT;
-
 BEGIN {
-  $^W=1;
+  $^W = 1;
   $TEXMFROOT = `kpsewhich -var-value=TEXMFROOT`;
   if ($?) {
-    print STDERR "updmap: Cannot find TEXMFROOT, aborting!\n";
-    exit 1;
+    die "$0: kpsewhich -var-value=TEXMFROOT failed, aborting early.\n";
   }
   chomp($TEXMFROOT);
-  unshift (@INC, "$TEXMFROOT/tlpkg");
+  unshift(@INC, "$TEXMFROOT/tlpkg");
 }
 
-
-my $version = '$Id: updmap.pl 31853 2013-10-07 22:58:25Z karl $';
+my $lastchdate = '$Date: 2015-07-17 21:00:04 +0200 (Fri, 17 Jul 2015) $';
+$lastchdate =~ s/^\$Date:\s*//;
+$lastchdate =~ s/ \(.*$//;
+my $svnrev = '$Revision: 37866 $';
+$svnrev =~ s/^\$Revision:\s*//;
+$svnrev =~ s/\s*\$$//;
+my $version = "r$svnrev ($lastchdate)";
 
 use Getopt::Long qw(:config no_autoabbrev ignore_case_always);
 use strict;
 use TeXLive::TLUtils qw(mkdirhier mktexupd win32 basename dirname 
   sort_uniq member touch);
 
-#use Data::Dumper;
-#$Data::Dumper::Indent = 1;
-
 (my $prg = basename($0)) =~ s/\.pl$//;
 
-# sudo sometimes does not reset the home dir of root, check on that
-# see more comments at the definition of the function itself
-# this function checks by itself whether it is running on windows or not
+# sudo sometimes does not reset the home dir of root;
+# see more comments at the definition of this function.
 reset_root_home();
 
 chomp(my $TEXMFDIST = `kpsewhich --var-value=TEXMFDIST`);
@@ -70,7 +66,6 @@ if (win32()) {
 
 my $texmfconfig = $TEXMFCONFIG;
 my $texmfvar    = $TEXMFVAR;
-
 
 my %opts = ( quiet => 0, nohash => 0, nomkmap => 0 );
 my $alldata;
@@ -112,6 +107,7 @@ my @cmdline_options = (
   "help|h",
   # some debugging invocations
   "_readsave=s",
+  "_dump",
   );
 
 my %settings = (
@@ -152,8 +148,8 @@ my %settings = (
 
 &main();
 
-###############
-
+##################################################################
+#
 sub main {
   processOptions();
 
@@ -164,6 +160,22 @@ sub main {
     exit (0);
   }
 
+  # check if we are in *hidden* sys mode, in which case we switch
+  # to sys mode
+  # Nowdays we use -sys switch instead of simply overriding TEXMFVAR
+  # and TEXMFCONFIG
+  # This is used to warn users when they run updmap in usermode the first time.
+  # But it might happen that this script is called via another wrapper that
+  # sets TEXMFCONFIG and TEXMFVAR, and does not pass on the -sys option.
+  # for this case we check whether the SYS and non-SYS variants agree,
+  # and if, then switch to sys mode (with a warning)
+  if (($TEXMFSYSCONFIG eq $TEXMFCONFIG) && ($TEXMFSYSVAR eq $TEXMFVAR)) {
+    if (!$opts{'sys'}) {
+      print_warning("hidden sys mode found, switching to sys mode.\n");
+      $opts{'sys'} = 1;
+    }
+  }
+
   if ($opts{'sys'}) {
     # we are running as updmap-sys, make sure that the right tree is used
     $texmfconfig = $TEXMFSYSCONFIG;
@@ -172,12 +184,15 @@ sub main {
 
   if ($opts{'dvipdfmoutputdir'} && !defined($opts{'dvipdfmxoutputdir'})) {
     $opts{'dvipdfmxoutputdir'} = $opts{'dvipdfmoutputdir'};
-    printf STDERR "Using --dvipdfmoutputdir options for dvipdfmx, but please use --dvipdfmxoutputdir\n";
+    print_warning("Using --dvipdfmoutputdir options for dvipdfmx,"
+                  . " but please use --dvipdfmxoutputdir\n");
   }
 
-  if ($opts{'dvipdfmoutputdir'} && $opts{'dvipdfmxoutputdir'} &&
-      $opts{'dvipdfmoutputdir'} ne $opts{'dvipdfmxoutputdir'}) {
-    printf STDERR "Options for --dvipdfmoutputdir and --dvipdfmxoutputdir do not agree\nplease use only --dvipdfmxoutputdir. Exiting.\n";
+  if ($opts{'dvipdfmoutputdir'} && $opts{'dvipdfmxoutputdir'}
+      && $opts{'dvipdfmoutputdir'} ne $opts{'dvipdfmxoutputdir'}) {
+    print_error("Options for --dvipdfmoutputdir and --dvipdfmxoutputdir"
+                . " do not match\n"
+                . "Please use only --dvipdfmxoutputdir; exiting.\n");
     exit(1);
   }
 
@@ -185,7 +200,6 @@ sub main {
     read_updmap_files($opts{'_readsave'});
     merge_settings_replace_kanji();
     print "READING DONE ============================\n";
-    #print Dumper($alldata);
     $alldata->{'updmap'}{$opts{'_readsave'}}{'changed'} = 1;
     save_updmap($opts{'_readsave'});
     exit 0;
@@ -201,10 +215,10 @@ sub main {
         } elsif ($settings{$o}{'type'} eq "any") {
           print "(any string)\n";
         } else {
-          print "strange: unknown type of option $o\nplease report\n";
+          print_warning("strange: unknown type of option $o\nplease report\n");
         }
       } else {
-        print "$prg: unknown option: $o\n";
+        print_warning("unknown option: $o\n");
       }
     }
     exit 0;
@@ -248,26 +262,22 @@ sub main {
     }
     #
     # search for TEXMFLOCAL/web2c/updmap.cfg
-    # check for compatibility with old updmap-local.cfg
     my @tmlused;
     for my $tml (@TEXMFLOCAL) {
       my $TMLabs = Cwd::abs_path($tml);
       next if (!$TMLabs);
-      my $oldfound = 0;
-      if (-r "$TMLabs/web2c/updmap-local.cfg") {
-        push @tmlused, "$TMLabs/web2c/updmap-local.cfg";
-        warning("Old configuration file\n  $TMLabs/web2c/updmap-local.cfg\nfound! ");
-        $oldfound = 1;
-      }
       if (-r "$TMLabs/web2c/updmap.cfg") {
-        if ($oldfound) {
-          warning("Will read it *instead* of\n  $TMLabs/web2c/updmap.cfg\n");
-        } else {
-          push @tmlused, "$TMLabs/web2c/updmap.cfg";
-        }
+        push @tmlused, "$TMLabs/web2c/updmap.cfg";
       }
-      warning("Please consider moving the information from updmap-local.cfg to\n  $TMLabs/web2c/updmap.cfg\n")
-        if ($oldfound);
+      #
+      # at least check for old updmap-local.cfg and warn!
+      if (-r "$TMLabs/web2c/updmap-local.cfg") {
+        print_warning("=============================\n");
+        print_warning("Old configuration file\n  $TMLabs/web2c/updmap-local.cfg\n");
+        print_warning("found! This file is *not* evaluated anymore, please move the information\n");
+        print_warning("to the file $TMLabs/updmap.cfg!\n");
+        print_warning("=============================\n");
+      }
     }
     #
     # updmap (user):
@@ -287,13 +297,13 @@ sub main {
     # TEXMFLOCAL     $TEXLIVE/texmf-local/web2c/updmap.cfg
     # TEXMFDIST      $TEXLIVE/YYYY/texmf-dist/web2c/updmap.cfg
     #
-    @{$opts{'cnffile'}}  = @used_files;
+    @{$opts{'cnffile'}} = @used_files;
     #
-    # determine the config file that we will use for changes
-    # if in the list of used files contains either one from
+    # Determine the config file that we will use for changes:
+    # if the list of used files contains one from either
     # TEXMFHOME or TEXMFCONFIG (which is TEXMFSYSCONFIG in the -sys case)
-    # then use the *top* file (which will be either one of the two),
-    # if none of the two exists, create a file in TEXMFCONFIG and use it
+    # then use the *top* file (which will be one of the two *CONFIG);
+    # if neither of those two exists, create a file in TEXMFCONFIG and use it.
     my $use_top = 0;
     for my $f (@used_files) {
       if ($f =~ m!(\Q$TEXMFHOME\E|\Q$texmfconfig\E)/web2c/updmap.cfg!) {
@@ -310,11 +320,11 @@ sub main {
     }
   }
   if (!$opts{'quiet'}) {
-    print "$prg is using the following updmap.cfg files (in precedence order):\n";
+    print "$prg will read the following updmap.cfg files (in precedence order):\n";
     for my $f (@{$opts{'cnffile'}}) {
       print "  $f\n";
     }
-    print "$prg is using the following updmap.cfg file for writing changes:\n";
+    print "$prg may write changes to the following updmap.cfg file:\n";
     print "  $changes_config_file\n";
   }
   if ($opts{'listfiles'}) {
@@ -326,6 +336,18 @@ sub main {
 
   read_updmap_files(@{$opts{'cnffile'}});
 
+  if ($opts{'_dump'}) {
+    merge_settings_replace_kanji();
+    read_map_files();
+    require Data::Dumper;
+    # two times to silence perl warnings!
+    $Data::Dumper::Indent = 1;
+    $Data::Dumper::Indent = 1;
+    print "READING DONE ============================\n";
+    print Data::Dumper::Dumper($alldata);
+    exit 0;
+  }
+
   if ($opts{'showoption'}) {
     merge_settings_replace_kanji();
     for my $o (@{$opts{'showoption'}}) {
@@ -334,18 +356,28 @@ sub main {
         $v = "\"$v\"" if ($v =~ m/\s/);
         print "$o=$v ($vo)\n";
       } else {
-        printf STDERR "$prg: unknown option: $o\n";
+        print_warning("unknown option: $o\n");
       }
     }
     exit 0;
   }
 
-  if ($opts{'listmaps'}) {
+  if ($opts{'listmaps'} || $opts{'listavailablemaps'}) {
     merge_settings_replace_kanji();
-    for my $m (keys %{$alldata->{'maps'}}) {
+    # only check for missing map files 
+    # (pass in true argument to read_map_files)
+    my %missing = map { $_ => 1 } read_map_files(1);
+    for my $m (sort keys %{$alldata->{'maps'}}) {
+      next if ($missing{$m} && $opts{'listavailablemaps'});
       my $origin = $alldata->{'maps'}{$m}{'origin'};
-      print $alldata->{'updmap'}{$origin}{'maps'}{$m}{'type'}, " $m ",
-      $alldata->{'updmap'}{$origin}{'maps'}{$m}{'status'}, " in $origin\n";
+      my $type = ($origin eq 'builtin' ? 'Map' :
+        $alldata->{'updmap'}{$origin}{'maps'}{$m}{'type'});
+      my $status = ($origin eq 'builtin' ? 'enabled' :
+        $alldata->{'updmap'}{$origin}{'maps'}{$m}{'status'});
+      my $avail = ($missing{$m} ? "\t(not available)" : '');
+      print "$type\t$m\t$status\t$origin$avail\n";
+      #print $alldata->{'updmap'}{$origin}{'maps'}{$m}{'type'}, " $m ",
+      #$alldata->{'updmap'}{$origin}{'maps'}{$m}{'status'}, " in $origin\n";
     }
     exit 0;
   }
@@ -388,7 +420,7 @@ sub main {
   my $cmd;
   if ($opts{'edit'}) {
     if ($opts{"dry-run"}) {
-      printf STDERR "No, are you joking, you want to edit with --dry-run?\n";
+      print_error("No, are you joking, you want to edit with --dry-run?\n");
       exit 1;
     }
     # it's not a good idea to edit updmap.cfg manually these days,
@@ -434,14 +466,14 @@ sub main {
       merge_settings_replace_kanji();
       my @missing = read_map_files();
       if (@missing) {
-        print STDERR "\nERROR:  The following map file(s) couldn't be found:\n"; 
+        print_error("The following map file(s) couldn't be found:\n"); 
         for my $m (@missing) {
           my $orig = $alldata->{'maps'}{$m}{'origin'};
-          print STDERR "\t$m (in $orig)\n";
+          print_error("\t$m (in $orig)\n");
         }
-        print STDERR "\n\tDid you run mktexlsr?\n\n" .
+        print_error("Did you run mktexlsr?\n\n" .
           "\tYou can disable non-existent map entries using the option\n".
-          "\t  --syncwithtrees.\n\n";
+          "\t  --syncwithtrees.\n\n");
         exit 1;
       }
       merge_data();
@@ -463,8 +495,6 @@ sub main {
 
 ##################################################################
 #
-#
-
 sub getFonts {
   my ($first, @rest) = @_;
   my $getall = 0;
@@ -486,7 +516,7 @@ sub getFonts {
           if (defined($alldata->{'maps'}{$m}{'fonts'}{$k})) {
             push @lines, "$k " . $alldata->{'maps'}{$m}{'fonts'}{$k};
           } else {
-            print "undefined fonts for $k in $m   ?!?!?\n";
+            print_warning("undefined fonts for $k in $m   ?!?!?\n");
           }
           print LOG "$k\n" unless $opts{'dry-run'};
         }
@@ -782,8 +812,6 @@ sub transLW35 {
 #       ... %!PS fontname %other comments
 #       ... %!PS fontname
 #
-###############################################################################
-
 # reimplementation of the cryptic code that was there before
 sub cidx2dvips {
   my ($s) = @_;
@@ -852,8 +880,8 @@ sub cidx2dvips {
     # now we have the following format
     #  <word> <word> <word> some options like -e or -s
     if ($_ !~ m/([^ ][^ ]*) ([^ ][^ ]*) ([^ ][^ ]*)( (.*))?$/) {
-      print STDERR "cidx2dvips warning: Cannot translate font line:\n==> $l\n";
-      print STDERR "Current translation status: ==>$_==\n";
+      print_warning("cidx2dvips warning: Cannot translate font line:\n==> $l\n");
+      print_warning("Current translation status: ==>$_==\n");
       next;
     }
     my $tfmname = $1;
@@ -875,7 +903,7 @@ sub cidx2dvips {
       if ($italicmax > 0) {
         # we have already a definition of SlantFont via ,Italic or ,BoldItalic
         # warn the user that larger one is kept
-        print STDERR "cidx2dvips warning: Double slant specified via Italic and -s:\n==> $l\n==> Using only the biggest slant value.\n";
+        print_warning("cidx2dvips warning: Double slant specified via Italic and -s:\n==> $l\n==> Using only the biggest slant value.\n");
       }
       $italicmax = $1 if ($1 > $italicmax);
       $opts =~ s/-s ([.0-9-][.0-9-]*)//;
@@ -1011,6 +1039,7 @@ sub mkMaps {
   for my $m (keys %{$alldata->{'maps'}}) {
     my $origin = $alldata->{'maps'}{$m}{'origin'};
     next if !defined($origin);
+    next if ($origin eq 'builtin');
     next if ($alldata->{'updmap'}{$origin}{'maps'}{$m}{'status'} eq "disabled");
     push @mixedmaps, $m
       if ($alldata->{'updmap'}{$origin}{'maps'}{$m}{'type'} eq "MixedMap");
@@ -1107,7 +1136,7 @@ sub mkMaps {
 
   if ($pxdviUse eq "true") {
     # we use the very same data as for kanjix.map, but generate
-    # a different file, so that in case a user wants to hand-craft it
+    # a different file, in case a user wants to hand-craft it
     print "Generating output for pxdvi...\n" if !$opts{'quiet'};
      &writeLines(">$pxdvioutputdir/xdvi-ptex.map", @kanjimaps_fonts);
   }
@@ -1214,8 +1243,8 @@ sub mkMaps {
         print_and_log ("\n");
       }
     } else {
-      print STDERR "$prg: Warning: File $d/$f doesn't exist.\n";
-      print LOG    "Warning: File $d/$f doesn't exist.\n" 
+      print_warning("File $d/$f doesn't exist.\n");
+      print LOG     "Warning: File $d/$f doesn't exist.\n" 
         unless $opts{'dry-run'};
     }
   }
@@ -1490,7 +1519,7 @@ sub disable_map {
   } else {
     # disable a Map type that might be activated in a lower ranked updmap.cfg
     if (!defined($alldata->{'maps'}{$map})) {
-      warning("$prg: map file not present, nothing to disable: $map\n");
+      print_warning("map file not present, nothing to disable: $map\n");
       return;
     }
     my $orig = $alldata->{'maps'}{$map}{'origin'};
@@ -1857,7 +1886,7 @@ sub merge_settings_replace_kanji {
             $alldata->{'updmap'}{$l}{'maps'}{$m}{'line'};
           $alldata->{'updmap'}{$l}{'maps'}{$newm}{'original'} = $m;
         } else {
-          print "$prg: generated map $newm (from $m) does not exists, not activating it!\n";
+          print_warning("generated map $newm (from $m) does not exists, not activating it!\n");
         }
         # in any case delete the @kanji...@ entry line, such a map will
         # never exist
@@ -1882,7 +1911,6 @@ sub merge_settings_replace_kanji {
 
 sub read_updmap_file {
   my $fn = shift;
-  my $is_old_local = ($fn =~ m/updmap-local.cfg/ ? 1 : 0);
   my %data;
   if (!open(FN,"<$fn")) {
     die ("Cannot read $fn: $!");
@@ -1896,15 +1924,6 @@ sub read_updmap_file {
   for (@lines) {
     $i++;
     chomp;
-    if ($is_old_local) {
-      # in case we read an old updmap-local.cfg we have to make sure
-      # that the disable lines
-      #       ^#!foo.map
-      # are rewritten to proper disable lines
-      #       ^#! Map foo.map
-      # we are guessing here the type of the map (namely Map)
-      $_ =~ s/^#!([^ ])/#! Map $1/;
-    }
     next if /^\s*$/;
     next if /^\s*#$/;
     next if /^\s*#[^!]/;
@@ -1919,10 +1938,10 @@ sub read_updmap_file {
       if ($b eq "Map" || $b eq "MixedMap" || $b eq "KanjiMap") {
         my $c = shift @rest;
         if (!defined($c)) {
-          warning("$prg: apparently not a real disable line, ignored: $_\n");
+          print_warning("apparently not a real disable line, ignored: $_\n");
         } else {
           if (defined($data{'maps'}{$c})) {
-            warning("$prg: double mention of $c in $fn\n");
+            print_warning("double mention of $c in $fn\n");
           }
           $data{'maps'}{$c}{'status'} = 'disabled';
           $data{'maps'}{$c}{'type'} = $b;
@@ -1932,31 +1951,32 @@ sub read_updmap_file {
       next;
     }
     if (@rest) {
-      warning("$prg: line $i in $fn contains a syntax error, more than two words!\n");
+      print_warning("line $i in $fn contains a syntax error, more than two words!\n");
     }
     if (defined($settings{$a})) {
       if (check_option($a, $b)) {
         $data{'setting'}{$a}{'val'} = $b;
         $data{'setting'}{$a}{'line'} = $i;
       } else {
-        warning("$prg: unknown setting for $a: $b, ignored!\n");
+        print_warning("unknown setting for $a: $b, ignored!\n");
       }
     } elsif ($a eq "Map" || $a eq "MixedMap" || $a eq "KanjiMap") {
       if (defined($data{'maps'}{$b}) && $data{'maps'}{$b}{'type'} ne $a) {
-        warning("$prg: double mention of $b with conflicting types in $fn\n");
+        print_warning("double mention of $b with conflicting types in $fn\n");
       } else {
         $data{'maps'}{$b}{'type'} = $a;
         $data{'maps'}{$b}{'status'} = 'enabled';
         $data{'maps'}{$b}{'line'} = $i;
       }
     } else {
-      warning("$prg: unrecognized line $i in $fn: $_\n");
+      print_warning("unrecognized line $i in $fn: $_\n");
     }
   }
   return \%data;
 }
 
 sub read_map_files {
+  my $quick = shift;
   if (!defined($alldata->{'updmap'})) {
     return;
   }
@@ -1975,6 +1995,7 @@ sub read_map_files {
   for my $m (qw/dvips35.map pdftex35.map ps2pk35.map/) {
     push @maps, $m;
     $alldata->{'maps'}{$m}{'status'} = 'enabled';
+    $alldata->{'maps'}{$m}{'origin'} = 'builtin';
   }
   @maps = sort_uniq(@maps);
   my @fullpath = `kpsewhich --format=map @maps`;
@@ -1989,6 +2010,7 @@ sub read_map_files {
       push @missing, $map;
     }
   }
+  return @missing if $quick;
 
   #
   # read in the three basic fonts definition maps
@@ -2034,11 +2056,11 @@ sub read_map_files {
               } else {
                 $maporig = "from " . $alldata->{'maps'}{$fontorig}{'origin'};
               }
-              warning("$prg: font $font is defined multiple times:\n");
-              warning("$prg:   $fontorig ($maporig)\n");
-              warning("$prg:   $m (from $f) (used)\n");
+              print_warning("font $font is defined multiple times:\n");
+              print_warning("  $fontorig ($maporig)\n");
+              print_warning("  $m (from $f) (used)\n");
             } else {
-              warning("$prg: font $font is multiply defined in $m, using an arbitrary instance!\n");
+              print_warning("font $font is multiply defined in $m, using an arbitrary instance!\n");
             }
           }
           $alldata->{'fonts'}{$font}{'origin'} = $m;
@@ -2082,6 +2104,7 @@ sub merge_data {
   for my $m (keys %{$alldata->{'maps'}}) {
     my $origin = $alldata->{'maps'}{$m}{'origin'};
     next if !defined($origin);
+    next if ($origin eq 'builtin');
     next if ($alldata->{'updmap'}{$origin}{'maps'}{$m}{'status'} eq "disabled");
     for my $f (keys %{$alldata->{'maps'}{$m}{'fonts'}}) {
       # use the font definition only for those fonts where the origin matches
@@ -2126,28 +2149,31 @@ sub reset_root_home {
       my (undef,undef,undef,undef,undef,undef,undef,$roothome) = getpwuid(0);
       if (defined($roothome)) {
         if ($envhome ne $roothome) {
-          warning("$prg: resetting \$HOME value (was $envhome) to root's "
+          print_warning("resetting \$HOME value (was $envhome) to root's "
             . "actual home ($roothome).\n");
           $ENV{'HOME'} = $roothome;
         } else {
           # envhome and roothome do agree, nothing to do, that is the good case
         }
       } else { 
-        warning("$prg: home of root not defined, strange!\n");
+        print_warning("home of root not defined, strange!\n");
       }
     }
   }
 }
 
-sub warning {
-  print STDERR @_;
+sub print_warning {
+  print STDERR "$prg [WARNING]: ", @_ if (!$opts{'quiet'}) 
+}
+sub print_error {
+  print STDERR "$prg [ERROR]: ", @_;
 }
 
 
 # help, version.
 
 sub version {
-  my $ret = sprintf "%s (TeX Live, multi) version %s\n", $prg, $version;
+  my $ret = sprintf "%s version %s\n", $prg, $version;
   return $ret;
 }
 
@@ -2156,13 +2182,14 @@ sub help {
 Usage: $prg     [OPTION] ... [COMMAND]
    or: $prg-sys [OPTION] ... [COMMAND]
 
-Update the default font map files used by pdftex, dvips, and dvipdfm(x),
-and optionally pxdvi, as determined by all configuration files updmap.cfg 
-(the ones returned by running "kpsewhich --all updmap.cfg", but see below).
+Update the default font map files used by pdftex (pdftex.map), dvips
+(psfonts.map), and dvipdfm(x), and optionally pxdvi, as determined by
+all configuration files updmap.cfg (the ones returned by running
+"kpsewhich --all updmap.cfg", but see below).
 
 Among other things, these map files are used to determine which fonts
 should be used as bitmaps and which as outlines, and to determine which
-font files are included in the PDF or PostScript output.
+font files are included, typically subsetted, in the PDF or PostScript output.
 
 updmap-sys is intended to affect the system-wide configuration, while
 updmap affects personal configuration files only, overriding the system
@@ -2171,6 +2198,20 @@ running updmap-sys no longer has any effect.  (updmap-sys issues a
 warning in this situation.)
 
 By default, the TeX filename database (ls-R) is also updated.
+
+The updmap system is regrettably complicated, for both inherent and
+historical reasons.  A general overview:
+- updmap.cfg files are mainly about listing other files, namely the
+  font-specific .maps, in which each line gives information about a
+  different TeX (.tfm) font.
+- updmap reads the updmap.cfg files and then concatenates the
+  contents of those .map files into the main output files: psfonts.map
+  for dvips and pdftex.map for pdftex and dvipdfmx.
+- The updmap.cfg files themselves are created and updated at package
+  installation time, by the system installer or the package manager or
+  by hand, and not (by default) by updmap.
+
+Good luck.
 
 Options:
   --cnffile FILE            read FILE for the updmap configuration 
@@ -2202,9 +2243,8 @@ Commands:
   --enable MixedMap=MAPFILE add \"MixedMap MAPFILE\" to updmap.cfg
   --enable KanjiMap=MAPFILE add \"KanjiMap MAPFILE\" to updmap.cfg
   --disable MAPFILE         disable MAPFILE, of whatever type
-  --listmaps                list all active and inactive maps
-  --listavailablemaps       same as --listmaps, but without
-                             unavailable map files
+  --listmaps                list all maps (details below)
+  --listavailablemaps       list available maps (details below)
   --syncwithtrees           disable unavailable map files in updmap.cfg
 
 Explanation of the map types: the (only) difference between Map and
@@ -2249,12 +2289,13 @@ Explanation of the OPTION names for --showoptions, --showoption, --setoption:
 
 Explanation of trees and files normally used:
 
-  If --cnffile is specified on the command line (possibly multiple
-  times), its value(s) are used.  Otherwise, updmap reads all the
-  updmap.cfg files found by running \`kpsewhich -all updmap.cfg', in the
-  order returned by kpsewhich.
+  If --cnffile is specified on the command line (can be given multiple
+  times), its value(s) is(are) used.  Otherwise, updmap reads all the
+  updmap.cfg files found by running \`kpsewhich -all updmap.cfg',
+  in the order returned by kpsewhich (which is the order of trees
+  defined in texmf.cnf).
 
-  In any case, if multiple updmap.cfg files are found, all the maps
+  In either case, if multiple updmap.cfg files are found, all the maps
   mentioned in all the updmap.cfg files are merged.
 
   Thus, if updmap.cfg files are present in all trees, and the default
@@ -2278,80 +2319,110 @@ Explanation of trees and files normally used:
   
   (where YYYY is the TeX Live release version).
   
-  There is one exception to keep upgradability from earlier versions
-  of TeX Live: if a file TEXMFLOCAL/web2c/updmap-local.cfg exists
-  (formerly used by tlmgr to merge local fonts), then the file
-  TEXMFLOCAL/web2c/updmap.cfg is ignored (if it exists) and that
-  updmap-local.cfg is used instead.  In this case, updmap recognizes the
-  previous syntax for disabling map files in updmap-local.cfg (this
-  syntax is different from what is used now).
-
   According to the actions, updmap might write to one of the given files
   or create a new updmap.cfg, described further below.
 
-  Where changes are saved: if config files are given on the command
-  line, then the first one given will be used to save any changes from
-  --setoption, --enable or --disable.  If the config files are taken
-  from kpsewhich output, then the algorithm is more complex:
+Where and which updmap.cfg changes are saved: 
 
-    1) If \$TEXMFCONFIG/web2c/updmap.cfg or \$TEXMFHOME/web2c/updmap.cfg
+  When no options are given, the updmap.cfg file(s) are only read, not
+  written.  It's when an option --setoption, --enable or --disable is
+  specified that an updmap.cfg needs to be updated.  In this case:
+
+  1) If config files are given on the command line, then the first one
+  given will be used to save any such changes.
+  
+  2) If the config files are taken from kpsewhich output, then the
+  algorithm is more complex:
+
+    2a) If \$TEXMFCONFIG/web2c/updmap.cfg or \$TEXMFHOME/web2c/updmap.cfg
     appears in the list of used files, then the one listed first by
     kpsewhich --all (equivalently, the one returned by kpsewhich
     updmap.cfg), is used.
       
-    2) If neither of the above two are present and changes are made, a
+    2b) If neither of the above two are present and changes are made, a
     new config file is created in \$TEXMFCONFIG/web2c/updmap.cfg.
   
-  In general, the idea is that if a given config file is not writable, a
-  higher-level one can be used.  That way, the distribution's settings
-  can be overridden for system-wide using TEXMFLOCAL, and then system
-  settings can be overridden again for a particular using using TEXMFHOME.
+  In general, the idea is that if the user cannot write to a given
+  config file, a higher-level one can be used.  That way, the
+  distribution's settings can be overridden system-wide using
+  TEXMFLOCAL, and system settings can be overridden again in a
+  particular user's TEXMFHOME.
 
-  Resolving multiple definitions of a font:
-    If a font is defined in more than one map file, then the definition
-    coming from the first-listed updmap.cfg is used.  If a font is
-    defined multiple times within the same map file, one is chosen
-    arbitrarily.  In both cases a warning is issued.
+Resolving multiple definitions of a font:
 
-  Disabling maps:
-    updmap.cfg files with higher priority (listed earlier) can disable
-    maps mentioned in lower priority (listed later) updmap.cfg files by
-    writing, e.g.,
-      \#! Map mapname.map
-    or
-      \#! MixedMap mapname.map
-    in the higher-priority updmap.cfg file. 
+  If a font is defined in more than one map file, then the definition
+  coming from the first-listed updmap.cfg is used.  If a font is
+  defined multiple times within the same map file, one is chosen
+  arbitrarily.  In both cases a warning is issued.
 
-    As an example, suppose you have a copy of MathTime Pro fonts
-    and want to disable the Belleek version of the fonts; that is,
-    disable the map belleek.map.  You can create the file
-    \$TEXMFCONFIG/web2c/updmap.cfg with the content
-      #! Map belleek.map
-      Map mt-plus.map
-      Map mt-yy.map
-    and call $prg.
+Disabling maps:
 
-  updmap writes the map files for dvips (psfonts.map) and pdftex
-  (pdftex.map) to the TEXMFVAR/fonts/map/updmap/{dvips,pdftex}/
-  directories.   
+  updmap.cfg files with higher priority (listed earlier) can disable
+  maps mentioned in lower priority (listed later) updmap.cfg files by
+  writing, e.g.,
+    \#! Map mapname.map
+  or
+    \#! MixedMap mapname.map
+  in the higher-priority updmap.cfg file.  (The \#! must be at the
+  beginning of the line, with at least one space or tab afterward, and
+  whitespace between each word on the list.)
 
-  The log file is written to TEXMFVAR/web2c/updmap.log.
+  As an example, suppose you have a copy of MathTime Pro fonts
+  and want to disable the Belleek version of the fonts; that is,
+  disable the map belleek.map.  You can create the file
+  \$TEXMFCONFIG/web2c/updmap.cfg with the content
+    #! Map belleek.map
+    Map mt-plus.map
+    Map mt-yy.map
+  and call $prg.
+
+The main output:
+
+  The main output of updmap is the files containing the individual font
+  map lines which the drivers (dvips, pdftex, etc.) read to handle fonts.
+  
+  The map files for dvips (psfonts.map) and pdftex (pdftex.map) are
+  written to TEXMFVAR/fonts/map/updmap/{dvips,pdftex}/.
+  
+  In addition, information about Kanji fonts is written to
+  TEXMFVAR/fonts/map/updmap/dvipdfmx/kanjix.map, and optionally to 
+  TEXMFVAR/fonts/map/updmap/pxdvi/xdvi-ptex.map.  These are for Kanji
+  only and are not like other map files.  dvipdfmx reads pdftex.map for
+  the map entries for non-Kanji fonts.
+
+Listing of maps:
+
+  The two options --listmaps and --listavailablemaps list all maps
+  defined in any of the updmap.cfg files (for --listmaps), and 
+  only those actually found on the system (for --listavailablemaps).
+  The output format is one line per font map, with the following
+  fields separated by tabs: map, type (Map, MixedMap, KanjiMap),
+  status (enabled, disabled), origin (the updmap.cfg file where
+  it is mentioned, or 'builtin' for the three basic maps).
+
+  In the case of --listmaps there can be one additional fields
+  (again separated by tab) containing '(not available)' for those
+  map files that cannot be found.
+ 
+updmap vs. updmap-sys:
 
   When updmap-sys is run, TEXMFSYSCONFIG and TEXMFSYSVAR are used
-  instead of TEXMFCONFIG and TEXMFVAR, respectively.  This is the only
-  difference between updmap-sys and updmap.
+  instead of TEXMFCONFIG and TEXMFVAR, respectively.  This is the
+  primary difference between updmap-sys and updmap.
 
   Other locations may be used if you give them on the command line, or
   these trees don't exist, or you are not using the original TeX Live.
 
-  To see the precise locations of the various files that
-  will be read and written, give the -n option (or read the source).
+To see the precise locations of the various files that
+will be read and written, give the -n option (or read the source).
+
+The log file is written to TEXMFVAR/web2c/updmap.log.
 
 For step-by-step instructions on making new fonts known to TeX, read
 http://tug.org/fonts/fontinstall.html.  For even more terse
 instructions, read the beginning of the main updmap.cfg.
 
-Report bugs to: tex-k\@tug.org
+Report bugs to: tex-live\@tug.org
 TeX Live home page: <http://tug.org/texlive/>
 EOF
 ;

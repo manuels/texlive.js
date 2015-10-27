@@ -7,7 +7,7 @@
 %% bbunicode.dtx  (with options: `luatex')
 %% This is a generated file.
 %% 
-%% Copyright 2012-2013 Javier Bezos and Johannes L. Braams.
+%% Copyright 2012-2014 Javier Bezos and Johannes L. Braams.
 %% Copyright 1989-2008 Johannes L. Braams and any individual authors
 %% listed elsewhere in this file.  All rights reserved.
 %% 
@@ -39,9 +39,14 @@
 %% extension .ins) which are part of the distribution.
 %% File `bbunicode.dtx'
 %% Babel package for LaTeX version 2e
-%% Copyright (C) 2103
+%% Copyright (C) 2103-2014
 %%           by Javier Bezos
-\directlua{%
+\begingroup
+\catcode`\%=12
+\catcode`\'=12
+\catcode`\"=12
+\catcode`\:=12
+\directlua{
   require("luatex-hyphen")
   Babel = {}
   function Babel.bytes(line)
@@ -50,7 +55,8 @@
   end
   function Babel.begin_process_input()
     if luatexbase and luatexbase.add_to_callback then
-      luatexbase.add_to_callback('process_input_buffer',Babel.bytes,'Babel.bytes')
+      luatexbase.add_to_callback('process_input_buffer',
+                                 Babel.bytes,'Babel.bytes')
     else
       Babel.callback = callback.find('process_input_buffer')
       callback.register('process_input_buffer',Babel.bytes)
@@ -63,7 +69,33 @@
       callback.register('process_input_buffer',Babel.callback)
     end
   end
+  function Babel.addpatterns(pp, lg)
+    local lg = lang.new(lg)
+    local pats = lang.patterns(lg) or ''
+    lang.clear_patterns(lg)
+    for p in pp:gmatch('[^%s]+') do
+      ss = ''
+      for i in string.utfcharacters(p:gsub('%d', '')) do
+         ss = ss .. '%d?' .. i
+      end
+      ss = ss:gsub('^%%d%?%.', '%%.') .. '%d?'
+      ss = ss:gsub('%.%%d%?$', '%%.')
+      pats, n = pats:gsub('%s' .. ss .. '%s', ' ' .. p .. ' ')
+      if n == 0 then
+        tex.sprint(
+          [[\string\csname\space bbl@info\endcsname{New pattern: ]]
+          .. p .. [[}]])
+        pats = pats .. ' ' .. p
+      else
+        tex.sprint(
+          [[\string\csname\space bbl@info\endcsname{Renew pattern: ]]
+          .. p .. [[}]])
+      end
+    end
+    lang.patterns(lg, pats)
+  end
 }
+\endgroup
 \def\BabelStringsDefault{unicode}
 \let\luabbl@stop\relax
 \AddBabelHook{luatex}{encodedcommands}{%
@@ -77,25 +109,39 @@
   \luabbl@stop
   \let\luabbl@stop\relax}
 \AddBabelHook{luatex}{patterns}{%
-  \ifx\directlua\relax\else
-    \ifcsname lu@texhyphen@loaded@\the\language\endcsname \else
-      \global\@namedef{lu@texhyphen@loaded@\the\language}{}%
-      \directlua{
-        luatexhyphen.loadlanguage('\luatexluaescapestring{\string#1}',
-          '\the\language')}%
-    \fi
-  \fi}
+  \ifcsname lu@texhyphen@loaded@\the\language\endcsname \else
+    \global\@namedef{lu@texhyphen@loaded@\the\language}{}%
+    \directlua{
+      luatexhyphen.loadlanguage([[\string#1]],
+        '\the\language')}%
+  \fi
+  \@ifundefined{bbl@patterns@}{}{%
+    \begingroup
+      \@expandtwoargs\in@{,\number\language,}{,\bbl@pttnlist}%
+      \ifin@\else
+        \ifx\bbl@patterns@\@empty\else
+           \directlua{ Babel.addpatterns(
+             [[\bbl@patterns@]], \number\language) }%
+        \fi
+        \@ifundefined{bbl@patterns@#1}%
+          \@empty
+          {\directlua{ Babel.addpatterns(
+               [[\space\csname bbl@patterns@#1\endcsname]],
+               \number\language) }}%
+        \xdef\bbl@pttnlist{\bbl@pttnlist\number\language,}%
+      \fi
+    \endgroup}}
 \AddBabelHook{luatex}{adddialect}{%
   \ifx\directlua\relax\else
     \directlua{
-      luatexhyphen.adddialect('\luatexluaescapestring{\string#1}',
-        '\luatexluaescapestring{\string#2}')
+      luatexhyphen.adddialect([[\string#1]],
+        [[\string#2]])
     }%
   \fi}
 \AddBabelHook{luatex}{everylanguage}{%
   \directlua{
     processnow = (tex.language == 0) or
-      (luatexhyphen.lookupname('\luatexluaescapestring{\string#1}') == nil)}%
+      (luatexhyphen.lookupname([[\string#1]]) == nil)}%
   \ifnum0=\directlua{tex.sprint(processnow and "0" or "1")}\relax
     \global\@namedef{lu@texhyphen@loaded@\the\language}{}%
   \fi}
@@ -108,6 +154,60 @@
     \input #1\relax
   \fi
   \directlua{processnow = nil}}
+\@onlypreamble\babelpatterns
+\AtEndOfPackage{%
+  \newcommand\babelpatterns[2][\@empty]{%
+    \ifx\bbl@patterns@\relax
+      \let\bbl@patterns@\@empty
+    \fi
+    \ifx\bbl@pttnlist\@empty\else
+      \bbl@warning{%
+        You must not intermingle \string\selectlanguage\space and\\%
+        \string\babelpatterns\space or some patterns will not\\%
+        be taken into account. Reported}%
+    \fi
+    \ifx\@empty#1%
+      \protected@edef\bbl@patterns@{\bbl@patterns@\space#2}%
+    \else
+      \edef\bbl@tempb{\zap@space#1 \@empty}%
+      \bbl@for\bbl@tempa\bbl@tempb{%
+        \bbl@fixname\bbl@tempa
+        \bbl@iflanguage\bbl@tempa{%
+          \bbl@csarg\protected@edef{patterns@\bbl@tempa}{%
+            \@ifundefined{bbl@patterns@\bbl@tempa}%
+              \@empty
+              {\csname bbl@patterns@\bbl@tempa\endcsname\space}%
+            #2}}}%
+    \fi}}
+\AddBabelHook{xetex}{loadkernel}{%
+  \begingroup
+      % Reset chars "80-"C0 to category "other", no case mapping:
+    \catcode`\@=11 \count@=128
+    \loop\ifnum\count@<192
+      \global\uccode\count@=0 \global\lccode\count@=0
+      \global\catcode\count@=12 \global\sfcode\count@=1000
+      \advance\count@ by 1 \repeat
+      % Other:
+    \def\O ##1 {%
+      \global\uccode"##1=0 \global\lccode"##1=0
+      \global\catcode"##1=12 \global\sfcode"##1=1000 }%
+      % Letter:
+    \def\L ##1 ##2 ##3 {\global\catcode"##1=11
+      \global\uccode"##1="##2
+      \global\lccode"##1="##3
+      % Uppercase letters have sfcode=999:
+      \ifnum"##1="##3 \else \global\sfcode"##1=999 \fi }%
+      % Letter without case mappings:
+    \def\l ##1 {\L ##1 ##1 ##1 }%
+    \l 00AA
+    \L 00B5 039C 00B5
+    \l 00BA
+    \O 00D7
+    \l 00DF
+    \O 00F7
+    \L 00FF 0178 00FF
+  \endgroup
+  \input #1\relax}
 \def\babelFSstore#1{%
   \bbl@for\bbl@tempa{#1}{%
     \edef\bbl@tempb{\noexpand\bbl@FSstore{\bbl@tempa}}

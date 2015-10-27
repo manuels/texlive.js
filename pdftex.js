@@ -1,5 +1,8 @@
-var PDFTeX = function() {
-  var worker = new Worker("pdftex-worker.js");
+var PDFTeX = function(opt_workerPath) {
+  if (!opt_workerPath) {
+    opt_workerPath = 'pdftex-worker.js';
+  }
+  var worker = new Worker(opt_workerPath);
   var self = this;
   var initialized = false;
 
@@ -146,12 +149,7 @@ var PDFTeX = function() {
       ];
     else
       commands = [
-        curry(self, 'FS_createFolder', ['/', 'bin', true, true]),
-        curry(self, 'FS_createDataFile', ['/bin', 'this.program', '', true, true]),
         curry(self, 'FS_createDataFile', ['/', 'input.tex', source_code, true, true]),
-        curry(self, 'FS_createLazyFile', ['/', 'latex.fmt', 'latex.fmt', true, true]),
-        curry(self, 'FS_createFolder', ['/bin/', 'share', true, true]),
-        curry(self, 'FS_createLazyFile', ['/bin/', 'texmf.cnf', './texlive/texmf-dist/web2c/texmf.cnf', true, true]),
         curry(self, 'FS_createLazyFilesFromList', ['/', 'texlive.lst', './texlive', true, true]),
       ];
 
@@ -159,7 +157,7 @@ var PDFTeX = function() {
       initialized = true;
       return sendCommand({
         'command': 'run',
-        'arguments': ['-interaction=nonstopmode', '-output-format', 'pdf', '&latex', 'input.tex'],
+        'arguments': ['-interaction=nonstopmode', '-output-format', 'pdf', 'input.tex'],
 //        'arguments': ['-debug-format', '-output-format', 'pdf', '&latex', 'input.tex'],
       });
     };

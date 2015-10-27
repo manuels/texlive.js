@@ -8,7 +8,7 @@
 %% 
 %% This is a generated file.
 %% 
-%% Copyright 1995, 199, 2004, 2009 American Mathematical Society.
+%% Copyright 1995, 199, 2004, 2009, 2015 American Mathematical Society.
 %% 
 %% American Mathematical Society
 %% Technical Support
@@ -28,7 +28,7 @@
 %% 
 \NeedsTeXFormat{LaTeX2e}% LaTeX 2.09 can't be used (nor non-LaTeX)
 [1995/06/01]% LaTeX date must be June 1995 or later
-\ProvidesClass{amsart}[2009/07/02 v2.20.1]
+\ProvidesClass{amsart}[2015/03/04 v2.20.2]
 \global\expandafter\let\csname ver@amsthm.sty\expandafter\endcsname
   \csname ver@\@currname.\@currext\endcsname
 \let\@xp=\expandafter
@@ -1761,10 +1761,16 @@
   }{%
     \def\equation@qed{\displaymath@qed}%
   }
-  \def\@tempa#1$#2#3\@nil{%
-    \def\[{#1$#2\def\@currenvir{displaymath}#3}%
-  }%
-  \expandafter\@tempa\[\@nil
+    \def\@tempa#1$#2#3\@nil#4{%
+        \def#4{#1$#2\def\@currenvir{displaymath}#3}%
+    }%
+    \expandafter\ifx\csname[ \endcsname\relax
+        \expandafter\@tempa\[\@nil\[%
+    \else
+        \expandafter\expandafter\expandafter\@tempa\csname[
+        \expandafter\endcsname\expandafter\@nil
+        \csname[ \endcsname
+    \fi
 }
 \@ifpackageloaded{amstex}{%
   \def\@tempa{TT}%

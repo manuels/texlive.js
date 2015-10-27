@@ -1,7 +1,8 @@
 #!/bin/sh
-
-# TeX-Config version 3.0
-# Thomas Esser, te@dbs.uni-hannover.de. Public domain.
+# $Id: texconfig-dialog.sh 34586 2014-07-13 00:06:11Z karl $
+# texconfig-dialog
+# Originally written by Thomas Esser. Public domain.
+# Now maintained as part of TeX Live; correspondence to tex-live@tug.org.
 
 # invoke the right shell:
 
@@ -15,13 +16,16 @@ test -f /bin/bsh && test -z "$RUNNING_BSH" \
   && { RUNNING_BSH=true; export RUNNING_BSH; exec /bin/bsh $0 ${1+"$@"}; }
 unset RUNNING_BSH
 
-export PATH
-
 # hack around a bug in zsh:
 test -n "${ZSH_VERSION+set}" && alias -g '${1+"$@"}'='"$@"'
 
+# preferentially use subprograms from our own directory.
+mydir=`echo "$0" | sed 's,/[^/]*$,,'`
+mydir=`cd "$mydir" && pwd`
+PATH="$mydir:$PATH"; export PATH
+
 # the version string
-version='$Id: texconfig-dialog.sh 29349 2013-03-12 00:01:41Z karl $'
+version='$Id: texconfig-dialog.sh 34586 2014-07-13 00:06:11Z karl $'
 
 : ${PAGER=more}
 progname=texconfig-dialog
@@ -153,12 +157,15 @@ menuMain()
   cat <<-'eof'
 	The interactive texconfig utility will be started now. Make sure
 	your screen has at least 24 rows and 80 columns. If texconfig
-	crashes now, you can still set up your teTeX system using the
+	crashes now, you can still set up your TeX system using the
 	batch mode of texconfig.  Try 'texconfig help' to get a list
 	of options.
 
 	The interactive mode works best with a real vt100 terminal or
 	inside an xterm window.
+	
+	More likely these days, you're better off using tlmgr.
+	See http://tug.org/texlive/tlmgr.html.
 eof
   termCtl readln
 

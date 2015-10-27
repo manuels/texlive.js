@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
-# $Id: uninstall-win32.pl 26815 2012-06-03 19:20:16Z siepo $
-# Copyright 2008, 2010, 2011, 2012 Norbert Preining
+# $Id: uninstall-win32.pl 36785 2015-04-12 14:40:36Z peter $
+# Copyright 2008, 2010, 2011, 2012, 2014 Norbert Preining
 #
 # GUI for tlmgr
 
@@ -66,7 +66,7 @@ sub doit {
   }
   my $menupath = &TeXLive::TLWinGoo::menu_path();
   $menupath =~ s!/!\\!g;
-  `rmdir /q "$menupath\\$TeXLive::TLConfig::WindowsMainMenuName" 2>nul`;
+  `rmdir /s /q "$menupath\\$TeXLive::TLConfig::WindowsMainMenuName" 2>nul`;
 
   # remove bindir from PATH settings
   TeXLive::TLUtils::w32_remove_from_path("$Master/bin/win32", 

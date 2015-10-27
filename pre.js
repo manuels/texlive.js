@@ -83,26 +83,21 @@ self['onmessage'] = function(ev) {
       res = FS_createLazyFilesFromList.apply(this, args);
     break;
 
+    case 'FS_createDataFile': FS.createDataFile.apply(FS,args);res=true;break;
+    case 'FS_createLazyFile': FS.createLazyFile.apply(FS,args);res=true;break;
+    case 'FS_createFolder': FS.createFolder.apply(FS,args);res=true;break;
+    case 'FS_createPath': FS.createPath.apply(FS,args);res=true;break;
+    case 'FS_unlink': FS.unlink.apply(FS,args);res=true;break;
     case 'FS_readFile':
-    case 'FS_createDataFile':
-    case 'FS_createLazyFile':
-    case 'FS_createFolder':
-    case 'FS_createPath':
-    case 'FS_unlink':
-      try {
-        fn = cmd.substr(3);
-        res = FS[fn].apply(FS, args);
-
-        if(cmd === 'FS_readFile')
-          res = String.fromCharCode.apply(null, res);
-        else
-          res = true;
-      }
-      catch(e) {
-        res = false;
-      }
+          var tmp=FS.readFile.apply(FS,args);
+          var res='';
+          var chunk = 8*1024;
+          var i;
+          for (i = 0; i < tmp.length/chunk; i++) {
+            res += String.fromCharCode.apply(null, tmp.subarray(i*chunk, (i+1)*chunk));
+          }
+          res += String.fromCharCode.apply(null, tmp.subarray(i*chunk));
     break;
-
     case 'set_TOTAL_MEMORY':
       Module.TOTAL_MEMORY = args[0];
       res = Module.TOTAL_MEMORY;
