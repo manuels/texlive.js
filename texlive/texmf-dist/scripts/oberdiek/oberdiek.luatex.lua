@@ -11,7 +11,7 @@
 --  Project: luatex
 --  Version: 2013/04/28 v0.4-roux
 --  
---  Copyright (C) 2007, 2009, 2010, 2013 by
+--  Copyright (C) 2007, 2009, 2010, 2013, 2014 by
 --     Heiko Oberdiek <heiko.oberdiek at googlemail.com>
 --  
 --  This work may be distributed and/or modified under the
@@ -54,7 +54,7 @@ function kpse_module_loader(module)
 end
 -- following line changed to use package.searchers instead of
 -- package.loaders for current luatex; this is the only change in the
--- code.  eroux, 28apr13.
-table.insert(package.searchers, kpse_module_loader)
+-- code.  eroux, 28apr13, (or package.loaders), 29mar14.
+table.insert(package.searchers or package.loaders, kpse_module_loader)
 -- 
 --  End of File `oberdiek.luatex.lua'.

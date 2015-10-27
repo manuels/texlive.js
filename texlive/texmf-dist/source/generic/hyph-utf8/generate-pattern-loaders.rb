@@ -1,4 +1,5 @@
 #!/usr/bin/env ruby
+# encoding: utf-8
 
 # this file auto-generates loaders for hyphenation patterns - to be improved
 
@@ -34,7 +35,7 @@ text_header =
 %     source/generic/hyph-utf8/generate-pattern-loaders.rb
 % See also http://tug.org/tex-hyphen
 %
-% Copyright 2008-2013 TeX Users Group.
+% Copyright 2008-2014 TeX Users Group.
 % You may freely use, modify and/or distribute this file.
 % (But consider adapting the scripts if you need modifications.)
 %

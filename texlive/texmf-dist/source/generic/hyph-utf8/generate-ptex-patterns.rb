@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 
-require 'hyph-utf8'
+require File.expand_path(File.join(File.dirname(__FILE__), 'hyph-utf8'))
 
 # this file generates patterns for pTeX out of the plain ones
 
@@ -18,7 +18,7 @@ $path_ptex="#{$path_root}/tex/generic/hyph-utf8/patterns/ptex"
 encodings_list = ["ascii", "ec", "qx", "t2a", "lmc", "il2", "il3", "l7x", "t8m", "lth"]
 encodings = Hash.new
 encodings_list.each do |encoding_name|
-	encodings[encoding_name] = Encoding.new(encoding_name)
+	encodings[encoding_name] = HyphEncoding.new(encoding_name)
 end
 
 $l = Languages.new

@@ -45,13 +45,13 @@ return {
             -- only used for FONTCONFIG_PATH & TEXMFCACHE in TeX Live
 
             TEXMFSYSVAR     = "selfautoparent:texmf-var",
-            TEXMFVAR        = "home:.texlive2013/texmf-var",
+            TEXMFVAR        = "home:.texlive2015/texmf-var",
 
             -- We have only one cache path but there can be more. The first writable one
             -- will be chosen but there can be more readable paths.
 
             TEXMFCACHE      = "$TEXMFSYSVAR;$TEXMFVAR",
-            TEXMFCONFIG     = "home:.texlive2013/texmf-config",
+            TEXMFCONFIG     = "home:.texlive2015/texmf-config",
 
             -- I don't like this texmf under home and texmf-home would make more
             -- sense. One never knows what installers put under texmf anywhere and

@@ -28,7 +28,7 @@ class UnicodeCharacters < Hash
 	end
 end
 
-class Encoding
+class HyphEncoding
 	def initialize(encoding_name)
 		@encoding_name = encoding_name
 		@unicode_characters_first_byte = UnicodeCharacters.new
