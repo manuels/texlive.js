@@ -29,6 +29,7 @@ language_grouping = {
 	'chinese' => ['zh-latn-pinyin'],
 	'indic' => ['as', 'bn', 'gu', 'hi', 'kn', 'ml', 'mr', 'or', 'pa', 'ta', 'te'],
 	'serbian' => ['sh-latn', 'sh-cyrl'],
+	'latin' => ['la', 'la-x-classic'],
 }
 
 language_used_in_group = Hash.new

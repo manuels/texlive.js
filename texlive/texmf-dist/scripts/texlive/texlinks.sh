@@ -1,5 +1,5 @@
 #!/bin/sh
-# $Id: texlinks.sh 29349 2013-03-12 00:01:41Z karl $
+# $Id: texlinks.sh 36938 2015-04-19 21:15:06Z karl $
 
 # Thomas Esser, 1999, 2002, 2003. public domain.
 
@@ -39,7 +39,7 @@ export PATH
 # hack around a bug in zsh:
 test -n "${ZSH_VERSION+set}" && alias -g '${1+"$@"}'='"$@"'
 
-version='$Id: texlinks.sh 29349 2013-03-12 00:01:41Z karl $'
+version='$Id: texlinks.sh 36938 2015-04-19 21:15:06Z karl $'
 progname=texlinks
 cnf=fmtutil.cnf   # name of the config file
 
@@ -69,10 +69,7 @@ Report bugs to: tex-k@tug.org
 TeX Live home page: <http://tug.org/texlive/>
 '
 
-###############################################################################
-# abort(errmsg)
-#   print `errmsg' to stderr and exit with error code 1
-###############################################################################
+# print `errmsg' to stderr and exit with error code 1:
 abort() { errmsg "texlinks: $1."; cleanup 1; }
 
 # error message to stderr:
@@ -84,10 +81,7 @@ verbose_echo() { $verbose && errmsg "$@"; }
 # in verbose mode: show command that is executed:
 verbose_do() { verbose_echo "$@"; "$@"; }
 
-###############################################################################
-# cleanup()
-#   clean up the temp area and exit with proper exit status
-###############################################################################
+# clean up the temp area and exit with proper exit status:
 cleanup()
 {
   rc=$1
@@ -167,14 +161,18 @@ install_link()
         rm -f "$src"
   
       if test -f "$src"; then
-        case $silent in
-          true)
-            ;;
-          *)
-            errmsg "install_link $src -> $dest failed: file already exists."
-            ;;
-        esac
+        if $silent; then :; else
+          # i.e., the rm failed.
+          errmsg "install_link $src -> $dest failed: file already exists."
+        fi
       else
+        if echo "$src" | grep '/pdfcsplain$' >/dev/null; then
+          # at p.olsak insistence: we have three pdfcsplain entries in
+          # fmtutil.cnf with different engines, but the executable link
+          # must point to pdftex.
+          verbose_echo "forcing pdfcsplain destination to be pdftex"
+          dest=pdftex$exeext
+        fi
         verbose_do ln -s "$dest" "$src"
       fi
       ;;

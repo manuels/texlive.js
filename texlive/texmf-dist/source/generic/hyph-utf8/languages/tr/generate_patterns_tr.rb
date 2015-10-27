@@ -71,7 +71,7 @@ add_comment(
 	"- initiative to improve Turkish patterns by S. Ekin Kocabas <kocabas at stanford.edu>\n" +
 	"- script written by Mojca Miklavec <mojca.miklavec.lists at gmail.com> in June 2008\n\n" +
 	"See also:\n" +
-	"- http://www.ctan.org/tex-archive/language/turkish/hyphen/turk_hyf.c\n" +
+	"- http://mirror.ctan.org/language/turkish/hyphen/turk_hyf.c\n" +
 	"- http://www.tug.org/TUGboat/Articles/tb09-1/tb20mackay.pdf\n\n" +
 	"Differences with Ottoman patterns:\n" +
 	"- adapted for the use on modern TeX engines, using UTF-8 charactes\n" +

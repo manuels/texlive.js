@@ -1,9 +1,8 @@
 #!/bin/sh
-
-# updmap-sys: Thomas Esser, public domain.
-
-# wrapper script for updmap with TEXMFVAR and TEXMFCONFIG set to
-#   TEXMFSYSVAR / TEXMFSYSCONFIG
+# $Id: updmap-sys.sh 36962 2015-04-20 01:48:35Z preining $
+# updmap-sys - arrange for updmap to affect system directories.
+# Maintained in Master/texmf-dist/scripts/texlive/
+# Public domain.  Originally written by Thomas Esser.
 
 test -f /bin/ksh && test -z "$RUNNING_KSH" \
   && { UNAMES=`uname -s`; test "x$UNAMES" = xULTRIX; } 2>/dev/null \
@@ -15,16 +14,12 @@ test -f /bin/bsh && test -z "$RUNNING_BSH" \
   && { RUNNING_BSH=true; export RUNNING_BSH; exec /bin/bsh $0 ${1+"$@"}; }
 unset RUNNING_BSH
 
-export PATH
+# preferentially use subprograms from our own directory.
+mydir=`echo "$0" | sed 's,/[^/]*$,,'`
+mydir=`cd "$mydir" && pwd`
+PATH="$mydir:$PATH"; export PATH
 
 # hack around a bug in zsh:
 test -n "${ZSH_VERSION+set}" && alias -g '${1+"$@"}'='"$@"'
-
-# v=`kpsewhich -var-value TEXMFSYSVAR`
-# c=`kpsewhich -var-value TEXMFSYSCONFIG`
-
-# TEXMFVAR="$v"
-# TEXMFCONFIG="$c"
-# export TEXMFVAR TEXMFCONFIG
 
 exec updmap --sys ${1+"$@"}

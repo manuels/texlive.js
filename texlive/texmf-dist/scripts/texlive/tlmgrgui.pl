@@ -1,22 +1,20 @@
 #!/usr/bin/env perl
-# $Id: tlmgrgui.pl 30372 2013-05-10 17:49:37Z karl $
+# $Id: tlmgrgui.pl 38523 2015-10-02 01:35:27Z preining $
 #
-# Copyright 2009-2013 Norbert Preining
+# Copyright 2009-2015 Norbert Preining
 # This file is licensed under the GNU General Public License version 2
 # or any later version.
 #
 # GUI for tlmgr
 # version 2, completely rewritten GUI
 #
-# TODO: Fix return codes of execute_action sub items and execute_action
-#       so that we can give a decent warning window
 # TODO: implement path adjustment also for Windows
 
 $^W = 1;
 use strict;
 
-my $guisvnrev = '$Revision: 30372 $';
-my $guidatrev = '$Date: 2013-05-10 19:49:37 +0200 (Fri, 10 May 2013) $';
+my $guisvnrev = '$Revision: 38523 $';
+my $guidatrev = '$Date: 2015-10-02 03:35:27 +0200 (Fri, 02 Oct 2015) $';
 my $tlmgrguirevision;
 if ($guisvnrev =~ m/: ([0-9]+) /) {
   $tlmgrguirevision = $1;
@@ -38,7 +36,6 @@ use File::Glob;
 
 use Pod::Text;
 
-#use TeXLive::Splashscreen;
 #use Devel::Leak;
 
 use TeXLive::TLUtils qw(setup_programs platform_desc win32 debug);
@@ -89,7 +86,6 @@ my @htype = qw/-relief ridge/;
 # the list of packages as shown by TixGrid
 #
 my %Packages;
-my $taxonomy;
 my $mw;
 my $tlmgrrev;
 my $menu;
@@ -110,6 +106,8 @@ my $darktext;
 my $match_entry;
 my $loaded_text;
 my $loaded_text_button;
+my $default_repo;
+my $update_all_button;
 
 my %settings_label;
 
@@ -125,7 +123,6 @@ my $show_collections = 1;
 my $show_schemes = 1;
 my $match_descriptions = 1;
 my $match_filenames = 1;
-my $match_taxonomies = 1;
 my $match_text = "";
 my $selection_value = 0;
 
@@ -156,8 +153,8 @@ $init_paper_subs{"xdvi"} = \&init_paper_xdvi;
 $init_paper_subs{"pdftex"} = \&init_paper_pdftex;
 $init_paper_subs{"dvips"} = \&init_paper_dvips;
 $init_paper_subs{"context"} = \&init_paper_context;
-$init_paper_subs{"dvipdfm"} = \&init_paper_dvipdfm;
 $init_paper_subs{"dvipdfmx"} = \&init_paper_dvipdfmx;
+$init_paper_subs{"psutils"} = \&init_paper_psutils;
 
 
 guimain();
@@ -168,7 +165,10 @@ sub guimain {
   build_initial_gui();
   init_hooks();
 
-  info(__("Loading local TeX Live database;\nthis may take some time, please be patient ...") . "\n");
+  info(__("Loading local TeX Live database") . 
+       "\n  ($::maintree/$InfraLocation/$DatabaseName)\n" . 
+       __("This may take some time, please be patient ...") . 
+       "\n");
 
   # call the init function from tlmgr.pl
   # with 0 as argument, so that it does not call die on errors.
@@ -205,7 +205,6 @@ sub guimain {
     $::we_can_save = 1;
   } else {
     $::we_can_save = 0;
-    # here we should pop up a warning window!!!
   }
   $::action_button_state = ($::we_can_save ? "normal" : "disabled");
 
@@ -213,10 +212,6 @@ sub guimain {
   chomp($tlmgrrev);
 
   setup_menu_system();
-  $taxonomy = load_taxonomy_datafile();
-  if (!defined($taxonomy)) {
-    info(__("Cannot load taxonomy file") . "\n");
-  }
   do_rest_of_gui();
   $bgcolor = $loaded_text->cget('-background');
 
@@ -235,7 +230,7 @@ sub guimain {
 
   if (!$::we_can_save) {
     my $no_write_warn = $mw->Dialog(-title => __("Warning"),
-      -text => __("You don't have permissions to change the installation in any way,\nspecifically, the directory %s is not writable.\nPlease run this program as administrator, or contact your local admin.\n\nMost buttons will be disabled.", "$Master/tlpkg/"),
+      -text => __("You don't have permissions to change the installation in any way;\nspecifically, the directory %s is not writable.\nPlease run this program as administrator, or contact your local admin.\n\nMost buttons will be disabled.", "$Master/tlpkg/"),
       -buttons => [ __("Ok") ])->Show();
   }
 
@@ -280,17 +275,26 @@ sub do_rest_of_gui {
         -separator => "/",
         -selectmode => "none");
 
-  my $button_frame = $mw->Frame;
+  my $button_frame = $mw->Labelframe(-text => __("Repository"));
+  $loaded_text = $button_frame->Label(-text => __("Loaded:") . " " . __("none"));
+  $loaded_text->pack(@left, @p_ii);
+
   $loaded_text_button = $button_frame->Button(-text => __("Load default"),
     -command => sub { setup_location($tlpdb_location); });
-  $loaded_text_button->pack(
-      -anchor => 'e', -padx => 0, -pady => 0,
-      -ipadx => 0, -ipady => 0, -side => 'right');
-  $loaded_text = $button_frame->Label(
-    -text => __("Loaded repository:") . " " . __("none"));
-  $loaded_text->pack(-anchor => 'e', -padx => 0, -pady => 0, 
-    -ipadx => 0, -ipady => 0, -side => 'right');
-    
+  $loaded_text_button->pack( @left, @p_ii);
+
+  my %repos = repository_to_array($tlpdb_location);
+  my @tags = keys %repos;
+  my $foo;
+  if ($#tags > 0) {
+    $foo = __("multiple repositories");
+  } else {
+    $foo = $tlpdb_location;
+  }
+
+  $default_repo = $button_frame->Label(-text => __("Default:") . " " . $foo );
+  $default_repo->pack(@left, @p_ii);
+
   #$button_frame->pack(-expand => 1, -fill => 'x', @p_ii);
 
   #my $top_frame = $mw->Labelframe(-text => __("Display configuration"));
@@ -328,10 +332,6 @@ sub do_rest_of_gui {
   $filter_match->Checkbutton(-text => __("descriptions"),
           -command => \&update_grid,
           -variable => \$match_descriptions)->pack(@a_w);
-  $filter_match->Checkbutton(-text => __("taxonomies"),
-          -command => \&update_grid,
-          -state => (defined($taxonomy) ? "normal" : "disabled"),
-          -variable => \$match_taxonomies)->pack(@a_w);
   $filter_match->Checkbutton(-text => __("filenames"),
           -command => \&update_grid,
           -variable => \$match_filenames)->pack(@a_w);
@@ -341,18 +341,20 @@ sub do_rest_of_gui {
       my ($new_val, undef, $old_val) = @_;
     #   if (!$new_val) {
     #     $match_descriptions = 0;
-    #     $match_taxonomies = 0;
     #     $match_filenames = 0;
     #   } else {
     #    # if something is already in the search field don't change selection
     #     if (!$old_val) {
     #       $match_descriptions = 1;
-    #       $match_taxonomies = 1 if (defined($taxonomy));
     #       $match_filenames = 1;
     #     }
     #   }
-      $match_text = $new_val;
-      update_grid(); return 1; });
+      my $new_match_text = ( length($new_val) >= 3 ? $new_val : "" );
+      if ($new_match_text ne $match_text) {
+        $match_text = $new_match_text;
+        update_grid(); 
+      }
+      return 1; });
 
   my $filter_selection = $filter_frame->Labelframe(-text => __("Selection"));
   if ($mode_expert) { $filter_selection->pack(@left, @x_y, @p_ii); }
@@ -381,7 +383,6 @@ sub do_rest_of_gui {
                       $show_schemes = 1;
                       $selection_value = 0;
                       $match_descriptions = 1;
-                      $match_taxonomies = 1;
                       $match_filenames = 1;
                       update_grid();
                     })->pack(@x_x, @a_c);
@@ -414,10 +415,11 @@ $g->headerCreate(4, @htype, -itemtype => 'text', -text => __("Short description"
 
   my $with_all_frame = $actions_frame->Frame;
   $with_all_frame->pack(@left, -padx => '5m');
-  $with_all_frame->Button(-text => __('Update all installed'),
-                          -state => $::action_button_state,
-                          -command => sub { update_all_packages(); }
-    )->pack(@p_ii);
+  $update_all_button =
+    $with_all_frame->Button(-text => __('Update all installed'),
+                            -state => $::action_button_state,
+                            -command => sub { update_all_packages(); }
+      )->pack(@p_ii);
   $with_all_frame->Checkbutton(-text => __("Reinstall previously removed packages"), 
     -variable => \$opts{"reinstall-forcibly-removed"})->pack();
 
@@ -511,13 +513,13 @@ sub setup_menu_system {
     $tlpdb_location_string = __("multiple repositories");
   }
   $menu_file->add('command', 
-    -label => __("Load default repository:") . " $tlpdb_location_string",
+    -label => __("Load default (from tlpdb) repository:") . " $tlpdb_location_string",
     -command => sub { setup_location($tlpdb_location); });
   if (defined($cmdline_location)) {
     $menu_file->add('command', -label => __("Load cmd line repository:") . " $cmdline_location",
       -command => sub { setup_location($cmdline_location); });
   }
-  $menu_file->add('command', -label => __("Load default net repository:") . " $TeXLiveURL",
+  $menu_file->add('command', -label => __("Load standard net repository:") . " $TeXLiveURL",
     -command => sub { setup_location($TeXLiveURL); });
   if ($mode_expert) {
     $menu_file->add('command', -label => __("Load other repository ..."),
@@ -638,7 +640,7 @@ sub setup_menu_system {
 
 tlmgrgui revision $tlmgrguirevision
 $tlmgrrev
-Copyright 2009-2012 Norbert Preining
+Copyright 2009-2014 Norbert Preining
 
 Licensed under the GNU General Public License version 2 or higher
 In case of problems, please contact: texlive\@tug.org"
@@ -675,26 +677,26 @@ sub show_extended_info {
   #my $t = $sw->Scrolled('ROText', -scrollbars => "oe", -height => 10,
   #  -width => 50, -wrap => 'word', -relief => 'flat');
   #$t->insert("1.0", $tlp->longdesc);
-  #$sw->Label(-text => "Long Desc:")->grid($t, -sticky => 'nw');
+  #$sw->Label(-text => "Long desc:")->grid($t, -sticky => 'nw');
   $tf->Label(-text => __("Long description:"))->grid(
     $tf->Label(-wraplength => '500', -justify => 'left', 
       -text => $tlp->longdesc), -sticky => "nw");
   $tf->Label(-text => __("Installed:"))->grid(
     $tf->Label(-text => ($Packages{$p}{'installed'} ? __("Yes") : __("No"))),
     -sticky => "nw");
-  $tf->Label(-text => __("Local Revision:"))->grid(
+  $tf->Label(-text => __("Local revision:"))->grid(
     $tf->Label(-text => $Packages{$p}{'localrevision'}),
     -sticky => "nw");
   if (defined($Packages{$p}{'localcatalogueversion'})) {
-    $tf->Label(-text => __("Local Catalogue Version:"))->grid(
+    $tf->Label(-text => __("Local Catalogue version:"))->grid(
       $tf->Label(-text => $Packages{$p}{'localcatalogueversion'}),
       -sticky => "nw");
   }
-  $tf->Label(-text => __("Remote Revision:"))->grid(
+  $tf->Label(-text => __("Remote revision:"))->grid(
     $tf->Label(-text => $Packages{$p}{'remoterevisionstring'}),
     -sticky => "nw");
   if (defined($Packages{$p}{'remotecatalogueversion'})) {
-    $tf->Label(-text => __("Remote Catalogue Version:"))->grid(
+    $tf->Label(-text => __("Remote Catalogue version:"))->grid(
       $tf->Label(-text => $Packages{$p}{'remotecatalogueversion'}),
       -sticky => "nw");
   }
@@ -846,6 +848,7 @@ sub update_grid {
     $crit_match = 1;
     $lighttext->configure(-foreground => 'red');
     $darktext->configure(-foreground => 'red');
+    $update_all_button->configure(-text => __('Update the TeX Live Manager'));
   } else {
     @displist = (@schemes, @colls, @packs);
   }
@@ -882,18 +885,19 @@ sub update_grid {
     }
   }
 }
+
+sub maybe_strip_last_plus {
+  my $v = shift;
+  if ($v =~ m/\+$/) {
+    chop($v);
+    # just for comparison add one to the version of there is a "+"
+    $v++;
+  }
+  return $v;
+}
   
 sub MatchesFilters {
   my $p = shift;
-  sub maybe_strip_last_plus {
-    my $v = shift;
-    if ($v =~ m/\+$/) {
-      chop($v);
-      # just for comparison add one to the version of there is a "+"
-      $v++;
-    }
-    return $v;
-  }
   # we have to take care since strings in revision numbers on the remote
   # and might contain "+" indicating sub-package updates
   # status
@@ -932,7 +936,7 @@ sub MatchesFilters {
   #   + no search target selected
   #     -> show empty list (maybe show warning "select something")
   #
-  if ($match_descriptions || $match_taxonomies || $match_filenames) {
+  if ($match_descriptions || $match_filenames) {
     my $found = 0;
     my $r = $match_text;
     if ($r eq "") {
@@ -948,14 +952,7 @@ sub MatchesFilters {
         $found = 1;
       }
     }
-    if (!$found) {
-      if (defined($taxonomy) && $match_taxonomies) {
-        if ($Packages{$p}{'taxonomy'} =~ m/$r/i) {
-          $found = 1;
-        }
-      }
-    }
-    # if we already dound, don't check the next condition!
+    # if we already found something, don't check the next condition!
     if (!$found) {
       if ($match_filenames) {
         if ($Packages{$p}{'match_files'} =~ m/$r/i) {
@@ -1284,31 +1281,31 @@ sub apply_settings_changes {
 
 sub init_paper_xdvi {
   if (!win32()) {
-    @{$papers{"xdvi"}} = TeXLive::TLPaper::get_paper_list("xdvi");
+    $papers{"xdvi"} = TeXLive::TLPaper::get_paper_list("xdvi");
     $currentpaper{"xdvi"} = ${$papers{"xdvi"}}[0];
   }
 }
 sub init_paper_pdftex {
-  @{$papers{"pdftex"}} = TeXLive::TLPaper::get_paper_list("pdftex");
+  $papers{"pdftex"} = TeXLive::TLPaper::get_paper_list("pdftex");
   $currentpaper{"pdftex"} = ${$papers{"pdftex"}}[0];
 }
 sub init_paper_dvips {
-  @{$papers{"dvips"}} = TeXLive::TLPaper::get_paper_list("dvips");
+  $papers{"dvips"} = TeXLive::TLPaper::get_paper_list("dvips");
   $currentpaper{"dvips"} = ${$papers{"dvips"}}[0];
-}
-sub init_paper_dvipdfm {
-  @{$papers{"dvipdfm"}} = TeXLive::TLPaper::get_paper_list("dvipdfm");
-  $currentpaper{"dvipdfm"} = ${$papers{"dvipdfm"}}[0];
 }
 sub init_paper_context {
   if (defined($localtlpdb->get_package("bin-context"))) {
-    @{$papers{"context"}} = TeXLive::TLPaper::get_paper_list("context");
+    $papers{"context"} = TeXLive::TLPaper::get_paper_list("context");
     $currentpaper{"context"} = ${$papers{"context"}}[0];
   }
 }
 sub init_paper_dvipdfmx {
-  @{$papers{"dvipdfmx"}} = TeXLive::TLPaper::get_paper_list("dvipdfmx");
+  $papers{"dvipdfmx"} = TeXLive::TLPaper::get_paper_list("dvipdfmx");
   $currentpaper{"dvipdfmx"} = ${$papers{"dvipdfmx"}}[0];
+}
+sub init_paper_psutils {
+  $papers{"psutils"} = TeXLive::TLPaper::get_paper_list("psutils");
+  $currentpaper{"psutils"} = ${$papers{"psutils"}}[0];
 }
 
 
@@ -1486,7 +1483,7 @@ sub ask_one_repository {
   #$entry->pack(-side => "left",-padx => "2m", -pady => "2m");
 
   my $f2 = $sw->Frame;
-  $f2->Button(-text => __("Choose Directory"), 
+  $f2->Button(-text => __("Choose directory"), 
     -command => sub {
                       $val = $sw->chooseDirectory;
                       #if (defined($var)) {
@@ -1894,7 +1891,8 @@ sub install_selected_packages {
   my @foo = SelectedPackages();
   if (@foo) {
     # that doesn't hurt if it is already loaded
-    init_install_media();
+    # it does hurt when there are critical updates ... so don't do it
+    #init_install_media();
     my @args = qw/install/;
     push @args, @foo;
     execute_action_gui(@args);
@@ -1924,6 +1922,21 @@ sub SelectedPackages {
   return @ret;
 }
 
+sub critical_updates_done_msg_and_end {
+  # terminate here immediately so that we are sure the auto-updater
+  # is run immediately
+  # make sure we exit in finish(0)
+  $::gui_mode = 0;
+  # warn that program will now be terminated
+  $mw->Dialog(-title => __("Warning"),
+    -text => __("Critical updates have been installed.\nProgram will terminate now.\nPlease restart if necessary."),
+    -buttons => [ __("Ok") ])->Show;
+  # also delete the main window before we kill the process to 
+  # make sure that Tk is happy (segfault on cmd line, email Taco)
+  $mw->destroy;
+  finish(0); 
+}
+  
 sub update_all_packages {
   my @args = qw/update/;
   if (@critical_updates) {
@@ -1932,21 +1945,11 @@ sub update_all_packages {
     $opts{"all"} = 1;
   }
   # that doesn't hurt if it is already loaded
-  init_install_media();
+  # it does hurt when there are critical updates ... so don't do it
+  #init_install_media();
   execute_action_gui(qw/update/);
   if (@critical_updates) {
-    # terminate here immediately so that we are sure the auto-updater
-    # is run immediately
-    # make sure we exit in finish(0)
-    $::gui_mode = 0;
-    # warn that program will now be terminated
-    $mw->Dialog(-title => __("Warning"),
-      -text => __("Critical updates have been installed.\nProgram will terminate now.\nPlease restart if necessary."),
-      -buttons => [ __("Ok") ])->Show;
-    # also delete the main window before we kill the process to 
-    # make sure that Tk is happy (segfault on cmd line, email Taco)
-    $mw->destroy;
-    finish(0); 
+    critical_updates_done_msg_and_end();
   }
   reinit_local_tlpdb();
 }
@@ -1955,7 +1958,8 @@ sub update_selected_packages {
   my @foo = SelectedPackages();
   if (@foo) {
     # that doesn't hurt if it is already loaded
-    init_install_media();
+    # it does hurt when there are critical updates ... so don't do it
+    #init_install_media();
     my @args = qw/update/;
     # argument processing
     # in case we have critical updates present we do put the list of
@@ -1966,18 +1970,7 @@ sub update_selected_packages {
     push @args, @foo;
     execute_action_gui(@args);
     if (@critical_updates) {
-      # terminate here immediately so that we are sure the auto-updater
-      # is run immediately
-      # make sure we exit in finish(0)
-      $::gui_mode = 0;
-      # warn that program will now be terminated
-      $mw->Dialog(-title => __("Warning"),
-        -text => __("Critical updates have been installed.\nProgram will terminate now.\nPlease restart if necessary."),
-        -buttons => [ __("Ok") ])->Show;
-      # also delete the main window before we kill the process to 
-      # make sure that Tk is happy (segfault on cmd line, email Taco)
-      $mw->destroy;
-      finish(0); 
+      critical_updates_done_msg_and_end();
     }
     reinit_local_tlpdb();
   }
@@ -2048,35 +2041,6 @@ sub populate_Packages {
   $Packages{$p}{'match_desc'}    .= ($tlp->shortdesc || "");
   $Packages{$p}{'match_desc'}    .= "\n";
   $Packages{$p}{'match_desc'}    .= ($tlp->longdesc || "");
-  #
-  # taxonomy matching
-  if (defined($taxonomy)) {
-    $Packages{$p}{'taxonomy'} = "";
-    if (defined($taxonomy->{'by-package'}{'keyword'}{$p})) {
-      $Packages{$p}{'keyword'} = 
-        join(", ", @{$taxonomy->{'by-package'}{'keyword'}{$p}});
-      $Packages{$p}{'taxonomy'} .=
-        join('\n', @{$taxonomy->{'by-package'}{'keyword'}{$p}});
-      $Packages{$p}{'taxonomy'} .= '\n';
-    }
-    if (defined($taxonomy->{'by-package'}{'functionality'}{$p})) {
-      $Packages{$p}{'functionality'} =
-        join(' > ', @{$taxonomy->{'by-package'}{'functionality'}{$p}});
-      $Packages{$p}{'taxonomy'} .=
-        join('\n', @{$taxonomy->{'by-package'}{'functionality'}{$p}});
-      $Packages{$p}{'taxonomy'} .= '\n';
-    }
-    if (defined($taxonomy->{'by-package'}{'primary'}{$p})) {
-      $Packages{$p}{'primary'} = $taxonomy->{'by-package'}{'primary'}{$p};
-      $Packages{$p}{'taxonomy'} .= $taxonomy->{'by-package'}{'primary'}{$p};
-      $Packages{$p}{'taxonomy'} .= "\n";
-    }
-    if (defined($taxonomy->{'by-package'}{'secondary'}{$p})) {
-      $Packages{$p}{'secondary'} = $taxonomy->{'by-package'}{'secondary'}{$p};
-      $Packages{$p}{'taxonomy'} .= $taxonomy->{'by-package'}{'secondary'}{$p};
-      $Packages{$p}{'taxonomy'} .= "\n";
-    }
-  }
   #
   # file matching
   my @all_f = $tlp->all_files;
@@ -2274,7 +2238,8 @@ sub update_list_remote {
       next if member($p, @critical);
       if (defined($Packages{$p}{'localrevision'}) &&
           defined($Packages{$p}{'remoterevision'}) &&
-          $Packages{$p}{'localrevision'} < $Packages{$p}{'remoterevision'}) {
+          $Packages{$p}{'localrevision'} < 
+            maybe_strip_last_plus($Packages{$p}{'remoterevision'})) {
         $min_action++;
       }
     }
@@ -2282,9 +2247,17 @@ sub update_list_remote {
     # create the warning dialog
     #
     my $sw = $mw->DialogBox(-title => __("Warning"), -buttons => [ __("Ok") ]);
-    my $t = __("Updates for the tlmgr are present.\nInstallation and upgrades won't work without being forced.\nPlease select \"Update all installed\" button after dismissing this dialogue.\n\nThe program will terminate after the update.\nThen you can restart the program for further updates.");
+    my $t = __("The TeX Live manager (the software you're currently running)
+needs to be updated before any other updates can be done.
+
+Please do this by clicking the \"Update the TeX Live Manager\" button,
+after dismissing this dialogue.
+
+After the update, the TeX Live manager will terminate.
+You can then restart it to proceed with further updates."); 
     if ($min_action) {
-      $t .= "\n\n" . __("At least %s further updates are available after tlmgr has been updated.", $min_action);
+      $t .= "\n\n"
+. __("(Further updates will be available after tlmgr has been updated.)");
     }
     $t .= "\n\n" . __("Please wait a bit after the program has terminated so that the update can be completed.") if win32();
     $sw->add("Label", -text => $t)->pack(-padx => "3m", -pady => "3m");
@@ -2333,7 +2306,7 @@ sub cb_handle_restore {
   # first do the handling of the backup dir selection
   {
     my ($a, $b) = check_backupdir_selection();
-    if (!$a) {
+    if ($a != $F_OK) {
       # in all these cases we want to terminate in the non-gui mode
       my $sw = $mw->DialogBox(-title => __("Warning"), -buttons => [ __("Ok") ]);
       $sw->add("Label", -text => $b)->pack(@p_iii);
@@ -2404,7 +2377,7 @@ sub cb_handle_restore {
                       $rev = "";
                       $mw->Unbusy;
                     })->pack(@p_ii);
-  $tf->Button(-text => __("Restore all package to latest version"),
+  $tf->Button(-text => __("Restore all packages to latest version"),
     -command => sub {
                       $mw->Busy(-recurse => 1);
                       for my $p (@pkgbackup) {
@@ -2526,11 +2499,12 @@ sub cb_edit_string_or_dir {
 
 sub cb_edit_location {
   my $key = shift;
+  my $okbutton;
   my $val;
   my $sw = $mw->Toplevel(-title => __("Load package repository"));
   $sw->transient($mw);
   $sw->grab();
-  $sw->Label(-text => __("Package repository:"))->pack(@p_ii);
+  $sw->Label(-text => __("Load this package repository:"))->pack(@p_ii);
   my @mirror_list;
   push @mirror_list, TeXLive::TLUtils::create_mirror_list();
   my $entry = $sw->BrowseEntry(
@@ -2543,33 +2517,51 @@ sub cb_edit_location {
       sub {
         if ($val !~ m/^  /) {
           $val = "";
+          $okbutton->configure(-state => 'disabled');
         } elsif ($val =~ m!(http|ftp)://!) {
           $val = TeXLive::TLUtils::extract_mirror_entry($val);
+          $okbutton->configure(-state => 'normal');
         } else {
           $val =~ s/^\s*//;
+          $okbutton->configure(-state => 'normal');
         }
       },
     -variable => \$val);
   # end new
   $entry->pack(@p_ii);
   my $f1 = $sw->Frame;
-  $f1->Button(-text => __("Choose Directory"),
+  $f1->Button(-text => __("Choose local directory"),
     -command => sub {
                       my $var = $sw->chooseDirectory();
                       if (defined($var)) {
                         $val = $var;
+                        $okbutton->configure(-state => 'normal');
                       }
                     })->pack(@left, @p_ii);
-  $f1->Button(-text => __("Default net package repository"),
+  $f1->Button(-text => __("Use standard net repository"),
     -command => sub {
                       $val = $TeXLiveURL;
+                      $okbutton->configure(-state => 'normal');
                     })->pack(@left, @p_ii);
   $f1->pack;
   my $f = $sw->Frame;
-  my $okbutton = $f->Button(-text => __("Ok"),
-    -command => sub { $location = $val;
-                      $sw->destroy;
-                      setup_location($location);
+  $okbutton = $f->Button(-text => __("Load"), -state => "disabled",
+    -command => sub { 
+                      if ($val) {
+                        $location = $val;
+                        $sw->destroy;
+                        my $foo = $mw->Toplevel();
+                        $foo->transient($mw);
+                        $foo->overrideredirect(1);
+                        my $frame = $foo->Frame( -border => 5, -relief => 'groove' )->pack;
+                        $frame->Label( -text => __("Loading remote repository - this may take some time, please be patient ...") )->pack( -padx => 5 );
+                        $foo->Popup(-popanchor => 'c');
+                        setup_location($location);
+                        $foo->destroy;
+                      } else {
+                        # button should be disabled and not clickable 
+                        # why are we here???
+                      }
                     })->pack(@left, @p_ii);
   my $cancelbutton = $f->Button(-text => __("Cancel"),
           -command => sub { $sw->destroy })->pack(@right, @p_ii);
@@ -2601,9 +2593,10 @@ sub update_loaded_location_string {
   } else {
     $loaded_text_button->configure(-text => $arg);
   }
-  $loaded_text->configure(-text => __("Loaded repository:"));
+  $loaded_text->configure(-text => __("Loaded:"));
   $loaded_text_button->configure( -command => 
       sub { transient_show_multiple_repos($loaded_text_button, @vals); });
+  $default_repo->packForget;
 }
 
 sub transient_show_multiple_repos {
@@ -2674,7 +2667,7 @@ on the command line.
   } else {
     my $io = IO::String->new($txt);
     my $parser = Pod::Text->new (sentence => 0, width => 78);
-    $parser->parse_from_file("$Master/texmf/scripts/texlive/tlmgr.pl", $io);
+    $parser->parse_from_file("$Master/texmf-dist/scripts/texlive/tlmgr.pl", $io);
   }
   my $sw = $mw->Toplevel(-title => __("Help"));
   $sw->transient($mw);

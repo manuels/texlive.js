@@ -28,7 +28,7 @@
 % \fi
 % Filename: ltnews.cls
 % Author: Alan Jeffrey et al
-% Version: 1.02
+% Version: 1.03
  
 % This is the LaTeX2e document class for the `LaTeX News' information 
 % sheet which comes with every LaTeX release.  It may be useful for 
@@ -42,7 +42,7 @@
  
 \NeedsTeXFormat{LaTeX2e}
  
-\ProvidesClass{ltnews}[2004/02/28 v1.01  Standard LaTeX class]
+\ProvidesClass{ltnews}[2015/02/15 v1.04  Standard LaTeX class]
 
 % The configuration file, used for passing options.
 
@@ -246,6 +246,10 @@
    \large\sffamily\slshape
    \let\LaTeX\cmssLaTeX\let\TeX\cmssTeX
 }
+\newcommand{\@subheadingfont}{%
+   \normalsize\sffamily\slshape
+   \let\LaTeX\cmssLaTeX\let\TeX\cmssTeX
+}
 
 % The LW 35 fonts option
 
@@ -265,6 +269,10 @@
    }%
    \renewcommand{\@headingfont}{%
       \fontsize{12}{13.5}\fontfamily{phv}\fontseries{b}\selectfont
+      \let\LaTeX\phvLaTeX\let\TeX\phvTeX
+   }%
+   \renewcommand{\@subheadingfont}{%
+      \fontsize{10}{12}\fontfamily{phv}\fontseries{b}\selectfont
       \let\LaTeX\phvLaTeX\let\TeX\phvTeX
    }%
    \DeclareSymbolFont{letters}{OML}{ptmcm}{m}{it}%
@@ -289,6 +297,10 @@
    }%
    \renewcommand{\@headingfont}{%
       \fontsize{12}{14}\fontfamily{ugq}\fontseries{b}\selectfont
+      \let\LaTeX\ugqLaTeX\let\TeX\ugqTeX
+   }%
+   \renewcommand{\@subheadingfont}{%
+      \fontsize{10}{12}\fontfamily{ugq}\fontseries{b}\selectfont
       \let\LaTeX\ugqLaTeX\let\TeX\ugqTeX
    }%
    \renewcommand{\verbatim@font}{%
@@ -370,7 +382,7 @@
         /Author (The LaTeX Project)
       }
 \IfFileExists{hyperref.sty}{%
-  \RequirePackage{hyperref}}{}
+  \RequirePackage[hidelinks]{hyperref}}{}
     \fi
   \fi
 \fi
@@ -462,6 +474,18 @@
       {1ex \@plus.2ex}{\@headingfont}%
 }
  
+\renewcommand{\subsection}{%
+   \@startsection
+      {subsection}{1}{\z@}{-1.5ex \@plus -1ex \@minus -.2ex}%
+      {1sp}{\@subheadingfont}%
+}
+
+\renewcommand{\subsubsection}{%
+   \@startsection
+      {subsection}{1}{\z@}{-1.5ex \@plus -1ex \@minus -.2ex}%
+      {1sp}{\normalsize\bfseries}%
+}
+
 % No section numbers.
  
 \setcounter{secnumdepth}{0}
@@ -483,6 +507,10 @@
 %   \setlength{\rightskip}{1em}%
 }
 \let \@listi \@listI
+
+% set defaults so that trivlist eg verbatim use tighter spacing
+\@listi
+\setlength\topsep{4pt plus 1pt minus 2pt}
 
 % But have a list type with no indentation on either side:
 % 
@@ -518,7 +546,7 @@
 
 % Abbreviations:
 
-\newcommand{\ctanhttp}{http://www.tex.ac.uk/tex-archive/}
+\newcommand{\ctanhttp}{http://mirror.ctan.org/}
 
 % Needed for 09:
 
@@ -642,6 +670,7 @@
 %
 % 21 Oct 2004  v1.02 Improve check for PDF generation (taken from ifpdf.sty)
 % 
+% 01 May 2014  v1.03 hidelinks option for hyperref
 %
 % BUGS
 %

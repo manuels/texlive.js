@@ -1,6 +1,6 @@
 #!/bin/sh
-
-# TeXConfig version 3.0
+# $Id: texconfig.sh 34586 2014-07-13 00:06:11Z karl $
+# texconfig version 3.0
 # Originally written by Thomas Esser. Public domain.
 # Now maintained as part of TeX Live; correspondence to tex-live@tug.org.
 
@@ -16,16 +16,19 @@ test -f /bin/bsh && test -z "$RUNNING_BSH" \
   && { RUNNING_BSH=true; export RUNNING_BSH; exec /bin/bsh $0 ${1+"$@"}; }
 unset RUNNING_BSH
 
-export PATH
-
 # hack around a bug in zsh:
 test -n "${ZSH_VERSION+set}" && alias -g '${1+"$@"}'='"$@"'
+
+# preferentially use subprograms from our own directory.
+mydir=`echo "$0" | sed 's,/[^/]*$,,'`
+mydir=`cd "$mydir" && pwd`
+PATH="$mydir:$PATH"; export PATH
 
 # initializations...
 progname=texconfig
 
 # the version string
-version='$Id$'
+version='$Id: texconfig.sh 34586 2014-07-13 00:06:11Z karl $'
 
 envVars="
   AFMFONTS BIBINPUTS BSTINPUTS CMAPFONTS CWEBINPUTS ENCFONTS GFFONTS

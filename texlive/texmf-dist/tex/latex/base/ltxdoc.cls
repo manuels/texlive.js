@@ -8,7 +8,12 @@
 %% 
 %% This is a generated file.
 %% 
-%% Copyright 1993 1994 1995 1996 1997 1998 1999 2000 2001 2002 2003 2004 2005 2006 2007 2008 2009
+%% The source is maintained by the LaTeX Project team and bug
+%% reports for it can be opened at http://latex-project.org/bugs.html
+%% (but please observe conditions on bug reports sent to that address!)
+%% 
+%% 
+%% Copyright 1993-2015
 %% The LaTeX3 Project and any individual authors listed elsewhere
 %% in this file.
 %% 
@@ -38,7 +43,7 @@
 %% extension .ins) which are part of the distribution.
 \NeedsTeXFormat{LaTeX2e}
 \ProvidesClass{ltxdoc}
-         [2007/11/11 v2.0u Standard LaTeX documentation class]
+         [2015/03/26 v2.0w Standard LaTeX documentation class]
 \DeclareOption{a5paper}{\@latexerr{Option not supported}%
    {}}
 \DeclareOption*{%
@@ -146,7 +151,9 @@
   \relax
   \clearpage
   \docincludeaux
-  \IfFileExists{#1.fdd}{\def\currentfile{#1.fdd}}{\def\currentfile{#1.dtx}}%
+  \IfFileExists{#1.fdd}%
+    {\def\currentfile{#1.fdd}}%
+    {\def\currentfile{#1.dtx}}%
   \ifnum\@auxout=\@partaux
     \@latexerr{\string\include\space cannot be nested}\@eha
   \else \@docinclude#1 \fi}
@@ -206,6 +213,37 @@
     \fi
     \hfill\thepage}%
  \let\@evenfoot\@oddfoot}%
+\def\MaintainedBy#1{\gdef\@maintainedby{#1}}
+\let\@maintainedby\@empty
+\def\MaintainedByLaTeXTeam#1{%
+{\gdef\@maintainedby{%
+This file is maintained by the \LaTeX{} Project team.\\%
+Bug reports can be opened (category \texttt{#1}) at\\%
+\url{http://latex-project.org/bugs.html}.}}}
+\def\@maketitle{%
+  \newpage
+  \null
+  \vskip 2em%
+  \begin{center}%
+  \let \footnote \thanks
+    {\LARGE \@title \par}%
+    \vskip 1.5em%
+    {\large
+      \lineskip .5em%
+      \begin{tabular}[t]{c}%
+        \@author
+      \end{tabular}\par}%
+    \vskip 1em%
+    {\large \@date}%
+    \ifx\@maintainedby\@empty
+    \else
+    \vskip 1em%
+    \fbox{\fbox{\begin{tabular}{@{}l@{}}\@maintainedby\end{tabular}}}%
+    \fi
+  \end{center}%
+  \par
+  \vskip 1.5em}
+\providecommand\url{\texttt}
 \def\task#1#2{}
 \endinput
 %%
