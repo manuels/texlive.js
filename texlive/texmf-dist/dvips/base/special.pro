@@ -28,29 +28,19 @@ neg sub neg TR}if xflip yflip not and{TR pop pop 90 rotate ppr 3 get ppr
 -1 roll add 2 div 3 1 roll add 2 div 2 copy TR .96 dup scale neg S neg S
 TR}if}N/cp{pop pop showpage pm restore}N end}if}if}N/normalscale{
 Resolution 72 div VResolution 72 div neg scale magscale{DVImag dup scale
-}if 0 setgray}N/psfts{S 65781.76 div N}N/startTexFig{/psf$SavedState
-save N userdict maxlength dict begin/magscale true def normalscale
-currentpoint TR/psf$ury psfts/psf$urx psfts/psf$lly psfts/psf$llx psfts
-/psf$y psfts/psf$x psfts currentpoint/psf$cy X/psf$cx X/psf$sx psf$x
-psf$urx psf$llx sub div N/psf$sy psf$y psf$ury psf$lly sub div N psf$sx
-psf$sy scale psf$cx psf$sx div psf$llx sub psf$cy psf$sy div psf$ury sub
-TR/showpage{}N/erasepage{}N/setpagedevice{pop}N/copypage{}N/p 3 def
-@MacSetUp}N/doclip{psf$llx psf$lly psf$urx psf$ury currentpoint 6 2 roll
-newpath 4 copy 4 2 roll moveto 6 -1 roll S lineto S lineto S lineto
-closepath clip newpath moveto}N/endTexFig{end psf$SavedState restore}N
-/@beginspecial{SDict begin/SpecialSave save N gsave normalscale
-currentpoint TR @SpecialDefaults count/ocount X/dcount countdictstack N}
-N/@setspecial{CLIP 1 eq{newpath 0 0 moveto hs 0 rlineto 0 vs rlineto hs
-neg 0 rlineto closepath clip}if ho vo TR hsc vsc scale ang rotate
-rwiSeen{rwi urx llx sub div rhiSeen{rhi ury lly sub div}{dup}ifelse
-scale llx neg lly neg TR}{rhiSeen{rhi ury lly sub div dup scale llx neg
-lly neg TR}if}ifelse CLIP 2 eq{newpath llx lly moveto urx lly lineto urx
-ury lineto llx ury lineto closepath clip}if/showpage{}N/erasepage{}N
-/setpagedevice{pop}N/copypage{}N newpath}N/@endspecial{count ocount sub{
-pop}repeat countdictstack dcount sub{end}repeat grestore SpecialSave
-restore end}N/@defspecial{SDict begin}N/@fedspecial{end}B/li{lineto}B
-/rl{rlineto}B/rc{rcurveto}B/np{/SaveX currentpoint/SaveY X N 1
-setlinecap newpath}N/st{stroke SaveX SaveY moveto}N/fil{fill SaveX SaveY
-moveto}N/ellipse{/endangle X/startangle X/yrad X/xrad X/savematrix
-matrix currentmatrix N TR xrad yrad scale 0 0 1 startangle endangle arc
-savematrix setmatrix}N end
+}if 0 setgray}N/@beginspecial{SDict begin/SpecialSave save N gsave
+normalscale currentpoint TR @SpecialDefaults count/ocount X/dcount
+countdictstack N}N/@setspecial{CLIP 1 eq{newpath 0 0 moveto hs 0 rlineto
+0 vs rlineto hs neg 0 rlineto closepath clip}if ho vo TR hsc vsc scale
+ang rotate rwiSeen{rwi urx llx sub div rhiSeen{rhi ury lly sub div}{dup}
+ifelse scale llx neg lly neg TR}{rhiSeen{rhi ury lly sub div dup scale
+llx neg lly neg TR}if}ifelse CLIP 2 eq{newpath llx lly moveto urx lly
+lineto urx ury lineto llx ury lineto closepath clip}if/showpage{}N
+/erasepage{}N/setpagedevice{pop}N/copypage{}N newpath}N/@endspecial{
+count ocount sub{pop}repeat countdictstack dcount sub{end}repeat
+grestore SpecialSave restore end}N/@defspecial{SDict begin}N
+/@fedspecial{end}B/li{lineto}B/rl{rlineto}B/rc{rcurveto}B/np{/SaveX
+currentpoint/SaveY X N 1 setlinecap newpath}N/st{stroke SaveX SaveY
+moveto}N/fil{fill SaveX SaveY moveto}N/ellipse{/endangle X/startangle X
+/yrad X/xrad X/savematrix matrix currentmatrix N TR xrad yrad scale 0 0
+1 startangle endangle arc savematrix setmatrix}N end

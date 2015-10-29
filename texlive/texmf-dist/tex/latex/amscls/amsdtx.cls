@@ -5,50 +5,39 @@
 %% The original source files were:
 %%
 %% amsdtx.dtx  (with options: `amsdtx')
+%% This is a generated file.
 %% 
-%%% ====================================================================
-%%% @LaTeX-file{
-%%%   filename  = "amsdtx.dtx",
-%%%   version   = "2.06",
-%%%   date      = "2004/08/06",
-%%%   time      = "12:18:49 EDT",
-%%%   checksum  = "19929 1192 3506 39423",
-%%%   author    = "Michael J. Downes, updated by David M. Jones",
-%%%   copyright = "Copyright 1996, 1999, 2004
-%%%                American Mathematical Society,
-%%%                all rights reserved.  Copying of this file is
-%%%                authorized only if either:
-%%%                (1) you make absolutely no changes to your copy,
-%%%                including name; OR
-%%%                (2) if you do make changes, you first rename it
-%%%                to some other name.",
-%%%   address   = "American Mathematical Society,
-%%%                Technical Support,
-%%%                Publications Technical Group,
-%%%                201 Charles Street,
-%%%                Providence, RI 02904,
-%%%                USA",
-%%%   telephone = "401-455-4080 or (in the USA and Canada)
-%%%                800-321-4AMS (321-4267)",
-%%%   FAX       = "401-331-3842",
-%%%   email     = "tech-support@ams.org (Internet)",
-%%%   codetable = "ISO/ASCII",
-%%%   keywords  = "latex, amslatex, ams-latex, user documentation",
-%%%   supported = "yes",
-%%%   abstract  = "This is the source for two document classes, amsdtx
-%%%                and amsldoc, used to produce AMS user documentation
-%%%                or technical documentation.",
-%%%   docstring = "The checksum field above contains a CRC-16
-%%%                checksum as the first value, followed by the
-%%%                equivalent of the standard UNIX wc (word
-%%%                count) utility output of lines, words, and
-%%%                characters.  This is produced by Robert
-%%%                Solovay's checksum utility.",
-%%% }
-%%% ====================================================================
+%% Copyright 1996, 1999, 2004, 2009 American Mathematical Society.
+%% 
+%% American Mathematical Society
+%% Technical Support
+%% Publications Technical Group
+%% 201 Charles Street
+%% Providence, RI 02904
+%% USA
+%% tel: (401) 455-4080
+%%      (800) 321-4267 (USA and Canada only)
+%% fax: (401) 331-3842
+%% email: tech-support@ams.org
+%% 
+%% This work may be distributed and/or modified under the
+%% conditions of the LaTeX Project Public License, either version 1.3c
+%% of this license or (at your option) any later version.
+%% The latest version of this license is in
+%%   http://www.latex-project.org/lppl.txt
+%% and version 1.3c or later is part of all distributions of LaTeX
+%% version 2005/12/01 or later.
+%% 
+%% This work has the LPPL maintenance status `maintained'.
+%% 
+%% The Current Maintainer of this work is the American Mathematical
+%% Society.
+%% 
+%% ========================================================================
+%% 
 \NeedsTeXFormat{LaTeX2e}% LaTeX 2.09 can't be used (nor non-LaTeX)
 [1995/06/01]% LaTeX date must be June 1995 or later
-\ProvidesClass{amsdtx}[2004/08/06 v2.06]
+\ProvidesClass{amsdtx}[2009/08/19 v2.07]
 \DeclareOption*{\PassOptionsToClass{\CurrentOption}{book}}
 \ProcessOptions
 \LoadClass{book}
@@ -124,6 +113,20 @@
     }%
 }
 \let\cn\cs
+\DeclareTextSymbol{\lbracechar}{OT1}{123}
+\DeclareTextSymbolDefault{\lbracechar}{OT1}
+\DeclareTextSymbol{\rbracechar}{OT1}{125}
+\DeclareTextSymbolDefault{\rbracechar}{OT1}
+
+\providecommand{\embrace}[1]{%
+  \begingroup \ntt\lbracechar#1\rbracechar\endgroup}
+\providecommand{\cnbreak}{\penalty999\hskip0pt\relax}
+\providecommand{\cnm}[2]{\cn{#1}\cnbreak\embrace{#2}}
+\providecommand{\cnmm}[3]{\cn{#1}\cnbreak\embrace{#2}\cnbreak\embrace{#3}}
+\providecommand{\cnom}[1]{\cn{#1}\cnbreak\ommitude}
+\providecommand{\ommitude}[2][]{{\ntt[#1]}\cnbreak\embrace{#2}}
+\providecommand{\cnmsm}[4]{%
+  \cn{#1}\cnbreak\embrace{#2}\cnbreak *\embrace{#4}}
 \DeclareRobustCommand{\cls}{\category@index{class}}
 \DeclareRobustCommand{\pkg}{\category@index{package}}
 \DeclareRobustCommand{\opt}{\category@index{option}}
@@ -476,6 +479,7 @@
 }
 \long\def\hGetFileInfo#1 version = "#2"#3 date = "#4"#5\@nil{%
   \def\fileversion{#2}\def\filedate{#4}}
+\hyphenation{base-line-skip}
 \DoNotIndex{\@xp,\@nx,\@empty,\newcommand,\renewcommand}
 \DoNotIndex{\newenvironment,\renewenvironment,\providecommand}
 \DoNotIndex{\if,\fi,\ifnum,\fi,\@let@token,\futurelet,\fsa@n}
@@ -487,7 +491,9 @@
 \DoNotIndex{\@ifnextchar,\@ifstar,\@ifundefined,\@input,\@latexerr}
 \DoNotIndex{\@makeschapterhead,\@namedef,\@nameuse,\@nil}
 \DoNotIndex{\@nobreakfalse,\@restonecolfalse,\@restonecoltrue}
-\DoNotIndex{\@tempa,\@tempb,\@tempc,\@tempf,\@temptokena,\@themark,\@width}
+\DoNotIndex{\@tempa,\@tempb,\@tempc,\@tempf}
+\DoNotIndex{\@temptokena,\@temptokenb}
+\DoNotIndex{\@themark,\@width}
 \DoNotIndex{\active,\aindex,\baselineskip,\begin,\begingroup,\box}
 \DoNotIndex{\c@page,\catcode,\chapter,\char,\chardef,\closeout}
 \DoNotIndex{\CodelineIndex,\sp,\sb,\label,\leavevmode,\mark}

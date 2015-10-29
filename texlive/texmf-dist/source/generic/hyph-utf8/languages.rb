@@ -1,6 +1,7 @@
+# -*- coding: utf-8 -*-
 
 class Author
-	def intialize(name,surname,email,contacted1,contacted2)
+	def initialize(name,surname,email,contacted1,contacted2)
 		@name       = name
 		@surname    = surname
 		@email      = email
@@ -32,7 +33,10 @@ class Language
 		@description_s = language_hash["description_s"]
 		@description_l = language_hash["description_l"]
 		@version       = language_hash["version"]
-		
+
+		@licence = language_hash["licence"]
+		@authors = language_hash["authors"]
+
 		if @synonyms==nil then @synonyms = [] end
 	end
 
@@ -108,15 +112,21 @@ class Language
 	attr_reader :use_new_loader, :use_old_patterns, :use_old_patterns_comment, :filename_old_patterns
 	attr_reader :code, :name, :synonyms, :hyphenmin, :encoding, :exceptions, :message
 	attr_reader :description_s, :description_l, :version
+	attr_reader :licence, :authors
 	# this hack is needed for Serbian
 	attr_writer :code
 end
 
-
-authors = {
+class Authors < Hash
+	@@list = []
+	
+	def initialize
+		authors = {
+#authors = {
+	"donald_knuth"        => ["Donald", "Knuth", nil, false, false],
 	"peter_heslin"        => ["Peter", "Heslin", nil, false, false],
-	"dimitrios_filippou"  => ["Dimitrios", "Filippou", "dfilipp{at}hotmail{dot}com", true, true],
-	"claudio_beccari"     => ["Claudio", "Beccari","claudio{dot}beccari{at}polito{dot}it", true, true],
+	"dimitrios_filippou"  => ["Dimitrios", "Filippou", "dimitrios{dot}filippou{at}riotinto{dot}com", true, true],
+	"claudio_beccari"     => ["Claudio", "Beccari","claudio{dot}beccari{at}gmail{dot}com", true, true],
 	"juan_aguirregabiria" => ["Juan M.", "Aguirregabiria", "juanmari{dot}aguirregabiria{at}ehu.es", true, true],
 	"igor_marinovic"      => ["Igor", "Marinović", "marinowski{at}gmail.com", true, true],
 	"tilla_fick"          => ["Tilla", "Fick", "fick{dot}tilla{at}gmail{dot}com", true, true],
@@ -124,10 +134,11 @@ authors = {
 	"matjaz_vrecko"       => ["Matjaž", "Vrečko", "matjaz{at}mg-soft{dot}si", true, true],
 	"goncal_badenes"      => ["Gonçal", "Badenes", "g{dot}badenes{at}ieee.org", false, false],
 	"pavel_sevecek"       => ["Pavel", "Ševeček", "pavel{at}lingea{dot}cz", false, false],
+	# email doesn't work
 	"jana_chlebikova"     => ["Jana", "Chlebíková", "chlebikj{at}dcs{dot}fmph{dot}uniba{dot}sk", false, false],
 	"yannis_haralambous"  => ["Yannis", "Haralambous", "yannis{dot}haralambous{at}telecom-bretagne{dot}eu", true, false],
 	"frank_jensen"        => ["Frank", "Jensen", "frank{dot}jensen{at}hugin{dot}com", true, true],
-	"sergei_pokrovsky"    => ["Sergei B.", "Pokrovsky", "pok{at}iis{dot}nsk{dot}su", false, false], # not sure where B. belongs
+	"sergei_pokrovsky"    => ["Sergei", "Pokrovsky", "sergio{dot}pokrovskij{at}gmail{dot}com", true, true],
 	"javier_bezos"        => ["Javier", "Bezos", "jbezos{at}tex-tipografia{dot}com", true, true],
 	"een_saar"            => ["Enn", "Saar", "saar{at}aai{dot}ee", false, false],
 	"dejan_muhamedagic"   => ["Dejan", "Muhamedagić", "dejan{at}hello-penguin{dot}com", true, true],
@@ -135,42 +146,53 @@ authors = {
 	"arthur_reutenauer"   => ["Arthur", "Reutenauer", "arthur{dot}reutenauer{at}normalesup{dot}org", true, true],
 	"mojca_miklavec"      => ["Mojca", "Miklavec", "mojca{dot}miklavec{dot}lists{at}gmail{dot}com", true, true],
 	"santhosh_thottingal" => ["Santhosh", "Thottingal", "santhosh{dot}thottingal{at}gmail{dot}com>", true, true],
+	# email doesn't work
 	"yves_codet"          => ["Yves", "Codet", "ycodet{at}club-internet{dot}fr", true, true],
 	"rune_kleveland"      => ["Rune", "Kleveland", nil, false, false],
+	# email doesn't work
 	"ole_michael_selberg" => ["Ole Michael", "Selberg", "o{dot}m{dot}selberg{at}c2i{dot}net", true, true],
 	"dorjgotov_batmunkh"  => ["Dorjgotov", "Batmunkh", "bataak{at}gmail{dot}com", true, true],
 	"nazar_annagurban"    => ["Nazar", "Annagurban", "nazartm{at}gmail{dot}com", false, false],
 	"jan_michael_rynning" => ["Jan Michael", "Rynning", nil, false, false],
 	"eduard_werner"       => ["Eduard", "Werner", "edi{dot}werner{at}gmx{dot}de", false, false],
 	"werner_lemberg"      => ["Werner", "Lemberg", "wl{at}gnu{dot}org", true, true],
+	# email doesn't work
 	"pedro_j_de_rezende"  => ["Pedro J.", "de Rezende", "rezende{at}ddc{dot}unicamp{dot}br", false, false],
 	"j_joao_dias_almeida" => ["J. Joao", "Dias Almeida", "jj{at}di{dot}uminho{dot}pt"],
-	"piet_tutelaers"      => ["Piet", "Tutelaers", "P{dot}T{dot}H{dot}Tutelaers{at}tue{dot}nl", false, false],
+	# email doesn't work
+	"piet_tutelaers"      => ["Piet", "Tutelaers", "p{dot}t{dot}h{dot}tutelaers{at}tue{dot}nl", false, false],
 	"vytas_statulevicius" => ["Vytas", "Statulevičius", "vytas{at}vtex{dot}nl", false, false],
-	"sigitas_tolusis"     => ["Sigitas", "Tolusis", "sigitas{at}vtex{dot}lt", false, false],
+	"sigitas_tolusis"     => ["Sigitas", "Tolušis", "sigitas{at}vtex{dot}lt", false, false],
 	"janis_vilims"        => ["Janis", "Vilims", "jvilims{at}apollo{dot}lv", false, false],
-	"joerg_knappen"       => ["Jörg", "Knappen", "knappen{at}vkpmzd{dot}kph{dot}uni-mainz{dot}de", false, false], # TODO From id patterns; obviously there must be some more recent address for him
-	"medeni_semde"        => ["Medeni", "Shemdê", nil, false, false],
+	"joerg_knappen"       => ["Jörg", "Knappen", "jknappen{at}web{dot}de", true, true],
+	"medeni_shemde"        => ["Medeni", "Shemdê", nil, false, false],
 	"terry_mart"          => ["Terry", "Mart", "mart{at}kph{dot}uni-mainz{dot}de", false, false],
+	# email doesn't work
 	"jorgen_pind"         => ["Jorgen", "Pind", "jorgen{at}lexis{dot}hi{dot}is", false, false],
 	"marteinn_sverrisson" => ["Marteinn", "Sverrisson", nil, false, false],
-	"kristinn_gylfason"   => ["Kristinn", "Gylfason", "kristgy{at}ieee{dot}org"],
+	# email doesn't work
+	"kristinn_gylfason"   => ["Kristinn", "Gylfason", "kristgy{at}ieee{dot}org", false, false],
+	# email doesn't work
 	"kevin_p_scannell"    => ["Kevin P.", "Scannell", "scanell{at}slu{dot}edu", false, false],
+	# email doesn't work
 	"peter_kleiweg"       => ["Peter", "Kleiweg", "p{dot}c{dot}c{dot}kleiweg{at}rug{dot}nl", false, false],
 	"hanna_kolodziejska"  => ["Hanna", "Kołodziejska", nil, false, false],
 	"boguslaw_jackowski"  => ["Bogusław", "Jackowski", nil, true, true],
 	"marek_rycko"         => ["Marek", "Ryćko", nil, false, false],
 	"vladimir_volovich"   => ["Vladimir", "Volovich", nil, true, true], # TODO add e-mail address
 	"alexander_i_lebedev" => ["Alexander I.", "Lebedev", "swan{at}scon155{dot}phys{dot}msu{dot}su", false, false], # Not sure were 'I' belongs
+	# first email doesn't work
 	"maksym_polyakov"     => ["Maksym", "Polyakov", "polyama{at}auburn{dot}edu", false, false], # Second e-mail address in ukrhypmp.tex: mpoliak@i.com.ua
 	"adrian_rezus"        => ["Adrian", "Rezus", "adriaan{at}\{sci,cs\}{dot}kun{dot}nl", false, false],
+	# email doesn't work
 	"sahak_petrosyan"     => ["Sahak", "Petrosyan", "sahak{at}mit{dot}edu", true, true], # I think "true, true" is right.  Arthur
-	"dominik_wujastyk"    => ["Dominik", "Wujastyk", nil, false, false], # TODO Dominik is quite active on the XeTeX list, make contact with him
+	"dominik_wujastyk"    => ["Dominik", "Wujastyk", "wujastyk{at}gmail{dot}com", false, false],
 	"graham_toal"         => ["Graham", "Toal", nil, false, false],
 	"donald_e_knuth"      => ["Donald E.", "Knuth", nil, false, false], # Don doesn't use e-mail ;-)
 	"gerard_d_c_kuiken"   => ["Gerard D.C.", "Kuiken", nil, false, false],
 	"pierre_mackay"       => ["P. A.", "MacKay", nil, true, true],
 	"h_turgut_uyar"       => ["H. Turgut", "Uyar", "uyar{at}itu{dot}edu{tr}", true, true],
+	# email doesn't work
 	"s_ekin_kocabas"      => ["S. Ekin", "Kocabas", "kocabas{at}stanford{dot}edu", true, true],
 	"bence_nagy"          => ["Bence", "Nagy", "nagybence{at}tipogral{dot}hu", true, true],
 	"kauko_saarinen"      => ["Kauko", "Saarinen", nil, false, false],
@@ -178,9 +200,20 @@ authors = {
 	"rene_bastian"        => ["René", "Bastian", nil, false, false], # TODO make contact
 	"daniel_flipo"        => ["Daniel", "Flipo", nil, false, false], # TODO make contact
 	"bernard_gaulle"      => ["Bernard", "Gaulle", nil, false, false], # Deceased...
-	"theppitak_karoonboonyanan" => ["Theppitak", "Karoonboonyanan" "thep{at}linux{dot}thai{dot}net", true, true],
+	"theppitak_karoonboonyanan" => ["Theppitak", "Karoonboonyanan", "theppitak{at}gmail{dot}com", true, true],
 	"levan_shoshiashvili" => ["Levan", "Shoshiashvili", "shoshia{at}hotmail{dot}com", true, true],
+	# email doesn't work
+	"javier_mugica"       => ["Javier", "Múgica", "javier{at}digi21{dot}eu", true, true],
+	"georgi_boshnakov"    => ["Georgi", "Boshnakov", "georgi{dot}boshnakov{at}manchester{dot}ac{dot}uk", true, true],
 }
+#
+		authors.each do |a|
+			author = Author.new(a[1][0], a[1][1], a[1][2], a[1][3], a[1][4])
+			@@list.push(author)
+			self[a[0]] = author
+		end
+	end
+end
 
 
 # "use_new_loader"
@@ -413,8 +446,8 @@ class Languages < Hash
 	"exceptions" => false,
 	"message" => "German hyphenation patterns (traditional orthography)",
 
-	"version"       => "0.3",
-	"last_modified" => "2013-05-26", # For the active project
+	"version"       => "0.40",
+	"last_modified" => "2014-05-21", # For the active project
 	"type"          => "dictionary",
 	"authors"       => ["werner_lemberg"],
 	"licence"       => "LPPL",
@@ -452,8 +485,8 @@ class Languages < Hash
 	"exceptions" => false,
 	"message" => "German hyphenation patterns (reformed orthography)",
 
-	"version"       => "0.3",
-	"last_modified" => "2013-05-26", # For the active project
+	"version"       => "0.40",
+	"last_modified" => "2014-05-21", # For the active project
 	"type"          => "dictionary",
 	"authors"       => ["werner_lemberg"],
 	"licence"       => "LPPL",
@@ -474,8 +507,8 @@ class Languages < Hash
 	"exceptions" => false,
 	"message" => "Swiss-German hyphenation patterns (traditional orthography)",
 
-	"version"       => "0.3",
-	"last_modified" => "2013-05-26", # For the active project
+	"version"       => "0.40",
+	"last_modified" => "2014-05-21", # For the active project
 	"type"          => "dictionary",
 	"authors"       => ["werner_lemberg"],
 	"licence"       => "LPPL",
@@ -560,8 +593,8 @@ class Languages < Hash
 	"exceptions" => true,
 	"message" => "Afrikaans hyphenation patterns",
 
-	"version"       => "0.9",
-	"last_modified" => "2010-10-18",
+	"version"       => "1.0",
+	"last_modified" => "2013-10-08",
 	"type"          => "dictionary",
 	"authors"       => [ "tilla_fick", "chris_swanepoel" ],
 	"email"         => [ "hyphen{at}rekenaar{dot}net" ],
@@ -1065,8 +1098,8 @@ class Languages < Hash
 	"exceptions" => false,
 	"message" => "Italian hyphenation patterns",
 
-	"version"       => "4.8i",
-	"last_modified" => "2010-05-24",
+	"version"       => "4.9",
+	"last_modified" => "2014-04-22",
 	"type"          => "rules", # TODO: we might want to check that, but it seems unlikely that patgen was used
 	"authors"       => ["claudio_beccari"],
 	"licence"       => "LPPL", # Status: maintained!
@@ -1188,16 +1221,15 @@ class Languages < Hash
 	"name" => "latin",
 	"use_new_loader" => true,
 	"use_old_patterns" => false,
-	"use_old_patterns_comment" => "Old patterns support both EC & OT1 encodings at the same time.",
 	"filename_old_patterns" => "lahyph.tex",
 	"hyphenmin" => [2,2], # babel
 	"encoding" => "ec",
 	"exceptions" => false,
 	"message" => "Latin hyphenation patterns",
 
-	"version"       => "3.2",
-	"last_modified" => "2010-06-01",
-	"type"          => "dictionary",
+	"version"       => "3.2a",
+	"last_modified" => "2014-06-04", # patterns (behaviour) last modified on 2010-06-01
+	"type"          => "rules",
 	"authors"       => [ "claudio_beccari" ],
 	"licence"       => "LPPL",
 	"description_s" => "Latin hyphenation patterns",
@@ -1209,6 +1241,31 @@ class Languages < Hash
 		"lowercase 'v' written as a 'u' is also supported.  Apparently",
 		"there is no conflict between the patterns of modern Latin and",
 		"those of medieval Latin.",
+	],
+},
+# classiclatin
+{
+	"code" => "la-x-classic",
+	"name" => "classiclatin",
+	"use_new_loader" => true,
+	"use_old_patterns" => false,
+	"filename_old_patterns" => nil,
+	"hyphenmin" => [2,2],
+	"encoding" => "ascii",
+	"exceptions" => false,
+	"message" => "Classical Latin hyphenation patterns",
+
+	"version"       => "1.2",
+	"last_modified" => "2014-10-06",
+	"type"          => "rules",
+	"authors"       => [ "claudio_beccari" ],
+	"licence"       => "LPPL",
+	"description_s" => "Classical Latin hyphenation patterns",
+	"description_l" => [
+		#......................................................................#
+		"Hyphenation patterns for the Classical Latin in T1/EC and UTF-8",
+		"encodings. Classical Latin hyphenation patterns are different from",
+		"those of 'plain' Latin, the latter being more adapted to modern Latin.",
 	],
 },
 # lithuanian
@@ -1685,7 +1742,7 @@ class Languages < Hash
 	"version"       => "1.7",
 	"last_modified" => "2008-06",
 	"type"          => "pattern",
-	"authors"       => [ "" ],
+	"authors"       => [ "georgi_boshnakov" ],
 	"licence"       => "LPPL",
 	"description_s" => "Bulgarian hyphenation patterns",
 	"description_l" => [
@@ -1910,7 +1967,7 @@ class Languages < Hash
 	"message" => "Thai hyphenation patterns",
 
 	"version"       => nil,
-	"last_modified" => "2013-01-28",
+	"last_modified" => "2015-05-07",
 	"type"          => "dictionary",
 	"authors"       => [ "theppitak_karoonboonyanan" ],
 	"licence"       => "LPPL",
@@ -1967,27 +2024,27 @@ class Languages < Hash
 	],
 },
 # georgian
-#{
-#	"code" => "ka",
-#	"name" => "georgian",
-#	"use_new_loader" => true,
-#	"use_old_patterns" => false,
-#	"hyphenmin" => [2,3], # TODO
-#	"encoding" => "t8m",
-#	"exceptions" => false,
-#	"message" => "Georgian hyphenation patterns",
-#
-#	"version"       => nil,
-#	"last_modified" => "2013-02-25", # TODO
-#	"type"          => "dictionary",
-#	"authors"       => [ "levan_shoshiashvili" ],
-#	"licence"       => "other-free",
-#	"description_s" => "Georgian hyphenation patterns",
-#	"description_l" => [
-#		#......................................................................#
-#		"Hyphenation patterns for Georgian in T8M, T8K and UTF-8 encodings.",
-#	],
-#},
+{
+	"code" => "ka",
+	"name" => "georgian",
+	"use_new_loader" => true,
+	"use_old_patterns" => false,
+	"hyphenmin" => [1,2],
+	"encoding" => "t8m",
+	"exceptions" => false,
+	"message" => "Georgian hyphenation patterns",
+
+	"version"       => "0.3",
+	"last_modified" => "2013-04-15",
+	"type"          => "dictionary",
+	"authors"       => [ "levan_shoshiashvili" ],
+	"licence"       => "LPPL",
+	"description_s" => "Georgian hyphenation patterns",
+	"description_l" => [
+		#......................................................................#
+		"Hyphenation patterns for Georgian in T8M, T8K and UTF-8 encodings.",
+	],
+},
 # dumylang -> dumyhyph.tex
 # nohyphenation -> zerohyph.tex
 # arabic -> zerohyph.tex

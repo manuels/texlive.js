@@ -4,12 +4,15 @@
 %%
 %% The original source files were:
 %%
-%% multicol.dtx  (with options: `package,badness,check,marktrace,nobalance,colbreak')
+%% multicol.dtx  (with options: `package,badness,check,marktrace,nobalance')
 %% 
 %% This is a generated file.
 %% 
-%% Copyright 1993 1994 1995 1996 1997 1998 1999 2000 2001 2002 2003 2004 2005
-%% 2006 2008 2009
+%% The source is maintained by the LaTeX Project team and bug
+%% reports for it can be opened at http://latex-project.org/bugs.html
+%% (but please observe conditions on bug reports sent to that address!)
+%% 
+%% Copyright 1993-2015
 %% The LaTeX3 Project and any individual authors listed elsewhere
 %% in this file.
 %% 
@@ -32,7 +35,7 @@
 %% given in the file `manifest.txt'.
 %% 
 %% Package `multicol' to use with LaTeX2e
-%% Copyright 1989-2011 Frank Mittelbach
+%% Copyright 1989-2015 Frank Mittelbach
 %%
 %%  In addition to the terms of LPPL any distributed version
 %%  (unchanged or modified) of multicol has to keep the statement
@@ -81,7 +84,7 @@
 %%   - multicol is used for non-commercial purposes
 %%
 %%
-%% Determinating a license fee might result in a license fee of zero
+%% Determining a license fee might result in a license fee of zero
 %% (i.e., no payment) in case a producer has determined that the use
 %% of multicol has no enhancing effect on the product. This is a
 %% plausible scenario, i.e., in the above two cases the producer is
@@ -97,8 +100,8 @@
 %%
 \NeedsTeXFormat{LaTeX2e}[1997/12/01]
 \ProvidesPackage{multicol}
-          [2011/06/27 v1.7a  multicolumn formatting (FMi)]
-%% \CheckSum{1669}
+          [2015/08/19 v1.8n  multicolumn formatting (FMi)]
+%% \CheckSum{1894}
 %% \CharacterTable
 %%  {Upper-case    \A\B\C\D\E\F\G\H\I\J\K\L\M\N\O\P\Q\R\S\T\U\V\W\X\Y\Z
 %%   Lower-case    \a\b\c\d\e\f\g\h\i\j\k\l\m\n\o\p\q\r\s\t\u\v\w\x\y\z
@@ -131,6 +134,18 @@
     {\c@tracingmulticols5\relax}
 \let\mc@gridwarn\maxdimen
 \DeclareOption{grid}{\def\mc@gridwarn{\maxdepth}}
+\DeclareOption{colaction}{%
+  \def\mc@col@status@write{%
+         \protected@write\@auxout{}%
+              {\string\mc@col@status
+              {\ifmc@firstcol 1\else 2\fi}}%
+         \mc@firstcolfalse}%
+  \def\mc@lastcol@status@write{%
+         \protected@write\@auxout{}%
+              {\string\mc@col@status{3}}}%
+}
+\let\mc@col@status@write\relax
+\let\mc@lastcol@status@write\relax
 \ProcessOptions
 \def\multicols#1{\col@number#1\relax
   \ifnum\col@number<\tw@
@@ -189,6 +204,7 @@
      \prepare@multicols
      \if@boxedmulticols
        \setbox\mult@box\vbox\bgroup
+                            \color@setgroup
      \fi
      \ignorespaces}
 \newif\if@boxedmulticols
@@ -288,7 +304,7 @@
 \newdimen\multicol@leftmargin
 \def\endmulticols{\par
   \if@boxedmulticols
-    \egroup
+    \remove@discardable@items\color@endgroup\egroup
     \balance@columns
     \return@nonemptymark{first}%
                  \kept@firstmark
@@ -312,8 +328,8 @@
         \unvbox\colbreak@box\fi
     \fi
    \penalty\z@
-   \prevdepth\z@
-   \output{\balance@columns@out}\eject
+   \output{\balance@columns@out}%
+   \eject
     \ifvbox\partial@page
          \unvbox\partial@page\fi
      \global\let\kept@firstmark\@empty
@@ -333,6 +349,7 @@
     \fi
   \fi
   \addvspace\multicolsep
+ \prevdepth\z@
   \mult@info\z@
      {Ending environment
              \if@boxedmulticols
@@ -386,22 +403,14 @@
 \ifvmode\else\errmessage{Multicol Error}\fi
    \nointerlineskip
    \setbox\z@\hbox{p}\global\dimen\tw@\dp\z@
-   \maybe@reverse@columns
    \moveright\multicol@leftmargin
     \hbox to\full@width{%
-     \process@cols\mult@gfirstbox{%
-       \ifdim\dp\count@>\dimen\tw@
-         \global\dimen\tw@\dp\count@ \fi
-       \box\count@
-       \hss{\columnseprulecolor\vrule
-              \@width\columnseprule}\hss}%
-     \ifdim\dp\mult@rightbox>\dimen\tw@
-       \global\dimen\tw@\dp\mult@rightbox \fi
-     \box\mult@rightbox
-     \rlap{\phantom p}%
+       \mc@align@columns
+       \rlap{\phantom p}%
     }%
+   \prevdepth\z@
  \kern-\dimen\tw@
- \ifdim\dimen\tw@ = \mc@gridwarn
+ \ifdim\dimen\tw@ > \mc@gridwarn
    \PackageWarning{multicol}%
      {Very deep columns!\MessageBreak
       Grid alignment might be broken}%
@@ -410,43 +419,56 @@
 \def\columnseprulecolor{\normalcolor}
 \def\reinsert@footnotes{\ifvoid\footins\else
          \insert\footins{}\fi}
+\def\vfilmaxdepth{\vskip \z@ \@plus .0001fil
+                           \@minus \maxdepth}
 \def\multi@column@out{%
    \ifnum\outputpenalty <-\@M
-   \speci@ls \else
-   \ifvoid\colbreak@box\else
-     \mult@info\@ne{Re-adding forced
-               break(s) for splitting}%
-     \setbox\@cclv\vbox{%
-        \unvbox\colbreak@box
-        \penalty-\@Mv\unvbox\@cclv}%
-   \fi
+    \speci@ls \else
+    \ifvoid\colbreak@box\else
+      \mult@info\@ne{Re-adding forced
+                break(s) for splitting}%
+      \setbox\@cclv\vbox{%
+       \unvbox\colbreak@box
+       \penalty-\@Mv
+       \unvbox\@cclv}%
+    \fi
    \splittopskip\topskip
    \splitmaxdepth\maxdepth
+   \boxmaxdepth\maxdepth
    \dimen@\@colroom
    \divide\skip\footins\col@number
    \ifvoid\footins \else
       \leave@mult@footins
    \fi
+   \let\ifshr@kingsaved\ifshr@king
+   \ifvbox \@kludgeins
+     \advance \dimen@ -\ht\@kludgeins
+     \ifdim \wd\@kludgeins>\z@
+        \shr@nkingtrue
+     \fi
+   \fi
    \process@cols\mult@gfirstbox{%
         \setbox\count@
             \vsplit\@cclv to\dimen@
             \set@keptmarks
-            \ifshr@nking
-              \setbox\count@
+            \setbox\count@
                  \vbox to\dimen@
-                  {\unvbox\count@\vfill}%
-            \fi
+                  {\unvbox\count@
+                   \ifshr@nking\vfilmaxdepth\fi}%
            }%
    \setbox\mult@rightbox
        \vsplit\@cclv to\dimen@
    \set@keptmarks
-   \ifshr@nking
-      \setbox\mult@rightbox\vbox to\dimen@
-          {\unvbox\mult@rightbox\vfill}%
-   \fi
+   \setbox\mult@rightbox\vbox to\dimen@
+          {\unvbox\mult@rightbox
+           \ifshr@nking\vfilmaxdepth\fi}%
+   \let\ifshr@king\ifshr@kingsaved
    \ifvoid\@cclv \else
        \unvbox\@cclv
-       \penalty\outputpenalty
+       \ifnum\outputpenalty=\@M
+       \else
+          \penalty\outputpenalty
+       \fi
        \ifvoid\footins\else
          \PackageWarning{multicol}%
           {I moved some lines to
@@ -492,6 +514,8 @@
          \meaning\kept@topmark
          \@gobbletwo}%
    \global\@colroom\@colht
+   \global \@mparbottom \z@
+   \global \@textfloatsheight \z@
    \process@deferreds
    \@whilesw\if@fcolmade\fi{\@outputpage
       \global\@colroom\@colht
@@ -519,18 +543,26 @@
                         break seen}%
          \global\advance\vsize-\pagetotal
          \global\setbox\colbreak@box
-                \vbox{\ifvoid\colbreak@box
-                      \else
-                        \unvbox\colbreak@box
-                        \penalty-\@Mv
-                      \fi
-                      \unvbox\@cclv}
+           \vbox{%
+              \ifvoid\colbreak@box
+              \else
+                \unvbox\colbreak@box
+                \penalty-\@Mv
+              \fi
+              \boxmaxdepth\maxdepth
+              \setbox\@cclv\vbox{%
+                 \unvbox\@cclv
+                 \remove@discardable@items}%
+              \dimen@\dp\@cclv
+              \unvbox\@cclv
+              \kern-\dimen@
+         }%
          \reinsert@footnotes
      \else
         \PackageWarningNoLine{multicol}%
            {Floats and marginpars not
             allowed inside `multicols'
-            environment!}
+            environment!}%
         \unvbox\@cclv\reinsert@footnotes
        \xdef\@freelist{\@freelist\@currlist}%
        \gdef\@currlist{}%
@@ -556,32 +588,48 @@
 \def\balance@columns@out{%
    \setbox\mult@box\vbox{%
        \ifvoid\colbreak@box\else
-         \unvbox\colbreak@box\break
+         \unvbox\colbreak@box
+         \penalty-\@Mv
          \mult@info\@ne{Re-adding
            forced break(s) in balancing}%
        \fi
-       \unvbox\@cclv}%
+       \unvbox\@cclv
+       \remove@discardable@items
+   }%
    \balance@columns
-   \global\vsize\@colroom
-   \global\advance\vsize\ht\partial@page
-   \unvbox\partial@page
-   \return@nonemptymark{first}\kept@firstmark
-   \return@nonemptymark{bot}\kept@botmark
-   \page@sofar
-   \penalty\z@
+   \iftoo@bad
+     \mult@info\@ne
+        {Balancing failed ...
+         cut a normal page}%
+     \setbox\@cclv\vbox
+         {\vskip\topskip
+          \vskip-\splittopskip
+          \unvbox\mult@box}%
+     \multi@column@out
+   \else
+     \global\vsize\@colroom
+     \global\advance\vsize\ht\partial@page
+     \ifvbox\@kludgeins\insert\@kludgeins
+                        {\unvbox\@kludgeins}\fi
+     \unvbox\partial@page
+     \return@nonemptymark{first}\kept@firstmark
+     \return@nonemptymark{bot}\kept@botmark
+     \page@sofar
+     \penalty\z@
+  \fi
 }
 \def\balance@columns{%
    \get@keptmarks\mult@box
    \setbox\mult@box\vbox{%
         \penalty-\@M
         \unvbox\mult@box
-        \remove@discardable@items
         }%
    \@tempdima\topskip
    \splittopskip\@tempdima
        \@plus\multicolundershoot
        \@minus\multicolovershoot
    \splitmaxdepth\maxdepth
+   \boxmaxdepth\maxdepth
    \setbox\@tempboxa\vsplit\mult@box to\z@
    \@tempdima\ht\mult@box
    \advance\@tempdima\dp\mult@box
@@ -607,7 +655,7 @@
      \dimen@\topskip
    \fi
    \vbadness\@M
-   \vfuzz \col@number\baselineskip
+   \vfuzz \maxdimen
    \last@try-\p@
    \loop
     {\process@cols\mult@grightbox
@@ -615,10 +663,14 @@
                    \box\voidb@x}}%
     \global\setbox\mult@grightbox
            \copy\mult@box
-   \global\too@badfalse
+   \too@badfalse
+   \forcedbreak@leftoverfalse
    {\process@cols\mult@firstbox{%
          \global\setbox\count@
          \vsplit\mult@grightbox to\dimen@
+         \global\setbox\count@
+                 \vbox to\dimen@
+                  {\unvbox\count@}%
          \ifnum\c@tracingmulticols>\@ne
            \@tempcnta\count@
            \advance\@tempcnta-\mult@grightbox
@@ -632,10 +684,9 @@
              \message{too bad
                   (>\the\c@columnbadness)}%
            \fi
-           \global\too@badtrue
+           \too@badtrue
          \fi
                         }}%
-   \boxmaxdepth\maxdepth
    \global\setbox\mult@grightbox
       \vbox{\unvbox\mult@grightbox}%
    \setbox\mult@nat@firstbox
@@ -669,18 +720,28 @@
         \ifnum\badness>\c@finalcolumnbadness
           \global\setbox\mult@grightbox
            \vbox to\dimen@
-              {\unvbox\mult@grightbox\vfill}%
+              {\unvbox\mult@grightbox\vfil}%
            \ifnum\c@tracingmulticols>\@ne
              \message{ setting natural
               (> \the\c@finalcolumnbadness)}%
            \fi
         \fi
       \else
+       \@tempdima\@colroom
+       \advance\@tempdima \maxbalancingoverflow
+       \ifdim \dimen@ < \@tempdima
         \too@badtrue
-        \ifnum\c@tracingmulticols>\@ne
-          \typeout{Rejected: unprocessed
-            forced break(s) in last column!}%
-        \fi
+         \ifnum\c@tracingmulticols>\@ne
+           \typeout{Rejected: unprocessed
+             forced break(s) in last column!}%
+         \fi
+       \else
+         \forcedbreak@leftovertrue
+         \ifnum\c@tracingmulticols>\@ne
+          \typeout{Failed: columns too large
+            with unprocessed forced break(s)!}%
+         \fi
+       \fi
       \fi
     \fi
     \ifdim\ht\mult@nat@firstbox<\dimen@
@@ -698,22 +759,50 @@
     \iftoo@bad
       \advance\dimen@\p@
     \repeat
-   \if@boxedmulticols\else
-     \ifdim\dimen@>\@colroom
-       \dimen@\@colroom
+    \ifforcedbreak@leftover
+       \too@badtrue
+    \else
+     \if@boxedmulticols\else
+       \ifdim\dimen@>\@colroom
+         \dimen@\@colroom
+       \fi
      \fi
+     \process@cols\mult@rightbox
+         {\@tempcnta\count@
+          \advance\@tempcnta\@ne
+          \vfuzz\z@
+          \setbox\count@\vbox to\dimen@
+             {%
+              \vskip \z@
+                \@plus-\multicolundershoot
+                \@minus-\multicolovershoot
+              \unvbox\@tempcnta
+              \ifshr@nking\vfilmaxdepth\fi
+             }%
+          \ifnum\badness>\@M
+            \vfuzz\maxdimen % no overfull warning
+            \setbox\@tempboxa \vbox to\dimen@
+                 {\vskip-\maxbalancingoverflow
+                  \unvcopy\count@}%
+            \ifnum\badness>\@M
+              \mult@info\@ne
+                {Balanced column more than
+                  \the\maxbalancingoverflow\space
+                  too large}%
+              \too@badtrue
+            \else
+              \mult@info\@ne
+                {Balanced column
+                 too large, but less than
+                 \the\maxbalancingoverflow}%
+            \fi
+          \fi
+         }%
    \fi
-   \process@cols\mult@rightbox
-       {\@tempcnta\count@
-        \advance\@tempcnta\@ne
-        \setbox\count@\vbox to\dimen@
-           {%
-            \vskip \z@
-              \@plus-\multicolundershoot
-              \@minus-\multicolovershoot
-            \unvbox\@tempcnta
-            \ifshr@nking\vfill\fi}}%
 }
+\newdimen\maxbalancingoverflow
+\maxbalancingoverflow=12pt
+
 \newbox\mult@rightbox
 \newbox\mult@grightbox
 \newbox\mult@gfirstbox
@@ -791,13 +880,31 @@
    \if@boxedmulticols \else
      \get@keptmarks\partial@page
    \fi}
+\skip0=0pt
+\edef\the@zero@skip{\the\skip0}
 \def\remove@discardable@items{%
-        \unskip\unpenalty\unkern
-        \unskip\unpenalty\unkern
-        \unskip\unpenalty\unkern
-        \unskip\unpenalty\unkern
+     \unpenalty
+     \edef\@tempa{\the\lastskip}%
+     \unskip
+     \ifx\@tempa\the@zero@skip
+       \edef\@tempb{\the\lastskip}%
+       \ifx\@tempb\the@zero@skip
+       \else
+         \unskip
+         \ifnum \lastpenalty=\@M
+           \vskip\@tempb\vskip\@tempa\relax
+         \else
+           \remove@discardable@items
+         \fi
+       \fi
+     \else
+       \remove@discardable@items
+     \fi
 }
 \newif\iftoo@bad
+\def\too@badtrue{\global\let\iftoo@bad\iftrue}
+\def\too@badfalse{\global\let\iftoo@bad\iffalse}
+\newif\ifforcedbreak@leftover
 \newcount\c@columnbadness
 \c@columnbadness=10000
 \newcount\c@finalcolumnbadness
@@ -829,7 +936,16 @@
    \fi
    \begin{multicols}
 }
- \@namedef{endmulticols*}{\vfill
+\@namedef{endmulticols*}{%
+   \ifdim\lastskip>\z@ \vskip-\lastskip \fi
+   \ifdim \prevdepth>\z@
+     \vskip-\ifdim\prevdepth>\boxmaxdepth
+                  \boxmaxdepth
+            \else \prevdepth \fi
+   \fi
+   \ifshr@nking\else
+     \vfil
+   \fi
    \end{multicols}}
 \mathchardef\@Mv=10005
 \def\columnbreak{%
@@ -848,61 +964,98 @@
   \fi
  \fi}
 \newbox\colbreak@box
-\newcommand\RLmulticolcolumns
-    {\let\maybe@reverse@columns
-         \reverse@column@boxes}
-\newcommand\LRmulticolcolumns
-    {\let\maybe@reverse@columns\relax}
-\LRmulticolcolumns
-
-\newcount\multicol@sort@counter
-
-\def\reverse@column@boxes {%
-  \ifnum\c@tracingmulticols>\thr@@
-    \typeout{reversing columns ...}
-  \fi
-  \multicol@sort@counter\doublecol@number
-  \advance\multicol@sort@counter\m@ne
-  \process@cols\mult@gfirstbox{%
-     \setbox\multicol@sort@counter
-            \box\count@
-     \ifnum\c@tracingmulticols>\thr@@
-       \typeout{Setting
-             \the\multicol@sort@counter\space
-                <- \the\count@}%
-     \fi
-     \advance \multicol@sort@counter -\tw@
-  }%
-  \ifnum\c@tracingmulticols>\thr@@
-    \typeout{Setting last:
-                \the\mult@grightbox\space
-             <- \the\mult@rightbox}%
-  \fi
-  \setbox \mult@grightbox \box\mult@rightbox
-  \ifnum\c@tracingmulticols>\thr@@
-    \typeout{shifting ...}
-  \fi
-  \multicol@sort@counter\mult@gfirstbox
-  \advance\multicol@sort@counter \m@ne
-  \process@cols\mult@gfirstbox{%
-     \global\setbox\count@
-            \box\multicol@sort@counter
-     \ifnum\c@tracingmulticols>\thr@@
-       \typeout{Setting \the\count@\space
-            <- \the\multicol@sort@counter}%
-     \fi
-     \advance \multicol@sort@counter \tw@
-  }%
-  \multicol@sort@counter\doublecol@number
-  \advance\multicol@sort@counter\m@ne
-  \ifnum\c@tracingmulticols>\thr@@
-    \typeout{Setting last:
-                \the\mult@rightbox\space
-             <- \the\multicol@sort@counter}%
-  \fi
-  \global\setbox \mult@rightbox
-                 \box\multicol@sort@counter
+\def\LR@column@boxes{%
+     \process@cols\mult@gfirstbox{%
+       \ifdim\dp\count@>\dimen\tw@
+         \global\dimen\tw@\dp\count@ \fi
+       \mc@col@status@write
+       \box\count@
+       \hss{\columnseprulecolor\vrule
+              \@width\columnseprule}\hss}%
+     \ifdim\dp\mult@rightbox>\dimen\tw@
+       \global\dimen\tw@\dp\mult@rightbox \fi
+     \mc@lastcol@status@write
+     \box\mult@rightbox
 }
+
+\def\RL@column@boxes{%
+     \process@cols\mult@gfirstbox{%
+       \hskip\hsize
+       \hss{\columnseprulecolor\vrule
+              \@width\columnseprule}\hss
+     }%
+     \hskip\hsize
+     \process@cols\mult@gfirstbox{%
+       \ifdim\dp\count@>\dimen\tw@
+         \global\dimen\tw@\dp\count@ \fi
+       \hskip-\hsize
+       \mc@col@status@write
+       \box\count@
+       \hskip-\hsize
+       \hskip-\columnsep
+     }%
+     \ifdim\dp\mult@rightbox>\dimen\tw@
+       \global\dimen\tw@\dp\mult@rightbox \fi
+     \hskip-\hsize
+     \mc@lastcol@status@write
+     \box\mult@rightbox
+     \hskip-\hsize
+     \hskip\full@width
+ }
+\newcommand\RLmulticolcolumns
+    {\let\mc@align@columns
+         \RL@column@boxes}
+\newcommand\LRmulticolcolumns
+    {\let\mc@align@columns
+      \LR@column@boxes}
+\LRmulticolcolumns
+\newcount\mc@col@check@num
+
+\newcommand\docolaction[4][1]{%
+ \ifx\mc@col@status@write\relax
+     \PackageError{multicol}%
+      {Option 'colaction' not selected}%
+      {\string\docolaction\space
+       requires the use of the 'colaction'
+       option on the package}%
+ \fi
+ \global\advance\mc@col@check@num\@ne
+ \edef\mc@col@type{\expandafter\ifx
+   \csname mc@col-\the\mc@col@check@num
+   \endcsname\relax
+                   0\else
+   \csname mc@col-\the\mc@col@check@num
+   \endcsname
+                    \fi}%
+ \ifcase \mc@col@type\relax
+     \ifcase #1\or #2\or#3\or#4\fi
+  \or
+     #2%  % 1 First col
+  \or
+     #3%  % 2 any middle col
+  \or
+     #4%  % 3 last col
+  \else
+    \ERROR
+  \fi
+  \edef\next{\write\@auxout
+     {\string\mc@set@col@status
+      {mc@col-\the\mc@col@check@num}%
+      {\mc@col@type}}}%
+  \next
+}
+\def\mc@col@status#1{%
+    \gdef\mc@curr@col@status{#1}}
+\def\mc@set@col@status#1#2{%
+  \global\expandafter\let\csname #1\endcsname
+                         \mc@curr@col@status}
+\AtEndDocument{\def\mc@set@col@status#1#2{%
+     \ifnum #2=\mc@curr@col@status\else
+       \@tempswatrue
+     \fi}%
+}
+\newif\ifmc@firstcol
+\mc@firstcoltrue
 \endinput
 %%
 %% End of file `multicol.sty'.
